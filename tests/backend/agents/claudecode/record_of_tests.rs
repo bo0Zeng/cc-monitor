@@ -366,15 +366,12 @@ fn others_mid_turn_lines_and_the_remove_line_stay_off_screen() {
 #[test]
 fn an_auto_reply_is_known_by_its_model_not_its_text() {
     let Body::Reply {
-        auto_reply,
-        model,
-        error,
-        ..
+        auto_reply, error, ..
     } = one(CASES[5].1).unwrap().body
     else {
         panic!()
     };
-    assert!(auto_reply && model.is_none() && error.is_none());
+    assert!(auto_reply && error.is_none());
     // 报错那条也写着同一个型号名，但它是报错、不是自动应答。
     let Body::Reply {
         auto_reply, error, ..

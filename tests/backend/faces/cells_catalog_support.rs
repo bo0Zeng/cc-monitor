@@ -59,7 +59,6 @@ pub const FROZEN: &[(&str, Frozen)] = &[
             "cwd",
             "name",
             "agent_kind",
-            "attachable",
             "face.dot",
             "face.life.activity",
             "face.can.stop.can",

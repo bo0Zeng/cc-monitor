@@ -7,11 +7,7 @@ export type ListMeta = {
 /**
  * 这台建了账号库（清单读得出）。
  */
-enabled: boolean, acctsDir: string, manifestPath: string, updatedAt: string | null, 
-/**
- * 账号 0 的配置目录（清单里写了才有）。
- */
-sharedStore: string | null, 
+enabled: boolean, manifestPath: string, updatedAt: string | null, 
 /**
  * 清单里认得的号数。
  */

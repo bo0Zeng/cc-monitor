@@ -42,29 +42,54 @@ import com.ccmonitor.mobile.core.ui.dialog.DangerConfirmDialog
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 
 /**
- * ⋯ 里那几项：会话里找 · 大纲 · 无人答时自动答 · 结束会话…（照 `can.end`：不能 ⇒ 灰着、第二行写那台那一句）。
- * [close] 收起 ⋯；[title] 是这条会话的名字（确认框里列它）。字只取骨架那几档；结局的字都是那台写好的。
+ * ⋯ 里有哪几项、什么顺序（纯函数，判据读；顶栏照它画）：[agents] ＝ 这条会话有运行表，[openDir] ＝ 知道它的目录；
+ * 自动答与结束会话照 [more] 收没收到这条会话的脸。
+ */
+internal fun chatMoreItems(
+    agents: Boolean,
+    openDir: Boolean,
+    more: ChatMore,
+): List<ChatMoreItem> =
+    buildList {
+        if (agents) add(ChatMoreItem.Agents)
+        add(ChatMoreItem.Rename)
+        add(ChatMoreItem.Rotation)
+        if (openDir) add(ChatMoreItem.OpenDir)
+        add(ChatMoreItem.FindOutline)
+        if (more.autoShown()) add(ChatMoreItem.AutoAnswer)
+        if (more.endEntry() != null) add(ChatMoreItem.End)
+    }
+
+/** ⋯「查找 · 大纲」。[close] 收起 ⋯。 */
+@Composable
+fun FindOutlineItem(
+    more: ChatMore,
+    close: () -> Unit,
+) = DropdownMenuItem(text = { Text(copyText("sessionFind.box.modes")) }, onClick = {
+    close()
+    more.openFind()
+})
+
+/** ⋯「无人答时自动答」。 */
+@Composable
+fun AutoAnswerItem(
+    more: ChatMore,
+    close: () -> Unit,
+) = DropdownMenuItem(text = { Text(copyText("tabMenu.autoAnswer.label")) }, onClick = {
+    close()
+    more.openAuto()
+})
+
+/**
+ * ⋯「结束会话…」（照 `can.end`：不能 ⇒ 灰着、第二行写那台那一句）。[title] 是这条会话的名字（确认框里列它）。
+ * 字只取骨架那几档；结局的字都是那台写好的。
  */
 @Composable
-fun ChatMoreItems(
+fun EndItem(
     more: ChatMore,
     title: String,
     close: () -> Unit,
 ) {
-    DropdownMenuItem(text = { Text(copyText("sessionFind.box.placeholder")) }, onClick = {
-        close()
-        more.openFind()
-    })
-    DropdownMenuItem(text = { Text(copyText("userInputPanel.outline.label")) }, onClick = {
-        close()
-        more.openOutline()
-    })
-    if (more.autoShown()) {
-        DropdownMenuItem(text = { Text(copyText("tabMenu.autoAnswer.label")) }, onClick = {
-            close()
-            more.openAuto()
-        })
-    }
     val end = more.endEntry() ?: return
     val kill = copyText("tabMenu.kill.label")
     val why = (end as? EndEntry.Blocked)?.why
@@ -158,6 +183,10 @@ private fun FindSheet(
                 keyboardActions = KeyboardActions(onSearch = { more.find(q) }),
             )
             FindScope(ui.user) { user -> more.scope(user, q) }
+            SecondaryButton(onClick = {
+                more.closeFind()
+                more.openOutline()
+            }) { Text(copyText("userInputPanel.outline.label")) }
             (if (ui.busy) busy else ui.failed)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = tokens.textFaint) }
             if (!ui.busy && ui.failed == null) ui.head?.let { FindHead(it, ui.widen, more::widen) }
             LazyColumn(Modifier.heightIn(max = 420.dp)) {

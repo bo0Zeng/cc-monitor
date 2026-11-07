@@ -20,9 +20,9 @@ pub const STDERR_LOG: &str = "CCM_BACKEND_STDERR_LOG";
 pub const OWN_ENVS: [&str; 2] = [RESIDENT, STDERR_LOG];
 
 /// 后端内部的变量族（前缀）：起子进程原语对**每个**子进程无条件摘掉名字以它们打头的变量 —— 不论是不是本进程交的。
-/// 会话环境里会混进来源别处的这几族（monitor 给终端窗口导的后端二进制路径 · 旧版常驻后端留在长寿 tmux server 全局环境里的监听口与钥匙文件），
+/// 会话环境里会混进来源别处的这一族（monitor 给终端窗口导的后端二进制路径 · 诊断文件），
 /// 它们一路继承到 agent 起的每个工具进程（跑测试的那一个也在里面），台架漏进真环境就是从这里来的。往下传的只有头注那几格。
-pub(crate) const INTERNAL_PREFIXES: [&str; 2] = ["CCM_BACKEND_", "CCM_LISTEN_"];
+pub(crate) const INTERNAL_PREFIXES: [&str; 1] = ["CCM_BACKEND_"];
 
 /// 上层登记进来、同样一律不往下传的那几个名字：各家 agent「我是哪个会话」的变量（适配层 `agents::self_sid_envs`）——
 /// 常驻后端若是在某个会话里起的，它起的会话不许把那个会话错当成父。本层不认识 agent（最下层只朝下引），
@@ -36,7 +36,7 @@ pub fn also_internal(names: Vec<&'static str>) {
 
 /// 本平台环境变量名比不比大小写。Windows 不分：`Claude_Code_Session_Id` 与 `CLAUDE_CODE_SESSION_ID` 是同一格，
 /// 子进程照样拿得到 ⇒ 摘的时候必须不分大小写比（Win11 真机 10-09 查出：按大小写比时这两种写法都漏下去了）。
-/// Unix 上名字分大小写，`ccm_listen_port` 是另一格、不归本层管。
+/// Unix 上名字分大小写，`ccm_backend_bin` 是另一格、不归本层管。
 pub(crate) const NAMES_FOLD_CASE: bool = cfg!(windows);
 
 /// 两个环境变量名在本平台上是不是同一格（[`NAMES_FOLD_CASE`]）。

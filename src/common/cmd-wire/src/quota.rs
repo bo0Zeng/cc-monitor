@@ -112,9 +112,9 @@ pub struct SlotShow {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
     pub resets_at: Option<u64>,
-    /// `resets_at` 写给人看的样子（出口那一下按钟写，`SlotShow::stamp`；内部与记账一律不填）。
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "string"))]
+    /// `resets_at` 写给人看的样子（出口那一下按钟写，`SlotShow::stamp`；后端写行与开窗那一判读它，不上线）。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub resets_at_text: Option<Words>,
     /// `resets_at` 距今（`+1h50m`；同上，只在还没到时有）。
     #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -163,17 +163,13 @@ pub struct QuotaShow {
     pub state: QuotaState,
     /// 最后一次看到距今超过 30 分钟（与 `state` 叠着画）。
     pub stale: bool,
-    /// 按钮上那个窗口的语义位（卡着的那个；回包没说 ⇒ 用得最多的那个）；没有分窗口的数 ⇒ 缺。
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    /// 按钮上那个窗口的语义位（卡着的那个；回包没说 ⇒ 用得最多的那个）；没有分窗口的数 ⇒ 缺。后端写行与开窗那一判读它，不上线。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub limiting: Option<String>,
     /// `5h` · `7d` 各一格（有数的才出）。
     pub slots: Vec<SlotShow>,
     pub login: LoginState,
-    /// 同一订阅的稳定标识（账号身份的散列，不含原值）：两台看到的同一订阅它相同。订阅号读得出身份才有。
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub sub_id: Option<String>,
     /// 各窗口照原名一格（`slots` 那两格照留：同一语义位几个窗口并成一格；这里一个窗口一格）；没有 ⇒ 缺。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[cfg_attr(
@@ -256,24 +252,18 @@ pub struct WindowShow {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
     pub resets_at: Option<u64>,
-    /// `resets_at` 写给人看的样子（出口那一下按钟写，`WindowShow::stamp`；内部与记账一律不填）。
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "string"))]
+    /// `resets_at` 写给人看的样子（出口那一下按钟写，`WindowShow::stamp`；后端写行读它，不上线）。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub resets_at_text: Option<Words>,
     /// `resets_at` 距今（同上，只在还没到时有）。
     #[serde(skip_serializing_if = "Option::is_none", default)]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "string"))]
     pub resets_at_rel_text: Option<Words>,
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    /// 几点看到的（后端自己用，不上线）。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub seen_at: u64,
-    /// `seen_at` 写给人看的样子（同上）。
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "string"))]
-    pub seen_at_text: Option<Words>,
-    /// `seen_at` 距今（别台的钟走在前面时才有）。
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "string"))]
-    pub seen_at_rel_text: Option<Words>,
     pub from: Source,
     /// 这个号这个窗口「1% ≈ 多少用量」（折合输入 token：各类 token 按那一家的价比折）：中转数到的每发用量 ÷ 读数涨的点数；
     /// 量不到（读数没动 · 样本太少 · 只有一次读数 · 量出来超过 7 天）⇒ 缺。
@@ -284,9 +274,9 @@ pub struct WindowShow {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "string"))]
     pub per_pct_text: Option<Words>,
-    /// 重置时刻已过、之后没再看到：上次的数不再作数（用量当 0、窗口没开）。
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
+    /// 重置时刻已过、之后没再看到：上次的数不再作数（用量当 0、窗口没开）。后端写行读它，不上线。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub reset_since_seen: bool,
     /// 这一窗口的语气（`rows` 里更细窗口那一行的值照它上色）：用满 ⇒ `fail`；快满 ⇒ `warn`；否则 `plain`。
     #[serde(default = "plain")]
@@ -365,10 +355,6 @@ pub struct Warm {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub at_text: Option<Words>,
-    /// `at` 距今。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub at_rel_text: Option<Words>,
     /// 为什么这样办（「5h 83% ↻14:20」「被拒（7d）↻10-12 09:00」「无采样 · 发一句才知道」…）。
     pub text: Words,
 }
@@ -457,150 +443,30 @@ pub struct QuotaAccount {
 pub struct AccountHead {
     pub agent: crate::AgentKind,
     pub account: String,
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    /// 最后一次看到（后端写行用，不上线）。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub seen_at: u64,
+    /// `seen_at` 写好的字（后端写「看到于」那一行用，不上线）。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub seen_at_text: Words,
-    /// 别台的钟走在前面时才有。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub seen_at_rel_text: Option<Words>,
-    /// 那一条账的额度快照（原数照原样；时刻旁边的字已添）。
-    pub reading: ReadingShown,
-    /// 各窗口几点、从哪看到的（原数照原样；账上没记 ⇒ 缺）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub windows_seen: Option<BTreeMap<String, WindowSeenShown>>,
+    /// 账上那一条几点重置（额度快照顶上那一格，时刻旁边的字已添）：后端写状态那一行用，不上线。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
+    pub resets_at: ResetsAt,
     #[serde(flatten)]
     #[cfg_attr(any(test, feature = "ts"), ts(flatten))]
     pub show: QuotaShow,
 }
 
-/// 账上那一条的额度快照（`QuotaReading`）＋ 时刻旁边写好的字（`TextClock::text` · `rel`：有时刻才添、`…RelText` 只给还没到的）。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"),
-    ts(
-        rename = "QuotaReadingShown",
-        export,
-        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
-    )
-)]
-#[serde(rename_all = "camelCase")]
-pub struct ReadingShown {
-    /// 限流器的结论；回包里没说 ⇒ 缺。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub status: Option<QuotaStatus>,
-    /// 那一发被上游拒了（没被服务）。
-    pub refused: bool,
-    /// 此刻卡着的那个窗口名。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub limiting: Option<String>,
-    #[serde(flatten)]
-    #[cfg_attr(any(test, feature = "ts"), ts(flatten))]
-    pub resets_at: ResetsAt,
-    pub windows: Vec<WindowReadShown>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub overage: Option<OverageShown>,
-}
-
-/// 「几点重置」那一格与它旁边写好的字（三格都可缺：没有时刻 ⇒ 三格都缺；过了 ⇒ 没有 `resetsAtRelText`）。
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"),
-    ts(
-        rename = "QuotaResetsAt",
-        export,
-        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
-    )
-)]
-#[serde(rename_all = "camelCase")]
+/// 「几点重置」与它旁边写好的字（三格都可缺：没有时刻 ⇒ 三格都缺；过了 ⇒ 没有 `resets_at_rel_text`）。只在后端里用。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ResetsAt {
     /// 几点重置（unix 秒）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
     pub resets_at: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub resets_at_text: Option<Words>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub resets_at_rel_text: Option<Words>,
-}
-
-/// 快照里的一个窗口（`QuotaWindow`）＋ 重置时刻旁边写好的字。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"),
-    ts(
-        rename = "QuotaWindowRead",
-        export,
-        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
-    )
-)]
-#[serde(rename_all = "camelCase")]
-pub struct WindowReadShown {
-    pub name: String,
-    /// 已用比例（通常 0–1，可以超过 1）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub used: Option<f64>,
-    #[serde(flatten)]
-    #[cfg_attr(any(test, feature = "ts"), ts(flatten))]
-    pub resets_at: ResetsAt,
-    /// 越过了哪条预警线（比例）；没越过就没有。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub warned_at: Option<f64>,
-}
-
-/// 超额那一档（`QuotaOverage`）＋ 重置时刻旁边写好的字。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"),
-    ts(
-        rename = "QuotaOverageShown",
-        export,
-        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
-    )
-)]
-#[serde(rename_all = "camelCase")]
-pub struct OverageShown {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub status: Option<QuotaStatus>,
-    #[serde(flatten)]
-    #[cfg_attr(any(test, feature = "ts"), ts(flatten))]
-    pub resets_at: ResetsAt,
-    /// 为什么不可用（那一家的原值）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub disabled: Option<String>,
-    /// 这一发正在用超额。
-    pub in_use: bool,
-}
-
-/// 一个窗口几点 · 从哪看到的（`WindowSeen`）＋ 那一刻旁边写好的字。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"),
-    ts(
-        rename = "QuotaWindowSeen",
-        export,
-        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
-    )
-)]
-#[serde(rename_all = "camelCase")]
-pub struct WindowSeenShown {
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-    pub at: u64,
-    pub at_text: Words,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub at_rel_text: Option<Words>,
-    pub from: Source,
 }
 
 /// 没出过数的一个号。
@@ -634,9 +500,6 @@ pub struct UnseenHead {
     pub account: String,
     pub kind: Kind,
     pub login: LoginState,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub sub_id: Option<String>,
     /// 用量那一格（没出过数 ⇒ `5h —` / `按量`；同出过数的号那一格一个写法，只是没有重置那一格）。
     pub usage: UnseenUsage,
 }

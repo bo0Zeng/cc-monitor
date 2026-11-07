@@ -304,8 +304,9 @@ pub struct Needs {
     pub call: Option<String>,
     /// 批准：那一步的主参数（命令取说得出用意的那一段）；回答：问题原文头一行；计划 / 判不出 ⇒ `null`。
     pub what: Option<String>,
-    /// 何时起等（那台 pidfile 的 `statusUpdatedAt`，epoch ms）；没有 ⇒ `null`。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]
+    /// 何时起等（那台 pidfile 的 `statusUpdatedAt`，epoch ms）；没有 ⇒ `null`。后端算 `waitedMs` · 排先后用，不上线。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub since_ms: Option<u64>,
     /// 写好的字（等批准 · 等回答 · 需手动），出口照抄。
     pub text: Words,
@@ -323,8 +324,6 @@ pub struct Needs {
     /// 起点比那一刻还晚（那台的钟往回拨过）⇒ 0。没有起点 ⇒ `null`。会走的钟：各出口从收到那一刻起按本机钟接着加（时长读口对同一份金样）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]
     pub waited_ms: Option<u64>,
-    /// `waitedMs` 写好的字（短时长那一处 `copy_core::short_duration`，与过程行步骤耗时同一种写法）；没有起点 ⇒ `null`。
-    pub waited_text: Option<Words>,
     /// 这一条可以怎么答（挂着的待答请求，`control::asks`）：选项的字 · 语气 · 要不要附话都写好；没有挂着的 ⇒ `null`（只能去终端）。
     pub ask: Option<Ask>,
     /// `ask` 为 `null` 时写好的那一句（「只能在终端里答」）；有 `ask` ⇒ `null`。
@@ -360,8 +359,9 @@ pub struct Ask {
     pub choices: Vec<Choice>,
     /// 提问那一种的题目；别的种类为空。
     pub questions: Vec<Question>,
-    /// 何时挂上的（epoch ms，这台的钟）。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    /// 何时挂上的（epoch ms，这台的钟；后端排先后用，不上线）。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub since_ms: u64,
 }
 

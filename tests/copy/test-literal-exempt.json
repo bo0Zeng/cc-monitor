@@ -98,9 +98,6 @@
     "tests/common/guard-core/rules/doc_claim_registry_tests.rs": [
       { "text": "命令", "use": "非文案" }
     ],
-    "tests/frontend/shell/diagnostics_report_tests.rs": [
-      { "text": "本机", "use": "输入" }
-    ],
     "tests/common/guard-core/rules/scanning_guard_registry_tests.rs": [
       { "text": "自己", "use": "非文案" }
     ],
@@ -240,7 +237,6 @@
       { "text": "读取画面失败", "use": "输入" }
     ],
     "tests/frontend/ui/tabs.vitest.ts": [
-      { "text": "画面", "use": "词义" },
       { "text": "预览", "use": "输入" }
     ],
     "tests/frontend/ui/views/command-bar.vitest.ts": [

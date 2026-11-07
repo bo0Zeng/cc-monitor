@@ -1,6 +1,8 @@
 //! 删掉的名字不许回来：`tests/__fixtures__/retired-names.tsv` 里到期的每个名字，仓里别处一处都不许有。
 //!
-//! 人群：`git ls-files` 的全部文本文件（与 `no_outside_refs` 同一口径），去掉本表与 `CHANGELOG.md`（版本记录照实写当时的名字）。
+//! 人群：`git ls-files` 的全部文本文件（与 `no_outside_refs` 同一口径），去掉本表与两份历史记录（照实写当时的名字）：
+//! `CHANGELOG.md` · `tests/backend/build_id_guard.rs`（`SUBCOMMAND_HISTORY` 是上一版与当前版命令面的明文，删掉的命令在那两行里是事实；
+//! 打版本号只换掉更老的一行，上一版那行照留，按版本到期也绕不过）。
 //! 表：一行「名字 ⇥ 删于」。「删于」空 ⇒ 今天起到期；写了版本（`X.Y` · `X.Y.Z`）⇒ 当前版本（`package.json` 的 `version`）
 //! 到了那一版起到期：当桥的兼容代码挂下一版，打版本号那一刻当场红，由打版本号的那一路删。
 //! 判定：到期的名字按标识符整词认（前后不紧挨字母、数字、`_`），命中集 == ∅；命中点名文件、行号与名字。
@@ -11,7 +13,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 const TABLE: &str = "tests/__fixtures__/retired-names.tsv";
-const EXEMPT: &[&str] = &[TABLE, "CHANGELOG.md"];
+const EXEMPT: &[&str] = &[TABLE, "CHANGELOG.md", "tests/backend/build_id_guard.rs"];
 
 /// 版本号 `X.Y` · `X.Y.Z`（缺的那一段算 0）。
 type Version = (u32, u32, u32);

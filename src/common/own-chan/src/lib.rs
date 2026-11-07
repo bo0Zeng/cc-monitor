@@ -3,13 +3,13 @@
 //!
 //! 门由内核给：
 //! - **Unix**：套接字住只给本人的目录（`0700`，调用方建；本 crate 不写盘），收下的每条连接再核一次对端 uid 与本进程相同
-//!   （tokio `peer_cred`：Linux `SO_PEERCRED` · macOS `getpeereid`）。独占：在听的那一个攥着那个目录的
-//!   `flock(LOCK_EX | LOCK_NB)`（只读打开目录，不建锁文件）；抢不到 = 已有一个在听。进程没了内核替它放锁 ⇒ 不留陈旧锁；
-//!   陈旧的套接字文件由拿到锁的那一个删掉重绑（删是调用方的事）。
-//! - **Windows**：命名管道。管道名由那个套接字路径算出（同一个家 ⇒ 同一个名，`\\.\pipe\ccm-own-<散列>`；盘上不落文件）；
-//!   绑的那一下要「第一个实例」（名字已被别人占着 ⇒ 绑不上）、只收本机客户端；收下的每条连接按对端进程的用户 SID 核是不是本人。
-//!   客户端连时只许对端认身份、不许冒用（`SECURITY_IDENTIFICATION`）。独占：在听的那一个攥着一个由目录路径算出名字的互斥体，
-//!   建的时候已有 = 已有一个在听；进程没了系统替它关句柄 ⇒ 不留陈旧锁。
+//!   （tokio `peer_cred`：Linux `SO_PEERCRED` · macOS `getpeereid`）。陈旧的套接字文件由拿到锁的那一个删掉重绑（删是调用方的事）。
+//! - **Windows**：命名管道。管道名由那个套接字路径原样写成（不散列：折小写、两种分隔符换成 `|`，`\\.\pipe\ccm-own-<路径>`；
+//!   路径长过上限 ⇒ 不绑不连；盘上不落文件）；绑的那一下要「第一个实例」（名字已被别人占着 ⇒ 绑不上）、只收本机客户端；
+//!   收下的每条连接按对端进程的用户 SID 核是不是本人。客户端连时只许对端认身份、不许冒用（`SECURITY_IDENTIFICATION`）。
+//!
+//! 独占：在听的那一个攥着那个目录的跨进程锁，不等（[`try_hold`]）；抢不到 = 已有一个在听。锁是
+//! `platform_core::dir` 那一把（与自家状态读—改—写那一把同一把），进程没了系统替它放 ⇒ 不留陈旧锁。
 //!
 //! 被拒时说什么不在这里：本 crate 只回结构化的结局（[`Accepted`] · `io::ErrorKind`），各调用方按它挑文案表里的那一句。
 
@@ -25,38 +25,10 @@ pub type Stream = tokio::net::UnixStream;
 #[cfg(windows)]
 pub use win::Stream;
 
-/// 攥着的那把目录锁。落地即放（进程没了内核也替它放）。
-pub struct Held {
-    #[cfg(unix)]
-    _dir: std::fs::File,
-    #[cfg(windows)]
-    _mutex: win::Handle,
-}
-
-/// 抢那个目录的独占锁，不等：`Ok(None)` = 别人攥着（已有一个在听）。目录必须已经在。
-#[cfg(unix)]
-pub fn try_hold(dir: &Path) -> std::io::Result<Option<Held>> {
-    use std::os::unix::io::AsRawFd;
-    let f = std::fs::File::open(dir)?;
-    loop {
-        // SAFETY: `f` 活着、描述有效；`flock` 只读这个整数。
-        let rc = unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
-        if rc == 0 {
-            return Ok(Some(Held { _dir: f }));
-        }
-        let e = std::io::Error::last_os_error();
-        match e.raw_os_error() {
-            Some(libc::EWOULDBLOCK) => return Ok(None),
-            Some(libc::EINTR) => continue,
-            _ => return Err(e),
-        }
-    }
-}
-
-/// 抢那个目录的独占锁（Windows：由目录路径算出名字的互斥体，建的时候已有 ⇒ 别人攥着）。
-#[cfg(windows)]
-pub fn try_hold(dir: &Path) -> std::io::Result<Option<Held>> {
-    Ok(win::try_hold(dir)?.map(|h| Held { _mutex: h }))
+/// 抢那个目录的独占锁，不等：`Ok(None)` = 别人攥着（已有一个在听）。目录必须已经在。拿到的那把落地即放（进程没了系统也替它放）。
+/// 锁本身是 [`platform_core::dir::try_hold`]（与自家状态读—改—写那一把同一把）；这里只把错照 `io::Error` 回。
+pub fn try_hold(dir: &Path) -> std::io::Result<Option<platform_core::dir::DirLock>> {
+    platform_core::dir::try_hold(dir).map_err(|e| e.err)
 }
 
 /// 在听的那个通道。
@@ -345,9 +317,7 @@ mod win {
 
     #[link(name = "kernel32")]
     extern "system" {
-        fn CreateMutexW(attrs: *const core::ffi::c_void, owner: i32, name: *const u16) -> Raw;
         fn CloseHandle(h: Raw) -> i32;
-        fn GetLastError() -> u32;
         fn CreateFileW(
             name: *const u16,
             access: u32,
@@ -389,7 +359,6 @@ mod win {
         fn EqualSid(a: *const core::ffi::c_void, b: *const core::ffi::c_void) -> i32;
     }
 
-    const ERROR_ALREADY_EXISTS: u32 = 183;
     const ERROR_PIPE_BUSY: i32 = 231;
     const ERROR_IO_PENDING: i32 = 997;
     const ERROR_BROKEN_PIPE: i32 = 109;
@@ -455,22 +424,6 @@ mod win {
     /// 那个套接字路径对应的管道名。
     fn pipe_name(p: &Path) -> io::Result<String> {
         Ok(format!(r"\\.\pipe\ccm-own-{}", key_of(p)?))
-    }
-
-    pub fn try_hold(dir: &Path) -> io::Result<Option<Handle>> {
-        let name = wide(&format!("ccm-own-lock-{}", key_of(dir)?));
-        // SAFETY：名字以 0 结尾；不要初始持有（持有与否不要紧：在不在才是那把锁）。
-        let h = unsafe { CreateMutexW(std::ptr::null(), 0, name.as_ptr()) };
-        // SAFETY：紧跟着 `CreateMutexW` 读它留下的错号。
-        let last = unsafe { GetLastError() };
-        if h == 0 {
-            return Err(io::Error::last_os_error());
-        }
-        let h = Handle(h);
-        if last == ERROR_ALREADY_EXISTS {
-            return Ok(None);
-        }
-        Ok(Some(h))
     }
 
     /// 本进程（或 `pid` 那个进程）令牌里的用户 SID，原样那几个字节（`TOKEN_USER` 整份，SID 指针指在它里面）。

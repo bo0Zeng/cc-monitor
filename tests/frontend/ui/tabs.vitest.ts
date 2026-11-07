@@ -11,7 +11,6 @@ import { fmtDur } from "../../../src/frontend/ui/duration-format";
 import { owned } from "../../test-support/owned-tab-manager.ts";
 import { stateLine } from "../../../src/frontend/ui/session-face";
 import { type Mock, describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from "vitest";
-import { clipboardWrites } from "../../test-support/clipboard-fake";
 
 // ★ audit-0805 F15：**「每行调了几次」要可测** —— 折叠层的 stub 带计数器（`cardsAdded` · `rebuildNow` · 收到的主线外清单），
 // `renderContentRecord` 的 mock 真往 timeline 里塞（否则 `inserted` 恒假，计数恒零）。
@@ -174,8 +173,8 @@ import {
   type ChanCallArgs,
 } from "../../test-support/chan-fake";
 import type { SessionFacts, UsageFact } from "../../../src/frontend/ui/session-reads";
-import { failToast, noteMessage, silentUndo, toast as showActionFailureToast, undoToast } from "../../../src/frontend/ui/kit/toast";
-import { __setHostFactsForTests, type HostOs } from "../../../src/frontend/ui/settings/host-os";
+import { failToast, noteMessage, silentUndo, toast as showActionFailureToast, undoToast, type ToastOptions } from "../../../src/frontend/ui/kit/toast";
+import { __setHostFactsForTests } from "../../../src/frontend/ui/settings/host-os";
 import { openSession } from "../../../src/frontend/ui/session-open";
 import { pickAsk } from "../../../src/frontend/ui/resume-menu";
 import { askSessions } from "../../../src/frontend/ui/tab-batch-run";
@@ -238,11 +237,8 @@ import { recordFileWiring } from "../../../src/frontend/ui/record-file-notice";
 
 /** 会话事实里的一格 usage（上限由后端定：这里按「判不出 ⇒ 1M」那一形造）。 */
 const usageOf = (promptTokens: number, model: string | null): UsageFact => ({
-  promptTokens,
   model,
-  peakPromptTokens: promptTokens,
   limit: 1_000_000,
-  limitFrom: "assumed",
   percent: null,
   contextText: `核心·${promptTokens}`,
   contextTone: "plain",
@@ -1288,14 +1284,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     return items.find((b) => b.querySelector("[data-part=label]")?.textContent === label) ?? null;
   };
   const whyOf = (b: HTMLElement | null): string | undefined => b?.querySelector("[data-part=why]")?.textContent ?? undefined;
-  const attachBtn = (): HTMLButtonElement | null => itemLabeled(copyText("sessionHead.act.openTerm"));
   const killBtn = (): HTMLButtonElement | null => itemLabeled(copyText("tabMenu.kill.label"));
-  /** 点「在终端里打开」⇒ 交那台的那一问（接哪个由那台判）。 */
-  const attachTarget = (): unknown => {
-    vi.mocked(openSession).mockClear();
-    attachBtn()?.click();
-    return vi.mocked(openSession).mock.calls.at(-1)?.[1];
-  };
   /** 点「结束会话…」⇒ 确认框里写的字（读完按取消关掉）。 */
   const killConfirmText = async (): Promise<string> => {
     killBtn()?.click();
@@ -1315,19 +1304,19 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
   // ② 命中恰好一个 ⇒ 按 `@ccm_sid` 认，**不按名字前缀猜**（下面那条埋了名字诱饵）。
   // ③ 命中 ≥2 个 ⇒ 拒绝，不折叠成第一个（`INVARIANTS §30` 同款分级：破坏性动作代价不可逆）。
   // 〔「改. 重新读取对所有tab生效」·「右键菜单那一项删（一个入口）」〕右键菜单里零处「重新读取」；
-  // 正控：同一张菜单开出来了（有「在新窗口打开」），栏顶那颗在。
-  it("〔REREAD〕tab 右键菜单里没有「重新读取」，它在栏顶", () => {
+  // 正控：同一张菜单开出来了（有「在新窗口打开」）。栏顶也不再有那颗（推送断了由栏底机器条说），只在命令面板里。
+  it("〔REREAD〕tab 右键菜单里没有「重新读取」，栏顶也没有", () => {
     tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", LOCAL);
     rightClick("k1abcdef");
     const labels = [...(document.body.querySelector("[role=menu]")?.querySelectorAll("[role^=menuitem]") ?? [])].map((b) => b.querySelector("[data-part=label]")?.textContent);
     expect(labels).toContain(copyText("history.menu.openWindow"));
     expect(labels.filter((l) => l?.includes(copyText("accountChip.menu.refresh")) || l === copyText("accountChip.menu.refresh"))).toEqual([]);
-    expect(document.body.querySelector(".tab-bar-reread")?.getAttribute("aria-label")).toBe(copyText("accountChip.menu.refresh"));
+    expect(document.body.querySelector(".tab-bar-reread"), "栏顶不再有刷新").toBeNull();
   });
 
   // 栏顶一按 ⇒ 有打开 tab 的每台**恰好一次**整机 `resync`（不带 sid），台数 == 机器数（两向：多一台少一台都红）；
   // 各台并行（全部发出去之后才有一台回来）；在飞时再按不重入；做完按台说一句，没问到的说原因。
-  it("〔REREAD〕栏顶「重新读取」⇒ 每台恰好一次整机 resync，并行、在飞不重入、按台汇总", async () => {
+  it("〔REREAD〕命令面板「刷新各台机器上的会话」⇒ 每台恰好一次整机 resync，并行、按台汇总", async () => {
     const asked: [string, unknown][] = [];
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
@@ -1349,18 +1338,12 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     tm.ensureTab("g1abcdef", "/home/g", "/p/g1.jsonl", "laptop");
     tm.ensureTab("b1abcdef", "/home/b", "/p/b1.jsonl", "box");
     tm.onFace("b1abcdef", goldenFace("ended")); // 已结束的也在栏上 ⇒ 那台也算
-    const btn = document.body.querySelector<HTMLButtonElement>(".tab-bar-reread")!;
-    expect(btn.closest(".tab-bar-head"), "它在栏顶那一排（不在列表里）").not.toBeNull();
-    btn.click();
+    tm.refreshAll();
     await flush();
-    btn.click(); // 在飞：不重入
-    await flush();
-    expect(btn.disabled).toBe(true);
     expect(asked.map(([o]) => o).sort()).toEqual([LOCAL, "box", "laptop"].sort());
     expect(asked.every(([, p]) => JSON.stringify(p) === "{}")).toBe(true);
     release();
     for (let i = 0; i < 5; i++) await flush();
-    expect(btn.disabled).toBe(false);
     const last = vi.mocked(showActionFailureToast).mock.calls.at(-1)!;
     expect(last[0]).toBe(copyText("resync.machines.titlePartial"));
     const lines = last[1].split("\n");
@@ -1409,180 +1392,45 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     expect(menuLabels()).not.toContain("在 tmux 会话里恢复");
   });
 
-  /** 那台答这个会话在托管终端里（`sessions-where` 的 `terminals[].host` ＝ `managed`）。 */
-  const inHostedTerminal = (sid: string, standing: "running" | "idle"): void => {
-    const rest = withHistoryReads(() => Promise.resolve(undefined));
-    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) =>
-      isChanCall(cmd, args, "sessions-where")
-        ? chanReply({ results: [{ sid, standing, names: ["box-cc"], terminals: [{ host: "managed", terminal: "h-1" }], run: "direct" }] })
-        : rest(cmd, args),
-    );
-  };
+  // 右键 /「⋯」里去它的终端只有一项「终端」：做什么照脸上那一格（本机挑 near、远端挑 far），点了与会话头那一颗同一条路（`terminalFor`）。
+  const termItem = (): HTMLButtonElement | null => itemLabeled(copyText("mobDrawer.item.terminal"));
 
-  /** 那台的脸说住在托管终端里（`can.attach` ＝ 哪台看都给）。 */
-  const hosted = (): SessionFace => {
-    const f = liveFace("working");
-    f.can.attach = { can: "yes", from: "everywhere" };
-    return f;
-  };
-
-  it("★ 本机：会话在托管终端里 ⇒ 出［在终端里打开］，点了恰好一问 `session-open {look, sid, local}`（那一行由那台渲：瘦客户端接句柄）", async () => {
-    inHostedTerminal("k1abcdef", "running");
-    tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", LOCAL);
-    tm.onFace("k1abcdef", hosted());
-    rightClick("k1abcdef");
-    expect(attachBtn()?.disabled, "还在问：先画出项、不可点").toBe(true);
-    await flush();
-    expect(attachBtn()?.disabled).toBe(false);
-    expect(attachTarget()).toEqual({ what: { kind: "look", sid: "k1abcdef" }, local: true });
-    expect(opens()).toEqual([[LOCAL, { what: { kind: "look", sid: "k1abcdef" }, local: true }]]);
-  });
-
-  it("本机：会话在 tmux 里跑着 ⇒ 不出［在终端里打开］（ccm 开的那个窗口 ·［切到终端］照旧）", async () => {
-    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
-      cmd === "list_local_tmux"
-        ? Promise.resolve([{ name: "i1-cc", path: "/p", command: "claude", attached: false, windows: 1, sid: "k1abcdef", agent: true }])
-        : Promise.resolve(undefined),
-    ));
-    tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", LOCAL);
-    rightClick("k1abcdef");
-    await flush();
-    expect(attachBtn()).toBeNull();
-  });
-
-  it("★ 远端：会话在托管终端里 ⇒ 出［在终端里打开］（接回那一条那台两种宿主都认）", async () => {
-    inHostedTerminal("A", "running");
+  it("★ 右键菜单里去终端只有一项「终端」：没有「切到终端」「看它的终端」「在终端里打开」", async () => {
     tm.ensureTab("A", "/a", "p", "hostA");
-    tm.onFace("A", hosted());
+    tm.onFace("A", goldenFace("reconnectable"));
     rightClick("A");
     await flush();
-    expect(attachBtn()?.disabled).toBe(false);
-    expect(attachTarget()).toEqual({ what: { kind: "look", sid: "A" }, local: false });
+    const labels = menuLabels();
+    expect(labels.filter((l) => l === copyText("mobDrawer.item.terminal"))).toHaveLength(1);
   });
 
-  it("远端 tab 右键 → 反查命中 claude 会话 → attach 项由禁用占位就绪为可点", async () => {
-    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
-      cmd === "list_remote_tmux"
-        ? Promise.resolve([
-            { name: "cc-abc", path: "/a", command: "claude", attached: false, windows: 1, sid: "A", agent: true },
-          ])
-        : Promise.resolve(undefined),
-    ));
+  it("★ 远端在 tmux 里 ⇒「终端」点了在这里开（切过去、开底部抽屉的终端页），不另开外部终端窗口", async () => {
+    const opened: string[] = [];
+    tm.onOpenHere = (sid) => opened.push(sid);
     tm.ensureTab("A", "/a", "p", "hostA");
+    tm.onFace("A", liveFace("working", true));
     rightClick("A");
-    expect(attachBtn()?.disabled).toBe(true); // 还在问：先画出项、不可点
     await flush();
-    expect(attachBtn()?.disabled).toBe(false); // 就绪
-    expect(attachTarget(), "接哪个那台判（按 sid）").toEqual({ what: { kind: "look", sid: "A" }, local: false });
-  });
-
-  it("★ 会话头［在终端里打开］⇒ 恰好一问 `session-open {look, sid}`：不先问它在哪个 tmux 会话里（接哪个 · 命中几个那台判、那台说）", async () => {
-    tm.ensureTab("A", "/a", "p", "hostA");
     vi.mocked(openSession).mockClear();
-    tm.attachInTerminal("A");
+    expect(termItem()?.disabled).toBe(false);
+    termItem()!.click();
     await flush();
-    expect(opens()).toEqual([["hostA", { what: { kind: "look", sid: "A" }, local: false }]]);
-    expect(vi.mocked(invoke).mock.calls.filter(([c, a]) => isChanCall(c, a, "sessions-where"))).toEqual([]);
+    expect(opened).toEqual(["A"]);
+    expect(opens(), "不交那台开外部终端窗口").toEqual([]);
   });
 
-  it("前台命令报 node（claude 是 Node CLI）也认(D-Sug2)", async () => {
-    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
-      cmd === "list_remote_tmux"
-        ? Promise.resolve([
-            { name: "sess", path: "/a", command: "node", attached: true, windows: 2, sid: "A", agent: true },
-          ])
-        : Promise.resolve(undefined),
-    ));
+  it("★ 远端不在任何宿主里 ⇒「终端」灰着、第二行是那台写好的那一句；点了不做事", async () => {
+    const opened: string[] = [];
+    tm.onOpenHere = (sid) => opened.push(sid);
     tm.ensureTab("A", "/a", "p", "hostA");
+    const bare = liveFace("working", false);
+    tm.onFace("A", bare);
     rightClick("A");
     await flush();
-    expect(attachTarget()).toEqual({ what: { kind: "look", sid: "A" }, local: false });
-  });
-
-  it("那台的脸说接不进（不在任何宿主里）→ 不显示 attach（界面不另问、不另判）", async () => {
-    tm.ensureTab("A", "/a", "p", "hostA");
-    tm.onFace("A", goldenFace("live-working-plain"));
-    rightClick("A");
-    await flush();
-    expect(attachBtn()).toBeNull();
-  });
-
-  // audit-fixes F03.3（attach-into-idle）：无活 claude 但目标 sid 的空 tmux（@ccm_sid 命中、
-  // command=bash）还在 → attach 项就绪为「Attach（空 tmux …）」，让用户 attach 进空 shell。
-  // 变异锚点：删 resolveAttachMenuItem else 分支的 idle 处理 → 占位被移除、attachBtn=null → 红。
-  it("无活 claude 但有目标 sid 的空 tmux（idle）→「在终端里打开」就绪、接的就是它", async () => {
-    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
-      cmd === "list_remote_tmux"
-        ? Promise.resolve([
-            { name: "cc-A1", path: "/a", command: "bash", attached: false, windows: 1, sid: "A", agent: false },
-          ])
-        : Promise.resolve(undefined),
-    ));
-    tm.ensureTab("A", "/a", "p", "hostA");
-    rightClick("A");
-    await flush();
-    expect(attachBtn()?.disabled).toBe(false);
-    expect(attachTarget()).toEqual({ what: { kind: "look", sid: "A" }, local: false });
-  });
-
-  // `INVARIANTS §30`：命中 ≥2 个精确同 sid 的活会话——attach 仍就绪（非破坏性，警告即可）；结束交了由那台拒（`sessions-stop` 的 ambiguous）。
-  it("目标 sid 同时活在 2 个 tmux（命中 ≥2 个）→ attach 仍就绪、第二行写命中几个", async () => {
-    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
-      cmd === "list_remote_tmux"
-        ? Promise.resolve([
-            { name: "cc-A1", path: "/a", command: "claude", attached: false, windows: 1, sid: "A", agent: true },
-            { name: "cc-A2", path: "/other", command: "claude", attached: false, windows: 1, sid: "A", agent: true },
-          ])
-        : Promise.resolve(undefined),
-    ));
-    tm.ensureTab("A", "/a", "p", "hostA");
-    rightClick("A");
-    await flush();
-    expect(attachBtn()?.disabled).toBe(false);
-    expect(whyOf(attachBtn())).toBe(copyText("tabMenu.attach.dupesWhy", { n: 2, name: "cc-A1" }));
-  });
-
-  // 〔终端 L1〕看画面只有一个入口：抽屉终端页（「看它的终端」）；盖住主窗口的旧浮层那一项不再出（远端本机都一样）。
-  it("〔终端 L1〕远端 tab 右键：有「看它的终端」，没有开旧浮层的那一项", async () => {
-    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
-      cmd === "list_remote_tmux"
-        ? Promise.resolve([{ name: "cc-A1", path: "/a", command: "claude", attached: false, windows: 1, sid: "A", agent: true }])
-        : Promise.resolve(undefined),
-    ));
-    tm.ensureTab("A", "/a", "p", "hostA");
-    rightClick("A");
-    await flush();
-    const items = [...(document.body.querySelector("[role=menu]")?.querySelectorAll<HTMLElement>("[role^=menuitem]") ?? [])];
-    const labels = items.map((b) => b.querySelector("[data-part=label]")?.textContent);
-    expect(labels).toContain(copyText("sessionHead.act.terminal"));
-    expect(items.filter((b) => b.dataset.id === "preview" || b.querySelector("[data-part=label]")?.textContent?.includes("画面")), "旧浮层那一项还在").toEqual([]);
-  });
-
-  it("R-1 守卫:tab A 查询在飞时右键 tab B → A 迟到结果不污染 B 的菜单", async () => {
-    let resolveA!: (v: unknown) => void;
-    const aPending = new Promise((r) => (resolveA = r));
-    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string, args?: unknown) => {
-      if (cmd !== "list_remote_tmux") return Promise.resolve(undefined);
-      const origin = (args as { origin: string }).origin;
-      if (origin === "hostA") return aPending; // 在飞
-      return Promise.resolve([
-        { name: "B-sess", path: "/b", command: "claude", attached: false, windows: 1, sid: "B", agent: true },
-      ]);
-    }));
-    tm.ensureTab("A", "/a", "p", "hostA");
-    tm.ensureTab("B", "/b", "p", "hostB");
-
-    rightClick("A"); // 菜单 A + A 查询在飞
-    rightClick("B"); // 关 A、开菜单 B（新代次）+ B 查询即刻 resolve
-    await flush();
-    expect(attachBtn()?.disabled).toBe(false); // B 自身反查就绪
-
-    resolveA([
-      { name: "A-sess", path: "/a", command: "claude", attached: false, windows: 1, sid: "A", agent: true },
-    ]);
-    await flush(); // A 迟到:代次不符 → 整体 no-op,不动 B 菜单
-    expect(vi.mocked(openSession).mock.calls.length, "A 迟到的那一答没换掉 B 的项").toBe(0);
-    expect(attachTarget()).toEqual({ what: { kind: "look", sid: "B" }, local: false });
+    expect(termItem()?.disabled).toBe(true);
+    expect(whyOf(termItem())).toBe(bare.can.terminal.far.go === "no" ? bare.can.terminal.far.why : "量具自检：夹具该是不能");
+    termItem()!.click();
+    expect(opened).toEqual([]);
   });
 });
 
@@ -2094,17 +1942,31 @@ describe("：↗ 问本机后端一次、交壳一次", () => {
   });
   afterEach(() => __setHostFactsForTests(null));
 
-  const frontBtn = (tm: TabManager, sid: string): HTMLElement | null =>
-    (home(tm).bar.tabButtons.get(sid)?.root.querySelector(".tab-focus") as HTMLElement | null) ?? null;
+  /** 拉窗那一下（会话头 · 命令面板 · 快捷键同一条路，`frontFor`）。每一下之前清掉底部条的记账：量的只是这一下出了什么。 */
   async function clickFront(tm: TabManager, sid: string): Promise<void> {
-    const btn = frontBtn(tm, sid);
-    expect(btn, "量具自检：Windows 上应当渲出 ↗").not.toBeNull();
-    btn!.click();
+    vi.mocked(showActionFailureToast).mockClear();
+    tm.frontFor(sid);
     for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
   }
-  const pop = (): HTMLElement | null => document.querySelector<HTMLElement>("[data-role=front-result]");
-  const popText = (): string => pop()?.textContent ?? "";
-  const popButtons = (): string[] => [...(pop()?.querySelectorAll("button") ?? [])].map((b) => b.textContent ?? "").filter((t) => t !== "");
+  /** 这一下出的那一条底部条（结局只有这一种样子）；没出 ⇒ `null`。 */
+  const pop = (): { title: string; detail: string; opts: ToastOptions } | null => {
+    const c = vi.mocked(showActionFailureToast).mock.calls.at(-1);
+    return c ? { title: c[0], detail: c[1], opts: c[2] ?? {} } : null;
+  };
+  const popText = (): string => (pop() ? `${pop()!.title}\n${pop()!.detail}` : "");
+  /** 那一条上的按钮：修法在前，带复制详情的末尾一颗［复制详情］（底部条自己那一颗）。 */
+  const popButtons = (): string[] => {
+    const p = pop();
+    if (!p) return [];
+    const acts = p.opts.action === undefined ? [] : Array.isArray(p.opts.action) ? p.opts.action : [p.opts.action];
+    return [...acts.map((a) => a.label), ...(p.opts.detail ? [copyText("detail.act.copy")] : [])];
+  };
+  const press = async (label: string): Promise<void> => {
+    const p = pop()!;
+    const acts = Array.isArray(p.opts.action) ? p.opts.action : p.opts.action ? [p.opts.action] : [];
+    acts.find((a) => a.label === label)!.run();
+    for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
+  };
 
   it("★★ 本机会话与远端会话：各问本机后端一次（带那台的键）、答话原样交壳一次；别的问一概不发", async () => {
     const tm = makeTM();
@@ -2114,7 +1976,7 @@ describe("：↗ 问本机后端一次、交壳一次", () => {
       ["l1", LOCAL],
       ["r1", "devbox"],
     ] as const) {
-      // 建标签页那几下各自起的读（骨架 · 会话事实 …）先落完，量的只是 ↗ 那一下发了什么（慢机器上它们会晚到、混进下面那一段）。
+      // 建标签页那几下各自起的读（骨架 · 会话事实 …）先落完，量的只是拉窗那一下发了什么（慢机器上它们会晚到、混进下面那一段）。
       answer({ labels: [], chain: CHAIN, tmux: false });
       // 等到连着 20 拍都没有新的一问（上限 500 拍）：机器慢时那几下读会晚到。
       for (let i = 0, still = 0, seen = -1; i < 500 && still < 20; i++) {
@@ -2133,49 +1995,43 @@ describe("：↗ 问本机后端一次、交壳一次", () => {
       ).toEqual([[LOCAL, { machine, sid }]]);
       expect(shellCalls(), sid).toEqual([placed]);
       const others = (mockInvoke.mock.calls as [string, unknown][]).filter(([c, a]) => !(isChanCall(c, a, "session-window") || c === "bring_terminal_to_front"));
-      expect(others.map(([c, a]) => (c === "chan_call" ? `chan_call:${(a as ChanCallArgs).op}` : c)), `${sid}：↗ 只该有那一问、那一条壳命令`).toEqual([]);
-      expect(pop(), `${sid}：切过去了，不出浮层`).toBeNull();
+      expect(others.map(([c, a]) => (c === "chan_call" ? `chan_call:${(a as ChanCallArgs).op}` : c)), `${sid}：拉窗只该有那一问、那一条壳命令`).toEqual([]);
+      expect(pop(), `${sid}：切过去了，什么都不出`).toBeNull();
     }
   });
 
-  it("★★ 壳交来的那一张照摆（分不清：照实说拉不了、带灰字办法，不切不闪），不出 toast", async () => {
+  it("★★ 壳交来的那一张照摆成底部一条（分不清：照实说拉不了、带灰字办法）；没有锚在按钮上的浮层", async () => {
     answer(PLACED, () => Promise.resolve(said(face("壳写的标题", "壳写的正文", "warn", [], "壳写的灰字"))));
     const tm = makeTM();
     tm.createSkeletonTab("r1", "/p", "devbox", false);
     await clickFront(tm, "r1");
-    expect(showActionFailureToast, "结局画在浮层上，不出 toast").not.toHaveBeenCalled();
-    expect(pop()?.dataset.shade).toBe("amber");
-    expect(pop()!.firstElementChild!.textContent).toBe("壳写的标题");
+    expect(pop()?.title).toBe("壳写的标题");
+    expect(pop()?.opts.level).toBe("warn");
     expect(popText()).toContain("壳写的正文");
     expect(popText()).toContain("壳写的灰字");
-    expect(pop()!.closest("[role=dialog]")?.getAttribute("aria-label")).toBe(copyText("front.pop.aria"));
     expect(popButtons(), "那一张没带按钮 ⇒ 不出").toEqual([]);
+    expect(document.querySelector("[data-role=front-result]"), "不另起浮层").toBeNull();
   });
 
-  it("★ 后端交来那一张（没有标签可找）⇒ 不找窗口、照摆；同一个会话再来一次原地换内容", async () => {
+  it("★ 后端交来那一张（没有标签可找）⇒ 不找窗口、照摆", async () => {
     const cases: [unknown, string, string, string[], string][] = [
-      [{ labels: [], chain: [], tmux: true, face: face("甲", "甲正文", "plain", [{ kind: "open-in-terminal" }]) }, "甲", "甲正文", [copyText("sessionHead.act.openTerm")], "grey"],
-      [{ labels: [], chain: [], tmux: false, face: face("乙", "乙正文", "plain") }, "乙", "乙正文", [], "grey"],
-      [{ labels: [], chain: [], tmux: false, face: face("丙", "", "fail", [{ kind: "retry" }, { kind: "copy", detail: "d" }]) }, "丙", "", [copyText("front.act.retry"), copyText("detail.act.copy")], "red"],
-      [{ labels: [], chain: [], tmux: false, face: face("丁", "丁正文", "warn", [{ kind: "update" }]) }, "丁", "丁正文", [copyText("front.act.update")], "amber"],
+      [{ labels: [], chain: [], tmux: true, face: face("甲", "甲正文", "plain", [{ kind: "open-in-terminal" }]) }, "甲", "甲正文", [copyText("mobDrawer.item.terminal")], "info"],
+      [{ labels: [], chain: [], tmux: false, face: face("乙", "乙正文", "plain") }, "乙", "乙正文", [], "info"],
+      [{ labels: [], chain: [], tmux: false, face: face("丙", "", "fail", [{ kind: "retry" }, { kind: "copy", detail: "d" }]) }, "丙", "", [copyText("front.act.retry"), copyText("detail.act.copy")], "error"],
+      [{ labels: [], chain: [], tmux: false, face: face("丁", "丁正文", "warn", [{ kind: "update" }]) }, "丁", "丁正文", [copyText("front.act.update")], "warn"],
     ];
     const tm = makeTM();
     tm.createSkeletonTab("r1", "/p", "devbox", false);
-    let first: Element | null = null;
-    for (const [placed, title, body, buttons, tone] of cases) {
+    for (const [placed, title, body, buttons, level] of cases) {
       mockInvoke.mockReset();
       answer(placed, () => Promise.resolve({ kind: "switched" }));
       await clickFront(tm, "r1");
       expect(shellCalls(), `${title}：说了原因还去找了窗口`).toEqual([]);
-      expect(document.querySelectorAll("[data-role=front-result]").length, `${title}：同一个会话不另弹`).toBe(1);
-      first ??= pop()!.closest("[role=dialog]");
-      expect(pop()!.closest("[role=dialog]"), `${title}：原地换内容（同一个浮层，不关了重开）`).toBe(first);
-      expect(pop()!.firstElementChild!.textContent, title).toBe(title);
+      expect(pop()?.title, title).toBe(title);
       if (body) expect(popText(), title).toContain(body);
       expect(popButtons(), title).toEqual(buttons);
-      expect(pop()!.dataset.shade, title).toBe(tone);
+      expect(pop()?.opts.level, title).toBe(level);
     }
-    expect(showActionFailureToast).not.toHaveBeenCalled();
   });
 
   it("★ 有标签、链没对上（带那一张）⇒ 照样交壳按标签找：对上 ⇒ 切过去；没对上（壳回 null）⇒ 摆后端那一张", async () => {
@@ -2185,7 +2041,7 @@ describe("：↗ 问本机后端一次、交壳一次", () => {
     answer(placed, () => Promise.resolve({ kind: "switched" }));
     await clickFront(tm, "r3");
     expect(shellCalls(), "只交标签 · 链 · tmux 那一格").toEqual([{ labels: placed.labels, chain: placed.chain, tmux: false }]);
-    expect(pop(), "切过去了：不出浮层").toBeNull();
+    expect(pop(), "切过去了：什么都不出").toBeNull();
     mockInvoke.mockReset();
     answer(placed);
     await clickFront(tm, "r3");
@@ -2199,7 +2055,7 @@ describe("：↗ 问本机后端一次、交壳一次", () => {
     await clickFront(tm, "l7");
     expect(shellCalls()).toEqual([]);
     expect(missedCalls()).toEqual([{ machine: copyText("control.machine.unsure"), miss: { kind: "bad-shape", detail: "session-window: empty chain without face" } }]);
-    expect(pop()!.firstElementChild!.textContent).toBe(`壳写的·bad-shape·${copyText("control.machine.unsure")}`);
+    expect(pop()?.title).toBe(`壳写的·bad-shape·${copyText("control.machine.unsure")}`);
     expect(popButtons()).toEqual([copyText("detail.act.copy")]);
   });
 
@@ -2209,7 +2065,7 @@ describe("：↗ 问本机后端一次、交壳一次", () => {
       const tm = makeTM();
       tm.createSkeletonTab("r6", "/p", "devbox", false);
       answer(PLACED, () => new Promise(() => {}));
-      frontBtn(tm, "r6")!.click();
+      tm.frontFor("r6");
       await vi.advanceTimersByTimeAsync(5000);
       expect(missedCalls()).toEqual([{ machine: "devbox", miss: { kind: "timed-out" } }]);
     } finally {
@@ -2224,7 +2080,7 @@ describe("：↗ 问本机后端一次、交壳一次", () => {
     expect(popButtons()).toEqual([copyText("detail.act.copy")]);
   });
 
-  it("★ 问壳要那一张也没成 ⇒ 不出空浮层、接住：照壳交来的那一句进失败提示（详情可复制）", async () => {
+  it("★ 问壳要那一张也没成 ⇒ 不出空的一条、接住：照壳交来的那一句进失败提示（详情可复制）", async () => {
     const tm = makeTM();
     tm.createSkeletonTab("r8", "/p", "devbox", false);
     const refused = Object.assign(new Error("壳拒的那一句"), { detail: "壳的详情" });
@@ -2235,66 +2091,42 @@ describe("：↗ 问本机后端一次、交壳一次", () => {
     });
     vi.mocked(failToast).mockClear();
     await clickFront(tm, "r8");
-    expect(vi.mocked(failToast).mock.calls).toEqual([[copyText("terminal.head.front"), refused]]);
-    expect(pop(), "拿不到那一张就不出浮层").toBeNull();
+    expect(vi.mocked(failToast).mock.calls, "失败提示的标题就是那一颗的名字「终端」").toEqual([[copyText("mobDrawer.item.terminal"), refused]]);
+    expect(pop(), "拿不到那一张就不出空的一条").toBeNull();
   });
 
-  it("★ 壳那一张带［在 cc-monitor 里打开］（Wayland 桌面上切不了）⇒ 点了收起浮层、交 main 开这个会话的终端页", async () => {
+  it("★ 壳那一张带［在 cc-monitor 里打开］（Wayland 桌面上切不了）⇒ 点了交 main 开这个会话的终端页", async () => {
     answer(PLACED, () => Promise.resolve(said(face("切不了", "Wayland", "plain", [{ kind: "open-here" }]))));
     const tm = makeTM();
     const opened: string[] = [];
     tm.onOpenHere = (sid) => opened.push(sid);
     tm.createSkeletonTab("r5", "/p", "devbox", false);
     await clickFront(tm, "r5");
-    expect(pop()!.firstElementChild!.textContent).toBe("切不了");
+    expect(pop()?.title).toBe("切不了");
     expect(popButtons()).toEqual([copyText("front.act.openHere")]);
-    [...pop()!.closest("[role=dialog]")!.querySelectorAll("button")].find((b) => b.textContent === copyText("front.act.openHere"))!.click();
-    for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
+    await press(copyText("front.act.openHere"));
     expect(opened).toEqual(["r5"]);
-    expect(pop(), "点了就收起").toBeNull();
   });
 
-  it("★ 切过去了：什么都不出、↗ 换成对勾 1 秒；开着的结局浮层一起收起", async () => {
-    answer({ labels: [], chain: [], tmux: false, face: face("没终端", "在后台跑", "plain") });
+  it("★ 切过去了：什么都不出（不打勾、不弹）", async () => {
+    answer(PLACED, () => Promise.resolve({ kind: "switched" }));
     const tm = makeTM();
     tm.createSkeletonTab("r2", "/p", "devbox", false);
     await clickFront(tm, "r2");
-    expect(pop(), "量具自检：先有一个结局浮层").not.toBeNull();
-    mockInvoke.mockReset();
-    answer(PLACED, () => Promise.resolve({ kind: "switched" }));
-    await clickFront(tm, "r2");
-    expect(mockInvoke.mock.calls.map((c) => c[0]), "`attachable:false` 不在前端短路 ↗").toContain("bring_terminal_to_front");
-    expect(pop(), "切过去了 ⇒ 浮层收起").toBeNull();
-    expect(showActionFailureToast, "成功了还弹了 toast").not.toHaveBeenCalled();
-    expect(frontBtn(tm, "r2")!.querySelector("svg")?.getAttribute("data-icon"), "↗ 换成对勾").toBe("check");
+    expect(mockInvoke.mock.calls.map((c) => c[0]), "`attachable:false` 不在前端短路拉窗").toContain("bring_terminal_to_front");
+    expect(pop(), "成功了还出了一条").toBeNull();
   });
 
-  // 测的就是两段时长本身（300ms 之前不出 · 出了至少停 400ms：`FRONT_PENDING_AFTER_MS` / `FRONT_PENDING_MIN_MS`）⇒ 假时钟拨到界上两侧，不真等。
-  // 数照写字面量：这两个数是给人看的约定（标题写着），常量被改了判据要红。
-  it("★ 在飞超过 300ms：↗ 旁出「查找终端…」，同一个会话再点不重发；出了至少停 400ms，回来了就收起", async () => {
-    vi.useFakeTimers();
-    try {
-      let done: (v: unknown) => void = () => {};
-      answer(PLACED, () => new Promise((r) => (done = r)));
-      const tm = makeTM();
-      tm.ensureTab("l1", "/w", "p", LOCAL);
-      const btn = frontBtn(tm, "l1")!;
-      const busy = () => document.querySelector("[data-role=front-busy]");
-      btn.click();
-      btn.click();
-      await vi.advanceTimersByTimeAsync(299);
-      expect(busy(), "300ms 之内不出（防闪）").toBeNull();
-      await vi.advanceTimersByTimeAsync(1);
-      expect(busy()?.textContent).toBe(copyText("front.pending.label"));
-      expect(shellCalls().length, "在飞时再点不重发").toBe(1);
-      done({ kind: "switched" });
-      await vi.advanceTimersByTimeAsync(399);
-      expect(busy(), "出了就至少停 400ms（防闪），刚回来不收").not.toBeNull();
-      await vi.advanceTimersByTimeAsync(1);
-      expect(busy(), "回来了、停够了就收起").toBeNull();
-    } finally {
-      vi.useRealTimers();
-    }
+  it("★ 在飞时同一个会话再点不重发", async () => {
+    let done: (v: unknown) => void = () => {};
+    answer(PLACED, () => new Promise((r) => (done = r)));
+    const tm = makeTM();
+    tm.ensureTab("l1", "/w", "p", LOCAL);
+    tm.frontFor("l1");
+    tm.frontFor("l1");
+    for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(shellCalls().length, "在飞时再点不重发").toBe(1);
+    done({ kind: "switched" });
   });
 
   it("★ 本机这一跳问不到：本机后端不认 ⇒ 要更新；期限到；断开 ⇒ 带连接层那一句 —— 界面只挑种类，那一张交壳写（问那台没问成是后端那一张）", async () => {
@@ -2315,14 +2147,14 @@ describe("：↗ 问本机后端一次、交壳一次", () => {
       await clickFront(tm, "r3");
       const kind = (miss as { kind: string }).kind;
       expect(missedCalls(), kind).toEqual([{ machine: "devbox", miss }]);
-      expect(pop()!.firstElementChild!.textContent, kind).toBe(`壳写的·${kind}·devbox`);
+      expect(pop()?.title, kind).toBe(`壳写的·${kind}·devbox`);
       expect(popButtons(), kind).toEqual(buttons);
       expect(shellCalls(), `${kind}：没问到还去找了窗口`).toEqual([]);
     }
     expect(popText(), "断开那一句照摆").toContain(dropped);
   });
 
-  it("★ ［更新］就地做：不开设置，经共用部署模块换上这一版；过程与结局在同一个浮层里说", async () => {
+  it("★ ［更新］就地做：不开设置，经共用部署模块换上这一版；过程与结局各是一条底部条", async () => {
     const tm = makeTM();
     tm.createSkeletonTab("r5", "/p", "devbox", false);
     let finish: (v: string | null) => void = () => {};
@@ -2336,21 +2168,19 @@ describe("：↗ 问本机后端一次、交壳一次", () => {
         isChanCall(cmd, args, "session-window") ? Promise.reject(UNSUPPORTED) : cmd === "front_missed" ? Promise.resolve(shellMissed(args)) : Promise.resolve([]),
       );
       await clickFront(tm, "r5");
-      const btn = [...pop()!.querySelectorAll("button")].find((b) => b.textContent === copyText("front.act.update"));
-      expect(btn, "量具自检：浮层上有［更新］").toBeDefined();
-      btn!.click();
-      for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
+      expect(popButtons(), "量具自检：那一条上有［更新］").toContain(copyText("front.act.update"));
+      await press(copyText("front.act.update"));
     };
     await clickUpdate();
     expect(vi.mocked(updateBackendOf).mock.calls.map((c) => [c[0], c[1]])).toEqual([["devbox", "devbox"]]);
     expect("onUpdateMachine" in tm, "［更新］还留着交给主窗口开设置窗的钩子").toBe(false);
-    expect(pop()!.firstElementChild!.textContent, "在飞：浮层说正在更新").toBe(copyText("front.title.updating", { machine: "devbox" }));
+    expect(pop()?.title, "在飞：说正在更新").toBe(copyText("front.title.updating", { machine: "devbox" }));
     expect(popButtons()).toEqual([]);
     finish("已部署 X");
     for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
-    expect(pop()!.firstElementChild!.textContent).toBe(copyText("front.title.updated", { machine: "devbox" }));
+    expect(pop()?.title).toBe(copyText("front.title.updated", { machine: "devbox" }));
     expect(popText()).toContain("已部署 X");
-    expect(popButtons(), "换上了：只留关闭，不挂［重试］").toEqual([]);
+    expect(popButtons(), "换上了：不挂［重试］").toEqual([]);
     expect(popText(), "重拨成了：不叫人去重连").not.toContain(copyText("front.body.redialFailed"));
     expect(mockInvoke.mock.calls.filter((c) => c[0] === "backend_start").map((c) => c[1]), "换上了就重拨那台").toEqual([{ origin: "devbox" }]);
 
@@ -2368,32 +2198,28 @@ describe("：↗ 问本机后端一次、交壳一次", () => {
             : Promise.resolve([]),
     );
     await clickFront(tm, "r5");
-    [...pop()!.querySelectorAll("button")].find((b) => b.textContent === copyText("front.act.update"))!.click();
-    for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
-    expect(pop()!.firstElementChild!.textContent).toBe(copyText("front.title.updated", { machine: "devbox" }));
+    await press(copyText("front.act.update"));
+    expect(pop()?.title).toBe(copyText("front.title.updated", { machine: "devbox" }));
     expect(popText()).toContain(copyText("front.body.redialFailed"));
     expect(popButtons()).toEqual([copyText("history.list.reconnect")]);
 
-    // 部署失败：同一个浮层里红着说；壳带回的复制详情挂在［复制详情］上（复制的是那份详情，不是那一句）；［重试］再更新一次。
+    // 部署失败：红着说；壳带回的复制详情挂在［复制详情］上（复制的是那份详情，不是那一句）；［重试］再更新一次。
     vi.mocked(updateBackendOf).mockReset();
     vi.mocked(updateBackendOf).mockRejectedValue(Object.assign(new Error("上传失败"), { detail: "码：refused" }));
     await clickUpdate();
-    expect(pop()!.firstElementChild!.textContent).toBe(copyText("front.title.updateFailed", { machine: "devbox" }));
-    expect(pop()!.dataset.shade).toBe("red");
+    expect(pop()?.title).toBe(copyText("front.title.updateFailed", { machine: "devbox" }));
+    expect(pop()?.opts.level).toBe("error");
     expect(popText()).toContain("上传失败");
     expect(popButtons()).toEqual([copyText("front.act.retry"), copyText("detail.act.copy")]);
-    [...pop()!.querySelectorAll("button")].find((b) => b.textContent === copyText("detail.act.copy"))!.click();
-    await new Promise((r) => setTimeout(r, 0));
-    expect(clipboardWrites(vi.mocked(invoke))).toEqual([`${copyText("front.title.updateFailed", { machine: "devbox" })}\n码：refused`]);
-    [...pop()!.querySelectorAll("button")].find((b) => b.textContent === copyText("front.act.retry"))!.click();
-    for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(pop()?.opts.detail).toBe("码：refused");
+    await press(copyText("front.act.retry"));
     expect(vi.mocked(updateBackendOf), "失败态的［重试］是再更新一次").toHaveBeenCalledTimes(2);
 
-    // 会打断什么的确认框里点了取消：浮层收起，什么都不做。
+    // 会打断什么的确认框里点了取消：什么都不做、不再出一条。
     vi.mocked(updateBackendOf).mockReset();
     vi.mocked(updateBackendOf).mockResolvedValue(null);
     await clickUpdate();
-    expect(pop(), "取消了：浮层不再出").toBeNull();
+    expect(popButtons(), "取消了：没有新的一条").toContain(copyText("front.act.update"));
   });
 
   it("★ 机器条那一行的［更新］与 ↗ 浮层 · 机器卡同一个动作（共用部署模块，先问会打断什么），不开设置窗", async () => {
@@ -2453,7 +2279,7 @@ describe("过程里还没结果的那几步照会话事实画（后端 pending[]
       tab.needs = needs;
       (home(tm).view as unknown as { paintStepWaits(t: Tab): void }).paintStepWaits(tab); // 流里补画住流视图（8a ④）
     };
-    const approve = (c: string) => ({ kind: "approve" as const, tool: "Bash", call: c, what: c, sinceMs: Date.now() - 125_000, text: copyText("beSession.needs.approve"), head: "h", headCode: c, tone: "need" as const, rank: 1, waitedMs: 125_000, waitedText: fmtDur(125), ask: null, manualText: null, receivedAt: Date.now() });
+    const approve = (c: string) => ({ kind: "approve" as const, tool: "Bash", call: c, what: c, text: copyText("beSession.needs.approve"), head: "h", headCode: c, tone: "need" as const, rank: 1, waitedMs: 125_000, ask: null, manualText: null, receivedAt: Date.now() });
     paint([call("b1", "awaiting"), call("b2", "running")], approve("b1"));
     expect([b1.dataset.state, b2.dataset.state]).toEqual(["awaiting", "running"]);
     expect(b1.querySelector(".step-right")?.textContent, "右侧已等多久").toBe(fmtDur(125));
@@ -2493,71 +2319,49 @@ describe("新出现的一行淡入（起步那一批不算）", () => {
   });
 });
 
-describe("LF1 · A2-17-12-1：↗ 在哪都画；做不了只灰着写原因", () => {
+describe("「终端」快捷键 · 命令面板：做什么照脸上那一格（本机挑 near、远端挑 far）", () => {
   const mockInvoke = invoke as unknown as ReturnType<typeof vi.fn>;
   beforeEach(() => {
     vi.clearAllMocks();
     mockInvoke.mockReset();
     mockInvoke.mockResolvedValue(undefined);
   });
-  afterEach(() => __setHostFactsForTests(null));
+  const frontSent = (): string[] =>
+    (mockInvoke.mock.calls as [string, unknown][]).filter(([c, a]) => c === "bring_terminal_to_front" || isChanCall(c, a, "session-window")).map(([c]) => c);
 
-  const focusBtnOf = (tm: TabManager, sid: string) =>
-    home(tm).bar.tabButtons.get(sid)?.root.querySelector(".tab-focus") ?? null;
-
-  it("★★ 两向：四种系统都渲 ↗；macos 上灰着（本地 tab 与远端 tab 同一道门）", () => {
-    const want: [HostOs, boolean][] = [
-      ["windows", false],
-      ["unknown", false],
-      ["linux", false],
-      ["macos", true],
-    ];
-    for (const [os, grey] of want) {
-      __setHostFactsForTests(factsOn(os));
-      const tm = makeTM();
-      tm.ensureTab("l1", "/w", "p", LOCAL);
-      tm.createSkeletonTab("r1", "/p", "devbox", false);
-      expect(home(tm).bar.tabButtons.get("l1"), `${os}：量具自检，tab 按钮本身得在`).toBeDefined();
-      for (const sid of ["l1", "r1"]) {
-        tm.onFace(sid, liveFace("idle"));
-        const b = focusBtnOf(tm, sid);
-        expect(b, `${os} ${sid} 的 ↗ 在`).not.toBeNull();
-        expect(b!.getAttribute("aria-disabled") === "true", `${os} ${sid} 的 ↗ 灰不灰`).toBe(grey);
-      }
-    }
-  });
-
-  it("★ 快捷键 / 命令面板在 macos 上走到 ↗ ⇒ 那一句进状态栏消息、不弹 toast、**不发 IPC**", async () => {
-    __setHostFactsForTests(factsOn("macos"));
+  it("★ 做不了（那台写好的那一句）⇒ 那一句进状态栏消息、不弹 toast、**不发 IPC**；不问壳这台拉不拉得了窗", async () => {
     const tm = makeTM();
-    tm.createSkeletonTab("r1", "/p", "devbox", false);
-    tm.switchTo("r1");
-    tm.bringActiveTerminalToFront();
+    tm.ensureTab("l1", "/w", "p", LOCAL);
+    tm.onFace("l1", goldenFace("gone"));
+    tm.switchTo("l1");
+    tm.terminalActive();
     for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
-    const sent = (mockInvoke.mock.calls as [string, unknown][])
-      .filter(
-        ([c, a]) =>
-          c === "bring_terminal_to_front" || isChanCall(c, a, "session-window"),
-      )
-      .map(([c]) => c);
-    expect(sent, "macos 上照样发了 ↗ 的 IPC —— 那是装作试过").toEqual([]);
+    expect(frontSent(), "做不了还发了拉窗的 IPC —— 那是装作试过").toEqual([]);
     expect(showActionFailureToast, "做不了不弹 toast").not.toHaveBeenCalled();
-    expect(noteMessage).toHaveBeenCalledWith(copyText("terminal.head.front"), copyText("terminalFront.unavailable.short"));
+    const gone = goldenFace("gone").can.terminal.near;
+    expect(noteMessage).toHaveBeenCalledWith(copyText("mobDrawer.item.terminal"), gone.go === "no" ? gone.why : "量具自检：夹具该是不能");
   });
 
-  it("★ 对照：windows / linux 上快捷键照常发 IPC（上一条不是因为别的原因没发）", async () => {
-    // 壳那条命令回的是那一张（`FrontFace`）：夹具照形回，别的命令照旧空着。
+  it("★ 本机、脸说拉窗 ⇒ 走拉窗那一条（问本机后端 session-window）；远端、脸说在这里开 ⇒ 开终端页、不发拉窗的 IPC", async () => {
     mockInvoke.mockImplementation((cmd: string) => Promise.resolve(cmd === "front_missed" ? { title: "t", body: "", tone: "fail", acts: [] } : undefined));
-    for (const os of ["windows", "linux"] as const) {
-      mockInvoke.mockClear();
-      __setHostFactsForTests(factsOn(os));
-      const tm = makeTM();
-      tm.createSkeletonTab("r1", "/p", "devbox", false);
-      tm.switchTo("r1");
-      tm.bringActiveTerminalToFront();
-      for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
-      expect((mockInvoke.mock.calls as [string, unknown][]).some(([c, a]) => isChanCall(c, a, "session-window")), os).toBe(true);
-    }
+    const tm = makeTM();
+    const opened: string[] = [];
+    tm.onOpenHere = (sid) => opened.push(sid);
+    tm.ensureTab("l1", "/w", "p", LOCAL);
+    tm.onFace("l1", liveFace("working", true));
+    expect(liveFace("working", true).can.terminal.near.go, "量具自检：本机 tmux 会话那一格是拉窗").toBe("front");
+    tm.switchTo("l1");
+    tm.terminalActive();
+    for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
+    expect((mockInvoke.mock.calls as [string, unknown][]).some(([c, a]) => isChanCall(c, a, "session-window"))).toBe(true);
+    mockInvoke.mockClear();
+    tm.ensureTab("r1", "/p", "p", "devbox");
+    tm.onFace("r1", liveFace("working", true));
+    tm.switchTo("r1");
+    tm.terminalActive();
+    for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(frontSent()).toEqual([]);
+    expect(opened).toEqual(["r1"]);
   });
 });
 
@@ -5005,7 +4809,6 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     autoAnswer: null,
     autoAnswerChoices: [],
     askEnd: null,
-    quietUnread: null,
     ...p,
   });
   const line = (sid: string, seq: number, origin: string | null = null) =>
@@ -5047,31 +4850,37 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     vi.mocked(invoke).mockResolvedValue(undefined);
   });
 
-  it("#63① 成品说是分叉来的 ⇒ tab 记下来源 sid；tooltip 标出来源 sid 前 8 位（标题里的 ↳ 是核心写进整行的，界面不加）", async () => {
-    answerFacts(() => facts({ forkedFrom: "abcd1234-parent" }));
+  it("#63① 成品带分叉来的那一句 ⇒ 悬停卡照摆那一句（字是那台照父会话起名写好的，界面不拼编号；标题里的 ↳ 是核心写进整行的，界面不加）", async () => {
+    const said = "那台写的分叉自那一句";
+    answerFacts(() => facts({ forkedFrom: "abcd1234-parent", forkedLine: said }));
     tm.onLine(line("fork-sid", 0));
     await settle();
     const tab = home(tm).store.tabs.get("fork-sid")!;
-    expect(tab.forkedFromSessionId).toBe("abcd1234-parent");
+    expect(tab.forkedLine).toBe(said);
     expect(tab.title.includes("↳"), "界面不往标题上加记号").toBe(false);
-    expect(cardText(tm, "fork-sid"), "悬停卡标出来源 sid 前 8 位").toContain(copyText("tabBar.hover.forked", { id: "abcd1234" }));
+    expect(cardText(tm, "fork-sid").split("\n")).toContain(said);
+    expect(cardText(tm, "fork-sid"), "不再自己拼「分叉自 编号前 8 位」").not.toContain("abcd1234");
   });
 
-  it("★ 成品说是哪一家 ⇒ tab 记下它（之前不知道 ⇒ `null`，不落 claude）；先画出来的卡头那一格补上那一家的短名", async () => {
+  it("★ 监控板那一格目录照会话事实的 `cwdShown`（那台写好的 `~/…`），不显原样 `projectDir`；事实没到 ⇒ null", async () => {
+    answerFacts(() => facts({ projectDir: "/home/u/proj", cwdShown: "~/proj" }));
+    tm.onLine(line("gd", 0));
+    tm.onFace("gd", liveFace("working"));
+    const dir = () => tm.snapshotSessions().find((x) => x.sessionId === "gd")?.cwdShown;
+    expect(dir(), "事实没到").toBeNull();
+    await settle();
+    expect(dir()).toBe("~/proj");
+  });
+
+  it("★ 成品说是哪一家 ⇒ tab 记下它（之前不知道 ⇒ `null`，不落 claude）", async () => {
     (globalThis as { __keepAgentUnknown?: boolean }).__keepAgentUnknown = true;
     try {
       answerFacts(() => facts({ agent: "codex" }));
       tm.onLine(line("cx-sid", 0));
       const tab = home(tm).store.tabs.get("cx-sid")!;
       expect(tab.agent, "事实到之前不知道是哪一家").toBeNull();
-      const card = document.createElement("div");
-      card.className = "card card-assistant";
-      card.innerHTML = '<div class="card-header"><span class="role"></span></div>';
-      tab.streamEl.appendChild(card);
-      const head = card.querySelector<HTMLElement>(".role")!;
       await settle();
       expect(tab.agent).toBe("codex");
-      expect(head.textContent, "卡头那一格补上那一家的短名（画像里的 speakerName）").toBe("Codex");
     } finally {
       (globalThis as { __keepAgentUnknown?: boolean }).__keepAgentUnknown = false;
     }
@@ -5096,27 +4905,14 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     expect(tip()).not.toContain(said);
   });
 
-  it("成品带写入进程那一句 ⇒ tab 的悬停提示照摆那一句；不带 ⇒ 不说；会话结束了 ⇒ 不说", async () => {
-    // 夹具那一句与 pid 个数故意无关：界面若还在自己数 pid、自己拼，就红。
+  it("悬停卡不写「写入进程 ×n」（开发者向、点一下就是同一件事），也不写「切到此处 · n」", async () => {
     const said = "那台写的写入进程句";
-    let writersLine: string | undefined = said;
-    answerFacts(() => facts({ writers: [4242], ...(writersLine === undefined ? {} : { writersLine }) }));
+    answerFacts(() => facts({ writers: [4242, 4243], writersLine: said }));
     tm.onLine(line("dup", 0));
     await settle();
-    const tab = home(tm).store.tabs.get("dup")!;
-    const tip = () => cardText(tm, "dup").split("\n");
-    expect(tab.writersLine).toBe(said);
-    expect(tip()).toContain(said);
-    writersLine = undefined;
-    tm.onLine(line("dup", 1));
-    await settle();
-    expect(tip()).not.toContain(said);
-    writersLine = said;
-    tm.onLine(line("dup", 2));
-    await settle();
-    expect(tip()).toContain(said);
-    tm.onFace("dup", goldenFace("ended"));
-    expect(tip()).not.toContain(said);
+    expect(home(tm).store.tabs.get("dup"), "量具自检：那条会话起来了").toBeDefined();
+    const tip = cardText(tm, "dup");
+    expect(tip).not.toContain(said);
   });
 
   // 刚起的会话宣告时还没有记录（或老后端宣告不带）⇒ 后端读到记录开头之后经会话事实给项目目录，标题跟上；行里的 cwd 不读。
@@ -5137,7 +4933,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     tm.onLine(line("plain", 0));
     await settle();
     const tab = home(tm).store.tabs.get("plain")!;
-    expect(tab.forkedFromSessionId).toBeNull();
+    expect(tab.forkedLine).toBeNull();
     expect(tab.title.startsWith("↳")).toBe(false);
   });
 
@@ -5167,7 +4963,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
   });
 
   it("批期不问；批结束当前 tab 当场问，后台 tab 空闲时轮到再问（不只 active，一个一个）", async () => {
-    answerFacts((path) => facts({ forkedFrom: path.includes("b1") ? "src" : null }));
+    answerFacts((path) => facts(path.includes("b1") ? { forkedFrom: "src", forkedLine: "分叉自「src」" } : { forkedFrom: null }));
     tm.onBatchStart();
     tm.onLine(line("b1", 0));
     tm.onLine(line("b1", 1));
@@ -5179,7 +4975,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     expect(asked.map((a) => a.path), "批结束当场只问当前那一个").toEqual(["/home/u/proj/b1.jsonl"]);
     await idleTurn("b2");
     expect(asked.map((a) => a.path).sort()).toEqual(["/home/u/proj/b1.jsonl", "/home/u/proj/b2.jsonl"]);
-    expect(home(tm).store.tabs.get("b1")!.forkedFromSessionId).toBe("src");
+    expect(home(tm).store.tabs.get("b1")!.forkedLine).toBe("分叉自「src」");
   });
 
   it("改动文件集：成品原样透传给监控板 peek（近因序由后端排）；远端问的是那台", async () => {
@@ -5193,8 +4989,8 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
   });
 
   it("F88b usage：active 的成品一到就推给 HUD；后台 tab 不推；切过去时推那一格", async () => {
-    const seen: [string | null, number | null][] = [];
-    tm.active.subscribe((a) => seen.push([a.usage?.model ?? null, a.usage?.promptTokens ?? null])); // 订阅 store（原先是回调）
+    const seen: [string | null, string | null][] = [];
+    tm.active.subscribe((a) => seen.push([a.usage?.model ?? null, a.usage?.promptTokensText ?? null])); // 订阅 store（原先是回调）
     answerFacts((path) =>
       facts({ usage: path.includes("u1") ? usageOf(42, "m-a") : usageOf(7, null) }),
     );
@@ -5202,11 +4998,11 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     tm.onLine(line("u2", 0));
     await settle();
     // 切换那一格的推送在 rAF 里（`switchTo`），与事实到达谁先谁后不定 ⇒ 等「最后一次」落定，不钉次序。
-    await vi.waitFor(() => expect(seen.at(-1)).toEqual(["m-a", 42]), UNTIL_CEILING);
-    expect(seen.some(([, t]) => t === 7)).toBe(false); // 后台 tab 的事实到了不推
+    await vi.waitFor(() => expect(seen.at(-1)).toEqual(["m-a", "核心·42"]), UNTIL_CEILING);
+    expect(seen.some(([, t]) => t === "核心·7")).toBe(false); // 后台 tab 的事实到了不推
     tm.switchTo("u2");
-    await vi.waitFor(() => expect(seen.at(-1)).toEqual([null, 7]), UNTIL_CEILING);
-    expect(home(tm).store.tabs.get("u2")!.usage?.promptTokens).toBe(7); // 监控板那一格读的也是它（`snapshotSessions`）
+    await vi.waitFor(() => expect(seen.at(-1)).toEqual([null, "核心·7"]), UNTIL_CEILING);
+    expect(home(tm).store.tabs.get("u2")!.usage?.promptTokensText).toBe("核心·7"); // 监控板那一格读的也是它（`snapshotSessions`）
     expect(tm.peekSession("u1")!.model).toBe("m-a");
   });
 
@@ -5216,7 +5012,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     tm.onLine(line("v1", 0));
     tm.onLine(line("v2", 0));
     await settle();
-    await vi.waitFor(() => expect(tm.active.get().usage?.promptTokens).toBe(5), UNTIL_CEILING);
+    await vi.waitFor(() => expect(tm.active.get().usage?.promptTokensText).toBe("核心·5"), UNTIL_CEILING);
     const seen: unknown[] = [];
     tm.active.subscribe((a) => seen.push(a));
     (tm as unknown as { onFactsAvailability(sid: string): void }).onFactsAvailability("v1");
@@ -5741,11 +5537,11 @@ describe("起新会话的占位标签页接在标签页栏里", () => {
     expect(tm.debugSlots().ids).toEqual([1, 2]);
   });
 
-  it("★ 占位那一页显着 ⇒ 作用于当前会话的快捷键（查找 · 折叠 · 翻轮 · 到底 · 关 · 开目录 · 开窗 · 菜单 · 切到终端）不落到底下那个真标签页；全局的照常", () => {
+  it("★ 占位那一页显着 ⇒ 作用于当前会话的快捷键（查找 · 折叠 · 翻轮 · 到底 · 关 · 开目录 · 开窗 · 菜单 · 终端）不落到底下那个真标签页；全局的照常", () => {
     const tm = makeTM();
     tm.createSkeletonTab("a", "/p/a", LOCAL, null);
     tm.switchTo("a");
-    const sessionKeys = ["session.find", "session.toggle-process", "session.prev-turn", "session.next-turn", "session.to-bottom", "tab.close-archived", "tab.open-cwd", "tab.pop-out", "tab.context-menu", "terminal.bring-front"] as const;
+    const sessionKeys = ["session.find", "session.toggle-process", "session.prev-turn", "session.next-turn", "session.to-bottom", "tab.close-archived", "tab.open-cwd", "tab.pop-out", "tab.context-menu", "session.terminal"] as const;
     expect(sessionKeys.filter((k) => tm.shadowedBySlot(k)), "没有占位页时都照常").toEqual([]);
     tm.addLaunchSlot({ origin: "devbox", cwd: "/w/x", tmuxName: null, arrival: { by: { kind: "cwd", cwd: "/w/x" }, since: 0, session: null, host: null } });
     expect(sessionKeys.filter((k) => !tm.shadowedBySlot(k))).toEqual([]);
@@ -6626,7 +6422,6 @@ describe("〔8a ④〕冷起只先问当前 tab：后台的冷读排在当前 ta
     autoAnswer: null,
     autoAnswerChoices: [],
     askEnd: null,
-    quietUnread: null,
   });
   const line = (sid: string, seq: number) =>
     ({ session_id: sid, cwd: "/p", path: `/p/${sid}.jsonl`, seq, record: { t: "reply", id: `${sid}-${seq}` } }) as never;

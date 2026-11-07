@@ -1182,7 +1182,6 @@ async fn a_relayed_machines_offer_lives_from_its_hello_to_its_end() {
         offer_of(&machine).is_some_and(|o| o.admits("kill")),
         "那台的 hello 交了 kill，能力事实里却没有"
     );
-    assert_eq!(build_of(&machine).as_deref(), Some("rb"));
     gone(&machine);
     assert!(offer_of(&machine).is_none(), "那台断了，还说问得到");
     unregister(&client);

@@ -57,7 +57,6 @@ import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.wire.gen.AgentPick
 import com.ccmonitor.mobile.core.wire.gen.CanSay
-import com.ccmonitor.mobile.core.wire.gen.CanTerm
 import com.ccmonitor.mobile.core.wire.gen.SessionAct
 import com.ccmonitor.mobile.core.wire.gen.SessionCan
 import com.ccmonitor.mobile.core.wire.gen.SessionCommand
@@ -82,16 +81,12 @@ data class ChatInputActions(
     val cancel: (String) -> Unit = {},
     /** 撤输入队名单里一条（按编号，哪一端投的都行）。 */
     val cancelQueued: (String) -> Unit = {},
-    /** 再交一次那台拒了的那一句（按编号）。 */
-    val retry: (String) -> Unit = {},
     /** 输入框里的字变了（本地存草稿）。 */
     val editDraft: (String) -> Unit = {},
     /** 输入框上方那一排附件；这条会话没有那一排（新建会话）⇒ `null`。 */
     val attach: AttachActions? = null,
     /** 流里自己那句的长按与就地编辑（[SaidEdit]）；新建会话还没起成 ⇒ `null`（没有可编辑的）。 */
     val said: SaidActions? = null,
-    /** 说不了时框旁［切到终端］（同 ⋯「在终端里打开」那一个去处）。 */
-    val toTerminal: () -> Unit = {},
 )
 
 /**
@@ -109,6 +104,10 @@ internal fun ChatInputArea(
     var draft by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue("")) }
     var sheet by remember { mutableStateOf<InputSheet?>(null) }
     RestoreDraft(state.draft, draft) { draft = it }
+    Recalled(state.recall, draft) {
+        draft = it
+        actions.editDraft(it.text)
+    }
     val pick = actions.attach?.let { rememberAttachPick(it) }
     val open = state.sid != null
     val tokens = LocalAppTokens.current
@@ -116,7 +115,7 @@ internal fun ChatInputArea(
     Surface(color = tokens.bg2) {
         Column(Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs)) {
             chipLine(state)?.let { (text, warn) -> NoteLine(text, warn) }
-            QueueRows(queueRows(state.queue, state.outbox, state.offline), actions)
+            QueueRows(queueRows(state.queue, state.outbox, state.offline != null), actions)
             if (attach != null && actions.attach != null) {
                 AttachArea(attach, actions.attach) {
                     actions.loadCommands()
@@ -124,9 +123,6 @@ internal fun ChatInputArea(
                 }
             }
             val say = state.say
-            if (say?.toTerminal == true) {
-                SecondaryButton(onClick = actions.toTerminal) { Text(copyText("terminal.head.front")) }
-            }
             OutlinedTextField(
                 value = draft,
                 onValueChange = { draft = edited(draft, it, actions.editDraft) },
@@ -164,7 +160,7 @@ internal fun ChatInputArea(
 
 /**
  * 输入框上方那一排（名单 ＋ 待发，[queueRows]）：一条一行，限高 [QUEUE_ROWS_MAX] 行、多了框里滚，不往上顶流。没有一条 ⇒ 不画。
- * 那台离线（[QueueRows.stale]）⇒ 头上那一行说名单是上次所知、整排淡着（同桌面）。
+ * 那台离线（[QueueRows.stale]）⇒ 排头那一行说名单是上次所知、整排淡着（同桌面）。
  */
 @Composable
 private fun QueueRows(
@@ -191,7 +187,7 @@ private fun QueueRows(
 /** 名单为上次所知时那一排淡到几成（同桌面 `queue-row.module.css`）。 */
 private const val STALE_ALPHA = 0.62f
 
-/** 一行：状态（错误色 ⇐ 没送进会话 · 那台拒了）· 发自哪一端 · 开头 ·［重试］（拒了的待发）·［撤回］字按钮。 */
+/** 一行：那一句此刻的样子（错误色 ⇐ 没送进会话 · 那台拒了）· 开头 ·［撤回］字按钮；交了没回执（[QueueRowFace.held]）⇒ 整行淡着（同桌面）。 */
 @Composable
 private fun QueueRow(
     row: QueueRowFace,
@@ -200,14 +196,16 @@ private fun QueueRow(
     val tokens = LocalAppTokens.current
     val faint = MaterialTheme.colorScheme.onSurfaceVariant
     Row(
-        Modifier.fillMaxWidth().heightIn(min = Touch.rowSingle).testTag(if (row.listed) ChatTestTags.QUEUE else ChatTestTags.OUTBOX),
+        Modifier
+            .fillMaxWidth()
+            .alpha(if (row.held) STALE_ALPHA else 1f)
+            .heightIn(min = Touch.rowSingle)
+            .testTag(if (row.listed) ChatTestTags.QUEUE else ChatTestTags.OUTBOX),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
     ) {
         Text(row.state, style = MaterialTheme.typography.bodySmall, color = if (row.error) tokens.errorText else MaterialTheme.colorScheme.onSurface, maxLines = 1)
-        row.from?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = faint, maxLines = 1) }
         Text(row.head, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = faint, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (row.retry) SecondaryButton(onClick = { actions.retry(row.id) }) { Text(copyText("front.act.retry")) }
         SecondaryButton(onClick = { if (row.listed) actions.cancelQueued(row.id) else actions.cancel(row.id) }) { Text(copyText("mobChat.outbox.cancel")) }
     }
 }
@@ -260,6 +258,22 @@ private fun RestoreDraft(
 ) {
     LaunchedEffect(saved) {
         if (saved != null && current.text.isEmpty()) set(TextFieldValue(saved, TextRange(saved.length)))
+    }
+}
+
+/** ［撤回］撤掉的那一句回到输入框：框空 ⇒ 就是它；框里已是它 ⇒ 不动；框里有别的字 ⇒ 另起一行接在后面，不丢字（同桌面 `composer.ts`）。 */
+@Composable
+private fun Recalled(
+    recall: Recall?,
+    current: TextFieldValue,
+    set: (TextFieldValue) -> Unit,
+) {
+    LaunchedEffect(recall) {
+        val r = recall ?: return@LaunchedEffect
+        val now = current.text
+        if (now == r.text) return@LaunchedEffect
+        val text = if (now.isEmpty()) r.text else "$now\n${r.text}"
+        set(TextFieldValue(text, TextRange(text.length)))
     }
 }
 
@@ -383,15 +397,14 @@ internal fun chipText(
     label: String,
 ): String = chip.pending?.text ?: chip.text ?: label
 
-/** 输入框照脸上 `can.say` 的样子：占位那一句（那台写好的）· 框能不能写 · 框旁给不给［切到终端］。 */
+/** 输入框照脸上 `can.say` 的样子：占位那一句（那台写好的）· 框能不能写。去终端只有顶栏「终端」那一颗，框旁不另放。 */
 data class SayLook(
     val placeholder: String,
     val open: Boolean,
-    val toTerminal: Boolean,
 )
 
 /**
- * 纯函数，判据读：脸上 `can.say` 是 yes ⇒ 占位是 `hint`；no ⇒ 框与 ➤ 灰着、占位是 `why`，`can.term` 是 yes 才给［切到终端］（同桌面）。
+ * 纯函数，判据读：脸上 `can.say` 是 yes ⇒ 占位是 `hint`；no ⇒ 框与 ➤ 灰着、占位是 `why`。
  * 流断着 · 还没收到脸 ⇒ `null`（照常：断着发的成待发，A2-18-8）。只照那台判好的画，不另判。
  */
 internal fun sayLook(
@@ -400,8 +413,8 @@ internal fun sayLook(
 ): SayLook? =
     when (val say = can?.say?.takeIf { !down }) {
         null -> null
-        is CanSay.Yes -> SayLook(say.hint, open = true, toTerminal = false)
-        is CanSay.No -> SayLook(say.why, open = false, toTerminal = can.term is CanTerm.Yes)
+        is CanSay.Yes -> SayLook(say.hint, open = true)
+        is CanSay.No -> SayLook(say.why, open = false)
     }
 
 /** ➤ 此刻怎样：框里没字也没附件 · 附件还没全落好（灰）· 能发。 */

@@ -63,8 +63,8 @@ fn skewed_clocks_do_not_matter_owner_numbers_in_arrival_order() {
     // A 台的钟快 10 分钟、先到；B 台的钟准、后到。
     let a = put(&o, &req("a", "deskA", None, T0 + TEN_MIN), T0).unwrap();
     let b = put(&o, &req("b", "deskB", None, T0), T0 + 1).unwrap();
-    assert_eq!((a.outcome, a.seq, a.place), (O::Queued, Some(1), Some(1)));
-    assert_eq!((b.outcome, b.seq, b.place), (O::Queued, Some(2), Some(2)));
+    assert_eq!((a.outcome, a.seq), (O::Queued, Some(1)));
+    assert_eq!((b.outcome, b.seq), (O::Queued, Some(2)));
     let due = next_due(&o, &sid(), T0 + 2).unwrap().expect("有一条可送");
     assert_eq!(due.id, "a", "先送先到的那一条，不看它自报的几点");
 }
@@ -74,16 +74,13 @@ fn same_id_twice_enters_once() {
     let o = own(&home("dup"));
     put(&o, &req("a", "phone", None, T0), T0).unwrap();
     let again = put(&o, &req("a", "phone", None, T0), T0 + 5).unwrap();
-    assert_eq!(
-        (again.outcome, again.seq, again.place),
-        (O::Seen, Some(1), Some(1))
-    );
+    assert_eq!((again.outcome, again.seq), (O::Seen, Some(1)));
     let q = read(&o, &sid(), T0 + 6).unwrap();
     assert_eq!(ids(&q), vec![("a", Some(1), S::Queued)]);
     // 送掉之后再重发：仍认得，不复活。
     assert!(delivered(&o, &sid(), "a").unwrap());
     let late = put(&o, &req("a", "phone", None, T0), T0 + 7).unwrap();
-    assert_eq!((late.outcome, late.seq, late.place), (O::Seen, None, None));
+    assert_eq!((late.outcome, late.seq), (O::Seen, None));
     assert!(read(&o, &sid(), T0 + 8).unwrap().items.is_empty());
 }
 
@@ -93,7 +90,7 @@ fn a_gap_from_one_end_is_held_until_filled() {
     put(&o, &req("p1", "phone", Some(1), T0), T0).unwrap();
     // 第 3 号先到、第 2 号在路上：先收着，不发序号。
     let p3 = put(&o, &req("p3", "phone", Some(3), T0), T0 + 10).unwrap();
-    assert_eq!((p3.outcome, p3.seq, p3.place), (O::Held, None, None));
+    assert_eq!((p3.outcome, p3.seq), (O::Held, None));
     // 别的端照常排。
     put(&o, &req("d1", "desk", Some(1), T0), T0 + 20).unwrap();
     let p2 = put(&o, &req("p2", "phone", Some(2), T0), T0 + 30).unwrap();
@@ -344,38 +341,41 @@ fn attachments_ride_with_the_line_and_sent_ids_are_listed() {
     );
 }
 
-/// ★ 名单里每一条带会话那台写好的字：那一条此刻的样子（同回执那一句：排队 · 第 N · 排队（收着）· 失败 · 未送进会话）
-/// 与发自哪一端（认得的两端写名字，别的照原样）；撤掉第 1 条 ⇒ 原第 2 条那一句跟着变「第 1」。各端照摆，不按 `state` · `end` 自己挑字。
+/// ★ 名单里每一条带会话那台写好的那一句，说在等什么、不说第几、不分哪一端投的：排着 · 收着 ⇒「发送中 · 等确认」；
+/// 那台屏上开着批准 · 问答框（投递线程记下的 [`mark_box`]）⇒ 排着的那几条「需手动 · 答完再送」，收着的照旧；框答完 ⇒ 换回来。
+/// 回执那一句同名单那一句。
 #[test]
-fn each_item_carries_the_owner_written_words() {
+fn each_item_says_what_it_waits_for_not_its_place() {
     let o = own(&home("words"));
-    put(&o, &req("a", "mobile", None, T0), T0).unwrap();
-    put(&o, &req("b", "monitor", None, T0), T0 + 1).unwrap();
-    put(&o, &req("c", "cc-bus", Some(2), T0), T0 + 2).unwrap();
-    let words = |q: &QueueList| -> Vec<(String, String)> {
-        q.items
-            .iter()
-            .map(|i| (i.said.clone(), i.from.clone()))
-            .collect()
-    };
-    let place = |n: u32| copy_text("beQueue.said.place", &[("place", &n.to_string())]);
+    let a = put(&o, &req("a", "mobile", None, T0), T0).unwrap();
+    put(&o, &req("b", "cc-bus", None, T0), T0 + 1).unwrap();
+    put(&o, &req("c", "monitor", Some(2), T0), T0 + 2).unwrap();
+    let said = |q: &QueueList| -> Vec<String> { q.items.iter().map(|i| i.said.clone()).collect() };
+    let confirming = copy_text("beQueue.said.confirming", &[]);
+    let wait_box = copy_text("beQueue.said.waitBox", &[]);
+    assert_eq!(a.said, confirming, "回执那一句同名单");
     assert_eq!(
-        words(&read(&o, &sid(), T0 + 3).unwrap()),
-        vec![
-            (place(1), copy_text("beQueue.from.phone", &[])),
-            (place(2), copy_text("beQueue.from.desktop", &[])),
-            (
-                copy_text("mobAttach.card.queued", &[]),
-                "cc-bus".to_string()
-            ),
-        ]
+        said(&read(&o, &sid(), T0 + 3).unwrap()),
+        vec![confirming.clone(), confirming.clone(), confirming.clone()]
     );
-    let after = cancel(&o, &sid(), "a", T0 + 4).unwrap().queue;
+    assert!(mark_box(&o, SID, true).unwrap(), "开框那一下写盘");
+    assert!(!mark_box(&o, SID, true).unwrap(), "没变不写");
     assert_eq!(
-        words(&after)[0].0,
-        place(1),
-        "撤掉第 1 条 ⇒ 原第 2 条写第 1"
+        said(&read(&o, &sid(), T0 + 4).unwrap()),
+        vec![wait_box.clone(), wait_box.clone(), confirming.clone()],
+        "排着的等框答完（cc-bus 投的同一句）；收着的照旧"
     );
+    assert_eq!(
+        put(&o, &req("d", "monitor", None, T0), T0 + 5)
+            .unwrap()
+            .said,
+        wait_box,
+        "开框时投的一句，回执就说等框"
+    );
+    assert!(mark_box(&o, SID, false).unwrap());
+    assert!(said(&read(&o, &sid(), T0 + 6).unwrap())
+        .iter()
+        .all(|s| *s == confirming));
 }
 
 /// 瘦客户端底行那一句（会话那台写）：排着 · 收着合计 N 条；未送达的不算；一条都没在等 ⇒ 没有。

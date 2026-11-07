@@ -1451,9 +1451,22 @@ impl crate::wire::typed::Handle for HistoryFactsCmd {
 }
 
 /// [`HistoryFactsCmd`] 的本体，家目录是参数；`tz` ＝ 看的那一台的时区（通知组头的钟面照它写）；
-/// `called` ＝ 看的那一端怎么称呼这台（「在哪」那一句照它写，没交 ⇒ 不编名字）。
+/// `called` ＝ 看的那一端怎么称呼这台（「在哪」那一句照它写，没交 ⇒ 不编名字）。目录的显示形照这台用户的家目录写（[`facts_in`]）。
 pub(crate) fn facts_at(
     home: &Path,
+    req: HistoryFactsReq,
+    limits: &crate::observe::recognize::facts::ContextLimits,
+    tz: &crate::common::time::Tz,
+    called: Option<&str>,
+) -> Result<FactsReply, HistoryFactsErr> {
+    let user_home = crate::platform::paths::home_dir();
+    facts_in(home, user_home.as_deref(), req, limits, tz, called)
+}
+
+/// 同 [`facts_at`]，用户的家目录也是参数（`cwdShown` 与「在哪」那一句里的目录照它写成 `~/…`；`None` ⇒ 原样）。
+pub(crate) fn facts_in(
+    home: &Path,
+    user_home: Option<&Path>,
     req: HistoryFactsReq,
     limits: &crate::observe::recognize::facts::ContextLimits,
     tz: &crate::common::time::Tz,
@@ -1483,7 +1496,11 @@ pub(crate) fn facts_at(
     if facts.project_dir.is_none() {
         facts.project_dir = locate::facts_project_dir(home, path);
     }
-    facts.where_line = facts::where_line(called, facts.project_dir.as_deref());
+    facts.cwd_shown = facts
+        .project_dir
+        .as_deref()
+        .map(|d| crate::common::cells::Words(crate::platform::paths::home_short(d, user_home)));
+    facts.where_line = facts::where_line(called, facts.cwd_shown.as_ref().map(|w| w.0.as_str()));
     if facts.agent.is_none() {
         facts.agent = locate::facts_agent(home, path).map(Into::into);
     }
@@ -1491,6 +1508,14 @@ pub(crate) fn facts_at(
     let holders = locate::facts_holders(home, path);
     facts.writers = holders.clone().unwrap_or_default();
     facts.writers_line = facts::writers_line(&facts.writers);
+    // 分叉来的 ⇒ 那一句照父会话那份记录起名（与标签页 · 历史清单同一个函数）；父会话的记录不在 ⇒ 名字退到会话号头 8 位。
+    facts.forked_line = facts.forked_from.as_deref().map(|parent| {
+        let label = match locate::session_record(home, parent) {
+            Ok(p) => crate::history::listing::label_facts_of(&p),
+            Err(_) => crate::history::search_rules::LabelFacts::unread(parent, None),
+        };
+        facts::forked_line(&crate::history::search_rules::session_label(&label).0)
+    });
     // 权限档的字：那一家的权限档那一处给（同 `session-permission` 回包的 `modeText`）。
     facts.permission_mode_text = facts
         .agent
@@ -1643,6 +1668,10 @@ mod facts_by_sid_tests;
 #[cfg(test)]
 #[path = "../../../tests/backend/faces/facts_where_tests.rs"]
 mod facts_where_tests;
+
+#[cfg(test)]
+#[path = "../../../tests/backend/faces/facts_shown_tests.rs"]
+mod facts_shown_tests;
 
 #[cfg(test)]
 #[path = "../../../tests/backend/faces/history_image_tests.rs"]

@@ -32,7 +32,7 @@ const TMUX_ONLY: Record<string, string> = {
   "DataReport.ts:tmux": "这台装没装 tmux（数据页）",
   "SessionWindow.ts:tmux": "↗ 切窗口要不要切 tmux 窗格",
   "Showing.ts:tmux": "会话在不在 tmux 里（出口据它给不给［在终端里打开］）",
-  "ProfileAccountShape.ts:tmux": "启动配置里的 tmux 那一格",
+  "ProfileAccountShape.ts:tmux": "账号那一形的一形：tmux 里起",
   "ProfileForm.ts:ProfileTmuxPick": "启动配置里的 tmux 那一格",
   "ProfileForm.ts:tmux": "启动配置里的 tmux 那一格",
   "ProfileForm.ts:tmuxSize": "启动配置里新建 tmux 会话的尺寸",

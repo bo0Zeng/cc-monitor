@@ -56,10 +56,6 @@ input: TermInput,
  */
 state: TermState, 
 /**
- * 最近动静（秒）。
- */
-last_activity: number, 
-/**
  * 这个调用方能做什么（抓屏不过身份门、恒可用，不在这里）。
  */
 can: TerminalCan, };

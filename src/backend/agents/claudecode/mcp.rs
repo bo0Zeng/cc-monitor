@@ -8,7 +8,7 @@
 //! 过了有效期 Claude 会重连，那一笔就不再算数 ⇒ 这里同样不算。stdio 的 Claude 不拿这份跳过 ⇒ 不算。
 
 use crate::platform::fs::Ro;
-use relay_route_core::{Cap, Over};
+use cap_core::{Cap, Over};
 use std::path::Path;
 
 use serde_json::Value;
@@ -225,7 +225,7 @@ pub(crate) fn said_of(v: &Value) -> Option<crate::agents::McpSaid> {
     });
     for k in a.as_object()?.keys() {
         if k.ends_with("McpServers") && ![PENDING, NEEDS_AUTH, FAILED].contains(&k.as_str()) {
-            super::drift::record(super::drift::DriftFace::UnknownMcpList, k, None);
+            super::drift::record(super::drift::DriftFace::UnknownMcpList, k);
         }
     }
     Some(crate::agents::McpSaid {

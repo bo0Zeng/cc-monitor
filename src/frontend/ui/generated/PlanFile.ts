@@ -7,7 +7,7 @@ export type PlanFile = { path: string,
 /**
  * 对账的码；pb 给了认不得的 ⇒ `null`。
  */
-stateCode: "ok" | "missing" | "empty" | "broken" | null, 
+stateCode: "ok" | "uncommitted" | "missing" | "empty" | "broken" | null, 
 /**
  * pb 的那一句（长度 · 坏在哪）。
  */

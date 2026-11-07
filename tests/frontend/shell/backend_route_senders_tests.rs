@@ -81,16 +81,13 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   理由与 `frame_query.rs` 那条逐字相同。
     ("backend_policy.rs", Verdict::UsesRouter),
     // `remote_relay.rs` 那一行摘了：远端「用到才起」的脱离中转一族删了（中转只住那台的常驻后端里）。
-    // ★ 资产目录同步：把「怎么够到那台」交给**本机**后端 `assets-sync`，经
-    //   `asset_sync.rs::ResidentBackend::call` 这一口；失败经共用分流器翻成人话。形状与理由同上几条。
-    ("asset_sync.rs", Verdict::UsesRouter),
     // skill「装到这台」不在这里：装 / 卸的编排在被写那台后端，界面经通道直问。
     // ★ 传输台的中继（`transfer_relay.rs`）：窗口的开单 / 订阅经它转给**本机**常驻后端
     //   （`transfer-*` 四条，传输台住那里）。没有第二条路可回落（`D11`：不进程内开 SFTP），
     //   后端说的码原样带回窗口；**照样走分流器**，理由与 `frame_query.rs` 那一行逐字相同。
     ("transfer_relay.rs", Verdict::UsesRouter),
     // ★ 装后端：把「怎么够到那台 ＋ 这一版带着的那几格落在哪」交给**本机**后端 `deploy-install`，
-    //   经 `deploy.rs::install_for` 这一口；那一趟住后端，没有第二条路可回落。形状与 `asset_sync.rs` 那一行同。
+    //   经 `deploy.rs::install_for` 这一口；那一趟住后端，没有第二条路可回落。形状与理由同上几条。
     ("deploy.rs", Verdict::UsesRouter),
     // 终端画面流撤掉时会话流句柄替界面向那台退订（`event_replay.rs::unfollow`）：发出去就不管，没成只记一行日志 ——
     //   连接走时那台整张票表本来就收；没有第二条路，也不把成败交给任何人。
@@ -106,11 +103,9 @@ const SENDERS: &[(&str, Verdict)] = &[
     // ★ 机器页「停」：请**本机**后端 `machine-stop`（先停它那一条、再在那台跑 `--resident-stop`），经 `remote_resident.rs::stop` 这一口；
     //   没有第二条路可回落（停那台只经本机后端那条 SSH），失败经共用分流器翻成人话。形状与 `deploy.rs` 那一行同。
     ("remote_resident.rs", Verdict::UsesRouter),
-    // 诊断信息问远端各台的状态（`diagnostics_report.rs::remote_machines`，`machine-read`）：问不到只记一行日志、那几台照「说不出」写。
-    (
-        "diagnostics_report.rs",
-        Verdict::ProbeOnlyNoFallbackDecision,
-    ),
+    // 「复制诊断信息」：整段请**本机**后端 `diagnostics-report` 出，经 `diagnostics_report.rs::diagnostics_report` 这一口；
+    //   没有第二条路可回落（后端不在，这件事就不发生），失败经共用分流器翻成人话。形状与 `remote_resident.rs` 那一行同。
+    ("diagnostics_report.rs", Verdict::UsesRouter),
 ];
 
 /// 分流器的**两个出口**：分层结果（`05` 形状）与从它收拢出来的旧三态。

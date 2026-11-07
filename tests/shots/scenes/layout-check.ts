@@ -42,8 +42,8 @@ function inView(r: R): boolean {
 
 function floats(): string[] {
   const out: string[] = [];
-  // 由 `place.ts` 摆的那几种（写了内联 left）：菜单 · 浮层面板 · ↗ 的「查找终端…」；抽屉 / 对话框不算。
-  const all = [...document.querySelectorAll<HTMLElement>('body > [role="menu"], body > div[role="dialog"]:not([aria-modal="true"]), body > [data-role="front-busy"]')].filter(
+  // 由 `place.ts` 摆的那几种（写了内联 left）：菜单 · 浮层面板；抽屉 / 对话框不算。
+  const all = [...document.querySelectorAll<HTMLElement>('body > [role="menu"], body > div[role="dialog"]:not([aria-modal="true"])')].filter(
     (f) => f.style.left !== "" && getComputedStyle(f).position === "fixed" && visible(f),
   );
   const opened = (sel: string): HTMLElement[] =>
@@ -344,8 +344,25 @@ function answerBlock(): string[] {
   return out;
 }
 
+/** 11. 计划页页头那一排仓库：放不下 ⇒ 那一排能横滚（不是裁掉了事）；选中的那一颗整颗在那一排的可见框里。 */
+export function planSlices(): string[] {
+  const out: string[] = [];
+  const first = document.querySelector<HTMLElement>(".plan-view .plan-slice");
+  const strip = first?.parentElement;
+  if (!strip || !visible(strip)) return out;
+  const ox = getComputedStyle(strip).overflowX;
+  if (strip.scrollWidth > strip.clientWidth + EPS && ox !== "auto" && ox !== "scroll") out.push(`计划页那一排仓库放不下（${strip.scrollWidth} > ${strip.clientWidth}），却不能横滚（overflow-x: ${ox}）`);
+  const cur = strip.querySelector<HTMLElement>('.plan-slice[aria-current="true"]');
+  if (cur) {
+    const sr = strip.getBoundingClientRect();
+    const cr = cur.getBoundingClientRect();
+    if (cr.left < sr.left - EPS || cr.right > sr.right + EPS) out.push(`计划页选中的仓库 ${name(cur)} ${fmt(cr)} 不在那一排的可见框 ${fmt(sr)} 里`);
+  }
+  return out;
+}
+
 export function layoutProblems(): string[] {
-  const out = [...floats(), ...singleLines(), ...foldHeads(), ...acctRows(), ...ruleEditor(), ...chartRows(), ...messageRows(), ...overStream(), ...hoveredEdit(), ...queueRows(), ...answerBlock()];
+  const out = [...floats(), ...singleLines(), ...foldHeads(), ...acctRows(), ...ruleEditor(), ...chartRows(), ...messageRows(), ...overStream(), ...hoveredEdit(), ...queueRows(), ...answerBlock(), ...planSlices()];
   // 也写进页里的控制台（截图工具每张存一份），整趟被打断时还查得到。
   for (const p of out) console.warn(`[layout] ${p}`);
   return out;

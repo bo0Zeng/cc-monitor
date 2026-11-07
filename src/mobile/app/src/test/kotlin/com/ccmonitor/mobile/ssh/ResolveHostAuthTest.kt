@@ -16,7 +16,7 @@ import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** 认证分派单一来源——密码优先、否则按身份、都无则报错。 */
+/** 认证分派单一来源——记着钥匙先用钥匙、否则密码、否则本次选的身份、都无则报错。 */
 class ResolveHostAuthTest {
     private fun hostBase() = Host(id = "h1", label = "h", host = "1.2.3.4", port = 22, username = "u")
 
@@ -49,6 +49,16 @@ class ResolveHostAuthTest {
             val idRepo = IdentityRepository(HAFakeIdentityDao(mapOf("id1" to ksIdentity("id1"))), PlainCryptoBox)
             val auth = resolveHostAuth(host, null, idRepo, HostRepository(HAFakeHostDao(), PlainCryptoBox))
             assertTrue("无密码有身份 → 按身份路由（keystore→KeystoreSigner）", auth is AuthMethod.KeystoreSigner)
+        }
+
+    @Test
+    fun keyAndPasswordBothKeptUsesTheKey() =
+        runBlocking {
+            // 机器条［换成密钥］之后：钥匙记上了、存的密码留着（给撤销）⇒ 用钥匙登。
+            val hostRepo = HostRepository(HAFakeHostDao(), PlainCryptoBox)
+            val host = hostRepo.withPassword(hostBase(), "s3cret").copy(authRef = "id1")
+            val idRepo = IdentityRepository(HAFakeIdentityDao(mapOf("id1" to ksIdentity("id1"))), PlainCryptoBox)
+            assertTrue("钥匙与密码都在 → 钥匙", resolveHostAuth(host, null, idRepo, hostRepo) is AuthMethod.KeystoreSigner)
         }
 
     @Test

@@ -2,7 +2,7 @@
 //! 下面那条 SSH（[`Transport`]）· 往外交的事（[`Sink`]）· 装不装后端（[`Transport::installs`]）。
 //!
 //! 接一台只有一条路：先直接接常驻流（`--resident-attach`，平时一条 exec 就接上）；没接上 ⇒ `--resident-ensure`（常驻不在就起）
-//! ⇒ 再接（小中继回 `absent` 时隔 [`RELAY_WAIT`] 再试）。新旧由那台在 attach 回话里给（attach 行带手上这一版）；认不得这一形 attach 行的当旧：
+//! ⇒ 再接一次（ensure 等口绑好才回；还回 `absent` ⇒ 这一轮没成、照退避再来）。新旧由那台在 attach 回话里给（attach 行带手上这一版）；认不得这一形 attach 行的当旧：
 //! - 自己装后端的宿主（本机后端）：接不上 ⇒ 先装再 ensure；接上的不是手上这一版 ⇒ 先装、再 `--resident-ensure --replace`（只升不降由那台判）、换了就再接；
 //! - 不装的（手机）：旧 ⇒ 照接、说「要更新」（认不得 attach 行的接不上 ⇒ 断着、修法「更新」）；同或新 ⇒ 接。
 //!
@@ -22,7 +22,7 @@
 //! 每次接上先交 [`Event::Attached`]（那台的 hello 原样一行 ＋ 这条连接的客户端），再交 [`State::Up`]（`epoch` 加一，之前在路上的问答作废）。
 //! 在看名单住这一台的名单台（[`Desk`]）：attach 行带它此刻那份（那台从第一帧起照它发），接上之后把这条连接交给它（[`Desk::up`]）。
 
-use crate::attach::{self, AttachFail, RELAY_ABSENT, RELAY_TRIES, RELAY_WAIT};
+use crate::attach::{self, AttachFail, RELAY_ABSENT};
 use crate::backoff::{
     PingWindow, DIAL_WITHIN, HEARTBEAT_IDLE, MIN_HEALTHY_UPTIME, PING_CEIL, PING_MISSES,
     RECONNECT_MAX, RECONNECT_MIN,
@@ -741,34 +741,27 @@ impl<T: Transport> Feed<T> {
         .map_err(AttachOr::Shake)
     }
 
-    /// ensure 之后：小中继回 `absent`（常驻还没绑上口）隔一会儿再试。
+    /// ensure 之后接一次：`--resident-ensure` 等新进程口绑好、锁抢到才回，回了还说「没人在听」（`absent`）就是它起来又退了
+    /// （或别的进程刚好在换常驻）⇒ 当一次 Transient 失败，交重连循环照退避再来。
     async fn attach_after_ensure(
         &self,
         t: &Arc<T>,
         cut: &Notify,
     ) -> Result<attach::Attached<T::Stream>, Fail> {
-        for _ in 0..RELAY_TRIES {
-            match self.attach_on(t, cut).await {
-                Ok(a) => return Ok(a),
-                Err(AttachOr::Shake(AttachFail::Refused(r))) if r == RELAY_ABSENT => {}
-                Err(e) => return Err(self.attach_problem(e)),
-            }
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "ensure 之后那台小中继回 `absent`：后端零定时器、起了常驻不等它绑上口，等的是那台套接字上有人在听这一个一次性条件；至多 `RELAY_TRIES` 次，接上即止，不是节拍"
-            )]
-            tokio::time::sleep(RELAY_WAIT).await;
-        }
-        Err(Fail::new(
-            Problem::new(
-                copy_text(
-                    "rsRemoteResident.relay.absent",
-                    &[("machine", &self.cfg.machine)],
+        match self.attach_on(t, cut).await {
+            Ok(a) => Ok(a),
+            Err(AttachOr::Shake(AttachFail::Refused(r))) if r == RELAY_ABSENT => Err(Fail::new(
+                Problem::new(
+                    copy_text(
+                        "rsRemoteResident.relay.absent",
+                        &[("machine", &self.cfg.machine)],
+                    ),
+                    r,
                 ),
-                format!("{RELAY_TRIES} × {}ms", RELAY_WAIT.as_millis()),
-            ),
-            FailKind::Transient,
-        ))
+                FailKind::Transient,
+            )),
+            Err(e) => Err(self.attach_problem(e)),
+        }
     }
 
     /// 握手走不通 ⇒ 那一句。拨不通 · 断在路上的（被掐 · 小中继与常驻断开）再试会好；不是我们的后端 · 回话不对 ⇒ 装过才会好。

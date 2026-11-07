@@ -6,9 +6,9 @@
 //! 本文件每一处放行都写在那一个函数上，理由一律是「只读」：放行处多一个写动词，读这一份的人看得见。
 //! 平台无关的部分不认域知识（不认识账号、会话、帧）。
 
+use cap_core::{Cap, Over, Regular};
 use copy_core::copy_text;
 use copy_core::said::Said;
-use relay_route_core::{Cap, Over, Regular};
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
@@ -258,7 +258,7 @@ enum Link {
     Refuse,
 }
 
-/// 带上限的整份读：先看类型 · 再看长度 · 再读，都在 `relay_route_core::read_capped_regular`（手机核心读本机文件同一份）；
+/// 带上限的整份读：先看类型 · 再看长度 · 再读，都在 `cap_core::read_capped_regular`（手机核心读本机文件同一份）；
 /// 这里只定跟不跟链接（元数据怎么取 · 怎么打开）与那一句。读不了的那一句只是原因（原因词 · 不是普通文件 · 超出上限）；系统原话进 `raw`（复制详情）。
 #[expect(
     clippy::disallowed_methods,
@@ -275,7 +275,7 @@ fn read_whole(path: &Path, limit: Cap, link: Link) -> Result<Vec<u8>, Said> {
         Link::Follow => std::fs::File::open(path),
         Link::Refuse => nofollow_read().open(path),
     };
-    match relay_route_core::read_capped_regular(&meta, open, limit).map_err(io)? {
+    match cap_core::read_capped_regular(&meta, open, limit).map_err(io)? {
         Regular::Whole(buf) => Ok(buf),
         Regular::NotRegular => Err(copy_text("reason.fs.notRegular", &[]).into()),
         Regular::OverCap(size) => Err(over_cap(path, limit, size)),

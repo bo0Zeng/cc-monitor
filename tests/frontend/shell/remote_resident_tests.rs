@@ -223,8 +223,8 @@ fn the_stop_budget_outlasts_the_remote_stop() {
     );
 }
 
-// 中继 `absent` 时等着再接的编排 · 「没带字节就不比新旧」随重连循环住 `resident-client`：
-//   `feed_tests.rs::a_relay_that_stays_absent_is_tried_a_capped_number_of_times` · `feed_tests.rs::without_its_own_build_the_relation_is_incomparable`。
+// 中继 `absent` 时 ensure 之后只再接一次、没成照退避 · 「没带字节就不比新旧」随重连循环住 `resident-client`：
+//   `feed_tests.rs::a_relay_still_absent_after_ensure_is_one_transient_failure` · `feed_tests.rs::without_its_own_build_the_relation_is_incomparable`。
 
 /// 小中继的第一行（读法住 `resident-client`，两端同一份）：拒绝那一形读出理由，别的（hello）照 hello 读。理由词与后端那一侧逐字相同（跨 crate 字面量）。
 #[test]

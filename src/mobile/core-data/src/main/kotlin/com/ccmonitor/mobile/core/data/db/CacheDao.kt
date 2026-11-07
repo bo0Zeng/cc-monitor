@@ -5,86 +5,29 @@ import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Upsert
 
-/** 缓存库那四张表的存取（[CachedSession] · [ListHold] · [RecordPage] · [SyncAnchor]）。只搬原样，不认 JSON 里的格。 */
+/** 缓存库那三张表的存取（[CachedSession] · [RecordPage] · [SyncAnchor]）。只搬原样，不认 JSON 里的格。 */
 @Dao
 abstract class CacheDao {
-    // ---- 会话列表 ----------------------------------------------------------
-
-    @Query("SELECT * FROM sessions WHERE hostId = :hostId AND ord IS NOT NULL ORDER BY ord")
-    abstract suspend fun listed(hostId: String): List<CachedSession>
+    // ---- 看过哪几条 --------------------------------------------------------
 
     @Query("SELECT * FROM sessions WHERE hostId = :hostId")
-    abstract suspend fun allSessions(hostId: String): List<CachedSession>
+    abstract suspend fun viewedSessions(hostId: String): List<CachedSession>
 
     @Upsert
-    abstract suspend fun upsertSessions(rows: List<CachedSession>)
-
-    @Query("DELETE FROM sessions WHERE hostId = :hostId AND ord IS NULL AND viewedAt IS NULL")
-    protected abstract suspend fun dropUnlistedUnviewed(hostId: String)
-
-    /**
-     * 那台给了一份新的清单（[rows]：sid ＋ 那一行原样，照它的先后）：整份换上。点开过的那几条（[CachedSession.viewedAt]）留着、只是不在清单里了，
-     * 它们的记录缓存照最近看过的规矩淘汰；没点开过、也不在新清单里的删掉。
-     */
-    @Transaction
-    open suspend fun replaceList(
-        hostId: String,
-        rows: List<Pair<String, String>>,
-    ) {
-        val viewed = allSessions(hostId).associate { it.sid to it.viewedAt }
-        val listed = rows.map { it.first }.toSet()
-        val gone = viewed.keys.filter { it !in listed }.map { CachedSession(hostId, it, null, null, viewed[it]) }
-        upsertSessions(gone + rows.mapIndexed { i, (sid, row) -> CachedSession(hostId, sid, row, i, viewed[sid]) })
-        dropUnlistedUnviewed(hostId)
-    }
-
-    @Query("SELECT * FROM list_holds WHERE hostId = :hostId")
-    abstract suspend fun listHold(hostId: String): ListHold?
-
-    @Upsert
-    protected abstract suspend fun putListHold(hold: ListHold)
-
-    /** 手上那一份会话列表：记号与头 ＋ 照先后的那几行（同一个读事务：两样是同一次答写下的）。 */
-    @Transaction
-    open suspend fun heldList(hostId: String): Pair<ListHold?, List<CachedSession>> = listHold(hostId) to listed(hostId)
-
-    /** 照那台的一答换好的那一份整份换上：行与先后（[replaceList]）· 记号与头，同一个事务。 */
-    @Transaction
-    open suspend fun keepList(
-        hostId: String,
-        rows: List<Pair<String, String>>,
-        hold: ListHold,
-    ) {
-        replaceList(hostId, rows)
-        putListHold(hold)
-    }
-
-    @Query("INSERT OR IGNORE INTO sessions (hostId, sid, listRow, ord, viewedAt) VALUES (:hostId, :sid, NULL, NULL, :at)")
-    protected abstract suspend fun insertViewed(
-        hostId: String,
-        sid: String,
-        at: Long,
-    )
-
-    @Query("UPDATE sessions SET viewedAt = :at WHERE hostId = :hostId AND sid = :sid")
-    protected abstract suspend fun setViewed(
-        hostId: String,
-        sid: String,
-        at: Long,
-    )
+    protected abstract suspend fun putViewed(s: CachedSession)
 
     /**
      * 不在最近看过的 [keep] 条里的会话，记录页与续点都删掉（淘汰不上屏：那一条下次点开从那台重读）。
      * 跨机器算：手机上一共留 [keep] 条。
      */
     @Query(
-        "DELETE FROM record_pages WHERE NOT EXISTS (SELECT 1 FROM (SELECT hostId, sid FROM sessions WHERE viewedAt IS NOT NULL " +
+        "DELETE FROM record_pages WHERE NOT EXISTS (SELECT 1 FROM (SELECT hostId, sid FROM sessions " +
             "ORDER BY viewedAt DESC LIMIT :keep) k WHERE k.hostId = record_pages.hostId AND k.sid = record_pages.sid)",
     )
     protected abstract suspend fun evictPages(keep: Int)
 
     @Query(
-        "DELETE FROM sync_anchors WHERE NOT EXISTS (SELECT 1 FROM (SELECT hostId, sid FROM sessions WHERE viewedAt IS NOT NULL " +
+        "DELETE FROM sync_anchors WHERE NOT EXISTS (SELECT 1 FROM (SELECT hostId, sid FROM sessions " +
             "ORDER BY viewedAt DESC LIMIT :keep) k WHERE k.hostId = sync_anchors.hostId AND k.sid = sync_anchors.scope)",
     )
     protected abstract suspend fun evictAnchors(keep: Int)
@@ -97,8 +40,7 @@ abstract class CacheDao {
         at: Long,
         keep: Int = RECORD_CACHE_SESSIONS,
     ) {
-        insertViewed(hostId, sid, at)
-        setViewed(hostId, sid, at)
+        putViewed(CachedSession(hostId, sid, at))
         evictPages(keep)
         evictAnchors(keep)
     }
@@ -170,9 +112,6 @@ abstract class CacheDao {
     @Query("DELETE FROM sessions WHERE hostId = :hostId")
     protected abstract suspend fun dropSessions(hostId: String)
 
-    @Query("DELETE FROM list_holds WHERE hostId = :hostId")
-    protected abstract suspend fun dropListHold(hostId: String)
-
     @Query("DELETE FROM record_pages WHERE hostId = :hostId")
     protected abstract suspend fun dropHostPages(hostId: String)
 
@@ -183,7 +122,6 @@ abstract class CacheDao {
     @Transaction
     open suspend fun forgetHost(hostId: String) {
         dropSessions(hostId)
-        dropListHold(hostId)
         dropHostPages(hostId)
         dropHostAnchors(hostId)
     }

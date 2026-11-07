@@ -21,10 +21,6 @@ call: string | null,
  */
 what: string | null, 
 /**
- * 何时起等（那台 pidfile 的 `statusUpdatedAt`，epoch ms）；没有 ⇒ `null`。
- */
-sinceMs: number | null, 
-/**
  * 写好的字（等批准 · 等回答 · 需手动），出口照抄。
  */
 text: Words, 
@@ -50,10 +46,6 @@ rank: number,
  * 起点比那一刻还晚（那台的钟往回拨过）⇒ 0。没有起点 ⇒ `null`。会走的钟：各出口从收到那一刻起按本机钟接着加（时长读口对同一份金样）。
  */
 waitedMs: number | null, 
-/**
- * `waitedMs` 写好的字（短时长那一处 `copy_core::short_duration`，与过程行步骤耗时同一种写法）；没有起点 ⇒ `null`。
- */
-waitedText: Words | null, 
 /**
  * 这一条可以怎么答（挂着的待答请求，`control::asks`）：选项的字 · 语气 · 要不要附话都写好；没有挂着的 ⇒ `null`（只能去终端）。
  */

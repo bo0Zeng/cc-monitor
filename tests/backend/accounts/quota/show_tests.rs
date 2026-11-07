@@ -40,7 +40,6 @@ fn facts(kind: Kind) -> Facts {
     Facts {
         kind,
         login: LoginState::Ok,
-        sub_id: None,
     }
 }
 
@@ -188,22 +187,6 @@ fn full_is_a_window_at_a_hundred_not_a_refusal() {
             .is_none(),
         "没用满 ⇒ 缺"
     );
-}
-
-/// ★ 同一订阅：同一身份 ⇒ 同一标识，不同身份 ⇒ 不同；标识里零处出现原值。
-#[test]
-fn the_subscription_id_is_stable_and_never_the_identity_itself() {
-    let a = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
-    let b = "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb";
-    assert_eq!(sub_id_of(a), sub_id_of(a));
-    assert_ne!(sub_id_of(a), sub_id_of(b));
-    for id in [a, b] {
-        let got = sub_id_of(id);
-        assert_eq!(got.len(), 24);
-        for part in id.split('-') {
-            assert!(!got.contains(part), "{got} 含 {part}");
-        }
-    }
 }
 
 /// ★ 一格的字与语气只住 `slot_words`：卡人的那一格按显示态换字；用满不管是不是卡人的那一格都 `✕`。

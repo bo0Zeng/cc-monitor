@@ -1,8 +1,8 @@
 //! Claude 的目录布局：配置根怎么解析、根下面有哪两个子目录。
 
 use crate::platform::fs::Ro;
+use cap_core::{Cap, Over};
 use copy_core::copy_text;
-use relay_route_core::{Cap, Over};
 use std::path::{Path, PathBuf};
 
 /// 覆盖配置根的环境变量名。**账号隔离（后端 `accounts/manage/` 建的账号库）就是靠切它**，

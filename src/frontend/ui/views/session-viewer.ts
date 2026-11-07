@@ -3,7 +3,6 @@
  * 与 `TabManager` 无关：不建 Tab、不碰实时流；关掉即释放。
  */
 
-import { speakerNameOf } from "../agent-profile";
 import type { Machine } from "../ipc/origin";
 import { MessageStream } from "../stream";
 import {
@@ -128,8 +127,6 @@ export interface ViewerOptions {
   scrollToTool?: string;
   /** 哪台机器的会话（本机 ＝ `LOCAL`）。必填：「没说」不许当成本机。 */
   origin: Machine;
-  /** 这个会话是哪一家（历史清单那一行的 `agent`，后端给的）：卡头那一家的名字按它取。 */
-  agent?: string | null;
   /** 会话工作目录（历史条目的 projectPath）：分叉出新会话时作起始目录；缺了要多问一次。 */
   cwd?: string;
   /** 不挂「从这一轮分叉」：子 agent 的记录不是可分叉的会话。 */
@@ -383,7 +380,6 @@ export class SessionViewer {
     // 批量重放：卡惰建（`lazy`），代码高亮等那一块进了视口才按段问后端（`prose-hl`）
     const ctx: RenderContext = {
       parentPath: opts.jsonlPath,
-      speaker: speakerNameOf(opts.agent ?? null),
       toolUseNames: new Map(),
       toolUseElements: new Map(),
       pendingToolResults: new Map(),

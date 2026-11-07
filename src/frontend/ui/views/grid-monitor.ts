@@ -1,7 +1,7 @@
 /**
  * 多 agent 并排监控：跨机器只读状态板，全屏 overlay（与 HistoryView 同一种 body 级 fixed overlay）。
  *
- * 只读：零写、零落盘（INVARIANTS §1）。一会话一格（本机 ＋ 所有远端）；每格红绿灯 / 标题 / cwd /
+ * 只读：零写、零落盘（INVARIANTS §1）。一会话一格（本机 ＋ 所有远端）；每格红绿灯 / 标题 / 目录 /
  * 运行中子 agent 数 / context% / 未读 / ⚙bg。点一格 = 选中高亮 ＋ 底部 peek 详情（板不关，连续看）；跳转在 peek 里的按钮上。
  * 版面（分组 · 组序 · 组头 · 组内先后 · 顶上那一句 · 没答的那台）照本机后端合好的那份 `MonitorBoard` 摆：开板问一次，
  * 之后宿主转来「标签页增减 · 脸变 · 运行表变 · 那台接上」才再问（`poke` 合批）。格子里的点 · 字 · 徽标照
@@ -46,7 +46,7 @@ function peekSignature(selected: GridSessionSnapshot | null, peek: SessionPeek |
     selected.sessionId,
     selected.title,
     selected.origin,
-    selected.cwd,
+    selected.cwdShown,
     selected.face.name,
     selected.needs,
     peek?.model ?? null,
@@ -425,7 +425,7 @@ export class GridMonitorView {
     head.append(jump, closeBtn);
     this.peekEl.appendChild(head);
 
-    // 事实行：cwd 全路径 / 活动态 / model。
+    // 事实行：目录（那台写好的显示形）/ 活动态 / model。
     // 不显 ctx% / 未读：选中那一格的徽标上就有，peek 里那份会因签名排除它俩而滞后、与徽标对不上。
     const facts = document.createElement("div");
     facts.className = "grid-monitor-peek-facts";
@@ -441,7 +441,7 @@ export class GridMonitorView {
       row.append(k, v);
       facts.appendChild(row);
     };
-    if (selected.cwd) addFact(copyText("gridMonitor.fact.dir"), selected.cwd);
+    if (selected.cwdShown) addFact(copyText("gridMonitor.fact.dir"), selected.cwdShown);
     const doing = selected.face.name;
     addFact(copyText("backend.column.status"), selected.needs ? copyText("gridMonitor.renderPeek.statusWaiting", { activityStatus: doing, needs: selected.needs }) : doing);
     if (peek?.model) addFact(copyText("session.model.title"), peek.model);
@@ -537,15 +537,15 @@ export class GridMonitorView {
     if (refs.dot.dataset.state !== dot || refs.dot.title !== label) setDot(refs.dot, dot, label);
     if (refs.name.textContent !== s.title) refs.name.textContent = s.title;
 
-    // cwd（暗）：有才在 DOM 里，位置恒在头行之后。
-    if (s.cwd) {
+    // 目录（暗，那台写好的显示形）：有才在 DOM 里，位置恒在头行之后。
+    if (s.cwdShown) {
       if (!refs.cwd) {
         refs.cwd = document.createElement("div");
         refs.cwd.className = "grid-monitor-cell-cwd one-line";
         cell.insertBefore(refs.cwd, cell.children[1] ?? null);
       }
-      if (refs.cwd.textContent !== s.cwd) {
-        refs.cwd.textContent = s.cwd;
+      if (refs.cwd.textContent !== s.cwdShown) {
+        refs.cwd.textContent = s.cwdShown;
       }
     } else if (refs.cwd) {
       refs.cwd.remove();

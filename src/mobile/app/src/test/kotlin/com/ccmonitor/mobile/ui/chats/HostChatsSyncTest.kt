@@ -3,7 +3,8 @@ package com.ccmonitor.mobile.ui.chats
 import com.ccmonitor.mobile.cache.ListCache
 import com.ccmonitor.mobile.core.claude.link.ListAsk
 import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.claude.link.wire.SyncHand
+import com.ccmonitor.mobile.core.claude.link.wire.RawPatch
+import com.ccmonitor.mobile.core.claude.link.wire.rawPatch
 import com.ccmonitor.mobile.core.wire.gen.LOCAL
 import com.ccmonitor.mobile.link.Fetched
 import com.ccmonitor.mobile.ui.Faces
@@ -18,10 +19,11 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 没筛选那一问带着手上那一份的记号问、照答换了存回（那台只给变了的那几行）；带筛选的不带记号、不存。
+ * 没筛选那一问带着手上那一份的记号问、答交核心换（那台只给变了的那几行）；带筛选的不带记号、不交核心。
  * 缓存里有上次那一份 ⇒ 开屏先画它、头一问就带它的记号。
  */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -65,6 +67,15 @@ class HostChatsSyncTest {
 
     private val head = mapOf("total" to 2L, "info" to mapOf("groups" to emptyList<Any>(), "notice" to null))
 
+    private fun data(
+        held: String,
+        whole: Boolean = false,
+        same: Boolean = false,
+        order: List<String>? = null,
+        up: Map<String, Any?> = emptyMap(),
+        head: Map<String, Any?>? = null,
+    ) = mapOf("held" to held, "whole" to whole, "same" to same, "order" to order, "up" to up, "head" to head)
+
     private fun patch(
         held: String,
         whole: Boolean = false,
@@ -72,19 +83,26 @@ class HostChatsSyncTest {
         order: List<String>? = null,
         up: Map<String, Any?> = emptyMap(),
         head: Map<String, Any?>? = null,
-    ) = Reply.Ok(mapOf("held" to held, "whole" to whole, "same" to same, "order" to order, "up" to up, "head" to head))
+    ) = Reply.Ok(data(held, whole, same, order, up, head))
 
-    /** 存在内存里的那一份（存了几回也记着）。 */
+    /** 核心交回的整份那一形（换法在核心里，这里照剧本给）。 */
+    private fun whole(
+        held: String,
+        vararg rows: Pair<String, String>,
+    ): RawPatch = rawPatch(data(held, whole = true, order = rows.map { it.first }, up = rows.associate { (k, l) -> k to row(k, l) }, head = head))!!
+
+    /** 替核心那一份：手上那一份 [held]；交来的答记下，换好的那一份照 [next] 给（`null` ⇒ 读不动）。 */
     private class Kept(
-        var hand: SyncHand = SyncHand(),
+        var held: RawPatch? = null,
     ) : ListCache {
-        var keeps = 0
+        val got = mutableListOf<Any?>()
+        var next: RawPatch? = null
 
-        override suspend fun hand(): SyncHand = hand
+        override suspend fun held(): RawPatch? = held
 
-        override suspend fun keep(hand: SyncHand) {
-            this.hand = hand
-            keeps++
+        override suspend fun keep(reply: Any?): RawPatch? {
+            got += reply
+            return next?.also { held = it }
         }
     }
 
@@ -97,44 +115,47 @@ class HostChatsSyncTest {
     private fun HostChats.labels() = ((state.value.list as? Fetched.Got)?.value?.rows ?: state.value.cached?.rows).orEmpty().map { it.label }
 
     @Test
-    fun `头一问整份；再问带着记号，没变 ⇒ 不动；只给一行 ⇒ 只换那一行`() =
+    fun `没筛选那一问带着手上那一份的记号问、答原样交核心、画核心换好的整份；带筛选的不带记号、不交核心`() =
         runTest {
             val link = FakeCoreLink()
             val cache = Kept()
             var next: Reply = patch("e.1.1", whole = true, order = listOf("a", "b"), up = mapOf("a" to row("a"), "b" to row("b")), head = head)
             link.answer = { _, _ -> next }
+            cache.next = whole("e.1.1", "a" to "a", "b" to "b")
             val c = chats(link, cache)
             runCurrent()
             assertEquals(listOf("a", "b"), c.labels())
             assertEquals(listOf<Map<String, Any?>?>(mapOf("origin" to LOCAL)), link.calls("history-list"))
-            next = patch("e.1.1", same = true)
+            next = patch("e.1.2", up = mapOf("b" to row("b", "b 改了名")))
+            cache.next = whole("e.1.2", "a" to "a", "b" to "b 改了名")
             c.fetch()
             runCurrent()
             assertEquals(mapOf("origin" to LOCAL, "held" to "e.1.1"), link.calls("history-list").last())
-            assertEquals(listOf("a", "b"), c.labels())
-            next = patch("e.1.2", up = mapOf("b" to row("b", "b 改了名")))
+            assertEquals("那台的答原样交核心", (next as Reply.Ok).data, cache.got.last())
+            assertEquals(listOf("a", "b 改了名"), c.labels())
+            // 核心读不动那一答 ⇒ 说读不出，手上那一份不动、下一问照旧带它的记号。
+            next = patch("e.1.3", same = true)
+            cache.next = null
             c.fetch()
             runCurrent()
-            assertEquals(listOf("a", "b 改了名"), c.labels())
-            assertEquals("e.1.2", cache.hand.held)
-            assertEquals(listOf("a", "b"), cache.hand.order)
-            assertEquals(3, cache.keeps)
-            // 带筛选那一问：不带记号、答的整份不进缓存。
+            assertTrue(c.state.value.list is Fetched.Failed)
+            assertEquals("e.1.2", cache.held?.held)
+            assertEquals(3, cache.got.size)
+            // 带筛选那一问：不带记号、答的整份不交核心。
             next = patch("e.2.1", whole = true, order = listOf("a"), up = mapOf("a" to row("a")), head = head)
             c.ask(ListAsk(query = "a"))
             runCurrent()
             assertEquals(mapOf("origin" to LOCAL, "query" to "a"), link.calls("history-list").last())
-            assertEquals(3, cache.keeps)
-            assertEquals("e.1.2", cache.hand.held)
+            assertEquals(3, cache.got.size)
+            assertEquals(listOf("a"), c.labels())
         }
 
     @Test
     fun `缓存里有上次那一份 ⇒ 开屏先画它，头一问就带它的记号`() =
         runTest {
             val link = FakeCoreLink()
-            val had = SyncHand("e.9.4", listOf("a"), mapOf("a" to row("a", "上次的 a")), null)
             link.answer = { _, _ -> Reply.LinkDown }
-            val c = chats(link, Kept(had))
+            val c = chats(link, Kept(whole("e.9.4", "a" to "上次的 a")))
             runCurrent()
             assertEquals(listOf("上次的 a"), c.labels())
             assertEquals(mapOf("origin" to LOCAL, "held" to "e.9.4"), link.calls("history-list").single())

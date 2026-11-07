@@ -16,9 +16,9 @@ use std::sync::Arc;
 const SNAPSHOT_CONCURRENCY: usize = 2;
 /// 单会话快照体量上限（防御：远端超巨文件不无界拉取；超限截断 warn——
 /// 历史浏览器按需查询不受此限）。
-const SNAPSHOT_MAX_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+const SNAPSHOT_MAX_BYTES: cap_core::Cap = cap_core::Cap {
     bytes: 512 * 1024 * 1024,
-    over: relay_route_core::Over::TruncateAndSay,
+    over: cap_core::Over::TruncateAndSay,
 };
 const SNAPSHOT_CHUNK_LINES: usize = 500;
 /// 快照只取最后这么多个可计行：**就是壳留存每会话留的那么多**（`event_replay::REPLAY_TAIL_KEEP`，一处口径）。

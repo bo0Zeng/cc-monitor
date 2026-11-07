@@ -12,7 +12,6 @@ import com.ccmonitor.mobile.core.claude.link.TerminalEnd
 import com.ccmonitor.mobile.core.claude.link.TerminalPreview
 import com.ccmonitor.mobile.core.claude.link.TerminalsList
 import com.ccmonitor.mobile.core.copy.copyText
-import com.ccmonitor.mobile.core.data.repo.MovedLaunch
 import com.ccmonitor.mobile.core.ui.feedback.Notice
 import com.ccmonitor.mobile.core.wire.gen.AgentFacts
 import com.ccmonitor.mobile.core.wire.gen.AgentPick
@@ -118,16 +117,6 @@ class TerminalOps(
 
     /** 这台能用的别名（那台的 `profiles-read`，名字与顺序照那台）：终端屏「用哪个启动」那一排。 */
     suspend fun aliases(): Result<List<Profiles.Alias>> = ask(Profiles.READ, emptyMap(), Profiles::of).map { it.usable }
-
-    /**
-     * 在这台建一段别名（别名页同一条写命令 `profiles-write`，指纹取刚读回的那一份）。建好 ⇒ 那台要说的「已开的终端要重读」那一句
-     * （没有 ⇒ `null`）；被拒 ⇒ 失败（那台写好的那一句）。
-     */
-    suspend fun makeAlias(m: MovedLaunch): Result<String?> =
-        ask(Profiles.FROM_LINE, Profiles.fromLineArgs(m.label.trim(), m.command.orEmpty(), m.workingDir, m.tmuxSession), Profiles::formOf).mapCatching { form ->
-            val book = ask(Profiles.READ, emptyMap(), Profiles::of).getOrThrow()
-            ask(Profiles.WRITE, Profiles.createArgs(book.rev, form), Profiles::written).getOrThrow().reload
-        }
 
     private suspend fun <T> ask(
         command: String,

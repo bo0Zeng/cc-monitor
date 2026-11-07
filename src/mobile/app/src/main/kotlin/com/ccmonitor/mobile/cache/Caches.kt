@@ -1,6 +1,7 @@
 package com.ccmonitor.mobile.cache
 
-import com.ccmonitor.mobile.core.claude.link.wire.SyncHand
+import com.ccmonitor.mobile.core.claude.link.wire.RawPatch
+import com.ccmonitor.mobile.core.claude.link.wire.rawPatch
 
 /*
  * 手机本地缓存，聊天屏与会话列表那两侧看到的样子。装的都是那台核心交来的成品原样（`rows[]` 一格一格），读回来交给与线上同一个解码器；
@@ -89,12 +90,10 @@ interface ChatCache {
 
     suspend fun draft(sid: String): String?
 
-    /** 存草稿（[text] 空 ⇒ 删）；新建会话那一张多带目录与账号。 */
+    /** 存草稿（[text] 空 ⇒ 删）。 */
     suspend fun saveDraft(
         sid: String,
         text: String,
-        cwd: String?,
-        account: String?,
     )
 
     /** 不落盘（测试 · 预览）。 */
@@ -145,26 +144,25 @@ interface ChatCache {
         override suspend fun saveDraft(
             sid: String,
             text: String,
-            cwd: String?,
-            account: String?,
         ) = Unit
     }
 }
 
 /**
- * 一台机器的会话列表缓存：`history-list` 不带筛选那一问手上那一份（记号 · 先后 · 各行原样 · 头），离线照它画、下次带着记号问。
- * 照那台的一答换（[SyncHand.apply]）在调用方，这里只整份存取。列表本身不淘汰。
+ * 一台机器的会话列表副本：`history-list` 不带筛选那一问手上那一份，离线照它画、下次带着它的记号问。
+ * 照那台的答换、存盘都在嵌的核心里（`Core.listing*`）；这里只交答、拿整份那一形。列表本身不淘汰。
  */
 interface ListCache {
-    /** 手上那一份；没存过 ⇒ 空的那一份（不带记号问 ⇒ 那台答整份）。 */
-    suspend fun hand(): SyncHand
+    /** 手上那一份（整份那一形，记号在 `held`）；没问过 ⇒ `null`（不带记号问 ⇒ 那台答整份）。 */
+    suspend fun held(): RawPatch?
 
-    /** 换好的那一份整份换上：行 · 先后 · 记号 · 头同一个事务。 */
-    suspend fun keep(hand: SyncHand)
+    /** 那台那一问的回包交核心换上 ⇒ 换好的整份；读不动 ⇒ `null`，手上那一份不动。 */
+    suspend fun keep(reply: Any?): RawPatch?
 
+    /** 不留副本（测试 · 预览）：那台答的整份原样交回。 */
     object None : ListCache {
-        override suspend fun hand(): SyncHand = SyncHand()
+        override suspend fun held(): RawPatch? = null
 
-        override suspend fun keep(hand: SyncHand) = Unit
+        override suspend fun keep(reply: Any?): RawPatch? = rawPatch(reply)?.takeIf { it.whole }
     }
 }

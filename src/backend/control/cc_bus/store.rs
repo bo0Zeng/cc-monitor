@@ -139,13 +139,13 @@ fn put_state(
     STATE.write(own, dir, held, s).map_err(|e| io(e.said))
 }
 
-/// 投一封：锁里判规矩，收 ⇒ 收件人的收件箱加一行、记账；规矩说要敲 ⇒ 放锁之后敲门（[`super::knock`]），回敲进去了没有。
+/// 投一封：锁里判规矩，收 ⇒ 收件人的收件箱加一行、记账；规矩说要敲 ⇒ 放锁之后敲门（[`super::knock`]），敲不进去信照收。
 /// 拒 ⇒ 码 ＋ 原话，一个字节不写。
 pub(crate) fn deliver(
     own: &crate::platform::Own,
     env: &BusEnvelope,
     now_ms: i64,
-) -> Result<bool, Said> {
+) -> Result<(), Said> {
     let (dir, held) = locked(own)?;
     let mut s = state(dir.as_path()).map_err(io)?;
     let knock = super::rules::admit(&mut s.ledger, env, now_ms)?;
@@ -163,7 +163,10 @@ pub(crate) fn deliver(
         .map_err(|e| io(e.said))?;
     put_state(own, &dir, &held, &s)?;
     drop(held);
-    Ok(knock && super::knock(own, env, now_ms))
+    if knock {
+        super::knock(own, env, now_ms);
+    }
+    Ok(())
 }
 
 /// 拆令牌：`<from>.<to>.<16 位十六进制>`，`to` 至少是 1。

@@ -23,9 +23,9 @@
 
 use crate::common::said::Said;
 use crate::platform::fs::{Face, Perms, Resolved, Ro};
+use cap_core::{Cap, Over};
 use cmd_wire::files as wire;
 use copy_core::{copy_text, io_reason, Discard, Why};
-use relay_route_core::{Cap, Over};
 use std::path::{Component, Path, PathBuf};
 
 /// 读改写那几处整读一份用户文件的上限：要比的那一份有多长就读多长 —— 更长的就不是那一份，

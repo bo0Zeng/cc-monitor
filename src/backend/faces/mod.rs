@@ -44,6 +44,7 @@ pub mod bookmarks_face; // 书签那两条（typed）：bookmarks-read · bookma
 pub mod bus_list_face; // 帧面 `bus-list`（typed）：名单问 cc-bus，叫它什么 · 在不在问观测层那一处
 pub mod catalog_face; // 资产目录那一族四条（typed）：assets-catalog · assets-catalog-merge · ext-note-set · ext-list-here
 pub mod cells_catalog; // 格目录：每件成品有哪些格（从成品的 Rust 类型序列化出来，不手写第二份；`view` 投影按它认成品名与路径）
+pub mod diagnostics_face; // 帧面 `diagnostics-report`（typed）：日志页「复制诊断信息」整段成品（壳只交它自己的三样事实）
 pub mod ext_hub_face; // 两台之间「装」那一件的枢纽那一对（typed）：ext-hub-preview · ext-hub-apply
 pub mod ext_list_face; // 设置「扩展」页那几条（typed）：ext-list · ext-uninstall-preview / -apply
 pub mod feature_face; // 功能侧只读查询的帧面宿主（tasks-list …）—— 薄壳，本体在 observe/，与 read_face 分家的理由在它头注
@@ -84,7 +85,6 @@ pub mod session_open_face; // 帧面 `session-open` · `-facts` · `-dir`：起�
 pub mod session_queue_deliver; // 会话输入队的投递：主人这台一条线程，到「能送」才送一条（送字本体在 session_send.rs）
 pub mod session_queue_face; // 会话输入队那三条（typed）：session-queue-put（往会话说一句的唯一入口）· -cancel · -read，本体在 history/session_queue.rs
 pub(crate) mod session_queue_hop; // 会话输入队那三条的跨台那一跳：会话不在这台 ⇒ 交给那台的常驻，够不到 ⇒ offline
-pub mod session_restart_face;
 pub mod session_rewind_face; // 编辑已发的一句、发送那一下的选项（session-rewind-options）：照那一家申报的交出，会话不在这台 ⇒ 交给那台
 pub(crate) mod session_send; // 往一条会话送进一句的本体（在等人不送 · 只剩 shell 不送 · 终端没了恢复再交 · 附件照那一家拼）；只由投递调
 pub mod session_set_face; // 帧面 `set-plan` · `set-launch`：补足一组会话要的这台事实与手（配置文件 · 活会话表 · 启动台账的别名 · 起会话 · 组注解）；判定住 control/session_set.rs

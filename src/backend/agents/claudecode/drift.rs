@@ -14,7 +14,6 @@
 //! 计数是每条记录一次（解析热路径）；要看的是键的集合，不是数字。
 
 use crate::agents::drift::{DriftEntry, DriftFaceReport};
-use copy_core::copy_text;
 use std::collections::BTreeMap;
 use std::sync::Mutex;
 
@@ -52,28 +51,6 @@ impl DriftFace {
             DriftFace::UnknownMcpList => "unknown_mcp_list",
         }
     }
-
-    /// 给人看的一句话：**这个面看不懂东西时会发生什么**。诊断面直接显示它。
-    pub(crate) fn consequence(self) -> String {
-        match self {
-            DriftFace::UnknownRecordType => {
-                copy_text("rsDriftLedger.consequence.unknownRecord", &[])
-            }
-            DriftFace::KnownTypeParseFailed => {
-                copy_text("rsDriftLedger.consequence.knownTypeParse", &[])
-            }
-            DriftFace::UnknownSessionKind => {
-                copy_text("rsDriftLedger.consequence.unknownSessionKind", &[])
-            }
-            DriftFace::UnknownSessionStatus => {
-                copy_text("rsDriftLedger.consequence.unknownSessionStatus", &[])
-            }
-            DriftFace::UnknownWaitingFor => {
-                copy_text("rsDriftLedger.consequence.unknownWaitingFor", &[])
-            }
-            DriftFace::UnknownMcpList => copy_text("rsDriftLedger.consequence.unknownMcpList", &[]),
-        }
-    }
 }
 
 /// 这台机器的账：面 → 键 → 记账。
@@ -89,26 +66,16 @@ fn lock() -> std::sync::MutexGuard<'static, Ledger> {
     ledger().lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// 按字符边界把样例截到 [`EXCERPT_BYTES`](cmd_wire::record::EXCERPT_BYTES) 以内（与记录里认不出那一条的摘录同一个截断：[`crate::agents::record::excerpt_of`]），截了 ⇒ 末尾一个 `…`。
-fn truncate_sample(s: &str) -> String {
-    let cut = crate::agents::record::excerpt_of(s);
-    if cut.len() == s.len() {
-        cut
-    } else {
-        format!("{cut}…")
-    }
-}
-
 /// 记一次。**这是本模块唯一的写入口。**
 ///
 /// `key` 为空时用 `"<empty>"`（空串当键会让诊断面显示成空行，看不出是哪一类）。
-pub(crate) fn record(face: DriftFace, key: &str, sample: Option<&str>) {
-    record_into(&mut lock(), face, key, sample);
+pub(crate) fn record(face: DriftFace, key: &str) {
+    record_into(&mut lock(), face, key);
 }
 
 /// [`record`] 的纯形式：显式传账本。账本是进程内全局的，任何跑过 `parse_line` 的测试都会往里写 ⇒ 「reset + 断言整表形状」必然 flaky。
 /// 单测一律在局部账本上跑；只有接缝测试碰全局，而它写成容忍污染的形状（断言「我那条在」，不断言「表里只有我那条」）。
-fn record_into(led: &mut Ledger, face: DriftFace, key: &str, sample: Option<&str>) {
+fn record_into(led: &mut Ledger, face: DriftFace, key: &str) {
     let key = if key.is_empty() { "<empty>" } else { key };
     let per_face = led.entry(face).or_default();
     // 有界：键数触顶且是新键 ⇒ 并进 `<overflow>`。
@@ -122,14 +89,8 @@ fn record_into(led: &mut Ledger, face: DriftFace, key: &str, sample: Option<&str
         .or_insert_with(|| DriftEntry {
             key: effective.to_string(),
             count: 0,
-            first_sample: None,
         });
     e.count += 1;
-    if e.first_sample.is_none() {
-        if let Some(s) = sample {
-            e.first_sample = Some(truncate_sample(s));
-        }
-    }
 }
 
 /// 只读快照（也是诊断面的读口：帧命令 `drift-report` 经注册表 `RecordFace.drift` 够到它）。按需调用，不轮询。
@@ -146,8 +107,6 @@ fn snapshot_of(led: &Ledger) -> Vec<DriftFaceReport> {
         entries.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.key.cmp(&b.key)));
         out.push(DriftFaceReport {
             face: face.word().to_string(),
-            consequence: face.consequence(),
-            overflowed: per_face.contains_key(OVERFLOW_KEY),
             entries,
         });
     }

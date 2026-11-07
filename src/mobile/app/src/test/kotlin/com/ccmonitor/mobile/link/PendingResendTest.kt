@@ -40,7 +40,7 @@ class PendingResendTest {
         override fun attachments(id: String) = if (id == "p2") listOf("att-1") else emptyList()
     }
 
-    private val receipt = Reply.Ok(mapOf("outcome" to "queued", "seq" to 1L, "place" to 1L, "said" to "q-1"))
+    private val receipt = Reply.Ok(mapOf("outcome" to "queued", "seq" to 1L, "said" to "q-1"))
 
     @Test
     fun `两条会话各有一条待发、哪条都没打开、那台接上 ⇒ 两条都照原编号重交、回执记回去`() =

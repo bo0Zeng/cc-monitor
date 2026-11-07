@@ -53,9 +53,9 @@ where
 
 /// [`scan_dir_jsons`] 读一份的上限：扫的是握手表（`ps-registry/<进程号>.json`，几格整数与一个窗口记号，实测两三百字节）。
 /// 超了那一份跳过、日志说是哪一份（那个 shell 下一次登记时重写）。
-const SCAN_ENTRY_CAP: relay_route_core::Cap = relay_route_core::Cap {
+const SCAN_ENTRY_CAP: cap_core::Cap = cap_core::Cap {
     bytes: 16 * 1024,
-    over: relay_route_core::Over::SkipAndSay,
+    over: cap_core::Over::SkipAndSay,
 };
 
 #[cfg(test)]

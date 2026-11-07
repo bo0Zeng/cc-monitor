@@ -22,7 +22,7 @@ launchTab?: LaunchTab,
 /**
  * 主会话（那台的会话血缘）；没有 ⇒ 缺。
  */
-parent?: string, forkedFromSessionId?: string, forkedFromMessageUuid?: string, 
+parent?: string, forkedFromSessionId?: string, 
 /**
  * 读它那一组用的键（记录目录名 · 合成历史 `<kind>:<cwd>`）。
  */

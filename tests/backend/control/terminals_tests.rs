@@ -46,8 +46,8 @@ fn list_reply(
     val(super::list_reply(rows, clients, complete, who))
 }
 
-fn preview_reply(view: &View, color: bool, capped: bool, at: u64, text: &str) -> Value {
-    val(super::preview_reply(view, color, capped, at, text))
+fn preview_reply(view: &View, color: bool, capped: bool, text: &str) -> Value {
+    val(super::preview_reply(view, color, capped, text))
 }
 
 fn refused_of(why: &str) -> Refused {
@@ -397,13 +397,7 @@ fn the_products_match_the_golden() {
         cursor_y: geo["y"].as_u64().unwrap() as u32,
         cursor_visible: geo["visible"].as_bool().unwrap(),
     };
-    let got = preview_reply(
-        &view,
-        true,
-        false,
-        p["captured_at"].as_u64().unwrap(),
-        p["captured_at_text"].as_str().unwrap(),
-    );
+    let got = preview_reply(&view, true, false, p["captured_at_text"].as_str().unwrap());
     assert_eq!(
         got,
         p["reply"],
@@ -1172,10 +1166,10 @@ fn hosted_input_turns_into_the_bytes_a_terminal_would_send() {
 }
 
 /// ★ 投递那一句进托管终端（真起托管进程，假子进程 `sh`，沙箱数据目录）：输入在一个真终端手里、后端一下没持有 ⇒
-/// 照送到、子进程读到那一句，持有者还是那个真终端；那个真终端敲了半句没回车 ⇒ 回 `waiting`（投递照排着），
-/// 伪终端一个字节没多：它回车之后子进程读到的只是它自己那半句。
+/// 照送到、子进程读到那一句，持有者还是那个真终端；那个真终端敲了半句没回车 ⇒ 照送到（托管进程不看输入行），
+/// 子进程读到的是那半句接上这一句。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_queued_line_reaches_a_hosted_terminal_held_elsewhere_but_waits_out_a_half_typed_line() {
+async fn a_queued_line_reaches_a_hosted_terminal_held_elsewhere_even_with_a_half_typed_line() {
     use crate::host::managed::run::test_support::{
         hello, read_until_out, sandbox_own, spec, start,
     };
@@ -1210,23 +1204,8 @@ async fn a_queued_line_reaches_a_hosted_terminal_held_elsewhere_but_waits_out_a_
         .expect("送字");
     read_until_out(&mut t, "ab").await;
     let sent = say("zz").await.expect("没崩");
-    assert_eq!(
-        (sent.result, sent.why),
-        (SentResult::Refused, Some(Refused::Waiting)),
-        "半句在 ⇒ 等"
-    );
-    write_frame(&mut t, &Frame::In(b"\r".to_vec()))
-        .await
-        .expect("回车");
-    let seen = read_until_out(&mut t, "got2:ab:").await;
-    let text: String = seen
-        .iter()
-        .filter_map(|f| match f {
-            Frame::Out(b) => Some(String::from_utf8_lossy(b).into_owned()),
-            _ => None,
-        })
-        .collect();
-    assert!(!text.contains("zz"), "那一句一个字节没进：{text:?}");
+    assert_eq!(sent.result, SentResult::Delivered, "半句在也照送：{sent:?}");
+    read_until_out(&mut t, "got2:abzz:").await;
     write_frame(&mut t, &Frame::In(b"\r".to_vec()))
         .await
         .expect("收尾");

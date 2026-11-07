@@ -20,10 +20,10 @@
 
 use super::*;
 
-/// 判据照线上那一份喂（JSON 入参），经 typed 那一处收成类型（同生产），回包回成 `Value` 好按键看；盖住 `super::*` 里的同名口。
+/// 判据照线上那一份喂（JSON 入参），经 typed 那一处收成类型（同生产），读回的掩码收成 `{masked}` 好按键看；盖住 `super::*` 里的同名口。
 fn answer_set_at(own: &Own, args: &Value) -> FileFaceAnswer {
     let req: KeySetReq = crate::wire::typed::take(args)?;
-    super::answer_set_at(own, &req).map(|v| serde_json::to_value(v).unwrap())
+    super::answer_set_at(own, &req).map(|v| serde_json::json!({ "masked": v.masked }))
 }
 
 /// 那份文件在临时「家目录」下的位置（与生产同一个落点：`<家>/.cc-monitor/<FILE_NAME>`，期望手写）。
@@ -689,64 +689,23 @@ fn an_unreadable_table_hands_its_raw_to_the_detail_not_the_sentence() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
-/// 回包两端零读者的格（推出来的账号 id · 文件路径 · 端点）不上线：界面写完只重读那台，后端建号那一路只取掩码。
-/// 判据照 `typed_tests::cells_no_reader_reads_are_off_the_wire` 那一意思，按真回包的键判（带端点写一次：端点那一格若还在线上就有值）。
+/// 进程内那一份（后端建号那一路读它；帧面 `apikey-key-set` 只回空回执）：带端点 · 只配 key —— 读回的都是盘上那一行的掩码。
 #[test]
-fn key_set_cells_no_one_reads_are_off_the_wire() {
-    let home = test_home::scratch("off-wire");
-    let got = answer_set_at(
-        &crate::platform::fs::Own::issue_data_at(&home),
+fn the_key_set_answers_the_mask_read_back_from_disk() {
+    let home = test_home::scratch("bytes");
+    let own = crate::platform::fs::Own::issue_data_at(&home);
+    let a = answer_set_at(
+        &own,
         &json!({"configDir": "/h/accts/work", "key": PLAIN, "baseUrl": "https://api.example.com"}),
     )
     .expect("写");
-    let keys: Vec<&str> = got
-        .as_object()
-        .expect("回包是一个对象")
-        .keys()
-        .map(String::as_str)
-        .collect();
+    let b = answer_set_at(&own, &json!({"configDir": "/h/accts/work", "key": PLAIN})).expect("写");
     assert_eq!(
-        keys,
-        ["masked"],
-        "回包只许剩掩码（后端建号那一路读它）；账号 id · 路径 · 端点两端零读者"
-    );
-    let _ = std::fs::remove_dir_all(&home);
-}
-
-/// 换成 typed 之前钉的线上字节（回包过一遍 `Value` ＝ 帧里那一份写法，临时目录换成 `<root>`）：带端点 · 只配 key —— 回包都只剩掩码。
-#[test]
-fn the_key_set_reply_keeps_its_wire_bytes() {
-    let home = test_home::scratch("bytes");
-    let own = crate::platform::fs::Own::issue_data_at(&home);
-    let bytes = |v: &dyn Fn() -> serde_json::Value| {
-        serde_json::to_string(&v())
-            .unwrap()
-            .replace(&home.display().to_string(), "<root>")
-    };
-    let a = bytes(&|| {
-        serde_json::to_value(
-            answer_set_at(
-                &own,
-                &json!({"configDir": "/h/accts/work", "key": PLAIN, "baseUrl": "https://api.example.com"}),
-            )
-            .expect("写"),
-        )
-        .unwrap()
-    });
-    let b = bytes(&|| {
-        serde_json::to_value(
-            answer_set_at(&own, &json!({"configDir": "/h/accts/work", "key": PLAIN})).expect("写"),
-        )
-        .unwrap()
-    });
-    let want = [
-        r##"{"masked":"••••••••-KEY"}"##,
-        r##"{"masked":"••••••••-KEY"}"##,
-    ];
-    assert_eq!(
-        [a.as_str(), b.as_str()],
-        want,
-        "线上字节变了。现打：\n{a}\n{b}"
+        [a, b],
+        [
+            json!({"masked": "••••••••-KEY"}),
+            json!({"masked": "••••••••-KEY"})
+        ]
     );
     let _ = std::fs::remove_dir_all(&home);
 }

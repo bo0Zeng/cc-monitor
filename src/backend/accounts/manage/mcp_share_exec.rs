@@ -15,9 +15,9 @@ use super::scan::{item_at, join, Unread};
 use crate::common::door::{self, Door, Refused};
 use crate::common::said::Said;
 use crate::platform::acct_view::Item;
+use cap_core::{Cap, Over};
 use cmd_wire::accounts::{AccountMcpChoice, AccountMcpConflict, AccountMcpView};
 use copy_core::copy_text;
-use relay_route_core::{Cap, Over};
 use serde_json::Value;
 use std::path::Path;
 

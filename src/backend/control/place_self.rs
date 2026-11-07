@@ -9,10 +9,10 @@
 //! 卸载同一条路（SFTP 只写暂存区）：暂存件删落点那一份（不认身份：卸载就是明确授权）、连留存区里那几份，再删自己，回一行 `{"removed":true|false}`。
 
 use crate::platform::fs::{Own, OwnPath, Ro};
+use cap_core::{Cap, Over};
 use copy_core::copy_text;
 use copy_core::said::Said;
 use copy_core::{Discard, Why};
-use relay_route_core::{Cap, Over};
 use std::path::Path;
 
 /// 复制详情「命令」那一项里的名字。

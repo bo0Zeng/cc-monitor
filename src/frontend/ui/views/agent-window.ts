@@ -17,7 +17,6 @@ import { copyText } from "../copy-table";
 import { renderMessage, type LineRecord, type RenderContext } from "../cards";
 import { markRunCard, markRunWindow } from "../cards/subagent";
 import { REVEAL_RUN_EVENT } from "../cards/speaker-bar";
-import { speakerNameOf } from "../agent-profile";
 import { followSession, type FollowEvent } from "../events";
 import { fetchList, type HistoryRow } from "../history-list-reads";
 import { isLocalOrigin, type Machine } from "../ipc/origin";
@@ -123,7 +122,6 @@ export class AgentWindow {
     this.wrap.className = s.awTimeline;
     this.ctx = {
       parentPath: "",
-      speaker: null,
       origin,
       briefFrom: null,
       toolUseNames: new Map(),
@@ -185,7 +183,6 @@ export class AgentWindow {
     }
     this.live = isLive(row.face);
     this.ctx.parentPath = row.jsonlPath;
-    this.ctx.speaker = speakerNameOf(row.agent);
     const foot = this.parts.foot.querySelector<HTMLElement>('[data-role="session"]');
     if (foot) foot.textContent = copyText("agentWindow.status.session", { session: this.sessionName() });
     this.timeline = new RunTimeline({

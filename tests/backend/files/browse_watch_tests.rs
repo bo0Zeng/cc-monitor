@@ -391,3 +391,25 @@ fn each_connection_keeps_its_own_list_and_leaving_drops_only_its_dirs() {
     set_browsing(1, &[]);
     assert_eq!(watched_count(), 0, "名单都空了还盯着");
 }
+
+/// 盯着的目录列不动了（这里：被删掉）⇒ 照旧记成空的，但要出声、带上哪个目录与原因，不悄悄当成「空目录」。
+#[test]
+fn a_dir_that_cannot_be_listed_is_said_not_silently_empty() {
+    let _lock = resident_lock();
+    let fx = make_tree("watchgone", 1, 1, 0);
+    let gone = fx.root.join("d0000");
+    let bytes = super::super::raw::path_bytes(&gone).to_vec();
+    set_browsing(1, std::slice::from_ref(&gone));
+    std::fs::remove_dir_all(&gone).unwrap();
+    let mut hit = false;
+    let lines = test_meters::heard(|| hit = on_change(&bytes));
+    set_browsing(1, &[]);
+    assert!(hit, "目录还在名单上，重列却没算它");
+    let warned: Vec<&String> = lines.iter().filter(|l| l.contains("WARN")).collect();
+    assert!(
+        warned
+            .iter()
+            .any(|l| l.contains("d0000") && l.contains("reason")),
+        "列不动的目录没出声（要一条 warn 带目录与原因）：{lines:?}"
+    );
+}

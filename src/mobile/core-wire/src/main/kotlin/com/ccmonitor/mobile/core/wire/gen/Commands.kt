@@ -48,6 +48,7 @@ object Commands {
         "machine-read" to com.ccmonitor.mobile.core.wire.gen.MachineRead.ADAPTER,
         "machine-wake" to com.ccmonitor.mobile.core.wire.gen.MachineState.ADAPTER,
         "machine-stop" to com.ccmonitor.mobile.core.wire.gen.MachineStopped.ADAPTER,
+        "diagnostics-report" to com.ccmonitor.mobile.core.wire.gen.DiagnosticsReport.ADAPTER,
         "history-read" to com.ccmonitor.mobile.core.wire.gen.HistoryRead.ADAPTER,
         "history-tail" to com.ccmonitor.mobile.core.wire.gen.HistoryTail.ADAPTER,
         "history-lines" to com.ccmonitor.mobile.core.wire.gen.HistoryLines.ADAPTER,
@@ -186,7 +187,7 @@ object Commands {
     }
 
     /** `apikey-key-set`。 */
-    object ApikeyKeySet : Command<com.ccmonitor.mobile.core.wire.gen.KeySetReq, com.ccmonitor.mobile.core.wire.gen.KeySet>("apikey-key-set", { com.ccmonitor.mobile.core.wire.gen.KeySetReq.ADAPTER }, { com.ccmonitor.mobile.core.wire.gen.KeySet.ADAPTER }) {
+    object ApikeyKeySet : Command<com.ccmonitor.mobile.core.wire.gen.KeySetReq, com.ccmonitor.mobile.core.wire.gen.Raw>("apikey-key-set", { com.ccmonitor.mobile.core.wire.gen.KeySetReq.ADAPTER }, { com.ccmonitor.mobile.core.wire.gen.RawJson }) {
         const val NAME: String = "apikey-key-set"
     }
 
@@ -310,9 +311,9 @@ object Commands {
         const val NAME: String = "deploy-uninstall"
     }
 
-    /** `drift-merge`。 */
-    object DriftMerge : Command<com.ccmonitor.mobile.core.wire.gen.NoArgs, com.ccmonitor.mobile.core.wire.gen.DriftMerge>("drift-merge", { com.ccmonitor.mobile.core.wire.gen.NoArgs.ADAPTER }, { com.ccmonitor.mobile.core.wire.gen.DriftMerge.ADAPTER }) {
-        const val NAME: String = "drift-merge"
+    /** `diagnostics-report`。 */
+    object DiagnosticsReport : Command<com.ccmonitor.mobile.core.wire.gen.DiagnosticsReportReq, com.ccmonitor.mobile.core.wire.gen.DiagnosticsReport>("diagnostics-report", { com.ccmonitor.mobile.core.wire.gen.DiagnosticsReportReq.ADAPTER }, { com.ccmonitor.mobile.core.wire.gen.DiagnosticsReport.ADAPTER }) {
+        const val NAME: String = "diagnostics-report"
     }
 
     /** `drift-report`。 */
@@ -1050,11 +1051,6 @@ object Commands {
         const val NAME: String = "session-queue-read"
     }
 
-    /** `session-restart`。 */
-    object SessionRestart : Command<com.ccmonitor.mobile.core.wire.gen.RestartReq, com.ccmonitor.mobile.core.wire.gen.Restarted>("session-restart", { com.ccmonitor.mobile.core.wire.gen.RestartReq.ADAPTER }, { com.ccmonitor.mobile.core.wire.gen.Restarted.ADAPTER }) {
-        const val NAME: String = "session-restart"
-    }
-
     /** `session-rewind-options`。 */
     object SessionRewindOptions : Command<com.ccmonitor.mobile.core.wire.gen.SessionRewindOptionsReq, com.ccmonitor.mobile.core.wire.gen.RewindOptions>("session-rewind-options", { com.ccmonitor.mobile.core.wire.gen.SessionRewindOptionsReq.ADAPTER }, { com.ccmonitor.mobile.core.wire.gen.RewindOptions.ADAPTER }) {
         const val NAME: String = "session-rewind-options"
@@ -1276,7 +1272,7 @@ object Commands {
             DataReport,
             DeployInstall,
             DeployUninstall,
-            DriftMerge,
+            DiagnosticsReport,
             DriftReport,
             ExitPolicyRead,
             ExitPolicySet,
@@ -1424,7 +1420,6 @@ object Commands {
             SessionQueueCancel,
             SessionQueuePut,
             SessionQueueRead,
-            SessionRestart,
             SessionRewindOptions,
             SessionSelf,
             SessionTerminals,
@@ -1509,7 +1504,6 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.AnswerReq::class.java to com.ccmonitor.mobile.core.wire.gen.AnswerReq.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.AnswerResult::class.java to com.ccmonitor.mobile.core.wire.gen.AnswerResult.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.Answered::class.java to com.ccmonitor.mobile.core.wire.gen.Answered.ADAPTER,
-            com.ccmonitor.mobile.core.wire.gen.Arrival::class.java to com.ccmonitor.mobile.core.wire.gen.Arrival.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.ArriveAsk::class.java to com.ccmonitor.mobile.core.wire.gen.ArriveAsk.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.ArriveBy::class.java to com.ccmonitor.mobile.core.wire.gen.ArriveBy.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.ArriveEnd::class.java to com.ccmonitor.mobile.core.wire.gen.ArriveEnd.ADAPTER,
@@ -1531,7 +1525,6 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.AttachFace::class.java to com.ccmonitor.mobile.core.wire.gen.AttachFace.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.AttachFaceCard::class.java to com.ccmonitor.mobile.core.wire.gen.AttachFaceCard.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.AttachFaceNote::class.java to com.ccmonitor.mobile.core.wire.gen.AttachFaceNote.ADAPTER,
-            com.ccmonitor.mobile.core.wire.gen.AttachFrom::class.java to com.ccmonitor.mobile.core.wire.gen.AttachFrom.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.AttachItem::class.java to com.ccmonitor.mobile.core.wire.gen.AttachItem.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.AttachLocal::class.java to com.ccmonitor.mobile.core.wire.gen.AttachLocal.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.AttachRefused::class.java to com.ccmonitor.mobile.core.wire.gen.AttachRefused.ADAPTER,
@@ -1597,12 +1590,11 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.BusUnreadReq::class.java to com.ccmonitor.mobile.core.wire.gen.BusUnreadReq.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.CallEnd::class.java to com.ccmonitor.mobile.core.wire.gen.CallEnd.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.Can::class.java to com.ccmonitor.mobile.core.wire.gen.Can.ADAPTER,
-            com.ccmonitor.mobile.core.wire.gen.CanAttach::class.java to com.ccmonitor.mobile.core.wire.gen.CanAttach.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.CanClose::class.java to com.ccmonitor.mobile.core.wire.gen.CanClose.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.CanDelete::class.java to com.ccmonitor.mobile.core.wire.gen.CanDelete.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.CanResume::class.java to com.ccmonitor.mobile.core.wire.gen.CanResume.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.CanSay::class.java to com.ccmonitor.mobile.core.wire.gen.CanSay.ADAPTER,
-            com.ccmonitor.mobile.core.wire.gen.CanTerm::class.java to com.ccmonitor.mobile.core.wire.gen.CanTerm.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.CanTerminal::class.java to com.ccmonitor.mobile.core.wire.gen.CanTerminal.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.CancelReq::class.java to com.ccmonitor.mobile.core.wire.gen.CancelReq.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.CaptureEnd::class.java to com.ccmonitor.mobile.core.wire.gen.CaptureEnd.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.CaptureOpts::class.java to com.ccmonitor.mobile.core.wire.gen.CaptureOpts.ADAPTER,
@@ -1649,7 +1641,6 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.ColumnRow::class.java to com.ccmonitor.mobile.core.wire.gen.ColumnRow.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.ColumnSection::class.java to com.ccmonitor.mobile.core.wire.gen.ColumnSection.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.CommandScope::class.java to com.ccmonitor.mobile.core.wire.gen.CommandScope.ADAPTER,
-            com.ccmonitor.mobile.core.wire.gen.Compact::class.java to com.ccmonitor.mobile.core.wire.gen.Compact.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.ConfigEdit::class.java to com.ccmonitor.mobile.core.wire.gen.ConfigEdit.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.ConfigHost::class.java to com.ccmonitor.mobile.core.wire.gen.ConfigHost.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.Conflict::class.java to com.ccmonitor.mobile.core.wire.gen.Conflict.ADAPTER,
@@ -1671,6 +1662,7 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.DeployUninstallReq::class.java to com.ccmonitor.mobile.core.wire.gen.DeployUninstallReq.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.DiagnosticsConfig::class.java to com.ccmonitor.mobile.core.wire.gen.DiagnosticsConfig.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.DiagnosticsReport::class.java to com.ccmonitor.mobile.core.wire.gen.DiagnosticsReport.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.DiagnosticsReportReq::class.java to com.ccmonitor.mobile.core.wire.gen.DiagnosticsReportReq.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.DialAck::class.java to com.ccmonitor.mobile.core.wire.gen.DialAck.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.DialPlan::class.java to com.ccmonitor.mobile.core.wire.gen.DialPlan.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.DialRequest::class.java to com.ccmonitor.mobile.core.wire.gen.DialRequest.ADAPTER,
@@ -1682,8 +1674,6 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.Draw::class.java to com.ccmonitor.mobile.core.wire.gen.Draw.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.DriftEntry::class.java to com.ccmonitor.mobile.core.wire.gen.DriftEntry.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.DriftFaceReport::class.java to com.ccmonitor.mobile.core.wire.gen.DriftFaceReport.ADAPTER,
-            com.ccmonitor.mobile.core.wire.gen.DriftMerge::class.java to com.ccmonitor.mobile.core.wire.gen.DriftMerge.ADAPTER,
-            com.ccmonitor.mobile.core.wire.gen.DriftOn::class.java to com.ccmonitor.mobile.core.wire.gen.DriftOn.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.DriftReport::class.java to com.ccmonitor.mobile.core.wire.gen.DriftReport.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.ElemKey::class.java to com.ccmonitor.mobile.core.wire.gen.ElemKey.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.Endpoint::class.java to com.ccmonitor.mobile.core.wire.gen.Endpoint.ADAPTER,
@@ -1759,6 +1749,8 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.FindScope::class.java to com.ccmonitor.mobile.core.wire.gen.FindScope.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.FindSort::class.java to com.ccmonitor.mobile.core.wire.gen.FindSort.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.FirstRun::class.java to com.ccmonitor.mobile.core.wire.gen.FirstRun.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.FirstRunAct::class.java to com.ccmonitor.mobile.core.wire.gen.FirstRunAct.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.FirstRunGo::class.java to com.ccmonitor.mobile.core.wire.gen.FirstRunGo.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.FirstRunReq::class.java to com.ccmonitor.mobile.core.wire.gen.FirstRunReq.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.FirstRunStep::class.java to com.ccmonitor.mobile.core.wire.gen.FirstRunStep.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.FirstRunStepId::class.java to com.ccmonitor.mobile.core.wire.gen.FirstRunStepId.ADAPTER,
@@ -1797,7 +1789,6 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.GapCount::class.java to com.ccmonitor.mobile.core.wire.gen.GapCount.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.Gate::class.java to com.ccmonitor.mobile.core.wire.gen.Gate.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.Gates::class.java to com.ccmonitor.mobile.core.wire.gen.Gates.ADAPTER,
-            com.ccmonitor.mobile.core.wire.gen.Gone::class.java to com.ccmonitor.mobile.core.wire.gen.Gone.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.GrepHit::class.java to com.ccmonitor.mobile.core.wire.gen.GrepHit.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.GrepLine::class.java to com.ccmonitor.mobile.core.wire.gen.GrepLine.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.GrepLineMarks::class.java to com.ccmonitor.mobile.core.wire.gen.GrepLineMarks.ADAPTER,
@@ -1900,7 +1891,6 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.KeyAddReq::class.java to com.ccmonitor.mobile.core.wire.gen.KeyAddReq.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.KeyAdded::class.java to com.ccmonitor.mobile.core.wire.gen.KeyAdded.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.KeyPair::class.java to com.ccmonitor.mobile.core.wire.gen.KeyPair.ADAPTER,
-            com.ccmonitor.mobile.core.wire.gen.KeySet::class.java to com.ccmonitor.mobile.core.wire.gen.KeySet.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.KeySetReq::class.java to com.ccmonitor.mobile.core.wire.gen.KeySetReq.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.Kin::class.java to com.ccmonitor.mobile.core.wire.gen.Kin.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.KnownHost::class.java to com.ccmonitor.mobile.core.wire.gen.KnownHost.ADAPTER,
@@ -1915,7 +1905,6 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.LaunchedAccount::class.java to com.ccmonitor.mobile.core.wire.gen.LaunchedAccount.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.LedgerFile::class.java to com.ccmonitor.mobile.core.wire.gen.LedgerFile.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.Life::class.java to com.ccmonitor.mobile.core.wire.gen.Life.ADAPTER,
-            com.ccmonitor.mobile.core.wire.gen.LimitFrom::class.java to com.ccmonitor.mobile.core.wire.gen.LimitFrom.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.LineDiff::class.java to com.ccmonitor.mobile.core.wire.gen.LineDiff.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.LineDiffKind::class.java to com.ccmonitor.mobile.core.wire.gen.LineDiffKind.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.LineDiffRow::class.java to com.ccmonitor.mobile.core.wire.gen.LineDiffRow.ADAPTER,
@@ -2091,6 +2080,10 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.PlanArchived::class.java to com.ccmonitor.mobile.core.wire.gen.PlanArchived.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.PlanAsk::class.java to com.ccmonitor.mobile.core.wire.gen.PlanAsk.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.PlanAskReq::class.java to com.ccmonitor.mobile.core.wire.gen.PlanAskReq.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.PlanAudit::class.java to com.ccmonitor.mobile.core.wire.gen.PlanAudit.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.PlanAuditBy::class.java to com.ccmonitor.mobile.core.wire.gen.PlanAuditBy.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.PlanAuditSaid::class.java to com.ccmonitor.mobile.core.wire.gen.PlanAuditSaid.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.PlanAuditStatus::class.java to com.ccmonitor.mobile.core.wire.gen.PlanAuditStatus.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.PlanBlock::class.java to com.ccmonitor.mobile.core.wire.gen.PlanBlock.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.PlanBlockGroups::class.java to com.ccmonitor.mobile.core.wire.gen.PlanBlockGroups.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.PlanBlockSaid::class.java to com.ccmonitor.mobile.core.wire.gen.PlanBlockSaid.ADAPTER,
@@ -2157,6 +2150,7 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.PlanSessionBlockVia::class.java to com.ccmonitor.mobile.core.wire.gen.PlanSessionBlockVia.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.PlanSessionSaid::class.java to com.ccmonitor.mobile.core.wire.gen.PlanSessionSaid.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.PlanSetsTo::class.java to com.ccmonitor.mobile.core.wire.gen.PlanSetsTo.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.PlanSetsToOp::class.java to com.ccmonitor.mobile.core.wire.gen.PlanSetsToOp.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.PlanSlice::class.java to com.ccmonitor.mobile.core.wire.gen.PlanSlice.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.PlanSliceSaid::class.java to com.ccmonitor.mobile.core.wire.gen.PlanSliceSaid.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.PlanStale::class.java to com.ccmonitor.mobile.core.wire.gen.PlanStale.ADAPTER,
@@ -2184,6 +2178,7 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.Probed::class.java to com.ccmonitor.mobile.core.wire.gen.Probed.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.ProfileAccountPick::class.java to com.ccmonitor.mobile.core.wire.gen.ProfileAccountPick.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.ProfileAccountShape::class.java to com.ccmonitor.mobile.core.wire.gen.ProfileAccountShape.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.ProfileAccountShapeForm::class.java to com.ccmonitor.mobile.core.wire.gen.ProfileAccountShapeForm.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.ProfileAffected::class.java to com.ccmonitor.mobile.core.wire.gen.ProfileAffected.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.ProfileBase::class.java to com.ccmonitor.mobile.core.wire.gen.ProfileBase.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.ProfileChildren::class.java to com.ccmonitor.mobile.core.wire.gen.ProfileChildren.ADAPTER,
@@ -2232,13 +2227,10 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.QuotaCell::class.java to com.ccmonitor.mobile.core.wire.gen.QuotaCell.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.QuotaKind::class.java to com.ccmonitor.mobile.core.wire.gen.QuotaKind.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.QuotaNames::class.java to com.ccmonitor.mobile.core.wire.gen.QuotaNames.ADAPTER,
-            com.ccmonitor.mobile.core.wire.gen.QuotaOverageShown::class.java to com.ccmonitor.mobile.core.wire.gen.QuotaOverageShown.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.QuotaProbeReq::class.java to com.ccmonitor.mobile.core.wire.gen.QuotaProbeReq.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.QuotaRead::class.java to com.ccmonitor.mobile.core.wire.gen.QuotaRead.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.QuotaReadReq::class.java to com.ccmonitor.mobile.core.wire.gen.QuotaReadReq.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.QuotaReadState::class.java to com.ccmonitor.mobile.core.wire.gen.QuotaReadState.ADAPTER,
-            com.ccmonitor.mobile.core.wire.gen.QuotaReadingShown::class.java to com.ccmonitor.mobile.core.wire.gen.QuotaReadingShown.ADAPTER,
-            com.ccmonitor.mobile.core.wire.gen.QuotaResetsAt::class.java to com.ccmonitor.mobile.core.wire.gen.QuotaResetsAt.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.QuotaShow::class.java to com.ccmonitor.mobile.core.wire.gen.QuotaShow.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.QuotaSource::class.java to com.ccmonitor.mobile.core.wire.gen.QuotaSource.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.QuotaState::class.java to com.ccmonitor.mobile.core.wire.gen.QuotaState.ADAPTER,
@@ -2251,8 +2243,6 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.QuotaWarmAct::class.java to com.ccmonitor.mobile.core.wire.gen.QuotaWarmAct.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.QuotaWarmReq::class.java to com.ccmonitor.mobile.core.wire.gen.QuotaWarmReq.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.QuotaWindow::class.java to com.ccmonitor.mobile.core.wire.gen.QuotaWindow.ADAPTER,
-            com.ccmonitor.mobile.core.wire.gen.QuotaWindowRead::class.java to com.ccmonitor.mobile.core.wire.gen.QuotaWindowRead.ADAPTER,
-            com.ccmonitor.mobile.core.wire.gen.QuotaWindowSeen::class.java to com.ccmonitor.mobile.core.wire.gen.QuotaWindowSeen.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.ReachRow::class.java to com.ccmonitor.mobile.core.wire.gen.ReachRow.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.ReadChunkReply::class.java to com.ccmonitor.mobile.core.wire.gen.ReadChunkReply.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.ReadChunkReq::class.java to com.ccmonitor.mobile.core.wire.gen.ReadChunkReq.ADAPTER,
@@ -2269,8 +2259,6 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.ReplyError::class.java to com.ccmonitor.mobile.core.wire.gen.ReplyError.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.RereadWhy::class.java to com.ccmonitor.mobile.core.wire.gen.RereadWhy.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.RestartHint::class.java to com.ccmonitor.mobile.core.wire.gen.RestartHint.ADAPTER,
-            com.ccmonitor.mobile.core.wire.gen.RestartReq::class.java to com.ccmonitor.mobile.core.wire.gen.RestartReq.ADAPTER,
-            com.ccmonitor.mobile.core.wire.gen.Restarted::class.java to com.ccmonitor.mobile.core.wire.gen.Restarted.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.ResultKind::class.java to com.ccmonitor.mobile.core.wire.gen.ResultKind.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.ResumeWhere::class.java to com.ccmonitor.mobile.core.wire.gen.ResumeWhere.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.ResumeWith::class.java to com.ccmonitor.mobile.core.wire.gen.ResumeWith.ADAPTER,
@@ -2497,8 +2485,10 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.TasksList::class.java to com.ccmonitor.mobile.core.wire.gen.TasksList.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.TasksListReq::class.java to com.ccmonitor.mobile.core.wire.gen.TasksListReq.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.TermInput::class.java to com.ccmonitor.mobile.core.wire.gen.TermInput.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.TermOpen::class.java to com.ccmonitor.mobile.core.wire.gen.TermOpen.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.TermSession::class.java to com.ccmonitor.mobile.core.wire.gen.TermSession.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.TermState::class.java to com.ccmonitor.mobile.core.wire.gen.TermState.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.TermWay::class.java to com.ccmonitor.mobile.core.wire.gen.TermWay.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.Terminal::class.java to com.ccmonitor.mobile.core.wire.gen.Terminal.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.TerminalAt::class.java to com.ccmonitor.mobile.core.wire.gen.TerminalAt.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.TerminalCan::class.java to com.ccmonitor.mobile.core.wire.gen.TerminalCan.ADAPTER,

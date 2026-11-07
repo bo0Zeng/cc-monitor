@@ -160,11 +160,6 @@ export interface RenderContext {
   needs?: { kind: string; call: string | null; waitedMs: number | null; receivedAt: number } | null;
   /** 父记录路径：派出子运行的那张卡按它（＋ 工具调用 id）读那个子运行的记录 */
   parentPath: string;
-  /**
-   * 说话的那一方叫什么（卡头那一格：那一家的短名，后端画像给的 `speakerName`，按会话的那一家取）。
-   * `null` ＝ 还不知道是哪一家（标签页的会话事实没到）⇒ 卡头那一格先空着，到了由宿主补上（`cards/speaker.ts`）。
-   */
-  speaker?: string | null;
   /** 会话来源（本机 = `LOCAL`；其余 = 远端机器名）。必填：每个造渲染上下文的地方都得说出是哪台机器。 */
   origin: Machine;
   /**
@@ -409,7 +404,7 @@ function buildUserCard(
 ): HTMLElement {
   const card = document.createElement("div");
   card.className = "card card-user";
-  card.appendChild(cardHeader(copyText("machineForm.field.user"), time));
+  card.appendChild(cardHeader(time, copyText("machineForm.field.user")));
   const body = document.createElement("div");
   body.className = "card-body";
   if (text) fillSaid(body, text, pasted);
@@ -438,8 +433,8 @@ function buildAssistantCard(
 ): HTMLElement {
   const card = document.createElement("div");
   card.className = "card card-assistant";
-  // 卡头那一家的名字：会话是哪一家由后端说（标签页 · 历史行的 `agent`），名字取画像里的短名；不按文件名猜。
-  card.appendChild(cardHeader(ctx.speaker ?? "", rec.timeText ?? "", rec.model));
+  // 卡头只写钟面：一条会话只有一家，那一家的名字在这里永远一个值；型号也不写。
+  card.appendChild(cardHeader(rec.timeText ?? ""));
 
   const body = document.createElement("div");
   body.className = "card-body";
@@ -1199,27 +1194,23 @@ function renderResultContent(content: readonly Block[]): string {
 // === helpers ===
 
 function cardHeader(
-  role: string,
-  /** 记录的钟面（后端写好的 `timeText`）。 */
+  /** 记录的钟面（后端写好的 `timeText`）。卡头不写原始型号。 */
   time: string,
-  model?: string,
+  /** 人说的那张卡的「你」（样式里藏着）；回复卡不给。 */
+  role?: string,
 ): HTMLElement {
   const h = document.createElement("div");
   h.className = "card-header";
-  const r = document.createElement("span");
-  r.className = "role";
-  r.textContent = role;
-  h.appendChild(r);
+  if (role !== undefined) {
+    const r = document.createElement("span");
+    r.className = "role";
+    r.textContent = role;
+    h.appendChild(r);
+  }
   const t = document.createElement("span");
   t.className = "ts";
   t.textContent = time;
   h.appendChild(t);
-  if (model) {
-    const m = document.createElement("span");
-    m.className = "model";
-    m.textContent = model;
-    h.appendChild(m);
-  }
   return h;
 }
 

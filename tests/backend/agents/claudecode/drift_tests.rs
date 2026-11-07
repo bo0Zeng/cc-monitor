@@ -7,35 +7,18 @@ fn fresh() -> Ledger {
 }
 
 #[test]
-fn counts_and_keeps_only_the_first_sample() {
+fn counts_each_key() {
     let mut led = fresh();
-    record_into(
-        &mut led,
-        DriftFace::UnknownRecordType,
-        "mode",
-        Some("{\"type\":\"mode\",\"a\":1}"),
-    );
-    record_into(
-        &mut led,
-        DriftFace::UnknownRecordType,
-        "mode",
-        Some("{\"type\":\"mode\",\"b\":2}"),
-    );
-    record_into(&mut led, DriftFace::UnknownRecordType, "pr-link", None);
+    record_into(&mut led, DriftFace::UnknownRecordType, "mode");
+    record_into(&mut led, DriftFace::UnknownRecordType, "mode");
+    record_into(&mut led, DriftFace::UnknownRecordType, "pr-link");
     let snap = snapshot_of(&led);
     assert_eq!(snap.len(), 1);
     let f = &snap[0];
     assert_eq!(f.face, DriftFace::UnknownRecordType.word());
-    assert!(!f.overflowed);
     assert_eq!(f.entries[0].key, "mode"); // count 降序
     assert_eq!(f.entries[0].count, 2);
-    assert_eq!(
-        f.entries[0].first_sample.as_deref(),
-        Some("{\"type\":\"mode\",\"a\":1}"),
-        "**首见**样例应当被留住，后来的不许覆盖"
-    );
     assert_eq!(f.entries[1].key, "pr-link");
-    assert!(f.entries[1].first_sample.is_none());
 }
 
 /// ★ **有界**：键数触顶后新键并进 `<overflow>`，内存不随 CC 的想象力增长。
@@ -43,15 +26,9 @@ fn counts_and_keeps_only_the_first_sample() {
 fn the_key_count_is_bounded() {
     let mut led = fresh();
     for i in 0..(MAX_KEYS + 30) {
-        record_into(
-            &mut led,
-            DriftFace::UnknownRecordType,
-            &format!("t{i}"),
-            None,
-        );
+        record_into(&mut led, DriftFace::UnknownRecordType, &format!("t{i}"));
     }
     let f = snapshot_of(&led).remove(0);
-    assert!(f.overflowed, "溢出了却没标记");
     assert_eq!(
         f.entries.len(),
         MAX_KEYS + 1,
@@ -65,43 +42,16 @@ fn the_key_count_is_bounded() {
         .expect("有溢出键");
     assert_eq!(ov.count, 30, "溢出的 30 个应当全部并进 <overflow>");
     // 已经在表里的老键仍然正常累加（溢出不影响它们）。
-    record_into(&mut led, DriftFace::UnknownRecordType, "t0", None);
+    record_into(&mut led, DriftFace::UnknownRecordType, "t0");
     let f2 = snapshot_of(&led).remove(0);
     assert_eq!(f2.entries.iter().find(|e| e.key == "t0").unwrap().count, 2);
-}
-
-/// 样例按**字符边界**截断 —— 多字节字符不许被切成半个（那会让诊断面显示成乱码）。
-#[test]
-fn samples_are_truncated_on_a_char_boundary() {
-    let mut led = fresh();
-    let long = "中".repeat(cmd_wire::record::EXCERPT_BYTES);
-    record_into(
-        &mut led,
-        DriftFace::KnownTypeParseFailed,
-        "user",
-        Some(&long),
-    );
-    let s = snapshot_of(&led)[0].entries[0]
-        .first_sample
-        .clone()
-        .expect("有样例");
-    assert!(
-        s.len() <= cmd_wire::record::EXCERPT_BYTES + 4,
-        "没截断：{}",
-        s.len()
-    );
-    assert!(s.ends_with('…'), "截断标记没了");
-    assert!(
-        s.trim_end_matches('…').chars().all(|c| c == '中'),
-        "切出了半个字符 —— 诊断面会显示成乱码"
-    );
 }
 
 /// 空键不许变成空行。
 #[test]
 fn an_empty_key_is_labelled() {
     let mut led = fresh();
-    record_into(&mut led, DriftFace::UnknownRecordType, "", None);
+    record_into(&mut led, DriftFace::UnknownRecordType, "");
     assert_eq!(snapshot_of(&led)[0].entries[0].key, "<empty>");
 }
 
@@ -110,22 +60,21 @@ fn an_empty_key_is_labelled() {
 fn the_global_entry_points_delegate_to_the_pure_ones() {
     // 用一个**本测试专属**的键：全局账本会被别的测试写，只断言「我这条在」。
     let key = "u-cc1-delegation-probe";
-    record(DriftFace::KnownTypeParseFailed, key, Some("s"));
+    record(DriftFace::KnownTypeParseFailed, key);
     let found = snapshot()
         .into_iter()
         .find(|f| f.face == DriftFace::KnownTypeParseFailed.word())
         .and_then(|f| f.entries.into_iter().find(|e| e.key == key));
     let e = found.expect("全局 record/snapshot 没接上纯函数");
     assert!(e.count >= 1);
-    assert_eq!(e.first_sample.as_deref(), Some("s"));
     // 帧命令那一形：各家的面并成一份，面名是那一家的词。
     let v = crate::agents::drift_report();
     assert!(v.faces.iter().any(|f| f.face == "known_type_parse_failed"));
 }
 
-/// ★ 每个面都必须说清楚「看不懂时会发生什么」—— 诊断面直接显示这句话。
+/// 线上那个词就是变体名的 snake_case（界面与诊断文本照它认）；枚举加了新面而这里没跟 ⇒ 红。
 #[test]
-fn every_face_states_its_consequence() {
+fn every_face_word_is_its_variant_in_snake_case() {
     let faces = [
         DriftFace::UnknownRecordType,
         DriftFace::KnownTypeParseFailed,
@@ -135,8 +84,6 @@ fn every_face_states_its_consequence() {
         DriftFace::UnknownMcpList,
     ];
     for f in faces {
-        assert!(f.consequence().len() > 10, "{f:?} 的后果说明太短");
-        // 线上那个词就是变体名的 snake_case（界面与诊断文本照它认）。
         let snake: String = format!("{f:?}")
             .chars()
             .enumerate()
@@ -151,7 +98,6 @@ fn every_face_states_its_consequence() {
             .collect();
         assert_eq!(f.word(), snake);
     }
-    // 计数自检：枚举加了新面而这里没跟 ⇒ 红。
     let src = guard_core::production_code(include_str!(
         "../../../../src/backend/agents/claudecode/drift.rs"
     ));
@@ -169,49 +115,31 @@ fn every_face_states_its_consequence() {
     assert_eq!(
         variants,
         faces.len(),
-        "`DriftFace` 有 {variants} 个变体，本条只覆盖了 {} 个 —— 新增面必须来这里写后果",
+        "`DriftFace` 有 {variants} 个变体，本条只覆盖了 {} 个",
         faces.len()
     );
 }
 
-/// 界面（`record-reads.ts`）与壳（`diagnostics_report::records_in`）读的漂移账回包：线上字节照旧
-/// （换成 typed 之前用旧代码钉的字面量；经 `Value` 那一跳，同帧面）。两个面 · 一个溢出 · 同数按键名排 · 没有样例的那一条。
+/// 界面（`record-reads.ts`）与壳（`diagnostics_report::records_in`）读的漂移账回包：线上字节。
+/// 两个面 · 一个溢出 · 同数按键名排。
 #[test]
 fn the_drift_reply_the_ui_reads_keeps_its_wire_bytes() {
     let mut led = fresh();
-    record_into(
-        &mut led,
-        DriftFace::UnknownSessionKind,
-        "bg",
-        Some("{\"kind\":\"bg\"}"),
-    );
-    record_into(&mut led, DriftFace::UnknownSessionKind, "bg", None);
-    record_into(&mut led, DriftFace::UnknownSessionKind, "aa", None);
+    record_into(&mut led, DriftFace::UnknownSessionKind, "bg");
+    record_into(&mut led, DriftFace::UnknownSessionKind, "bg");
+    record_into(&mut led, DriftFace::UnknownSessionKind, "aa");
     for i in 0..=MAX_KEYS {
-        record_into(
-            &mut led,
-            DriftFace::UnknownRecordType,
-            &format!("t{i:02}"),
-            None,
-        );
+        record_into(&mut led, DriftFace::UnknownRecordType, &format!("t{i:02}"));
     }
     let reply = crate::agents::drift::DriftReport {
         faces: snapshot_of(&led),
     };
     let wire = serde_json::to_string(&serde_json::to_value(&reply).unwrap()).unwrap();
-    let first =
-        r#"{"consequence":"__C0__","entries":[{"count":1,"first_sample":null,"key":"<overflow>"},"#;
-    let first = first.replace("__C0__", &DriftFace::UnknownRecordType.consequence());
     assert!(
-        wire.starts_with(&format!(r#"{{"faces":[{first}"#)),
+        wire.starts_with(r#"{"faces":[{"entries":[{"count":1,"key":"<overflow>"},"#),
         "{wire}"
     );
-    let tail = r#"{"count":1,"first_sample":null,"key":"t63"}],"face":"unknown_record_type","overflowed":true},{"consequence":"__C1__","entries":[{"count":2,"first_sample":"{\"kind\":\"bg\"}","key":"bg"},{"count":1,"first_sample":null,"key":"aa"}],"face":"unknown_session_kind","overflowed":false}]}"#;
-    let tail = tail.replace("__C1__", &DriftFace::UnknownSessionKind.consequence());
-    assert!(wire.ends_with(&tail), "{wire}");
-    assert_eq!(
-        wire.matches(r#""count":1,"first_sample":null,"key":"t"#)
-            .count(),
-        MAX_KEYS
-    );
+    let tail = r#"{"count":1,"key":"t63"}],"face":"unknown_record_type"},{"entries":[{"count":2,"key":"bg"},{"count":1,"key":"aa"}],"face":"unknown_session_kind"}]}"#;
+    assert!(wire.ends_with(tail), "{wire}");
+    assert_eq!(wire.matches(r#""count":1,"key":"t"#).count(), MAX_KEYS);
 }

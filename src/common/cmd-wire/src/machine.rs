@@ -323,6 +323,7 @@ pub enum Stage {
 }
 
 /// 那一行上给的修法（闭集）。`install` 只给自己不装后端的宿主（手机）。
+/// `use_key`：连着、这一条连接是用密码登上的 ⇒ 换成这一端的密钥（与 `push_key` 同一条路：请那台把公钥并进 `authorized_keys`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -338,6 +339,7 @@ pub enum MachineFix {
     Update,
     Connect,
     Install,
+    UseKey,
 }
 
 /// 一颗修法按钮：做什么 ＋ 按钮上的字。
@@ -391,8 +393,6 @@ pub struct MachineState {
     pub stage: Option<Stage>,
     /// 那台 cc-monitor 的产品版本号：与这一版同一份字节时就是这一版的号；别的报不出 ⇒ 空。
     pub version: Option<String>,
-    /// 与这一版的版本关系（握手过才有）。
-    pub version_relation: Option<crate::attach::Relation>,
     /// 那台的系统（部署问到过才有）。
     pub os: Option<String>,
     /// 名字旁那个词（连着时空）。
@@ -401,6 +401,9 @@ pub struct MachineState {
     pub said: String,
     /// 那台离线那一句（恒有，连接层写的；哪一态都带着）。出口要说那台离线时照摆这一句，不各自取字。
     pub offline_said: String,
+    /// 待发那一句交了、没等到回执、这一问已结束时那一行（恒有，拨号这一端写的：「{name} 离线 · 连上后补交」；还不知道那台什么样 ⇒ 状态不明那一句）。
+    /// 两端输入框上方那一排照摆这一句，不拼。
+    pub held_said: String,
     pub fixes: Vec<FixButton>,
     /// 指纹不对时那台这一次出示的主机指纹（`host_key_changed` 才有）。
     pub seen_host_key: Option<String>,

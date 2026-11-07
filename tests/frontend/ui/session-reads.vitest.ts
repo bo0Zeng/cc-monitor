@@ -74,9 +74,9 @@ describe("〔C4b〕会话读面三问：按形状收", () => {
     expect(outlineSeedFromIndex({ available: true, end: index.end, pages: [index] })).toEqual({ entries: ui.entries, end: ui.end });
     const f = golden["history-find"] as HistoryFind;
     expect(f.total).toBe(2);
-    expect(f.hits.map((h) => [h.uuid, h.line, h.kind, h.before, h.matched, h.after, h.turn, h.tsMs])).toEqual([
-      ["in-1", 0, "user", "alpha", "zqx", "beta", 1, 0],
-      ["out-1", 1, "assistant", "gamma", "zqx", "", 1, 0],
+    expect(f.hits.map((h) => [h.uuid, h.line, h.kind, h.before, h.matched, h.after, h.turn])).toEqual([
+      ["in-1", 0, "user", "alpha", "zqx", "beta", 1],
+      ["out-1", 1, "assistant", "gamma", "zqx", "", 1],
     ]);
   });
 
@@ -182,13 +182,11 @@ describe("〔STC〕第五问：会话事实", () => {
     const f = factsOf(wire);
     expect(f).toEqual({
       forkedFrom: "src-0",
+      forkedLine: "分叉自「src-0」",
       touchedFiles: ["/w/a.ts"],
       usage: {
-        promptTokens: 6,
         model: "m-g",
-        peakPromptTokens: 6,
         limit: 1_000_000,
-        limitFrom: "assumed",
         percent: null,
         contextText: "6",
         contextTone: "plain",
@@ -198,6 +196,7 @@ describe("〔STC〕第五问：会话事实", () => {
       },
       agent: "claude",
       projectDir: "/g/proj",
+      cwdShown: "/g/proj",
       whereLine: "/g/proj",
       writers: [],
       pending: [
@@ -218,13 +217,9 @@ describe("〔STC〕第五问：会话事实", () => {
       tokens: {
         input: 1,
         output: 0,
-        cacheRead: 3,
-        cacheWrite5m: 2,
-        cacheWrite1h: 0,
-        requests: 1,
         text: copyText("beSpend.tokens.line", { input: "1", output: "0", read: "3", write: "2" }),
       },
-      cost: { micros: 424200, partial: false, text: copyText("beSpend.cost.exact", { usd: "0.42" }) },
+      cost: { partial: false, text: copyText("beSpend.cost.exact", { usd: "0.42" }) },
       background: null,
       mcp: [
         { name: "m-f", status: "failed", detail: "e-f", at: null },
@@ -243,19 +238,18 @@ describe("〔STC〕第五问：会话事实", () => {
       startedByText: null,
       childrenText: null,
       line: null,
-      quietUnread: { count: 1, kinds: ["golden-future-ledger"], text: copyText("record.unread.quiet", { n: "1", types: "golden-future-ledger" }) },
     });
   });
 
   it("★ 需手动记上本机收到的时刻（不在线上）", () => {
-    const needs: WireFacts["needs"] = { kind: "approve", tool: "Bash", call: "toolu_1", what: "rm -rf build/", sinceMs: 42, text: copyText("beSession.needs.approve"), head: "等批准 · Bash", headCode: "rm -rf build/", tone: "need", rank: 1, waitedMs: 1000, waitedText: "1 秒", ask: null, manualText: copyText("beAsk.manual.terminal") };
+    const needs: WireFacts["needs"] = { kind: "approve", tool: "Bash", call: "toolu_1", what: "rm -rf build/", text: copyText("beSession.needs.approve"), head: "等批准 · Bash", headCode: "rm -rf build/", tone: "need", rank: 1, waitedMs: 1000, ask: null, manualText: copyText("beAsk.manual.terminal") };
     const f = factsOf({ ...wire, needs }, 777);
     expect(f.needs).toEqual({ ...needs, receivedAt: 777 });
   });
 
   it("★★ 答题口的成品（needs.ask）：后端真出的四种（跨语言金样 needs-ask.golden.json）原样收下", () => {
     const asks = JSON.parse(readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/needs-ask.golden.json"), "utf8")) as Record<string, NeedsAsk>;
-    const needs = { kind: "approve", tool: "Bash", call: "toolu_1", what: "w", sinceMs: 42, text: "t", head: "h", headCode: null, tone: "need", rank: 1, waitedMs: 1, waitedText: "1s", manualText: null } as const;
+    const needs = { kind: "approve", tool: "Bash", call: "toolu_1", what: "w", text: "t", head: "h", headCode: null, tone: "need", rank: 1, waitedMs: 1, manualText: null } as const;
     const read = (ask: NeedsAsk | null) => factsOf({ ...wire, needs: { ...needs, ask } }).needs!.ask;
     expect(Object.keys(asks).sort()).toEqual(["approve", "plan", "question", "subAgent"]);
     for (const [name, a] of Object.entries(asks)) expect(read(a), name).toEqual(a);
@@ -324,9 +318,9 @@ describe("主窗口第 2 批：每轮的摘要", () => {
   it("★★ 金样：两轮 —— 第一轮收尾（思考 1 · 中间的话 · 调用 2 · 失败 1〔被拒不算〕· 结论 · 回复头三行 · 两段过程各自的字与语气），第二轮还在跑", () => {
     const t = golden["history-turns"] as HistoryTurns;
     expect(t.from).toBe(0);
-    expect(t.turns.map((x) => [x.uuid, x.said, x.tools, x.thinking, x.agents, x.background, x.retries, x.fails, x.shown, x.reply, x.done, x.phase])).toEqual([
-      ["t-1", "first line", 2, 1, 0, 0, 0, 1, ["t-3", "t-8"], "r1\nr2\nr3", true, "idle"],
-      ["t-9", "next", 1, 0, 0, 0, 0, 0, [], "", false, "idle"],
+    expect(t.turns.map((x) => [x.uuid, x.said, x.tools, x.thinking, x.agents, x.background, x.retries, x.shown, x.reply, x.done, x.phase])).toEqual([
+      ["t-1", "first line", 2, 1, 0, 0, 0, ["t-3", "t-8"], "r1\nr2\nr3", true, "idle"],
+      ["t-9", "next", 1, 0, 0, 0, 0, [], "", false, "idle"],
     ]);
     expect(t.turns[0].folds.map((f) => [f.after, f.parts.map((p) => p.tone), f.phase])).toEqual([
       ["t-1", ["plain", "plain"], "idle"],

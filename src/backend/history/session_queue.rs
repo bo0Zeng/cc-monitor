@@ -9,7 +9,7 @@
 //! - **撤**：排着 · 收着 · 未送达的撤得了（未送达的撤 ＝ 从名单里拿掉）；送过的撤不了（`cancelled: false`）。
 //! - **会话结束**：没送的全标未送达、留在名单里给发件人看（[`end`]）。
 //! - **投递口**（`faces/session_queue_deliver.rs` 那条线程用）：[`sids`] 这台有队的会话 · [`due`] 交排在最前、还没送的那一条
-//!   （连同收着的几点等够）· [`delivered`] 把它摘掉 · [`give_up`] 送不进去标未送达 · [`end`] 会话结束。
+//!   （连同收着的几点等够）· [`delivered`] 把它摘掉 · [`give_up`] 送不进去标未送达 · [`end`] 会话结束 · [`mark_box`] 记下屏上开没开着框（排着的那几条那一句跟着说等需手动）。
 //! - 全仓唯一的写口在这里：读—改—写在那个目录的跨进程锁里、原子换。读不出来（坏了 · 更新的版本）⇒ `queue_unreadable`，不覆盖。
 
 use crate::common::own_state::{Doc, Read};
@@ -31,9 +31,9 @@ pub(crate) const SENT_KEEP: usize = 32;
 /// 一条会话的队里最多几条（排着 · 收着 · 未送达合计）。
 pub(crate) const ITEMS_MAX: usize = 256;
 /// 一句最长多少字节。
-pub(crate) const TEXT_MAX: relay_route_core::Cap = relay_route_core::Cap {
+pub(crate) const TEXT_MAX: cap_core::Cap = cap_core::Cap {
     bytes: 64 * 1024,
-    over: relay_route_core::Over::Reject,
+    over: cap_core::Over::Reject,
 };
 /// 队文件所在那一层（相对家目录）。
 pub const DIR_REL: &str = relay_route_core::SESSION_QUEUE_DIR_REL;
@@ -59,6 +59,10 @@ pub(crate) struct Book {
     /// 最近送进 agent 的那几条的 id（先进先出，留 [`SENT_KEEP`] 个）。
     #[serde(default)]
     sent: VecDeque<String>,
+    /// 那条会话屏上此刻开着批准 · 问答框（投递线程每一遍读活会话表那一态记下，[`mark_box`]；变了才写盘 ⇒ 名单跟着推）：
+    /// 排着的那几条那一句说「需手动 · 答完再送」。旧版不认这一格 ⇒ 照常读（不带 ＝ 没开框）。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    boxed: bool,
 }
 
 /// 盘上的一条：线上那几格 ＋ 端序号 ＋ 到主人这台的时刻（主人的钟）。
@@ -84,9 +88,6 @@ struct Entry {
     /// 标未送达时投递那一下说的为什么（没退成 · 退了没送进）；没有 ⇒ 照「未送进会话」那一句。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     why: Option<String>,
-    /// 上一回送那一下托管终端说「持有者输入行里有没交的字」：这一条在等那一行交掉 · 清掉（名单那一句 · 底行都说出来）。
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    half: bool,
 }
 
 impl Default for Book {
@@ -97,6 +98,7 @@ impl Default for Book {
             seen: VecDeque::new(),
             items: Vec::new(),
             sent: VecDeque::new(),
+            boxed: false,
         }
     }
 }
@@ -180,7 +182,6 @@ impl Book {
             return Ok(QueuePut {
                 outcome: QueuePutOutcome::Seen,
                 seq: None,
-                place: None,
                 said,
             });
         }
@@ -203,7 +204,6 @@ impl Book {
             rewind: req.rewind.clone(),
             state: QueueState::Held,
             why: None,
-            half: false,
         });
         let i = self.items.len() - 1;
         if req.n.is_none() {
@@ -219,35 +219,27 @@ impl Book {
 
     fn receipt(&self, i: usize, outcome: QueuePutOutcome) -> QueuePut {
         let e = &self.items[i];
-        let (place, said) = self.said_of(e);
         QueuePut {
             outcome,
             seq: e.seq,
-            place,
-            said,
+            said: self.said_of(e),
         }
     }
 
-    /// 那一条此刻排第几（排着才有）与那一句（回执 · 名单每条同一句）。
-    fn said_of(&self, e: &Entry) -> (Option<u32>, String) {
-        let place = (e.state == QueueState::Queued).then(|| self.place_of(e));
-        let said = match (e.state, place) {
-            (QueueState::Queued, Some(p)) if e.half => {
-                copy_text("beQueue.said.placeHalf", &[("place", &p.to_string())])
-            }
-            (QueueState::Queued, Some(p)) => {
-                copy_text("beQueue.said.place", &[("place", &p.to_string())])
-            }
-            (QueueState::Undelivered, _) => e
+    /// 那一条此刻在等什么（回执 · 名单每条同一句；不说第几、不分哪一端）：排着、屏上开着框 ⇒ 需手动 · 答完再送；
+    /// 排着 · 收着 ⇒ 发送中 · 等确认；未送达 ⇒ 投递那一下说的为什么，没有 ⇒ 未送进会话。
+    fn said_of(&self, e: &Entry) -> String {
+        match e.state {
+            QueueState::Queued if self.boxed => copy_text("beQueue.said.waitBox", &[]),
+            QueueState::Queued | QueueState::Held => copy_text("beQueue.said.confirming", &[]),
+            QueueState::Undelivered => e
                 .why
                 .clone()
                 .unwrap_or_else(|| copy_text("beQueue.said.undelivered", &[])),
-            _ => copy_text("mobAttach.card.queued", &[]),
-        };
-        (place, said)
+        }
     }
 
-    /// 名单里的一条（带会话那台写好的那一句与发自哪一端的那个词）。
+    /// 名单里的一条（带会话那台写好的那一句）。
     fn item(&self, e: &Entry) -> QueueItem {
         QueueItem {
             seq: e.seq,
@@ -257,19 +249,16 @@ impl Book {
             attachments: e.attachments.clone(),
             rewind: e.rewind.clone(),
             state: e.state,
-            said: self.said_of(e).1,
-            from: from_word(&e.end),
+            said: self.said_of(e),
         }
     }
 
-    /// 排着的那几条里它排第几（从 1 数）。
-    fn place_of(&self, e: &Entry) -> u32 {
-        let before = self
-            .items
-            .iter()
-            .filter(|x| x.state == QueueState::Queued && x.seq < e.seq)
-            .count();
-        u32::try_from(before + 1).unwrap_or(u32::MAX)
+    /// 记下屏上此刻开没开着框（队空着 ⇒ 记成没开：免得空队跟着框开合来回写盘）。变了 ⇒ `true`。
+    pub(crate) fn set_boxed(&mut self, boxed: bool) -> bool {
+        let now = boxed && !self.items.is_empty();
+        let changed = self.boxed != now;
+        self.boxed = now;
+        changed
     }
 
     /// 撤一条：在名单里（排着 · 收着 · 未送达）⇒ 拿掉、`true`；不在（送过 · 撤过 · 没有）⇒ `false`、什么都不动。
@@ -279,6 +268,7 @@ impl Book {
             return false;
         };
         self.items.remove(i);
+        self.boxed &= !self.items.is_empty();
         true
     }
 
@@ -316,35 +306,14 @@ impl Book {
         true
     }
 
-    /// 送那一下等着的原因：`half` ＝ 托管终端里持有者输入行有没交的字（名单那一句 · 底行照它多那半截）。不在排着 ⇒ 不动。
-    pub(crate) fn mark_half(&mut self, id: &str, half: bool) {
-        if let Some(e) = self
-            .items
-            .iter_mut()
-            .find(|e| e.id == id && e.state == QueueState::Queued)
-        {
-            e.half = half;
-        }
-    }
-
-    /// 瘦客户端底行那一句：还在等的（排着 · 收着）合计 N 条；有一条在等半句交掉 ⇒ 带那半截；一条都没有 ⇒ `None`。
+    /// 瘦客户端底行那一句：还在等的（排着 · 收着）合计 N 条；一条都没有 ⇒ `None`。
     pub(crate) fn waiting_line(&self) -> Option<String> {
-        let waiting = || {
-            self.items
-                .iter()
-                .filter(|e| e.state != QueueState::Undelivered)
-        };
-        let n = waiting().count().to_string();
-        if n == "0" {
-            return None;
-        }
-        Some(
-            if waiting().any(|e| e.half && e.state == QueueState::Queued) {
-                copy_text("beQueue.said.waitingHalf", &[("n", &n)])
-            } else {
-                copy_text("beQueue.said.waiting", &[("n", &n)])
-            },
-        )
+        let n = self
+            .items
+            .iter()
+            .filter(|e| e.state != QueueState::Undelivered)
+            .count();
+        (n > 0).then(|| copy_text("beQueue.said.waiting", &[("n", &n.to_string())]))
     }
 
     /// 有收着的（同一端前一号还没到）：最早那一条等够了是几点（主人的钟）。
@@ -366,6 +335,7 @@ impl Book {
             return false;
         };
         self.items.remove(i);
+        self.boxed &= !self.items.is_empty();
         self.sent.push_back(id.to_string());
         while self.sent.len() > SENT_KEEP {
             self.sent.pop_front();
@@ -395,15 +365,6 @@ impl Book {
             items: v.into_iter().map(|e| self.item(e)).collect(),
             sent: self.sent.iter().cloned().collect(),
         }
-    }
-}
-
-/// 发自哪一端 ⇒ 名单里那个词：桌面 · 手机写名字，别的端（cc-bus …）照它自报的名字。
-fn from_word(end: &str) -> String {
-    match end {
-        "monitor" => copy_text("beQueue.from.desktop", &[]),
-        "mobile" => copy_text("beQueue.from.phone", &[]),
-        _ => end.to_string(),
     }
 }
 
@@ -524,14 +485,6 @@ pub fn waiting_said(own: &Own, sid: &str, now_ms: i64) -> Option<String> {
     .flatten()
 }
 
-/// 投递口：送那一下等着的原因（[`Book::mark_half`]）；没变就不写。
-pub fn mark_half(own: &Own, sid: &str, id: &str, half: bool) -> Result<(), Said> {
-    with_book(own, sid, |b| {
-        b.mark_half(id, half);
-        Ok(())
-    })
-}
-
 /// 托管终端 `id` 底行此刻那一句：没打标 · 没在等的 · 读不出 ⇒ `None`。
 /// 瘦客户端、托管终端与会话同在一台（托管口是本机套接字）⇒ 这台就是队的主人；sid 由后端打标写进 `hosts/<id>/facts.json`。
 pub(crate) fn line_of_host(own: &Own, id: &str) -> Option<String> {
@@ -643,6 +596,11 @@ pub fn sids_touched<'a>(
         .filter_map(|p| sid_of_name(p.file_name()?.to_str()?))
         .collect();
     out.into_iter().collect()
+}
+
+/// 投递口：那条会话屏上此刻开没开着批准 · 问答框（投递线程每一遍照活会话表记，[`Book::set_boxed`]）；变了才写盘、回 `true`。
+pub fn mark_box(own: &Own, sid: &str, boxed: bool) -> Result<bool, Said> {
+    with_book(own, sid, |b| Ok(b.set_boxed(boxed)))
 }
 
 /// 投递口：那一条送掉了（不在排着 ⇒ `false`）。

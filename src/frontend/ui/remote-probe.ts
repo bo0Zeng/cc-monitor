@@ -16,7 +16,6 @@ import { decodeJson } from "./ipc/decode";
 import { LOCAL } from "./ipc/origin";
 import type { ProbeCell } from "./generated/ProbeCell";
 import { PROBE_PROGRESS_KIND } from "./generated/shell-names";
-import { saidOf } from "./kit/detail";
 
 export type { ProbeCell };
 
@@ -78,7 +77,7 @@ export async function probeMachine(
       await callTyped(LOCAL, "remote-probe", { ticket, machine }, budgetWithin(PROBE_BUDGET_MS));
     } catch (e) {
       if (end !== null) return end;
-      throw new Error(saidOf(e));
+      throw e;
     }
     // 结局那一格排在应答之前发（同一条应答通道），但两条路到界面的先后不保证 ⇒ 等它到。
     await ended;

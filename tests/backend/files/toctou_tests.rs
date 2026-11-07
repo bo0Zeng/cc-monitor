@@ -234,9 +234,9 @@ fn a_source_swapped_for_a_link_after_resolving_is_not_followed() {
     assert!(
         crate::platform::fs::Ro::read_capped_nofollow(
             &src,
-            relay_route_core::Cap {
+            cap_core::Cap {
                 bytes: 1024,
-                over: relay_route_core::Over::Reject,
+                over: cap_core::Over::Reject,
             },
         )
         .is_err(),

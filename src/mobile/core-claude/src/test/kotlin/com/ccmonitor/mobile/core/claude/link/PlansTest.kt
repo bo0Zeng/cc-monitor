@@ -35,7 +35,10 @@ class PlansTest {
                  "said":{"name":"project","inside":null}}],
                "said":{"strip":null,"bare":null,"readAt":"02:11","top":"1/2","root":"1/2"},
                "unbuiltBlocks":[],"unowned":{"paths":null,"why":null},"pendingSets":[],
-               "check":{"unreadable":[],"unparsed":[],"red":[],"undecidable":[]},"archived":[],"needCount":1,
+               "check":{"unreadable":[],"unparsed":[],"red":[],"undecidable":[]},"archived":[],
+               "audits":[{"file":"r.md","by":"person","who":null,"startedAt":"t","tree":null,"due":1,
+                 "nodes":["A1"],"status":"done","check":0,
+                 "said":{"what":"w","by":"p","result":"r","at":"a"}}],"needCount":1,
                "needs":[{"key":"k","kind":"top","block":"project","cell":null,"sid":null,"acked":false,
                  "title":"top","lines":["l"],"pos":"1/1"}]}]}
             """.trimIndent(),

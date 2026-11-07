@@ -10,6 +10,8 @@ import type { TerminalRow, TerminalShot } from "../../../src/frontend/ui/termina
 import type { FollowEvents } from "../../../src/frontend/ui/terminal-follow";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { ControlError } from "../../../src/frontend/ui/control-said";
+import type { Tab } from "../../../src/frontend/ui/tab-model";
+import { liveFace } from "../../test-support/session-faces";
 
 const SLOT: Watched = { kind: "slot", origin: "devbox", terminal: "%7", name: "billing-2", title: "billing" };
 
@@ -22,7 +24,7 @@ const SHOT: TerminalShot = { lines: [], text: "$", screen: "fp", atText: "12:00:
 /** 别端持有时按键尾巴 · Ctrl+回车那一句：名单那一句 ＋「接管后可按键」。 */
 const heldLine = (): string => ["S-in-window", copyText("terminal.input.afterTake")].join(copyText("kit.text.sep"));
 
-function rig(rows: TerminalRow[]): {
+function rig(rows: TerminalRow[], watched: Watched = SLOT): {
   page: TerminalPage;
   reads: { [K in keyof TerminalReads]: ReturnType<typeof vi.fn> };
   holds: { [K in keyof InputHolds]: ReturnType<typeof vi.fn> };
@@ -34,7 +36,7 @@ function rig(rows: TerminalRow[]): {
     follow: vi.fn(() => ({ stop: () => {} })),
   };
   const holds = { take: vi.fn(), release: vi.fn() };
-  const page = new TerminalPage({ active: () => SLOT, front: () => {}, focusStream: () => {} }, reads as unknown as TerminalReads, holds as unknown as InputHolds);
+  const page = new TerminalPage({ active: () => watched, focusStream: () => {} }, reads as unknown as TerminalReads, holds as unknown as InputHolds);
   document.body.replaceChildren(page.el);
   return { page, reads, holds };
 }
@@ -177,5 +179,32 @@ describe("托管那一形：接管被拒的结局 · 页头的持有者", () => 
     expect(page.el.textContent).toContain(copyText("terminal.tag.windows", { n: 1 }));
     expect(page.el.textContent).not.toContain(copyText("terminal.tag.background"));
     expect(page.el.textContent).toContain("S-in-window");
+  });
+});
+
+// 页头「在哪」的目录照会话事实的 `cwdShown`（那台按自己家目录写好的 `~/…`）；还没有 ⇒ 只写机器，不退回原样 `projectDir`。
+describe("终端页页头的目录", () => {
+  const tabOf = (cwdShown: string | null): Watched => ({
+    kind: "tab",
+    tab: { sessionId: "s1", title: "proj", origin: "devbox", projectDir: "/home/me/proj", cwdShown, face: liveFace("working", true) } as unknown as Tab,
+  });
+  const headText = async (cwdShown: string | null): Promise<string> => {
+    const { page } = rig([row({ terminal: "%1", sid: "s1" })], tabOf(cwdShown));
+    page.sessionChanged();
+    page.setVisible(true);
+    await flush();
+    return page.el.textContent ?? "";
+  };
+
+  it("★ 写 `cwdShown`，不写原样 `projectDir`", async () => {
+    const t = await headText("~/proj");
+    expect(t).toContain("~/proj");
+    expect(t).not.toContain("/home/me/proj");
+  });
+
+  it("★ `cwdShown` 还没有 ⇒ 不写目录（不退回 `projectDir`）", async () => {
+    const t = await headText(null);
+    expect(t).not.toContain("/home/me/proj");
+    expect(t, "只写机器").toContain("devbox");
   });
 });

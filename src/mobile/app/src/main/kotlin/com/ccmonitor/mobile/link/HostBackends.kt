@@ -9,6 +9,7 @@ import com.ccmonitor.mobile.core.claude.link.ResidentFeed
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.FleetLines
 import com.ccmonitor.mobile.ssh.HostConnector
+import com.ccmonitor.mobile.ui.session.TerminalOps
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -61,6 +62,9 @@ class HostBackends(
     // computeIfAbsent：原子，一台只起一条（多起一条的那份也会往 SSH 那层报「没够着」）。
     fun of(hostId: String): ResidentFeed =
         byHost.computeIfAbsent(hostId) { feed(it) }.also { f -> if (feedsFlow.value[hostId] !== f) feedsFlow.update { it + (hostId to f) } }
+
+    /** 要这台核心做的终端那几件（[TerminalOps]）：走这台的常驻流，走不通时那一句里用这台的名字。按台只在这里造。 */
+    fun terminals(hostId: String): TerminalOps = TerminalOps(of(hostId)) { labelOf(hostId) }
 
     /** 给这台装 / 更新后端（判定与做法在核心；走到哪在那台的状态成品里，结局经 [ResidentFeed.deploying]）。 */
     fun deploy(hostId: String) = of(hostId).deploy { withContext(Dispatchers.IO) { backendSlots() } }

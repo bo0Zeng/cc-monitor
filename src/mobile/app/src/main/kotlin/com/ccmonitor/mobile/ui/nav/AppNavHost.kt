@@ -31,6 +31,7 @@ import androidx.navigation.navArgument
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.SettingsRepository
 import com.ccmonitor.mobile.core.ui.feedback.AppSnackbarHostScaffold
+import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ui.agents.AgentScreen
 import com.ccmonitor.mobile.ui.agents.AgentStack
 import com.ccmonitor.mobile.ui.agents.AgentsScreen
@@ -39,7 +40,6 @@ import com.ccmonitor.mobile.ui.chat.ChatRoute
 import com.ccmonitor.mobile.ui.chat.chatKey
 import com.ccmonitor.mobile.ui.chat.newConversationId
 import com.ccmonitor.mobile.ui.chats.ChatsRoute
-import com.ccmonitor.mobile.ui.common.UnmigratedHostKeys
 import com.ccmonitor.mobile.ui.drawer.DrawerAction
 import com.ccmonitor.mobile.ui.drawer.DrawerNav
 import com.ccmonitor.mobile.ui.files.FilesScreen
@@ -56,6 +56,7 @@ import com.ccmonitor.mobile.ui.session.LocalOpenTerminal
 import com.ccmonitor.mobile.ui.session.SessionScreen
 import com.ccmonitor.mobile.ui.session.SessionTabManager
 import com.ccmonitor.mobile.ui.session.SessionTabsSheet
+import com.ccmonitor.mobile.ui.session.TerminalsPage
 import com.ccmonitor.mobile.ui.session.keys.KeysEditorScreen
 import com.ccmonitor.mobile.ui.settings.AccountsScreen
 import com.ccmonitor.mobile.ui.settings.Here
@@ -86,7 +87,6 @@ fun AppNavHost() {
             CompositionLocalProvider(LocalOpenTerminal provides openTerminal) {
                 AppNavGraph(nav, tabManager, chatController)
             }
-            UnmigratedHostKeys()
         }
     }
 }
@@ -177,16 +177,7 @@ private fun NavGraphBuilder.sessionRoute(
             onOpenTerminalTab = { hid, path ->
                 nav.navigate("session/${tabManager.open(hid, SessionTabManager.TabTarget.Terminal(cd = path))}")
             },
-            // tmux 附着开新终端 tab，同名复用；复用可能命中当前 tab，照上面的规则短路。
-            onOpenTmuxTab = { hid, name ->
-                val k = tabManager.open(hid, SessionTabManager.TabTarget.Terminal(tmuxSession = name))
-                if (k != key) {
-                    nav.navigate("session/$k") {
-                        launchSingleTop = true
-                        popUpTo(Screen.Hosts.route)
-                    }
-                }
-            },
+            onOpenTmuxTab = { hid, name -> nav.attachTerminal(tabManager, hid, name, from = key) },
             // 面板点击切 tab。
             onSwitchTab = { k ->
                 if (k != key) {
@@ -331,6 +322,8 @@ private fun NavGraphBuilder.hostsRoute(
                 nav.navigate("session/${tabManager.open(hostId, SessionTabManager.TabTarget.Files)}")
             },
             onEdit = { hostId -> nav.navigate("host/$hostId/edit") },
+            // 从抽屉底行进来 ⇒ 顶栏有返回；首装落在这一屏（底下没有别的屏）⇒ 不给。
+            onBack = nav.previousBackStackEntry?.let { { nav.popBackStack() } },
         )
     }
 }
@@ -542,7 +535,6 @@ private fun NavGraphBuilder.chatRoutes(
             onDrawerAction = { action -> nav.followDrawer(action, hostId, tabManager) },
             onOpenRotation = { s -> nav.navigate(Screen.Rotation.of(hostId, s)) },
             onOpenAgents = { s -> nav.navigate(Screen.Agents.of(hostId, s)) },
-            onOpenPlan = { s -> nav.navigate(Screen.Plan.of(hostId, s)) },
             onOpenDir = { dir -> nav.navigate(Screen.Session.of(tabManager.open(hostId, SessionTabManager.TabTarget.Files), dir)) },
             onOpenTerminal = { to -> nav.navigate("session/${tabManager.open(hostId, to)}") },
             onOpenOverview = { nav.navigate(Screen.Overview.of(hostId)) },
@@ -555,6 +547,47 @@ private fun NavGraphBuilder.chatRoutes(
             onPlan = { host, ws, slice, cell -> nav.navigate(cell?.let { Screen.PlanCell.of(host, ws, slice, it) } ?: Screen.PlanSlice.of(host, ws, slice, null)) },
             onBack = { nav.popBackStack() },
         )
+    }
+    terminalsRoute(nav, tabManager)
+}
+
+/** 抽屉「终端名单」那一页：进页不开终端标签页，点「附着」才开（同名复用），名单这一页让给它。 */
+private fun NavGraphBuilder.terminalsRoute(
+    nav: NavHostController,
+    tabManager: SessionTabManager,
+) {
+    composable(Screen.Terminals.route) { entry ->
+        val hostId = entry.arguments?.getString("hostId").orEmpty()
+        val backends = koinInject<HostBackends>()
+        val terminals = remember(hostId) { backends.terminals(hostId) }
+        TerminalsPage(
+            terminals = terminals,
+            onAttach = { name -> nav.attachTerminal(tabManager, hostId, name, from = null) },
+            onBack = { nav.popBackStack() },
+        )
+    }
+}
+
+/**
+ * 附着名叫 [name] 的终端：开它的终端标签页（同名复用）并走过去；会话页与终端名单页的附着都走这一处（聊天页顶栏「终端」照脸上那一格开，走 `onOpenTerminal`）。
+ * 从一条会话里附着（[from] ＝ 那条的 key）：复用命中它自己 ⇒ 不动（见 [sessionRoute] 上那条短路），否则照切 tab 那样
+ * 单顶开过去、栈弹回服务器列表那一层；从终端名单页附着（[from] ＝ `null`）：名单页让给它。
+ */
+private fun NavHostController.attachTerminal(
+    tabManager: SessionTabManager,
+    hostId: String,
+    name: String,
+    from: String?,
+) {
+    val k = tabManager.open(hostId, SessionTabManager.TabTarget.Terminal(tmuxSession = name))
+    when (from) {
+        null -> navigate("session/$k") { popUpTo(Screen.Terminals.route) { inclusive = true } }
+        k -> Unit
+        else ->
+            navigate("session/$k") {
+                launchSingleTop = true
+                popUpTo(Screen.Hosts.route)
+            }
     }
 }
 
@@ -570,7 +603,6 @@ private fun NavHostController.followDrawer(
             hostId = hostId,
             newConversationId = ::newConversationId,
             openFiles = { "session/${tabManager.open(it, SessionTabManager.TabTarget.Files)}" },
-            openTerminal = { "session/${tabManager.open(it, SessionTabManager.TabTarget.Terminal())}" },
         )
     navigate(to.route) {
         // 对话列表里再点「会话」不叠第二份。
@@ -588,17 +620,17 @@ private fun NavHostController.followDrawer(
  * | 新的一张（换机器 · 在一条会话里点新建） | 那台上空的新建会话（带那条的目录），换掉当前这条 |
  * | 最近里的一条 | 那条对话（接着聊），换掉当前这条 |
  * | 对话 | 对话列表 |
- * | 文件 · 终端 | 当前服务器的文件屏 · 终端屏 |
+ * | 文件 | 当前服务器的文件屏 |
+ * | 终端名单 | 当前服务器的终端名单（附着了才开终端标签页） |
  * | 底行名字 · ⚙ | 服务器列表 · 设置 |
  *
- * [openFiles] / [openTerminal] 做成参数：`SessionTabManager.open` 会真建 tab，测试不该为验一张表去建它。
+ * [openFiles] 做成参数：`SessionTabManager.open` 会真建 tab，测试不该为验一张表去建它。
  */
 internal fun drawerDestination(
     action: DrawerAction,
     hostId: String,
     newConversationId: () -> String,
     openFiles: (String) -> String,
-    openTerminal: (String) -> String,
 ): DrawerNav =
     when (action) {
         DrawerAction.NewConversation -> DrawerNav(Screen.Chat.of(hostId, newConversationId(), isNew = true), replacesChat = true)
@@ -606,7 +638,8 @@ internal fun drawerDestination(
         is DrawerAction.OpenRecent -> DrawerNav(Screen.Chat.of(hostId, action.sessionId), replacesChat = true)
         DrawerAction.Conversations -> DrawerNav(Screen.Conversations.of(hostId), replacesChat = false)
         DrawerAction.Files -> DrawerNav(openFiles(hostId), replacesChat = false)
-        DrawerAction.Terminal -> DrawerNav(openTerminal(hostId), replacesChat = false)
+        DrawerAction.Terminal -> DrawerNav(Screen.Terminals.of(hostId), replacesChat = false)
+        DrawerAction.Plan -> DrawerNav(Screen.Plan.of(hostId, null), replacesChat = false)
         DrawerAction.Servers -> DrawerNav(Screen.Hosts.route, replacesChat = false)
         DrawerAction.Settings -> DrawerNav(Screen.Settings.route, replacesChat = false)
     }

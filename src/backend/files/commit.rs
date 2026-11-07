@@ -286,9 +286,9 @@ fn gather_chunks(home: &Path, key: &str, chunks: u64, bytes: u64) -> Result<Vec<
             )));
         }
         // 这一块至多是总长还没拼上的那一段：上限就是它，超了整趟拒（不截一段拼进去）。
-        let left = relay_route_core::Cap {
+        let left = cap_core::Cap {
             bytes: bytes.saturating_sub(out.len() as u64),
-            over: relay_route_core::Over::Reject,
+            over: cap_core::Over::Reject,
         };
         let got = Ro::read_capped_nofollow(&p, left).map_err(|e| {
             WriteRefusal::read(e, |why| {
@@ -594,7 +594,6 @@ fn asked(
                 size_text: size.map(copy_core::size_text),
                 mtime_text: None,
                 there,
-                there_size,
                 there_size_text: there_size.map(copy_core::size_text),
                 there_mtime_text: moment_text(there_mtime, tz),
                 answers: crate::common::batch_book::answers_of(there == wire::FileKind::Dir, false),

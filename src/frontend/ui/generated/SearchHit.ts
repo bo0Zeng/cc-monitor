@@ -7,7 +7,7 @@ export type SearchHit = {
 /**
  * 消息 uuid：打开查看器后据此滚动定位、高亮。
  */
-uuid: string, tsMs: number, 
+uuid: string, 
 /**
  * `user` · `assistant` · `tool` · `report`。
  */

@@ -198,7 +198,7 @@
       {
         "accountShape": {
           "account": "team",
-          "tmux": true
+          "form": "tmux"
         },
         "agent": [],
         "form": {
@@ -402,6 +402,10 @@
       {
         "mode": "base",
         "text": "先用填的名字 · 被占用依次试 -2 -3…"
+      },
+      {
+        "mode": "hosted",
+        "text": "名字取自工作目录（目录名-cc） · 被占用依次试 -2 -3…\n起在 cc-monitor 托管的终端里 · cch ls 列出 · cch attach <名> 接回"
       }
     ]
   },
@@ -455,8 +459,7 @@
   },
   "writeReply": {
     "reload": "已开的终端要运行「. <HOME>/.cc-monitor/aliases.sh」或新开一个",
-    "rev": "264-1093cf62d3b20d25",
-    "wrote": true
+    "rev": "264-1093cf62d3b20d25"
   },
   "说明": "设置窗「别名与配置文件」五口（profiles-read / -resolve / -impact / -bases / -write）的跨语言金样：后端 page_tests.rs::the_profiles_wire_matches_the_cross_language_golden 现算对拍，界面 profiles-reads.ts 的解码器读同一份。<HOME> · <LINE> 是机器上会变的几格。"
 }

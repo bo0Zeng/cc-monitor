@@ -1,6 +1,6 @@
 //! 用户配置 R/W —— `~/.cc-monitor/config.json`。
 //!
-//! Rust 端不解释配置内容（schema 在前端定义，顶层键的主人登记在 `src/frontend/ui/config.ts::CONFIG_KEY_OWNERS`），
+//! Rust 端不解释配置内容（schema 在前端定义，顶层键的主人登记在 `src/shared/config-keys.json`，界面与后端共读），
 //! 只负责读、**按键补丁**写 ＋ 文件缺失时给出最小骨架。落点的名字与读上限照声明表 `relay_route_core::CONFIG_FILE`
 //! （状态 · 不带版本）：超了上限当读不出来，读那一口照实说、写口一个字节不写。
 //!

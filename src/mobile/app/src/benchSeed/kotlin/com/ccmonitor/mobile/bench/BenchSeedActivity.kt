@@ -4,10 +4,10 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import com.ccmonitor.mobile.cache.LocalCache
 import com.ccmonitor.mobile.cache.RawPage
-import com.ccmonitor.mobile.core.claude.link.HistoryList
 import com.ccmonitor.mobile.core.claude.link.HistoryRead
 import com.ccmonitor.mobile.core.claude.link.RawJson
-import com.ccmonitor.mobile.core.claude.link.wire.SyncHand
+import com.ccmonitor.mobile.core.claude.link.wire.RAW_PATCH
+import com.ccmonitor.mobile.core.claude.link.wire.rawPatch
 import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.SettingsRepository
@@ -47,15 +47,16 @@ class BenchSeedActivity : ComponentActivity() {
         get<SettingsRepository>().setLastHost(HOST)
         val cache = get<LocalCache>()
         val golden = assets.open(GOLDEN_ASSET).use { RawJson.read(it.reader().readText()) }
-        val hand = SyncHand().apply(checkNotNull(HistoryList.patch(golden)) { "$GOLDEN_ASSET 不是 history-list 的回包形" })
+        val whole = checkNotNull(rawPatch(golden)?.takeIf { it.whole }) { "$GOLDEN_ASSET 不是 history-list 整份那一形的回包" }
         // 挑一条列表顶层就画得出的（不是分叉出来的、没藏、claude 那一家）。
         val sid =
-            hand.order.first { k ->
-                val r = hand.items.getValue(k) as Map<*, *>
+            whole.order.orEmpty().first { k ->
+                val r = whole.up.getValue(k) as Map<*, *>
                 r["forkedFromSessionId"] == null && r["hidden"] == null && r["agent"] == AGENT
             }
-        val row = (hand.items.getValue(sid) as Map<*, *>) +mapOf("title" to TITLE, "label" to TITLE, "aiTitle" to TITLE, "customTitle" to null)
-        cache.list(HOST).keep(hand.copy(items = hand.items + (sid to row)))
+        val row = (whole.up.getValue(sid) as Map<*, *>) + mapOf("title" to TITLE, "label" to TITLE, "aiTitle" to TITLE, "customTitle" to null)
+        // 那台的整份答改了一行、照常交核心换上（核心存盘，冷启照它画）。
+        checkNotNull(cache.list(HOST).keep(RAW_PATCH.toJsonValue(whole.copy(up = whole.up + (sid to row))))) { "核心没收下那一份清单" }
         var end = 0L
         val rows =
             records().map { r ->

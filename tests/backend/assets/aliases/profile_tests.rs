@@ -225,8 +225,8 @@ fn the_file_speaks_exactly_the_command_lines_words() {
         flag::TAB_FROM,
         flag::CCM_ALIAS,
         flag::NO_ROTATION,
-        // 放进托管终端：不在 tmux 窗格里敲时缺省就是它；后端起会话那一下自己说，写进配置没意义。
-        flag::HOSTED,
+        // 列这台的托管终端：一次性的动作，不起会话。
+        flag::HOSTS,
     ];
     let keys: Vec<&str> = PROFILE_FLAGS.iter().map(|f| key_of(f)).collect();
     for k in &keys {
@@ -566,4 +566,16 @@ fn a_broken_set_is_refused_on_write() {
     };
     let out = apply_changes(Some(SETS), &[Change::SetSet(e)]).unwrap();
     assert_eq!(problems_after(&out).len(), 1, "{:?}", problems_after(&out));
+}
+
+/// 托管入口那一段写 `hosted = true`；`bcch` 基于它只写号 ⇒ 托管 ＋ 那个号。
+#[test]
+fn a_hosted_profile_and_its_account_child_resolve_hosted() {
+    let book = "[cch]\nhosted = true\n\n[bcch]\nfrom = \"cch\"\naccount = \"b\"\n";
+    assert!(opts_of(&resolved(book, "cch", &[])).hosted);
+    let r = resolved(book, "bcch", &[]);
+    let o = opts_of(&r);
+    assert!(o.hosted, "cch 的托管要传下来");
+    assert_eq!(o.account, "b");
+    assert_eq!(origin_of(&r, flag::HOSTED), "cch");
 }

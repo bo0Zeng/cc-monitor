@@ -9,12 +9,7 @@
             "agent": "claude",
             "fiveHour": "5h 63%",
             "kind": "sub",
-            "limiting": "5h",
             "login": "ok",
-            "reading": {
-              "refused": false,
-              "windows": []
-            },
             "rows": [
               [
                 {
@@ -83,15 +78,12 @@
                 }
               ]
             ],
-            "seenAt": 1791189480,
-            "seenAtText": "16:38",
             "slots": [
               {
                 "pct": 63,
                 "resetText": "↻18:30",
                 "resetsAt": 1791196200,
                 "resetsAtRelText": "+1h50m",
-                "resetsAtText": "18:30",
                 "slot": "5h",
                 "text": "63%",
                 "tone": "plain"
@@ -101,7 +93,6 @@
                 "resetText": "↻10-09 09:00",
                 "resetsAt": 1791507600,
                 "resetsAtRelText": "+3d",
-                "resetsAtText": "10-09 09:00",
                 "slot": "7d",
                 "text": "41%",
                 "tone": "plain"
@@ -109,7 +100,6 @@
             ],
             "stale": false,
             "state": "ok",
-            "subId": "3f9c0e1a2b3c4d5e6f708192",
             "usage": {
               "slot": "5h",
               "text": "5h 63%",
@@ -120,7 +110,6 @@
             "warm": {
               "act": "wait",
               "at": 1791196260,
-              "atRelText": "+1h51m",
               "atText": "18:31",
               "text": "5h 63% ↻18:30"
             }
@@ -168,12 +157,7 @@
             "agent": "claude",
             "fiveHour": "5h 63%",
             "kind": "sub",
-            "limiting": "5h",
             "login": "ok",
-            "reading": {
-              "refused": false,
-              "windows": []
-            },
             "rows": [
               [
                 {
@@ -260,8 +244,6 @@
                 }
               ]
             ],
-            "seenAt": 1791189480,
-            "seenAtText": "16:38",
             "slots": [
               {
                 "pct": 63,
@@ -269,7 +251,6 @@
                 "resetText": "↻18:30",
                 "resetsAt": 1791196200,
                 "resetsAtRelText": "+1h50m",
-                "resetsAtText": "18:30",
                 "slot": "5h",
                 "text": "63%",
                 "tone": "plain"
@@ -279,7 +260,6 @@
                 "resetText": "↻10-09 09:00",
                 "resetsAt": 1791507600,
                 "resetsAtRelText": "+3d",
-                "resetsAtText": "10-09 09:00",
                 "slot": "7d",
                 "text": "41%",
                 "tone": "plain"
@@ -287,7 +267,6 @@
             ],
             "stale": false,
             "state": "ok",
-            "subId": "3f9c0e1a2b3c4d5e6f708192",
             "usage": {
               "slot": "5h",
               "text": "5h 63%",
@@ -298,7 +277,6 @@
             "warm": {
               "act": "wait",
               "at": 1791196260,
-              "atRelText": "+1h51m",
               "atText": "18:31",
               "text": "5h 63% ↻18:30"
             },
@@ -311,9 +289,6 @@
                 "perPctText": "1% ≈ 2.1M",
                 "resetsAt": 1791196200,
                 "resetsAtRelText": "+1h50m",
-                "resetsAtText": "18:30",
-                "seenAt": 1791189480,
-                "seenAtText": "16:38",
                 "tokensPerPct": 2100000,
                 "tone": "plain"
               },
@@ -324,9 +299,6 @@
                 "pct": 41,
                 "resetsAt": 1791507600,
                 "resetsAtRelText": "+3d",
-                "resetsAtText": "10-09 09:00",
-                "seenAt": 1791189480,
-                "seenAtText": "16:38",
                 "tone": "plain"
               },
               {
@@ -337,9 +309,6 @@
                 "perPctText": "1% ≈ 25K",
                 "resetsAt": 1791507600,
                 "resetsAtRelText": "+3d",
-                "resetsAtText": "10-09 09:00",
-                "seenAt": 1791189480,
-                "seenAtText": "16:38",
                 "tokensPerPct": 25000,
                 "tone": "plain"
               }
@@ -388,12 +357,7 @@
             "agent": "claude",
             "fiveHour": "5h 86%",
             "kind": "sub",
-            "limiting": "5h",
             "login": "ok",
-            "reading": {
-              "refused": false,
-              "windows": []
-            },
             "rows": [
               [
                 {
@@ -462,15 +426,12 @@
                 }
               ]
             ],
-            "seenAt": 1791189480,
-            "seenAtText": "16:38",
             "slots": [
               {
                 "pct": 86,
                 "resetText": "↻18:30",
                 "resetsAt": 1791196200,
                 "resetsAtRelText": "+1h50m",
-                "resetsAtText": "18:30",
                 "slot": "5h",
                 "text": "86%",
                 "tone": "warn"
@@ -480,7 +441,6 @@
                 "resetText": "↻10-09 09:00",
                 "resetsAt": 1791507600,
                 "resetsAtRelText": "+3d",
-                "resetsAtText": "10-09 09:00",
                 "slot": "7d",
                 "text": "41%",
                 "tone": "plain"
@@ -488,7 +448,6 @@
             ],
             "stale": false,
             "state": "near",
-            "subId": "3f9c0e1a2b3c4d5e6f708192",
             "usage": {
               "slot": "5h",
               "text": "5h 86%",
@@ -499,7 +458,6 @@
             "warm": {
               "act": "wait",
               "at": 1791196260,
-              "atRelText": "+1h51m",
               "atText": "18:31",
               "text": "5h 86% ↻18:30"
             }
@@ -547,15 +505,7 @@
             "agent": "claude",
             "fiveHour": "5h ✕",
             "kind": "sub",
-            "limiting": "5h",
             "login": "ok",
-            "reading": {
-              "refused": true,
-              "resetsAt": 1791198000,
-              "resetsAtRelText": "+2h20m",
-              "resetsAtText": "19:00",
-              "windows": []
-            },
             "rows": [
               [
                 {
@@ -624,8 +574,6 @@
                 }
               ]
             ],
-            "seenAt": 1791189480,
-            "seenAtText": "16:38",
             "slots": [
               {
                 "full": true,
@@ -633,7 +581,6 @@
                 "resetText": "↻19:00",
                 "resetsAt": 1791198000,
                 "resetsAtRelText": "+2h20m",
-                "resetsAtText": "19:00",
                 "slot": "5h",
                 "text": "✕",
                 "tone": "fail"
@@ -643,7 +590,6 @@
                 "resetText": "↻10-07 09:00",
                 "resetsAt": 1791334800,
                 "resetsAtRelText": "+1d",
-                "resetsAtText": "10-07 09:00",
                 "slot": "7d",
                 "text": "78%",
                 "tone": "plain"
@@ -651,7 +597,6 @@
             ],
             "stale": false,
             "state": "refused",
-            "subId": "3f9c0e1a2b3c4d5e6f708192",
             "usage": {
               "reset": "↻19:00",
               "slot": "5h",
@@ -663,7 +608,6 @@
             "warm": {
               "act": "wait",
               "at": 1791198060,
-              "atRelText": "+2h21m",
               "atText": "19:01",
               "text": "被拒（5h）↻19:00"
             }
@@ -711,15 +655,7 @@
             "agent": "claude",
             "fiveHour": "5h 58% · 被拒",
             "kind": "sub",
-            "limiting": "5h",
             "login": "ok",
-            "reading": {
-              "refused": true,
-              "resetsAt": 1791189660,
-              "resetsAtRelText": "+1m",
-              "resetsAtText": "16:41",
-              "windows": []
-            },
             "rows": [
               [
                 {
@@ -788,15 +724,12 @@
                 }
               ]
             ],
-            "seenAt": 1791189480,
-            "seenAtText": "16:38",
             "slots": [
               {
                 "pct": 58,
                 "resetText": "↻19:00",
                 "resetsAt": 1791198000,
                 "resetsAtRelText": "+2h20m",
-                "resetsAtText": "19:00",
                 "slot": "5h",
                 "text": "58% · 被拒",
                 "tone": "fail"
@@ -806,7 +739,6 @@
                 "resetText": "↻10-07 09:00",
                 "resetsAt": 1791334800,
                 "resetsAtRelText": "+1d",
-                "resetsAtText": "10-07 09:00",
                 "slot": "7d",
                 "text": "78%",
                 "tone": "plain"
@@ -814,7 +746,6 @@
             ],
             "stale": false,
             "state": "refused",
-            "subId": "3f9c0e1a2b3c4d5e6f708192",
             "usage": {
               "reset": "↻19:00",
               "slot": "5h",
@@ -826,7 +757,6 @@
             "warm": {
               "act": "wait",
               "at": 1791198060,
-              "atRelText": "+2h21m",
               "atText": "19:01",
               "text": "被拒（5h）↻19:00"
             }
@@ -874,15 +804,7 @@
             "agent": "claude",
             "fiveHour": "5h 超额",
             "kind": "sub",
-            "limiting": "5h",
             "login": "ok",
-            "reading": {
-              "refused": false,
-              "resetsAt": 1791198000,
-              "resetsAtRelText": "+2h20m",
-              "resetsAtText": "19:00",
-              "windows": []
-            },
             "rows": [
               [
                 {
@@ -955,15 +877,12 @@
                 }
               ]
             ],
-            "seenAt": 1791189480,
-            "seenAtText": "16:38",
             "slots": [
               {
                 "pct": 104,
                 "resetText": "↻19:00",
                 "resetsAt": 1791198000,
                 "resetsAtRelText": "+2h20m",
-                "resetsAtText": "19:00",
                 "slot": "5h",
                 "text": "超额",
                 "tone": "warn"
@@ -973,7 +892,6 @@
                 "resetText": "↻10-07 09:00",
                 "resetsAt": 1791334800,
                 "resetsAtRelText": "+1d",
-                "resetsAtText": "10-07 09:00",
                 "slot": "7d",
                 "text": "78%",
                 "tone": "plain"
@@ -981,7 +899,6 @@
             ],
             "stale": false,
             "state": "overageInUse",
-            "subId": "3f9c0e1a2b3c4d5e6f708192",
             "usage": {
               "slot": "5h",
               "text": "5h 超额",
@@ -992,7 +909,6 @@
             "warm": {
               "act": "wait",
               "at": 1791198060,
-              "atRelText": "+2h21m",
               "atText": "19:01",
               "text": "5h 104% ↻19:00"
             }
@@ -1040,12 +956,7 @@
             "agent": "claude",
             "fiveHour": "5h —",
             "kind": "sub",
-            "limiting": "5h",
             "login": "ok",
-            "reading": {
-              "refused": false,
-              "windows": []
-            },
             "rows": [
               [
                 {
@@ -1110,14 +1021,11 @@
                 }
               ]
             ],
-            "seenAt": 1791162120,
-            "seenAtText": "09:02",
             "slots": [
               {
                 "pct": 97,
                 "resetText": "↻13:10 已过",
                 "resetsAt": 1791177000,
-                "resetsAtText": "13:10",
                 "slot": "5h",
                 "text": "—",
                 "tone": "plain"
@@ -1127,7 +1035,6 @@
                 "resetText": "↻10-11 08:00",
                 "resetsAt": 1791676800,
                 "resetsAtRelText": "+5d",
-                "resetsAtText": "10-11 08:00",
                 "slot": "7d",
                 "text": "12%",
                 "tone": "plain"
@@ -1135,7 +1042,6 @@
             ],
             "stale": true,
             "state": "resetSinceSeen",
-            "subId": "3f9c0e1a2b3c4d5e6f708192",
             "usage": {
               "slot": "5h",
               "text": "5h —",
@@ -1192,13 +1098,6 @@
             "fiveHour": "5h —",
             "kind": "sub",
             "login": "ok",
-            "reading": {
-              "refused": true,
-              "resetsAt": 1791192300,
-              "resetsAtRelText": "+45m",
-              "resetsAtText": "17:25",
-              "windows": []
-            },
             "rows": [
               [
                 {
@@ -1269,12 +1168,9 @@
                 }
               ]
             ],
-            "seenAt": 1791189480,
-            "seenAtText": "16:38",
             "slots": [],
             "stale": false,
             "state": "refused",
-            "subId": "3f9c0e1a2b3c4d5e6f708192",
             "usage": {
               "reset": "↻17:25",
               "slot": "5h",
@@ -1331,12 +1227,7 @@
             "agent": "claude",
             "fiveHour": "5h 30%",
             "kind": "sub",
-            "limiting": "5h",
             "login": "needsLogin",
-            "reading": {
-              "refused": false,
-              "windows": []
-            },
             "rows": [
               [
                 {
@@ -1401,15 +1292,12 @@
                 }
               ]
             ],
-            "seenAt": 1791189480,
-            "seenAtText": "16:38",
             "slots": [
               {
                 "pct": 30,
                 "resetText": "↻20:00",
                 "resetsAt": 1791201600,
                 "resetsAtRelText": "+3h20m",
-                "resetsAtText": "20:00",
                 "slot": "5h",
                 "text": "30%",
                 "tone": "plain"
@@ -1424,7 +1312,6 @@
             ],
             "stale": false,
             "state": "ok",
-            "subId": "3f9c0e1a2b3c4d5e6f708192",
             "usage": {
               "slot": "5h",
               "text": "5h 30%",
@@ -1435,7 +1322,6 @@
             "warm": {
               "act": "wait",
               "at": 1791193200,
-              "atRelText": "+1h",
               "atText": "17:40",
               "text": "需登录"
             }
@@ -1483,12 +1369,7 @@
             "agent": "claude",
             "fiveHour": "5h 31%",
             "kind": "sub",
-            "limiting": "5h",
             "login": "ok",
-            "reading": {
-              "refused": false,
-              "windows": []
-            },
             "rows": [
               [
                 {
@@ -1557,15 +1438,12 @@
                 }
               ]
             ],
-            "seenAt": 1791189060,
-            "seenAtText": "16:31",
             "slots": [
               {
                 "pct": 31,
                 "resetText": "↻18:40",
                 "resetsAt": 1791196800,
                 "resetsAtRelText": "+2h",
-                "resetsAtText": "18:40",
                 "slot": "5h",
                 "text": "31%",
                 "tone": "plain"
@@ -1575,7 +1453,6 @@
                 "resetText": "↻17:25",
                 "resetsAt": 1791192300,
                 "resetsAtRelText": "+45m",
-                "resetsAtText": "17:25",
                 "slot": "7d",
                 "text": "9%",
                 "tone": "plain"
@@ -1583,7 +1460,6 @@
             ],
             "stale": false,
             "state": "ok",
-            "subId": "3f9c0e1a2b3c4d5e6f708192",
             "usage": {
               "slot": "5h",
               "text": "5h 31%",
@@ -1594,7 +1470,6 @@
             "warm": {
               "act": "wait",
               "at": 1791196860,
-              "atRelText": "+2h1m",
               "atText": "18:41",
               "text": "5h 31% ↻18:40"
             }
@@ -1637,10 +1512,6 @@
             "fiveHour": null,
             "kind": "api",
             "login": "ok",
-            "reading": {
-              "refused": false,
-              "windows": []
-            },
             "rows": [
               [
                 {
@@ -1677,8 +1548,6 @@
                 }
               ]
             ],
-            "seenAt": 1791189000,
-            "seenAtText": "16:30",
             "slots": [],
             "stale": false,
             "state": "ok",
@@ -1698,13 +1567,6 @@
             "fiveHour": null,
             "kind": "api",
             "login": "ok",
-            "reading": {
-              "refused": true,
-              "resetsAt": 1791190320,
-              "resetsAtRelText": "+12m",
-              "resetsAtText": "16:52",
-              "windows": []
-            },
             "rows": [
               [
                 {
@@ -1745,8 +1607,6 @@
                 }
               ]
             ],
-            "seenAt": 1791189000,
-            "seenAtText": "16:30",
             "slots": [],
             "stale": false,
             "state": "refused",
@@ -1767,10 +1627,6 @@
             "fiveHour": null,
             "kind": "api",
             "login": "needsKey",
-            "reading": {
-              "refused": false,
-              "windows": []
-            },
             "rows": [
               [
                 {
@@ -1811,8 +1667,6 @@
                 }
               ]
             ],
-            "seenAt": 1791189000,
-            "seenAtText": "16:30",
             "slots": [],
             "stale": false,
             "state": "ok",
@@ -1824,7 +1678,6 @@
             "warm": {
               "act": "wait",
               "at": 1791193200,
-              "atRelText": "+1h",
               "atText": "17:40",
               "text": "需 key"
             }
@@ -1882,12 +1735,7 @@
             "agent": "claude",
             "fiveHour": "5h 4%",
             "kind": "sub",
-            "limiting": "5h",
             "login": "ok",
-            "reading": {
-              "refused": false,
-              "windows": []
-            },
             "rows": [
               [
                 {
@@ -1956,15 +1804,12 @@
                 }
               ]
             ],
-            "seenAt": 1791189480,
-            "seenAtText": "16:38",
             "slots": [
               {
                 "pct": 4,
                 "resetText": "↻18:10",
                 "resetsAt": 1791195000,
                 "resetsAtRelText": "+1h30m",
-                "resetsAtText": "18:10",
                 "slot": "5h",
                 "text": "4%",
                 "tone": "plain"
@@ -1974,7 +1819,6 @@
                 "resetText": "↻10-10 09:00",
                 "resetsAt": 1791594000,
                 "resetsAtRelText": "+4d",
-                "resetsAtText": "10-10 09:00",
                 "slot": "7d",
                 "text": "12%",
                 "tone": "plain"
@@ -1982,7 +1826,6 @@
             ],
             "stale": false,
             "state": "ok",
-            "subId": "3f9c0e1a2b3c4d5e6f708192",
             "usage": {
               "slot": "5h",
               "text": "5h 4%",
@@ -1993,7 +1836,6 @@
             "warm": {
               "act": "wait",
               "at": 1791195060,
-              "atRelText": "+1h31m",
               "atText": "18:11",
               "text": "5h 4% ↻18:10"
             }
@@ -2090,7 +1932,6 @@
             "warm": {
               "act": "wait",
               "at": 1791193200,
-              "atRelText": "+1h",
               "atText": "17:40",
               "text": "需登录"
             }
@@ -2155,12 +1996,7 @@
             "agent": "claude",
             "fiveHour": "5h —",
             "kind": "sub",
-            "limiting": "5h",
             "login": "ok",
-            "reading": {
-              "refused": false,
-              "windows": []
-            },
             "rows": [
               [
                 {
@@ -2225,14 +2061,11 @@
                 }
               ]
             ],
-            "seenAt": 1798678920,
-            "seenAtText": "09:02",
             "slots": [
               {
                 "pct": 97,
                 "resetText": "↻13:10 已过",
                 "resetsAt": 1798693800,
-                "resetsAtText": "13:10",
                 "slot": "5h",
                 "text": "—",
                 "tone": "plain"
@@ -2242,7 +2075,6 @@
                 "resetText": "↻2027-01-03 09:00",
                 "resetsAt": 1798938000,
                 "resetsAtRelText": "+2d",
-                "resetsAtText": "2027-01-03 09:00",
                 "slot": "7d",
                 "text": "12%",
                 "tone": "plain"
@@ -2250,7 +2082,6 @@
             ],
             "stale": false,
             "state": "resetSinceSeen",
-            "subId": "3f9c0e1a2b3c4d5e6f708192",
             "usage": {
               "slot": "5h",
               "text": "5h —",
@@ -2268,12 +2099,7 @@
             "agent": "claude",
             "fiveHour": "5h —",
             "kind": "sub",
-            "limiting": "5h",
             "login": "ok",
-            "reading": {
-              "refused": false,
-              "windows": []
-            },
             "rows": [
               [
                 {
@@ -2334,14 +2160,11 @@
                 }
               ]
             ],
-            "seenAt": 1767196200,
-            "seenAtText": "2025-12-31 23:50",
             "slots": [
               {
                 "pct": 2,
                 "resetText": "↻01-01 03:00 已过",
                 "resetsAt": 1767207600,
-                "resetsAtText": "01-01 03:00",
                 "slot": "5h",
                 "text": "—",
                 "tone": "plain"
@@ -2350,7 +2173,6 @@
                 "pct": 5,
                 "resetText": "↻01-06 09:00 已过",
                 "resetsAt": 1767661200,
-                "resetsAtText": "01-06 09:00",
                 "slot": "7d",
                 "text": "5%",
                 "tone": "plain"
@@ -2358,7 +2180,6 @@
             ],
             "stale": true,
             "state": "resetSinceSeen",
-            "subId": "3f9c0e1a2b3c4d5e6f708192",
             "usage": {
               "slot": "5h",
               "text": "5h —",

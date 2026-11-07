@@ -4,26 +4,26 @@
  * - 一行：［＋］附件 · 字 · ➤；Enter 发、Shift+Enter 换行，组字时回车归输入法；Esc 焦点还给消息流。没发的字按会话各记一份。
  * - 一轮在跑（脸上 `can.stop`，那台判好）、框里没字也没附件 ⇒ ➤ 换成 ■（同手机，二选一）：点了交 `session-interrupt`（不进队、不靠持有输入）；
  *   送到了 · 不知道送没送到 ⇒ 不说（看记录）；那台拒了 · 没送成 ⇒ 框下写那台那一句。说不了（框灰着）也照样能停。
- * - 上方一排（`queue-row.ts`）：这一端的待发（`outbox.ts`，发送中 ·［撤回］）＋ 那台推来的整份队列名单（排第 n · 谁发的 ·［撤回］）；
- *   那台离线（机器成品，宿主经 `machineChanged` 交来）⇒ 照手上那一份淡着画、头上写名单是上次所知；
+ * - 上方一排（`queue-row.ts`）：那台推来的整份队列名单（那台写的那一句 ·［撤回］）＋ 这一端的待发（`outbox.ts`：在飞 ⇒「发送中 · 等确认」；
+ *   交了没回执 ⇒ 那台离线照它成品的 `heldSaid`、连着说「排队 · 无应答」）；［撤回］撤掉之后字回到输入框（框里已有别的字 ⇒ 另起一行接在后面）。
+ *   那台离线（机器成品，宿主经 `machineChanged` 交来）⇒ 照手上那一份淡着画、排头写名单是上次所知；
  *   再上一排是附件（`attach-row.ts`，拖到主区上（宿主经 `takeDrops` 交落点）· 粘贴 · ［＋］进同一排）。
  * - 交出只走 `session-queue-put`（经待发）：回执到了 ⇒ 字与 chip 一起清、框下写那台那一句；那台拒了 ⇒ 字留着、写那台那一句；
- *   没回执 ⇒ 留在待发（那一排「发送中」），那台接上照原编号重交（不挂在这条会话开没开着）。
- * - 能不能说只读脸上的 `can.say`（那台判好、`why` 写好）：不能 ⇒ 框灰着、占位就是那一句，还有终端可去 ⇒ 给［切到终端］。
+ *   没回执 ⇒ 留在待发（那一排那一行说，框下不另起一行），那台接上照原编号重交（不挂在这条会话开没开着）。
+ * - 能不能说只读脸上的 `can.say`（那台判好、`why` 写好）：不能 ⇒ 框灰着、占位就是那一句；去终端只有会话头「终端」那一颗，框旁不另放。
  *   那台离线照常可写可发（成待发，占位写「连上后送」）；已结束能恢复的 ⇒ 可写，发一句 ＝ 先恢复（落后台）再把这句交进它的队。
  */
 import { copyText } from "./copy-table";
 import { machineName, offlineSaid, settleTyped } from "./control-said";
-import { canResume, canStop, hasTerminal, isLive } from "./face-can";
+import { canResume, canStop, isLive } from "./face-can";
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { sentOf, type TerminalSent } from "./terminal-reads";
-import { terminalFrontAvailable } from "./terminal-front";
 import type { Tab } from "./tab-model";
 import type { Machine } from "./ipc/origin";
 import type { QueueList } from "./generated/QueueList";
 import { AttachDraft, channelIo, type AttachIo } from "./attach-draft";
 import { AttachRow } from "./attach-row";
-import { QueueRow } from "./queue-row";
+import { QueueRow, type PendingLine } from "./queue-row";
 import { outbox as mainOutbox, type Outbox } from "./outbox";
 import { CHANNEL_CANCEL, CHANNEL_READ, CHANNEL_WATCH, pendingKey, type QueueCancelFn, type QueueMoved, type QueueReadFn, type QueueWatchFn } from "./session-queue";
 import { el } from "./kit/el";
@@ -84,8 +84,6 @@ export interface ComposerHost {
   active(): Tab | null;
   /** 已结束的会话里发一句：先恢复它（落后台）；成了回 `true`。 */
   resume(sid: string): Promise<boolean>;
-  /** ↗ 切到这条会话的终端窗口（说不了时那条出路）。 */
-  front(sid: string): void;
   /** Esc：焦点还给消息流。 */
   focusStream(): void;
   /** 框多高（消息流底下让出这么多）。 */
@@ -107,8 +105,7 @@ export class Composer {
   private readonly stopBtn: HTMLButtonElement;
   private readonly stopLabel = copyText("composer.input.stop");
   private stopping = false;
-  /** 说不了时那条出路［切到终端］（还有终端可去才出）。 */
-  private readonly frontBtn: HTMLButtonElement;
+  /** 输入那一行：［＋］· 字 · ➤ / ■。 */
   private readonly outRow: HTMLElement;
   private readonly noteEl: HTMLElement;
   private readonly queueRow: QueueRow;
@@ -123,6 +120,8 @@ export class Composer {
   private watching: { origin: Machine; stop: () => void } | null = null;
   /** 此刻离线的那几台 ⇒ 连接层写好的离线那一句（机器成品 `offlineSaid`）。 */
   private readonly offline = new Map<string, string>();
+  /** 各台待发交了没回执时那一句（机器成品 `heldSaid`，拨号那一端写的）。 */
+  private readonly held = new Map<string, string>();
   private note: Note | null = null;
   private sending = false;
   private lastRoom = -1;
@@ -136,7 +135,7 @@ export class Composer {
     this.el = el("div", s.composer);
     this.el.dataset.role = "composer";
     const col = el("div", s.composerCol);
-    this.queueRow = new QueueRow({ cancel: (id) => void this.cancelQueued(id), cancelPending: (id) => this.cancelPending(id) });
+    this.queueRow = new QueueRow({ cancel: (id, text) => void this.cancelQueued(id, text), cancelPending: (id, text) => this.cancelPending(id, text) });
     this.attach = new AttachRow({
       draft: () => this.attachDraft(),
       target: () => {
@@ -162,16 +161,6 @@ export class Composer {
     this.outRow = el("div", s.composerRow);
     this.outRow.append(this.attach.plus, this.box, this.sendBtn, this.stopBtn);
     this.noteEl = el("div", s.composerNote);
-    this.frontBtn = button({
-      label: copyText("terminal.head.front"),
-      kind: "ghost",
-      size: "compact",
-      icon: "front",
-      onClick: () => {
-        const t = this.host.active();
-        if (t) this.host.front(t.sessionId);
-      },
-    });
     col.append(this.queueRow.el, this.attach.row, this.outRow, this.noteEl);
     this.el.append(col);
     this.outbox.onChange(() => this.paint());
@@ -209,12 +198,16 @@ export class Composer {
     for (const [k, d] of this.attachDrafts) if (k.startsWith(`${origin}\u0000`)) d.resume();
   }
 
-  /** 一台的状态成品来了（宿主跟着机器条一起交）：离线 ⇒ 记下连接层那句离线，名单照手上那一份淡着画；连着 ⇒ 拿掉。 */
-  machineChanged(origin: string, m: { readonly offline: boolean; readonly offlineSaid: string }): void {
+  /**
+   * 一台的状态成品来了（宿主跟着机器条一起交）：离线 ⇒ 记下连接层那句离线，名单照手上那一份淡着画；连着 ⇒ 拿掉。
+   * 待发没回执那一行照它的 `heldSaid`。
+   */
+  machineChanged(origin: string, m: { readonly offline: boolean; readonly offlineSaid: string; readonly heldSaid: string }): void {
     const now = m.offline ? m.offlineSaid : undefined;
-    if (this.offline.get(origin) === now) return;
+    if (this.offline.get(origin) === now && this.held.get(origin) === m.heldSaid) return;
     if (now === undefined) this.offline.delete(origin);
     else this.offline.set(origin, now);
+    this.held.set(origin, m.heldSaid);
     if (this.host.active()?.origin === origin) this.paint();
   }
 
@@ -278,12 +271,11 @@ export class Composer {
       this.paint();
       return;
     }
-    const end = await this.outbox.say(t.origin, t.sessionId, text, chips ? draft.ids() : []);
+    await this.outbox.say(t.origin, t.sessionId, text, chips ? draft.ids() : []);
     if (key !== this.key) return;
     this.sending = false;
-    // 没回执 ⇒ 字留着、写那一句（那一排「发送中」，接上重交）；有结局的由 [settled] 说。
-    if (end.at === "none") this.showNote({ text: end.said, tone: "error" });
-    else this.paint();
+    // 没回执 ⇒ 字留着，那一排那一行换成那台的 heldSaid（接上重交）；有结局的由 [settled] 说。
+    this.paint();
   }
 
   /** 此刻是 ■ 不是 ➤：一轮在跑（脸上 `can.stop`）、框里没字、也没附件（同手机）。 */
@@ -337,12 +329,15 @@ export class Composer {
     this.showNote({ text: end.said, tone: "ok" });
   }
 
-  /** 撤待发里那一句：本地拿掉；万一已交到那台，照编号请它撤（没撤成 ⇒ 写那台那一句，不吞）。 */
-  private cancelPending(id: string): void {
+  /** 撤待发里那一句：本地拿掉、字回到输入框；万一已交到那台，照编号请它撤（没撤成 ⇒ 写那台那一句，不吞）。 */
+  private cancelPending(id: string, text: string): void {
     const t = this.host.active();
     if (!t) return;
+    // 编辑已发的那一句：字留在编辑框，不回输入框。
+    const edit = this.outbox.of(t.origin, t.sessionId).some((o) => o.id === id && o.rewind !== undefined);
     this.outbox.drop(t.origin, t.sessionId, id);
     this.sending = false;
+    if (!edit) this.recall(text);
     const key = pendingKey(t.origin, t.sessionId);
     void this.reads.cancel(t.origin, t.sessionId, id).then(
       (r) => this.gotQueue(key, r.queue),
@@ -350,16 +345,26 @@ export class Composer {
     );
   }
 
-  /** 撤名单里那一条，照回的整份名单画；没成 ⇒ 写那台那一句。 */
-  private async cancelQueued(id: string): Promise<void> {
+  /** 撤名单里那一条，照回的整份名单画；撤成了 ⇒ 字回到输入框（`recall`，编辑已发的那一句没有）；没成 ⇒ 写那台那一句。 */
+  private async cancelQueued(id: string, recall: string | null): Promise<void> {
     const t = this.host.active();
     if (!t) return;
+    const key = pendingKey(t.origin, t.sessionId);
     try {
       const r = await this.reads.cancel(t.origin, t.sessionId, id);
-      this.gotQueue(pendingKey(t.origin, t.sessionId), r.queue);
+      if (r.cancelled && recall !== null && key === this.key) this.recall(recall);
+      this.gotQueue(key, r.queue);
     } catch (e) {
       this.showNote({ text: saidOf(e), tone: "error", detail: detailOf(e) });
     }
+  }
+
+  /** 撤回的那一句回到输入框：框空 ⇒ 就是它；框里已是它 ⇒ 不动；框里有别的字 ⇒ 另起一行接在后面，不丢字。 */
+  private recall(text: string): void {
+    const now = this.box.value;
+    if (now === text) return;
+    this.box.value = now === "" ? text : `${now}\n${text}`;
+    this.onInput();
   }
 
   private async readQueue(): Promise<void> {
@@ -440,10 +445,9 @@ export class Composer {
     setBusy(this.sendBtn, this.sending ? this.sendLabel : null);
     this.paintSendOrStop(t);
     this.attach.paint();
-    this.queueRow.paint(this.queueOf === this.key ? this.queue : null, this.outbox.of(t.origin, t.sessionId), this.offline.get(t.origin) ?? null);
-    // 说不了、还有终端可去 ⇒ 那条出路（同会话头 ↗ 那一道）。
-    this.frontBtn.style.display = no !== null && hasTerminal(t.face) && terminalFrontAvailable() ? "" : "none";
-    const parts: HTMLElement[] = [this.frontBtn];
+    this.queueRow.paint(this.queueOf === this.key ? this.queue : null, this.pendingLines(t.origin, t.sessionId), this.offline.has(t.origin));
+    // 说不了时框里那一句占位就是那台写的出路；去终端只有会话头「终端」那一颗，框旁不另放。
+    const parts: HTMLElement[] = [];
     if (this.note) {
       parts.push(el("span", this.note.tone === "ok" ? s.composerNoteOk : s.composerNoteError, this.note.text));
       const copy = copyDetailButton(this.note.text, this.note.detail ?? "");
@@ -451,6 +455,18 @@ export class Composer {
     }
     this.noteEl.replaceChildren(...parts);
     this.measure();
+  }
+
+  /**
+   * 那条会话的待发那几行：在飞 ⇒「发送中 · 等确认」；交了没回执：那台此刻离线 ⇒ 那台成品的 `heldSaid`；那台连着（超时 · 回包读不出）⇒
+   * 「排队 · 无应答」（不借 heldSaid：连着时说离线是假话）。两种都是接上照原编号重交。
+   */
+  private pendingLines(origin: Machine, sid: string): PendingLine[] {
+    const ended = (): string =>
+      (this.offline.has(origin) ? this.held.get(origin) : undefined) ?? copyText("beQueue.said.noAnswer");
+    return this.outbox.of(origin, sid).map((o) =>
+      this.outbox.inFlight(o.id) ? { id: o.id, text: o.text, said: copyText("beQueue.said.confirming"), held: false } : { id: o.id, text: o.text, said: ended(), held: true },
+    );
   }
 
   /** ➤ 与 ■ 二选一（打字 · 删字时也跟着换，不等整份重画）。 */

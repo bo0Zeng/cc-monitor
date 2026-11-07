@@ -45,20 +45,30 @@ object Core {
     /** 这一份核心的身份那一行（JSON：拨号核心的 ack 协议版本 · 认得的用法）。 */
     external fun version(): String
 
-    /** 记下 [sink]、装上手机那一套（只认第一次）：主机钥匙那份库（OpenSSH known_hosts）在 [knownHosts]（App 私有目录）。 */
+    /**
+     * 记下 [sink]、装上手机那一套（只认第一次）：主机钥匙那份库（OpenSSH known_hosts）在 [knownHosts]（App 私有目录），
+     * 会话列表副本在 [lists] 那个目录（App 缓存目录，一台一份文件）。
+     */
     external fun init(
         sink: Sink,
         knownHosts: String,
+        lists: String,
     )
 
     /**
-     * Room 旧表迁进库、读回比（[rows] 平铺：主机 · 口 · 类型 · base64 四个一行）：对上 ⇒ `null`（旧表可清空）；
-     * 对不上 ⇒ 那一句（之后拨号一律拒，下次启动再迁）。只活这一版。
+     * 这台（[host] 是机器 id）手上那一份会话列表（`history-list` 不带筛选那一问，核心照那台的答换好、存着的那一份），
+     * 摊成整份那一答（`SyncPatch` JSON，`whole`，记号是下次带着问的那个）；没问过 ⇒ 空串。
      */
-    external fun migrateHostKeys(rows: Array<String>): String?
+    external fun listingHeld(host: String): String
 
-    /** 迁移对不上那一句的出路（确认过才调）：清空那份库、之后每台照首见重新记；`true` ⇒ 旧表可清空。没对不上 · 写不成 ⇒ `false`。 */
-    external fun forgetAllHostKeys(): Boolean
+    /** 那台那一问的回包（`data` 的 JSON）交核心换上、存盘 ⇒ 换好的整份（同 [listingHeld] 那一形）；读不动 ⇒ 空串，手上那一份不动。 */
+    external fun listingKeep(
+        host: String,
+        reply: String,
+    ): String
+
+    /** 删了一台：它的会话列表副本一并丢掉。 */
+    external fun listingForget(host: String)
 
     /** 忘掉这台的主机钥匙（「钥匙变了」页上点了才调）；写不成 ⇒ `false`。 */
     external fun forgetHost(
@@ -98,6 +108,9 @@ object Core {
         point: ByteArray,
         comment: String,
     ): String?
+
+    /** 钥匙屏一行的第二行：照那把公钥（OpenSSH 一行）写好的「算法 · SHA256:前4…后2」；读不出 ⇒ 「公钥无法读取」那一句。 */
+    external fun keyLine(publicKeyOpenSsh: String): String
 
     /** 现生成一把软件 Ed25519：JSON `KeyPair`（私钥 openssh-key-v1 无口令 · 公钥同 [publicKeyOf] 那一形）；生成不了 ⇒ `null`。 */
     external fun generateEd25519(comment: String): String?

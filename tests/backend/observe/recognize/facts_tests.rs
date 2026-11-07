@@ -548,7 +548,6 @@ fn needs_is_decided_from_the_wait_and_the_pending_call() {
             tone: crate::common::cells::Tone::Need,
             rank: needs_rank(NeedsKind::Approve, Some(1)),
             waited_ms: Some(1),
-            waited_text: Some(crate::common::cells::Words(copy_core::short_duration(1))),
             ask: None,
             manual_text: None,
         })
@@ -1018,7 +1017,6 @@ fn cost_is_the_last_cost_record_as_written() {
     assert_eq!(
         f.cost,
         Some(Cost {
-            micros: 1_234_000,
             partial: false,
             text: crate::common::cells::Words(copy_core::copy_text(
                 "beSpend.cost.exact",
@@ -1487,18 +1485,11 @@ fn how_long_it_has_waited_is_measured_on_the_machine_that_wrote_the_start() {
             }),
         )
         .expect("在等");
-        (n.waited_ms, n.waited_text.map(|w| w.0))
+        n.waited_ms
     };
-    assert_eq!(
-        at(Some(1_000), 91_000),
-        (Some(90_000), Some(copy_core::short_duration(90_000)))
-    );
-    assert_eq!(at(Some(1_000), 91_000).1.as_deref(), Some("1m"));
-    assert_eq!(at(None, 91_000), (None, None));
-    assert_eq!(
-        at(Some(95_000), 91_000),
-        (Some(0), Some(copy_core::short_duration(0)))
-    );
+    assert_eq!(at(Some(1_000), 91_000), Some(90_000));
+    assert_eq!(at(None, 91_000), None);
+    assert_eq!(at(Some(95_000), 91_000), Some(0));
 }
 
 /// ★ 先答哪个只住 [`needs_rank`]（出口只按 `rank` 排）：危险度那一档在前；同一档等得久的在前；
@@ -1565,7 +1556,6 @@ fn ranked(tier: usize, waited_ms: Option<u64>) -> Needs {
         tone: crate::common::cells::Tone::Need,
         rank: needs_rank(NEEDS_BY_DANGER[tier], waited_ms),
         waited_ms,
-        waited_text: None,
         ask: None,
         manual_text: None,
     }
@@ -1909,9 +1899,8 @@ fn bookkeeping_lines_nobody_reads_are_counted_in_the_facts() {
     ];
     let text = jsonl(&recs);
     let whole = scan_all(&text);
-    let v = serde_json::to_value(&whole).unwrap();
     assert_eq!(
-        v["quietUnread"],
+        serde_json::to_value(&whole.quiet_unread).unwrap(),
         json!({
             "count": 3,
             "kinds": ["some-future-ledger", "other-future-ledger"],
@@ -1922,8 +1911,7 @@ fn bookkeeping_lines_nobody_reads_are_counted_in_the_facts() {
         })
     );
     // 一行都没有 ⇒ null。
-    let none = serde_json::to_value(scan_all(&jsonl(&recs[1..2]))).unwrap();
-    assert_eq!(none["quietUnread"], Value::Null);
+    assert_eq!(scan_all(&jsonl(&recs[1..2])).quiet_unread, None);
     // 接力扫 == 一次扫完。
     let mut cuts = vec![0usize];
     cuts.extend(text.match_indices('\n').map(|(i, _)| i + 1));

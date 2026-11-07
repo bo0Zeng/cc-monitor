@@ -32,8 +32,6 @@ pub struct Task {
     pub status_text: String,
     /// 串的数组；原文缺 ⇒ `[]`（原文是 `null` / 别的类型 ⇒ 那个对象不算任务）。
     pub blocks: Vec<String>,
-    /// 同上。
-    pub blocked_by: Vec<String>,
     /// 可缺（原文缺或 `null` ⇒ 这一格不出现），出现就是串。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]

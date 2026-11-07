@@ -196,9 +196,9 @@ static RESIDENT: std::sync::Mutex<BTreeMap<PathBuf, SearchIndex>> =
 /// 〔perfC2〕读数（680 MB 合成世界，`tests/shots/perf/backend/drive.mjs --only search`）：正文一共约 79 MB ⇒ 128 MB 整份装得下
 /// （不含工具每问 0.2–0.4 s CPU，64 MB 时 0.5–0.8 s）；含工具的文本约 400 MB，128 / 256 都装不下、只差在常驻多少 ⇒
 /// 不为它再往上调（它靠并行重读与正文层优先，不靠上界）。
-pub(crate) const RESIDENT_MAX_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+pub(crate) const RESIDENT_MAX_BYTES: cap_core::Cap = cap_core::Cap {
     bytes: 128 << 20,
-    over: relay_route_core::Over::IndexTrim,
+    over: cap_core::Over::IndexTrim,
 };
 
 /// 中毒（某一问 panic 在半路）⇒ 整张表丢掉重建，不带着半截状态答。
@@ -1132,8 +1132,9 @@ pub struct FindHit {
     /// 第几轮（这条之前含它人说过几句；第一句之前 ＝ 0）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) turn: u64,
-    /// 那条记录的时刻（毫秒；读不出 ＝ 0）。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    /// 那条记录的时刻（毫秒；读不出 ＝ 0）：后端写 `tsText` 用，不上线。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub(crate) ts_ms: i64,
     /// `tsMs` 按看的那一台的时区写好（今天 `HH:MM` · 昨天 · 更早带日期；读不出 ⇒ 空串）：出口那一下添（[`with_hit_text`]）。
     pub(crate) ts_text: String,

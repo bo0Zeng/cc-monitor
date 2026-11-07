@@ -59,11 +59,9 @@ setup() {
   bash "$REPO/tests/scripts/re-embed.sh" --native || die "本机后端没编出来 / 铺了起不来（tests/scripts/re-embed.sh --native）"
   local bid said
   bid="$(_build_id)"
-  # 台架自证 ①：钉住的那份后端就是这一版（旧的那份会让套件测的不是这棵树）。它自己答（流模式第一行 hello 的 `build_id`）。
-  mkdir -p "$RIG/probe-home"
-  said="$(env -i PATH=/usr/bin:/bin HOME="$RIG/probe-home" "$BACKEND" -- --stream < /dev/null 2>/dev/null | head -1 \
-    | sed -n 's/.*"build_id":"\([^"]*\)".*/\1/p')"
-  rm -rf "$RIG/probe-home"
+  # 台架自证 ①：钉住的那份后端就是这一版（旧的那份会让套件测的不是这棵树）。它自己答（流模式第一行 hello 的 `build_id`）；
+  #   起它经 re-embed 那一份（隔离的 HOME、一律失败的 tmux 替身），不碰用户的 tmux server。
+  said="$(bash "$REPO/tests/scripts/re-embed.sh" --hello-id "$BACKEND" || true)"
   [ "$said" = "$bid" ] || die "钉住的后端自报 build_id「$said」，源码是「$bid」—— 先重编：cd src/backend && cargo build"
   local sshd sftp_server p
   sshd="$(command -v sshd || echo /usr/sbin/sshd)"

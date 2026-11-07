@@ -1,0 +1,61 @@
+/* 「开始用」卡：左侧强调色竖线 · 一步一行（圈 · 名字与一句 · 按钮）。 */
+@layer components {
+  .startCard {
+    width: min(520px, 100%);
+    margin: var(--space-5) auto 0;
+    padding: var(--space-4) var(--space-5);
+    border: 1px solid var(--border-strong);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius-m);
+    background: var(--bg-2);
+    text-align: left;
+  }
+  .startHead {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-4);
+    padding-bottom: var(--space-3);
+    border-bottom: 1px solid var(--border-faint);
+  }
+  .startTitle {
+    font-weight: 600;
+  }
+  .startHead > button {
+    margin-left: auto;
+  }
+  .startRow {
+    display: flex;
+    align-items: center;
+    gap: var(--space-5);
+    padding: var(--space-4) 0;
+    border-bottom: 1px solid var(--border-faint);
+  }
+  .startRow:last-child {
+    border-bottom: none;
+  }
+  .startMark {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border: 1px solid var(--text-faint);
+    border-radius: 50%;
+    color: var(--success);
+  }
+  .startRow[data-done="true"] .startMark {
+    border-color: var(--success);
+  }
+  .startText {
+    flex: 1;
+    min-width: 0;
+  }
+  .startName {
+    font-weight: 500;
+  }
+  .startHint {
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+}

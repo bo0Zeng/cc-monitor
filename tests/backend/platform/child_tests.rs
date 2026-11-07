@@ -291,16 +291,15 @@ fn a_reused_thread_carries_no_budget_into_the_next_command() {
     .expect("线程");
 }
 
-/// 🔴**摘环境按本平台的大小写规矩比**：Windows 不分大小写（`ccm_listen_port` · `Claude_Code_Session_Id` 照样摘），
+/// 🔴**摘环境按本平台的大小写规矩比**：Windows 不分大小写（`ccm_backend_bin` · `Claude_Code_Session_Id` 照样摘），
 /// Unix 分（小写那一格是另一个变量，不归这层管）。两种规矩都量（不靠跑在哪个平台上），再钉住本平台用的是哪一种。
 #[test]
 fn internal_names_are_compared_the_way_this_platform_compares_env_names() {
     use crate::platform::child_env::{is_internal_as, NAMES_FOLD_CASE};
     let sid = ["CLAUDE_CODE_SESSION_ID"];
     for name in [
-        "ccm_listen_port",
-        "Ccm_Listen_Token_File",
         "ccm_backend_bin",
+        "Ccm_Backend_Stderr_Log",
         "Ccm_Resident",
         "ccm_backend_stderr_log",
         "Claude_Code_Session_Id",
@@ -318,7 +317,8 @@ fn internal_names_are_compared_the_way_this_platform_compares_env_names() {
         "ccm_relay_port",
         "Ccm_Data_Dir",
         "claude_config_dir",
-        "ccm_listen",
+        "ccm_backend",
+        "ccm_listen_port",
     ] {
         assert!(
             !is_internal_as(name, &sid, true),
@@ -326,15 +326,37 @@ fn internal_names_are_compared_the_way_this_platform_compares_env_names() {
         );
     }
     assert!(
-        is_internal_as("CCM_LISTEN_PORT", &sid, false),
+        is_internal_as("CCM_BACKEND_BIN", &sid, false),
         "正控：逐字相等那一形没摘"
     );
     assert_eq!(NAMES_FOLD_CASE, cfg!(windows), "本平台的大小写规矩钉错了");
     assert_eq!(
-        crate::platform::child_env::is_internal("ccm_listen_port"),
+        crate::platform::child_env::is_internal("ccm_backend_bin"),
         cfg!(windows),
         "is_internal 没按本平台的规矩比"
     );
+}
+
+/// ★ 内部变量族只剩 `CCM_BACKEND_` 一族：旧常驻回收链读的监听口 · 钥匙文件那一族已经没人读，照普通变量往下传；
+/// 生产源码里也不再出现那个前缀（名字由两半拼出来，本文件自己不算一处）。
+#[test]
+fn only_the_backend_family_is_internal_and_the_retired_listen_family_passes_through() {
+    use crate::platform::child_env::{is_internal, INTERNAL_PREFIXES};
+    let retired = format!("CCM_{}_", "LISTEN");
+    assert_eq!(INTERNAL_PREFIXES[..], ["CCM_BACKEND_"]);
+    assert!(
+        !is_internal(&format!("{retired}PORT")),
+        "退役那一族该往下传"
+    );
+    assert!(is_internal("CCM_BACKEND_BIN"), "正控：后端那一族照摘");
+    let all = guard_core::scan_tree!(&guard_core::addr::backend_src_root(), &["rs"]);
+    assert!(all.len() > 100, "人群只有 {} 份，扫空了", all.len());
+    let hits: Vec<_> = all
+        .iter()
+        .filter(|(_, text)| text.contains(&retired))
+        .map(|(p, _)| p.display().to_string())
+        .collect();
+    assert!(hits.is_empty(), "生产源码里还有退役前缀：{hits:?}");
 }
 
 /// 长寿子进程：关掉它的 stdin ⇒ 读到头就自己退的程序自己退了（输出读到头、退出码 0，不是被杀的）——拿着它的那一方还没放手。

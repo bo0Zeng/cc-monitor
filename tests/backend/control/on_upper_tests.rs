@@ -393,9 +393,27 @@ mod ccm {
         let home = std::env::var("HOME").unwrap_or_default();
         for args in [
             // 别名的预置参数就是一条 argv（`<交给 claude 的…> -- <ccm 的…>`）。
-            vec!["--", "--cwd", "/p", "--ccm-agent", "claude"],
+            // 直路的启动器在计划里照这台 `PATH` 找 ⇒ 给一个绝对路径，判据不随这台装没装 claude 漂移。
+            vec![
+                "--",
+                "--cwd",
+                "/p",
+                "--ccm-agent",
+                "claude",
+                "--launcher",
+                "/bin/sh",
+            ],
             vec!["--", "--ccm-tmux=w5alias-preview-probe", "--cwd", "/p"],
-            vec!["--model", "m", "--", "--base", "--cwd", "/q"],
+            vec![
+                "--model",
+                "m",
+                "--",
+                "--base",
+                "--cwd",
+                "/q",
+                "--launcher",
+                "/bin/sh",
+            ],
         ] {
             let got = answer_print(&serde_json::json!({ "args": args }))
                 .unwrap_or_else(|e| panic!("{args:?} 预览被拒：{e:?}"));
@@ -418,13 +436,16 @@ mod ccm {
                     .unwrap_or_default()
                     .to_string(),
                 self_argv: vec!["ccm".into()],
-                // 预览答「从这台的一个新终端敲」：落托管（同 `Env::for_preview_in`）。
-                can_host: true,
                 ..Default::default()
             };
             // 账号清单成品照这台机器的真值（预览要的就是这一点：「这台机器上敲这条别名」）—— 与真跑同一个入口交的那一份。
             let table = || crate::faces::launch_account_face::list_at(&e.home, &o.agent);
-            let plan = plan::build(&o, &e, &table, None).expect("该算得出计划");
+            let mut plan = plan::build(&o, &e, &table, None).expect("该算得出计划");
+            // 直路的启动器在计划里换成要起的那个文件，同真跑那一处（找法只一处）。
+            if let plan::Plan::Direct(d) = &mut plan {
+                launcher_resolved(d, &|p| crate::platform::shell::agent_launch(p, None))
+                    .expect("启动器找得到");
+            }
             assert_eq!(
                 got["line"].as_str().expect("line"),
                 plan::render(&plan),
@@ -459,7 +480,8 @@ mod ccm {
         };
         let home = std::env::var("HOME").unwrap_or_default();
         assert!(
-            line(&["--", "--ccm-agent", "claude"]).contains(&plan::qarg(&home)),
+            line(&["--", "--ccm-agent", "claude", "--launcher", "/bin/sh"])
+                .contains(&plan::qarg(&home)),
             "不给 --cwd 却没落在家目录"
         );
         let boxed = line(&["--", "--ccm-tmux=w5alias-preview-probe", "--cwd", "/p"]);
@@ -497,7 +519,7 @@ mod ccm {
         };
         assert_eq!(said, want, "拒的那句不是 ccm 自己的原话");
         assert_eq!(
-            code(serde_json::json!({ "args": ["--", "--cwd", "/p"] })),
+            code(serde_json::json!({ "args": ["--", "--cwd", "/p", "--launcher", "/bin/sh"] })),
             "ok"
         );
         // 右边认不得 ⇒ ccm 的原话拒（不猜）。

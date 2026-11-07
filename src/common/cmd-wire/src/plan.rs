@@ -30,14 +30,33 @@ pub enum PlanLook {
     None,
 }
 
-/// 一份文件的对账码（pb 的 `file_check`：present · missing · empty · invalid）。TS 那一侧同上，写在字段上。
+/// 一份文件的对账码（pb 的 `file_check`：present · uncommitted · missing · empty · invalid）。TS 那一侧同上，写在字段上。
+/// `Uncommitted`：仓库是 git 仓，这一份改了还没提交或没跟踪（哪一种 · 多长在 pb 那一句里）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum PlanFileState {
     Ok,
+    Uncommitted,
     Missing,
     Empty,
     Broken,
+}
+
+/// 审图是谁按的（pb 的 `audits[].by`：person · agent）。TS 那一侧写在字段上。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PlanAuditBy {
+    Person,
+    Agent,
+}
+
+/// 审图的结局（pb 的 `audits[].status`：done 写完了 · failed 审图 agent 起不了 · unfinished 还没写完）。TS 那一侧写在字段上。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PlanAuditStatus {
+    Done,
+    Failed,
+    Unfinished,
 }
 
 /// `plan-files` 里一份文件（文件窗口「格」一列与预览头那一块）。
@@ -63,7 +82,7 @@ pub struct PlanFileOwner {
     /// 对账码；认不出 ⇒ `null`。
     #[cfg_attr(
         any(test, feature = "ts"),
-        ts(type = "\"ok\" | \"missing\" | \"empty\" | \"broken\" | null")
+        ts(type = "\"ok\" | \"uncommitted\" | \"missing\" | \"empty\" | \"broken\" | null")
     )]
     pub file_state: Option<PlanFileState>,
     pub file_note: Option<String>,
@@ -200,7 +219,7 @@ pub struct PlanFile {
     /// 对账的码；pb 给了认不得的 ⇒ `null`。
     #[cfg_attr(
         any(test, feature = "ts"),
-        ts(type = "\"ok\" | \"missing\" | \"empty\" | \"broken\" | null")
+        ts(type = "\"ok\" | \"uncommitted\" | \"missing\" | \"empty\" | \"broken\" | null")
     )]
     pub state_code: Option<PlanFileState>,
     /// pb 的那一句（长度 · 坏在哪）。
@@ -251,7 +270,7 @@ pub struct PlanSetsTo {
     pub op: String,
 }
 
-/// 一片里还没执行的一条 sets：来处 · 目标 · 值 · 加还是去 · 为什么没执行（查都过了 ⇒ `null`：下一趟那个权力范围 update 就执行）。
+/// 一片里还没执行的一条 sets：来处 · 目标 · 那一笔写好的字 · 为什么没执行（查都过了 ⇒ `null`：下一趟那个权力范围 update 就执行）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -259,8 +278,14 @@ pub struct PlanSetsTo {
 pub struct PlanPendingSet {
     pub source: Option<String>,
     pub target: Option<String>,
+    /// 那一笔写好的字：值（pb 的协议值写成字）；去一笔 ⇒ `-值`。没有值 ⇒ `null`。
+    pub said: Option<String>,
+    /// pb 的值与加 · 去：只用来判节点为什么开着（`whyCode`），不上线。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub value: Option<String>,
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "\"add\" | \"remove\""))]
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub op: String,
     /// pb 那一句。
     pub blocked_reason: Option<String>,
@@ -559,7 +584,6 @@ pub struct PlanKind {
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct PlanPhase {
     pub name: Option<String>,
-    pub does: Option<String>,
 }
 
 /// 校验不通过的一条（pb 的 `failures[]`）。
@@ -644,6 +668,61 @@ pub struct PlanArchived {
     pub kind: Option<String>,
 }
 
+/// 一份审图给人看的几句（后端照文案表写好，两端照摆）。
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct PlanAuditSaid {
+    /// 审哪：带编号 ⇒ 那一棵（「编号 标题」）· 整个仓库；不带 ⇒ 上次之后改过的几个。
+    pub what: String,
+    /// 人按的 ⇒ 那一句；agent 按的 ⇒ `null`（照 `who` 摆那一枚）。
+    pub by: Option<String>,
+    /// 结果：审完报了几条 · 没写完 · 起不了为什么。
+    pub result: String,
+    /// 按的那一刻写成的字（照看的那一台）；pb 给的认不出 ⇒ 原样。
+    pub at: Option<String>,
+}
+
+/// 一份审图（pb 的 `repos[].audits[]`，`pb audit` 写在 `.临时/审图/` 里的报告）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct PlanAudit {
+    /// 那一份报告，相对工作区根。
+    pub file: String,
+    /// 谁按的；认不出 ⇒ `null`。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "\"person\" | \"agent\" | null"))]
+    pub by: Option<PlanAuditBy>,
+    /// agent 按的 ⇒ 那个身份对到的会话（同负责人那一格）；人按的 ⇒ `null`。
+    pub who: Option<PlanWho>,
+    /// 按的那一刻（pb 原样：带时区的 ISO 8601）。
+    pub started_at: Option<String>,
+    /// 带编号按的 ⇒ 那个编号（`project` ＝ 整个仓库）；不带 ⇒ `null`（审上次之后改过的）。
+    pub tree: Option<String>,
+    /// 该审几个。
+    pub due: u32,
+    /// 这一回审的那几个（编号，照先后）。
+    pub nodes: Vec<String>,
+    /// 结局；认不出 ⇒ `null`。
+    #[cfg_attr(
+        any(test, feature = "ts"),
+        ts(type = "\"done\" | \"failed\" | \"unfinished\" | null")
+    )]
+    pub status: Option<PlanAuditStatus>,
+    /// 起不了的为什么（pb 那一句）：只拼结果那一句（`said.result`），不上线。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
+    pub failed_reason: Option<String>,
+    /// 校验里说到这几个节点的不通过有几条。
+    pub check: u32,
+    /// 审图 agent 报了几条（没写完 · 起不了 ⇒ `None`）：只拼结果那一句，不上线。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
+    pub findings: Option<u32>,
+    pub said: PlanAuditSaid,
+}
+
 /// 一片（pb 的一个仓库）。读不成又没读好过 ⇒ `bare`（只有头几格有字，其余是空的）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -682,6 +761,8 @@ pub struct PlanSlice {
     pub labels: std::collections::BTreeMap<String, String>,
     pub cells: Vec<PlanCell>,
     pub archived: Vec<PlanArchived>,
+    /// 审图的报告，一份一项，照按的先后。
+    pub audits: Vec<PlanAudit>,
     pub needs: Vec<PlanNeed>,
     /// 这一片要你看的数（没认可的，不含问人）。
     pub need_count: u32,

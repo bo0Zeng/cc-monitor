@@ -17,8 +17,9 @@ struct SeenIn {
     account: String,
     seen_at: u64,
     reading: crate::agents::QuotaReading,
+    /// 显示态里只给后端、不上线的那一格（金样的输入照旧写着它）。
     #[serde(default)]
-    windows_seen: std::collections::BTreeMap<String, crate::accounts::quota::ledger::WindowSeen>,
+    limiting: Option<String>,
     #[serde(flatten)]
     show: crate::accounts::quota::show::QuotaShow,
 }
@@ -37,7 +38,14 @@ fn through_the_exit(reply: &Value, tz: &crate::common::time::Tz) -> Value {
             // 用量那一格由显示态那一处写（`usage_of`）：金样里没有，先占个位再照真判定写。
             let mut a = a.clone();
             a["usage"] = serde_json::json!({"value": "", "text": ""});
-            let mut x: SeenIn = serde_json::from_value(a).unwrap();
+            let mut x: SeenIn = serde_json::from_value(a.clone()).unwrap();
+            // 不上线的那几格从金样的输入里补回去（显示态那一处算好的样子）。
+            x.show.limiting = x.limiting.take();
+            for (i, w) in x.show.windows.iter_mut().enumerate() {
+                let raw = &a["windows"][i];
+                w.reset_since_seen = raw["resetSinceSeen"].as_bool().unwrap_or(false);
+                w.seen_at = raw["seenAt"].as_u64().unwrap_or_default();
+            }
             for s in &mut x.show.slots {
                 let here = x.show.limiting.as_deref() == Some(s.slot.as_str());
                 (s.text, s.tone) = slot_words(x.show.state, here, s.pct, s.full);
@@ -54,7 +62,6 @@ fn through_the_exit(reply: &Value, tz: &crate::common::time::Tz) -> Value {
                 account: x.account,
                 seen_at: x.seen_at,
                 reading: x.reading,
-                windows_seen: x.windows_seen,
                 show: x.show,
             }
         })
@@ -176,7 +183,6 @@ fn warm_sends_only_when_the_window_is_not_ticking() {
         limiting: None,
         slots,
         login: LoginState::Ok,
-        sub_id: None,
         windows: Vec::new(),
         usage: Usage::default(),
     };
@@ -368,7 +374,6 @@ fn the_verdict_says_whether_anything_can_send() {
         account: id.into(),
         kind: crate::accounts::quota::facts::Kind::Sub,
         login: crate::accounts::quota::show::LoginState::Ok,
-        sub_id: None,
         usage: crate::accounts::quota::show::usage_of(
             crate::accounts::quota::facts::Kind::Sub,
             crate::accounts::quota::show::QuotaState::Unseen,

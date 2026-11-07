@@ -26,7 +26,6 @@ fn reply(at_ms: Option<i64>, calls: &[&str]) -> Record {
                     input: serde_json::json!({}),
                 })
                 .collect(),
-            model: None,
             auto_reply: false,
             cards: BTreeMap::new(),
             steps: BTreeMap::new(),

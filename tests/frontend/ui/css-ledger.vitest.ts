@@ -287,7 +287,7 @@ const DANGLING: readonly string[] = [
   "history-search", "kind-ls", "machine-aliases", "machine-conn-fp", "machine-conn-toggle", "machine-page",
   "machine-page-local", "machine-page-sections", "machine-part-components", "machine-part-connection", "md", "paste-block-actions",
   "paste-block-copy", "pf-close", "pf-start", "remote-config-unrecognized", "remote-machine-count", "remote-machine-local", "remote-machine-remove",
-  "settings-nav-badge", "settings-section", "status-agents", "status-tasks", "tab-bar-reread", "tab-dot",
+  "settings-nav-badge", "settings-section", "status-agents", "status-tasks", "tab-dot",
   "tab-needs-kbd", "tasks-page", "text", "turn-tip",
 ];
 

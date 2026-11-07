@@ -3,29 +3,20 @@ package com.ccmonitor.mobile.core.data.db
 import androidx.room.testing.MigrationTestHelper
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.ccmonitor.mobile.core.data.crypto.KeystoreCryptoBox
-import com.ccmonitor.mobile.core.data.crypto.rowBinding
-import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.security.GeneralSecurityException
-import java.util.Base64
 
 /**
- * Room 迁移链：每一跳的 schema 与导出 json 校验，加数据保留。
+ * Room 迁移链（从 [OLDEST_STATE_DB] 起）：每一跳的 schema 与导出 json 校验，加数据保留。更老的库不迁（`StateDbAgeTest`）。
  * 需 androidTest assets 含 schemas（见 build.gradle sourceSets）。
  */
 @RunWith(AndroidJUnit4::class)
 class MigrationTest {
     private val dbName = "migration-test.db"
-
-    /** 与生产同一把：Keystore 主钥包着的 Tink AEAD。 */
-    private val crypto = KeystoreCryptoBox(InstrumentationRegistry.getInstrumentation().targetContext)
 
     @get:Rule
     val helper =
@@ -34,722 +25,18 @@ class MigrationTest {
             AppDatabase::class.java,
         )
 
-    /** 1→2：旧 host 数据保留 + 新增 extraAddresses 列为 null。 */
-    @Test
-    fun migrate1To2PreservesHostData() {
-        helper.createDatabase(dbName, 1).apply {
-            execSQL(
-                "INSERT INTO hosts (id,label,host,port,username,authRef,groupId,sortOrder," +
-                    "lastConnected,defaultWorkingDir,sessionManager,colorScheme,autoReconnect," +
-                    "reconnectOnNetworkChange,maxReconnectAttempts) " +
-                    "VALUES ('h1','NanoPi','192.0.2.2',22,'pi',NULL,NULL,0,NULL,NULL,NULL,NULL,1,1,0)",
-            )
-            close()
-        }
-        val db = helper.runMigrationsAndValidate(dbName, 2, true, MIGRATION_1_2)
-        db.query("SELECT host, extraAddresses FROM hosts WHERE id='h1'").use { c ->
-            assertTrue("旧 host 应保留", c.moveToFirst())
-            assertEquals("192.0.2.2", c.getString(0))
-            assertTrue("迁移后 extraAddresses 应为 null", c.isNull(1))
-        }
-    }
-
-    /** 2→3：新增 bookmarks 表可写读 + 旧 host 保留。 */
-    @Test
-    fun migrate2To3CreatesBookmarks() {
-        helper.createDatabase(dbName, 2).apply {
-            execSQL(
-                "INSERT INTO hosts (id,label,host,port,username,authRef,groupId,sortOrder," +
-                    "lastConnected,defaultWorkingDir,sessionManager,colorScheme,autoReconnect," +
-                    "reconnectOnNetworkChange,maxReconnectAttempts,extraAddresses) " +
-                    "VALUES ('h2','H','1.1.1.1',22,'u',NULL,NULL,0,NULL,NULL,NULL,NULL,1,1,0,NULL)",
-            )
-            close()
-        }
-        val db = helper.runMigrationsAndValidate(dbName, 3, true, MIGRATION_2_3)
-        db.query("SELECT id FROM hosts WHERE id='h2'").use { c -> assertTrue("旧 host 应保留", c.moveToFirst()) }
-        db.execSQL("INSERT INTO bookmarks (id,hostId,path,label,sortOrder) VALUES ('b1','h2','/tmp','tmp',0)")
-        db.query("SELECT path FROM bookmarks WHERE id='b1'").use { c ->
-            assertTrue("bookmarks 表应可用", c.moveToFirst())
-            assertEquals("/tmp", c.getString(0))
-        }
-    }
-
-    /** 3→4：新增 launchers 表可写读 + 旧 host 保留。 */
-    @Test
-    fun migrate3To4CreatesLaunchers() {
-        helper.createDatabase(dbName, 3).apply {
-            execSQL(
-                "INSERT INTO hosts (id,label,host,port,username,authRef,groupId,sortOrder," +
-                    "lastConnected,defaultWorkingDir,sessionManager,colorScheme,autoReconnect," +
-                    "reconnectOnNetworkChange,maxReconnectAttempts,extraAddresses) " +
-                    "VALUES ('h3','H','1.1.1.1',22,'u',NULL,NULL,0,NULL,NULL,NULL,NULL,1,1,0,NULL)",
-            )
-            close()
-        }
-        val db = helper.runMigrationsAndValidate(dbName, 4, true, MIGRATION_3_4)
-        db.query("SELECT id FROM hosts WHERE id='h3'").use { c -> assertTrue("旧 host 应保留", c.moveToFirst()) }
-        db.execSQL(
-            "INSERT INTO launchers (id,hostId,label,workingDir,tmuxSession,command,sortOrder,pinned) " +
-                "VALUES ('l1','h3','cc',NULL,'cc','claude',0,0)",
-        )
-        db.query("SELECT command, tmuxSession FROM launchers WHERE id='l1'").use { c ->
-            assertTrue("launchers 表应可用", c.moveToFirst())
-            assertEquals("claude", c.getString(0))
-            assertEquals("cc", c.getString(1))
-        }
-    }
-
-    /** 4→5：hosts 加 claudeDir（旧 host 保留、新列 null）+ settings 键值表可写读。 */
-    @Test
-    fun migrate4To5AddsClaudeDirAndSettings() {
-        helper.createDatabase(dbName, 4).apply {
-            execSQL(
-                "INSERT INTO hosts (id,label,host,port,username,authRef,groupId,sortOrder," +
-                    "lastConnected,defaultWorkingDir,sessionManager,colorScheme,autoReconnect," +
-                    "reconnectOnNetworkChange,maxReconnectAttempts,extraAddresses) " +
-                    "VALUES ('h4','H','1.1.1.1',22,'u',NULL,NULL,0,NULL,NULL,NULL,NULL,1,1,0,NULL)",
-            )
-            close()
-        }
-        val db = helper.runMigrationsAndValidate(dbName, 5, true, MIGRATION_4_5)
-        db.query("SELECT claudeDir FROM hosts WHERE id='h4'").use { c ->
-            assertTrue("旧 host 应保留", c.moveToFirst())
-            assertTrue("迁移后 claudeDir 应为 null", c.isNull(0))
-        }
-        db.execSQL("INSERT INTO settings (`key`,`value`) VALUES ('default_claude_dir','/data/claude')")
-        db.query("SELECT `value` FROM settings WHERE `key`='default_claude_dir'").use { c ->
-            assertTrue("settings 表应可用", c.moveToFirst())
-            assertEquals("/data/claude", c.getString(0))
-        }
-    }
-
-    @Test
-    fun migrate5To6AddsProxyJumpHostId() {
-        helper.createDatabase(dbName, 5).apply {
-            execSQL(
-                "INSERT INTO hosts (id,label,host,port,username,authRef,groupId,sortOrder," +
-                    "lastConnected,defaultWorkingDir,sessionManager,colorScheme,autoReconnect," +
-                    "reconnectOnNetworkChange,maxReconnectAttempts,extraAddresses,claudeDir) " +
-                    "VALUES ('h5','H','1.1.1.1',22,'u',NULL,NULL,0,NULL,NULL,NULL,NULL,1,1,0,NULL,NULL)",
-            )
-            close()
-        }
-        val db = helper.runMigrationsAndValidate(dbName, 6, true, MIGRATION_5_6)
-        db.query("SELECT proxyJumpHostId FROM hosts WHERE id='h5'").use { c ->
-            assertTrue("旧 host 应保留", c.moveToFirst())
-            assertTrue("迁移后 proxyJumpHostId 应为 null", c.isNull(0))
-        }
-    }
-
-    @Test
-    fun migrate6To7AddsPasswordEnc() {
-        helper.createDatabase(dbName, 6).apply {
-            execSQL(
-                "INSERT INTO hosts (id,label,host,port,username,authRef,groupId,sortOrder," +
-                    "lastConnected,defaultWorkingDir,sessionManager,colorScheme,autoReconnect," +
-                    "reconnectOnNetworkChange,maxReconnectAttempts,extraAddresses,claudeDir,proxyJumpHostId) " +
-                    "VALUES ('h6','H','1.1.1.1',22,'u',NULL,NULL,0,NULL,NULL,NULL,NULL,1,1,0,NULL,NULL,NULL)",
-            )
-            close()
-        }
-        val db = helper.runMigrationsAndValidate(dbName, 7, true, MIGRATION_6_7)
-        db.query("SELECT passwordEnc FROM hosts WHERE id='h6'").use { c ->
-            assertTrue("旧 host 应保留", c.moveToFirst())
-            assertTrue("迁移后 passwordEnc 应为 null", c.isNull(0))
-        }
-    }
-
-    @Test
-    fun migrate7To8DropsDeadColumnsKeepingData() {
-        helper.createDatabase(dbName, 7).apply {
-            // v7 行仍含 colorScheme（hosts）/ biometricProtected（identities）死列。
-            execSQL(
-                "INSERT INTO hosts (id,label,host,port,username,authRef,groupId,sortOrder," +
-                    "lastConnected,defaultWorkingDir,sessionManager,colorScheme,autoReconnect," +
-                    "reconnectOnNetworkChange,maxReconnectAttempts,extraAddresses,claudeDir,proxyJumpHostId,passwordEnc) " +
-                    "VALUES ('h7','H','1.1.1.1',22,'u',NULL,NULL,0,NULL,NULL,NULL,'dark',1,1,0,NULL,'/mid/.claude',NULL,'pw')",
-            )
-            execSQL(
-                "INSERT INTO identities (id,label,keyType,privateKeyEnc,publicKeyOpenSsh,fingerprintSha256," +
-                    "createdAt,biometricProtected,keystoreAlias) VALUES ('i7','I','ed25519',X'00','pub','fp',0,1,'alias')",
-            )
-            close()
-        }
-        val db = helper.runMigrationsAndValidate(dbName, 8, true, MIGRATION_7_8)
-        // 保留列数据未丢；死列已不存在（SELECT 死列应报错——用 pragma 验列不在）。
-        db.query("SELECT passwordEnc, claudeDir FROM hosts WHERE id='h7'").use { c ->
-            assertTrue("hosts 行应保留", c.moveToFirst())
-            assertEquals("pw", c.getString(0)) // 末尾保留列
-            assertEquals("/mid/.claude", c.getString(1)) // 中段保留列（防重建串位）
-        }
-        db.query("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='claude_bindings'").use { c ->
-            c.moveToFirst()
-            assertEquals("死表 claude_bindings 应已删", 0, c.getInt(0))
-        }
-        db.query("SELECT keystoreAlias FROM identities WHERE id='i7'").use { c ->
-            assertTrue("identities 行应保留", c.moveToFirst())
-            assertEquals("alias", c.getString(0))
-        }
-        db.query("SELECT COUNT(*) FROM pragma_table_info('hosts') WHERE name='colorScheme'").use { c ->
-            c.moveToFirst()
-            assertEquals("colorScheme 死列应已删", 0, c.getInt(0))
-        }
-        db.query("SELECT COUNT(*) FROM pragma_table_info('identities') WHERE name='biometricProtected'").use { c ->
-            c.moveToFirst()
-            assertEquals("biometricProtected 死列应已删", 0, c.getInt(0))
-        }
-    }
-
-    @Test
-    fun migrate8To9AddsOsColumn() {
-        helper.createDatabase(dbName, 8).apply {
-            execSQL(
-                "INSERT INTO hosts (id,label,host,port,username,authRef,groupId,sortOrder," +
-                    "lastConnected,defaultWorkingDir,sessionManager,autoReconnect," +
-                    "reconnectOnNetworkChange,maxReconnectAttempts,extraAddresses,claudeDir,proxyJumpHostId,passwordEnc) " +
-                    "VALUES ('h8','H','1.1.1.1',22,'u',NULL,NULL,0,NULL,'/w',NULL,1,1,0,NULL,NULL,NULL,NULL)",
-            )
-            close()
-        }
-        val db = helper.runMigrationsAndValidate(dbName, 9, true, MIGRATION_8_9)
-        db.query("SELECT os, defaultWorkingDir FROM hosts WHERE id='h8'").use { c ->
-            assertTrue("旧 host 应保留", c.moveToFirst())
-            assertTrue("迁移后 os 应为 null（默认 POSIX）", c.isNull(0))
-            assertEquals("保留列不丢", "/w", c.getString(1))
-        }
-    }
-
-    /** 9→10：custom_buttons 加 ctrl/alt/shift（组合键），存量行默认 0，保留列不丢。 */
-    @Test
-    fun migrate9To10AddsButtonModifierColumns() {
-        helper.createDatabase(dbName, 9).apply {
-            execSQL(
-                "INSERT INTO custom_buttons (id,hostId,label,command,sortOrder) VALUES ('b9','h','Ctrl+C','c',0)",
-            )
-            close()
-        }
-        val db = helper.runMigrationsAndValidate(dbName, 10, true, MIGRATION_9_10)
-        db.query("SELECT command, ctrl, alt, shift FROM custom_buttons WHERE id='b9'").use { c ->
-            assertTrue("旧按钮应保留", c.moveToFirst())
-            assertEquals("保留列不丢", "c", c.getString(0))
-            assertEquals("ctrl 默认 0", 0, c.getInt(1))
-            assertEquals("alt 默认 0", 0, c.getInt(2))
-            assertEquals("shift 默认 0", 0, c.getInt(3))
-        }
-    }
-
-    /**
-     * 10→11：custom_buttons 加 type（默认 'command'）并回填：
-     * 有修饰的存量行设为 keycode（派发逐字不变），无修饰行保持 command；保留列不丢。
-     */
-    @Test
-    fun migrate10To11AddsTypeColumnAndBackfills() {
-        helper.createDatabase(dbName, 10).apply {
-            // 无修饰行（命令行按钮）+ 有修饰行（Ctrl+C 按键码按钮）
-            execSQL(
-                "INSERT INTO custom_buttons (id,hostId,label,command,sortOrder,ctrl,alt,shift) " +
-                    "VALUES ('bc','h','ls','ls -la',0,0,0,0)",
-            )
-            execSQL(
-                "INSERT INTO custom_buttons (id,hostId,label,command,sortOrder,ctrl,alt,shift) " +
-                    "VALUES ('bm','h','Ctrl+C','c',1,1,0,0)",
-            )
-            close()
-        }
-        val db = helper.runMigrationsAndValidate(dbName, 11, true, MIGRATION_10_11)
-        db.query("SELECT command, ctrl, type FROM custom_buttons WHERE id='bc'").use { c ->
-            assertTrue("无修饰行应保留", c.moveToFirst())
-            assertEquals("保留列不丢", "ls -la", c.getString(0))
-            assertEquals("无修饰 → type=command", "command", c.getString(2))
-        }
-        db.query("SELECT command, ctrl, type FROM custom_buttons WHERE id='bm'").use { c ->
-            assertTrue("有修饰行应保留", c.moveToFirst())
-            assertEquals("保留基准键", "c", c.getString(0))
-            assertEquals("ctrl 保留", 1, c.getInt(1))
-            assertEquals("有修饰 → 回填 type=keycode（派发逐字不变）", "keycode", c.getString(2))
-        }
-    }
-
-    /** 11→12：hosts 加 agentKind（可空 TEXT，无 DEFAULT、无回填，null 即 ClaudeCode）；保留列不丢。 */
-    @Test
-    fun migrate11To12AddsAgentKindColumn() {
-        helper.createDatabase(dbName, 11).apply {
-            execSQL(
-                "INSERT INTO hosts (id,label,host,port,username,authRef,groupId,sortOrder," +
-                    "lastConnected,defaultWorkingDir,sessionManager,autoReconnect," +
-                    "reconnectOnNetworkChange,maxReconnectAttempts,extraAddresses,claudeDir,proxyJumpHostId,passwordEnc,os) " +
-                    "VALUES ('h11','H','1.1.1.1',22,'u',NULL,NULL,0,NULL,'/w',NULL,1,1,0,NULL,'/c',NULL,NULL,NULL)",
-            )
-            close()
-        }
-        val db = helper.runMigrationsAndValidate(dbName, 12, true, MIGRATION_11_12)
-        db.query("SELECT agentKind, claudeDir FROM hosts WHERE id='h11'").use { c ->
-            assertTrue("旧 host 应保留", c.moveToFirst())
-            assertTrue("迁移后 agentKind 应为 null（默认 ClaudeCode）", c.isNull(0))
-            assertEquals("保留列不丢", "/c", c.getString(1))
-        }
-    }
-
-    /**
-     * 12→13：custom_buttons 加 btnGroup（默认 'main'）并种默认键。存量按钮保留、btnGroup 为 main；
-     * 种子 40 条固定 id 写入。MigrationTestHelper 不触发 onCreate，新装路径另由 SeedOnCreateTest 验。
-     */
-    @Test
-    fun migrate12To13AddsBtnGroupAndSeeds() {
-        helper.createDatabase(dbName, 12).apply {
-            execSQL(
-                "INSERT INTO custom_buttons (id,hostId,label,command,sortOrder,ctrl,alt,shift,type) " +
-                    "VALUES ('bu','h','my','ls',0,0,0,0,'command')",
-            )
-            close()
-        }
-        val db = helper.runMigrationsAndValidate(dbName, 13, true, MIGRATION_12_13)
-        db.query("SELECT command, btnGroup FROM custom_buttons WHERE id='bu'").use { c ->
-            assertTrue("旧按钮应保留", c.moveToFirst())
-            assertEquals("保留列不丢", "ls", c.getString(0))
-            assertEquals("存量按钮 btnGroup 默认 main", "main", c.getString(1))
-        }
-        db.query("SELECT btnGroup, type FROM custom_buttons WHERE id='ak-fn-left'").use { c ->
-            assertTrue("fn 种子应写入", c.moveToFirst())
-            assertEquals("fn", c.getString(0))
-            assertEquals("escape", c.getString(1))
-        }
-        db.query("SELECT COUNT(*) FROM custom_buttons WHERE id LIKE 'ak-%'").use { c ->
-            c.moveToFirst()
-            assertEquals("种子 40 条", 40, c.getInt(0))
-        }
-    }
-
-    /** 13→14：custom_buttons 加长按 4 列，存量行取默认（none/''/400/60），保留列不丢。 */
-    @Test
-    fun migrate13To14AddsLongPressColumns() {
-        helper.createDatabase(dbName, 13).apply {
-            execSQL(
-                "INSERT INTO custom_buttons (id,hostId,label,command,sortOrder,ctrl,alt,shift,type,btnGroup) " +
-                    "VALUES ('b13','h','my','ls',0,0,0,0,'command','main')",
-            )
-            close()
-        }
-        val db = helper.runMigrationsAndValidate(dbName, 14, true, MIGRATION_13_14)
-        val sql =
-            "SELECT command, longPressMode, longPressCommand, longPressThresholdMs, longPressRepeatMs " +
-                "FROM custom_buttons WHERE id='b13'"
-        db.query(sql).use { c ->
-            assertTrue("旧按钮应保留", c.moveToFirst())
-            assertEquals("保留列不丢", "ls", c.getString(0))
-            assertEquals("longPressMode 默认 none", "none", c.getString(1))
-            assertEquals("longPressCommand 默认空", "", c.getString(2))
-            assertEquals("阈值默认 400", 400, c.getInt(3))
-            assertEquals("速率默认 60", 60, c.getInt(4))
-        }
-    }
-
-    /** 14→15：hosts 去掉 claudeDir，其余列原样搬过去。 */
-    @Test
-    fun migrate14To15DropsClaudeDirKeepsTheRest() {
-        helper.createDatabase(dbName, 14).apply {
-            execSQL(
-                "INSERT INTO hosts (id,label,host,port,username,sortOrder,autoReconnect,reconnectOnNetworkChange," +
-                    "maxReconnectAttempts,claudeDir,agentKind,os) VALUES ('h14','pi','example.com',22,'pi',0,1,1,0,'/x','Codex','posix')",
-            )
-            close()
-        }
-        val db = helper.runMigrationsAndValidate(dbName, 15, true, MIGRATION_14_15)
-        db.query("SELECT label, agentKind, os FROM hosts WHERE id='h14'").use { c ->
-            assertTrue("旧主机应保留", c.moveToFirst())
-            assertEquals("pi", c.getString(0))
-            assertEquals("Codex", c.getString(1))
-            assertEquals("posix", c.getString(2))
-        }
-    }
-
-    /** 15→16：`launchers` 表没了；旧行原样进设置表的迁移说明那一格（一条一段、一段五格，空格 ＝ 没写）；机器 · 身份 · 别的设置原样在。 */
-    @Test
-    fun migrate15To16DropsLaunchersAndKeepsTheirTextForTheOneTimeNote() {
-        helper.createDatabase(dbName, 15).apply {
-            execSQL(
-                "INSERT INTO launchers (id,hostId,label,workingDir,tmuxSession,command,sortOrder,pinned) VALUES " +
-                    "('l2','h1','cct','~/w x','cc','claude --resume ''a b''',1,0), ('l1','h1','cc',NULL,NULL,'claude',0,0)",
-            )
-            execSQL("INSERT INTO settings (`key`,`value`) VALUES ('last_host','h1')")
-            execSQL(
-                "INSERT INTO hosts (id,label,host,port,username,authRef,sortOrder,autoReconnect,reconnectOnNetworkChange," +
-                    "maxReconnectAttempts) VALUES ('h1','pi','example.com',22,'pi','k1',0,1,1,0)",
-            )
-            execSQL(
-                "INSERT INTO identities (id,label,keyType,privateKeyEnc,publicKeyOpenSsh,fingerprintSha256,createdAt) " +
-                    "VALUES ('k1','key','ed25519',X'0102','ssh-ed25519 AAAA','SHA256:x',1)",
-            )
-            close()
-        }
-        val db = helper.runMigrationsAndValidate(dbName, 16, true, MIGRATION_15_16)
-        db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='launchers'").use { c ->
-            assertTrue("launchers 表应已删掉", !c.moveToFirst())
-        }
-        db.query("SELECT `value` FROM settings WHERE `key`='launch_moved'").use { c ->
-            assertTrue("迁移说明那一格应在", c.moveToFirst())
-            assertEquals(
-                "h1\u001fcc\u001f\u001f\u001fclaude\u001eh1\u001fcct\u001f~/w x\u001fcc\u001fclaude --resume 'a b'",
-                c.getString(0),
-            )
-        }
-        db.query("SELECT `value` FROM settings WHERE `key`='last_host'").use { c ->
-            assertTrue(c.moveToFirst())
-            assertEquals("h1", c.getString(0))
-        }
-        db.query("SELECT label, authRef FROM hosts WHERE id='h1'").use { c ->
-            assertTrue("机器表应原样还在", c.moveToFirst())
-            assertEquals("pi", c.getString(0))
-            assertEquals("k1", c.getString(1))
-        }
-        db.query("SELECT label, length(privateKeyEnc) FROM identities WHERE id='k1'").use { c ->
-            assertTrue("身份（钥匙）应原样还在", c.moveToFirst())
-            assertEquals("key", c.getString(0))
-            assertEquals(2, c.getInt(1))
-        }
-    }
-
-    /**
-     * 16→17：缓存五张表建好、能写能读；hosts 去掉两列重连格，其余各格原样；身份 · 按钮 · 设置 · 已知主机一字不动。
-     */
-    @Test
-    fun migrate16To17AddsTheCacheTablesAndKeepsEverythingElse() {
-        helper.createDatabase(dbName, 16).apply {
-            execSQL(
-                "INSERT INTO hosts (id,label,host,port,username,authRef,extraAddresses,groupId,sortOrder,lastConnected," +
-                    "defaultWorkingDir,sessionManager,autoReconnect,reconnectOnNetworkChange,maxReconnectAttempts,proxyJumpHostId," +
-                    "passwordEnc,os,agentKind) VALUES ('h1','pi','example.com',2222,'pi','k1','backup.example:22','g',3,99,'~/w','tmux',0,0,5," +
-                    "'h0','ENC','posix','claude')",
-            )
-            execSQL(
-                "INSERT INTO identities (id,label,keyType,privateKeyEnc,publicKeyOpenSsh,fingerprintSha256,createdAt) " +
-                    "VALUES ('k1','key','ed25519',X'0102','ssh-ed25519 AAAA','SHA256:x',1)",
-            )
-            execSQL(
-                "INSERT INTO custom_buttons (id,hostId,label,command,sortOrder,ctrl,alt,shift,type,btnGroup) " +
-                    "VALUES ('b16','h1','my','ls',0,0,0,0,'command','main')",
-            )
-            execSQL("INSERT INTO known_hosts (host,port,keyType,publicKeyBase64,addedAt) VALUES ('example.com',2222,'ssh-ed25519','AAAA',7)")
-            execSQL("INSERT INTO settings (`key`,`value`) VALUES ('last_host','h1')")
-            close()
-        }
-        val db = helper.runMigrationsAndValidate(dbName, 17, true, MIGRATION_16_17)
-        val hostCols =
-            "label,host,port,username,authRef,extraAddresses,groupId,sortOrder,lastConnected,defaultWorkingDir,sessionManager," +
-                "autoReconnect,proxyJumpHostId,passwordEnc,os,agentKind"
-        db.query("SELECT $hostCols FROM hosts WHERE id='h1'").use { c ->
-            assertTrue("机器表应原样还在", c.moveToFirst())
-            val got = (0 until c.columnCount).map { if (c.isNull(it)) null else c.getString(it) }
-            assertEquals(
-                listOf("pi", "example.com", "2222", "pi", "k1", "backup.example:22", "g", "3", "99", "~/w", "tmux", "0", "h0", "ENC", "posix", "claude"),
-                got,
-            )
-        }
-        db.query("PRAGMA table_info(hosts)").use { c ->
-            val names = generateSequence { if (c.moveToNext()) c.getString(c.getColumnIndexOrThrow("name")) else null }.toList()
-            assertTrue("两列重连格应已删掉：$names", "reconnectOnNetworkChange" !in names && "maxReconnectAttempts" !in names)
-        }
-        db.query("SELECT label, length(privateKeyEnc) FROM identities WHERE id='k1'").use { c ->
-            assertTrue("身份（钥匙）应原样还在", c.moveToFirst())
-            assertEquals("key", c.getString(0))
-            assertEquals(2, c.getInt(1))
-        }
-        db.query("SELECT command FROM custom_buttons WHERE id='b16'").use { c ->
-            assertTrue("按钮应原样还在", c.moveToFirst())
-            assertEquals("ls", c.getString(0))
-        }
-        db.query("SELECT publicKeyBase64 FROM known_hosts WHERE host='example.com'").use { c -> assertTrue("已知主机应还在", c.moveToFirst()) }
-        db.query("SELECT `value` FROM settings WHERE `key`='last_host'").use { c ->
-            assertTrue(c.moveToFirst())
-            assertEquals("h1", c.getString(0))
-        }
-        db.execSQL("INSERT INTO sessions (hostId,sid,listRow,ord,viewedAt) VALUES ('h1','s1','{}',0,5)")
-        db.execSQL("INSERT INTO record_pages (hostId,sid,start,`end`,`rows`,fetchedAt) VALUES ('h1','s1',0,10,'[]',5)")
-        db.execSQL("INSERT INTO sync_anchors (hostId,scope,path,`offset`,seq) VALUES ('h1','s1','/p',10,1)")
-        db.execSQL("INSERT INTO pending (id,hostId,sid,text,attachments,mintedAt,outcome,attempts) VALUES ('p1','h1',NULL,'hi',NULL,5,'pending',1)")
-        db.execSQL("INSERT INTO drafts (hostId,sid,text,cwd,account,model,permission,updatedAt) VALUES ('h1','','x','~',NULL,NULL,NULL,5)")
-        for (t in listOf("sessions", "record_pages", "sync_anchors", "pending", "drafts")) {
-            db.query("SELECT COUNT(*) FROM $t").use { c ->
-                c.moveToFirst()
-                assertEquals("$t 应能写能读", 1, c.getInt(0))
-            }
-        }
-    }
-
-    /**
-     * 17→18：旧按钮表的每一类照迁（旧默认 · 工具条上自己加的 · 只在某台显示的 · 认不出的 · 长按单发 / 连发），旧表删掉；
-     * 机器 · 钥匙 · 已知主机 · 书签 · 设置 · 缓存五张表一字不动。
-     */
-    @Test
-    fun migrate17To18MovesEveryKindOfOldButtonAndKeepsEverythingElse() {
-        helper.createDatabase(dbName, 17).apply {
-            seedLegacyButtons(this) // 旧默认：fn · alt · vim 与工具条三颗
-            execSQL(
-                "INSERT INTO hosts (id,label,host,port,username,authRef,sortOrder,autoReconnect,passwordEnc) VALUES " +
-                    "('h1','devbox','example.com',2222,'dev','k1',1,1,'ENC'), ('h2','pi','example.org',22,'pi',NULL,0,0,NULL)",
-            )
-            execSQL(
-                "INSERT INTO identities (id,label,keyType,privateKeyEnc,publicKeyOpenSsh,fingerprintSha256,createdAt) " +
-                    "VALUES ('k1','key','ed25519',X'0102','ssh-ed25519 AAAA','SHA256:x',1)",
-            )
-            val cols = "id,hostId,label,command,sortOrder,ctrl,alt,shift,type,btnGroup,longPressMode,longPressCommand,longPressThresholdMs,longPressRepeatMs"
-            execSQL(
-                "INSERT INTO custom_buttons ($cols) VALUES " +
-                    "('u-ls',NULL,'ls','ls -la',10,0,0,0,'command','main','none','',400,60)," + // 工具条上自己加的
-                    "('u-cc',NULL,'Ctrl+C','c',11,1,0,0,'keycode','main','discrete','d',650,60)," + // 带修饰 ＋ 长按单发
-                    "('u-odd',NULL,'alt screen','\\e[?1049h',12,0,0,0,'escape','main','none','',400,60)," + // 认不出
-                    "('u-rep',NULL,'make','make',13,0,0,0,'command','fn','repeat','',400,60)," + // 长按连发、不能连发
-                    "('h1-top','h1','top','top',0,0,0,0,'command','main','none','',400,60)," + // 只在 h1 显示
-                    "('h2-up','h2','up','\\e[A',0,0,0,0,'escape','fn','repeat','',400,60)," + // 只在 h2 显示
-                    "('orphan','gone','x','x',0,0,0,0,'command','main','none','',400,60)", // 机器已经删了
-            )
-            execSQL("INSERT INTO known_hosts (host,port,keyType,publicKeyBase64,addedAt) VALUES ('example.com',2222,'ssh-ed25519','AAAA',7)")
-            execSQL("INSERT INTO bookmarks (id,hostId,path,label,sortOrder) VALUES ('b1','h1','/srv','srv',0)")
-            execSQL("INSERT INTO settings (`key`,`value`) VALUES ('last_host','h1')")
-            execSQL("INSERT INTO sessions (hostId,sid,listRow,ord,viewedAt) VALUES ('h1','s1','{}',0,5)")
-            execSQL("INSERT INTO record_pages (hostId,sid,start,`end`,`rows`,fetchedAt) VALUES ('h1','s1',0,10,'[]',5)")
-            execSQL("INSERT INTO sync_anchors (hostId,scope,path,`offset`,seq) VALUES ('h1','s1','/p',10,1)")
-            execSQL("INSERT INTO pending (id,hostId,sid,text,attachments,mintedAt,outcome,attempts) VALUES ('p1','h1',NULL,'hi',NULL,5,'pending',1)")
-            execSQL("INSERT INTO drafts (hostId,sid,text,cwd,account,model,permission,updatedAt) VALUES ('h1','','x','~',NULL,NULL,NULL,5)")
-            close()
-        }
-        val db = helper.runMigrationsAndValidate(dbName, 18, true, MIGRATION_17_18)
-
-        db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='custom_buttons'").use { c ->
-            assertTrue("旧按钮表应已删掉", !c.moveToFirst())
-        }
-        val groups =
-            db.query("SELECT id, name FROM key_groups ORDER BY sortOrder").use { c ->
-                generateSequence { if (c.moveToNext()) c.getString(0) to c.getString(1) else null }.toList()
-            }
-        assertEquals(
-            listOf("kg-common" to "常用", "kg-shell" to "shell", "kg-vim" to "vim", "kg-bar" to "按钮栏", "kg-host-h2" to "pi", "kg-host-h1" to "devbox"),
-            groups,
-        )
-        val conv = KeyConverters()
-
-        fun key(id: String): Map<String, String?>? =
-            db.query("SELECT groupId, label, modifier, tap, longPress, longPressMs, unconverted FROM term_keys WHERE id=?", arrayOf(id)).use { c ->
-                if (!c.moveToFirst()) return@use null
-                (0 until c.columnCount).associate { c.getColumnName(it) to if (c.isNull(it)) null else c.getString(it) }
-            }
-        db.query("SELECT COUNT(*) FROM term_keys WHERE id LIKE 'ak-tb-%' OR id='orphan'").use { c ->
-            c.moveToFirst()
-            assertEquals("工具条三颗内建与机器已删的那颗不进按键", 0, c.getInt(0))
-        }
-        assertEquals("kg-common", key("ak-fn-esc")!!["groupId"])
-        assertEquals("ctrl", key("ak-fn-ctrl")!!["modifier"])
-        assertEquals(KeyBinding.App(AppAction.NEXT_GROUP), conv.textToBinding(key("ak-vim-switch")!!["tap"]))
-        assertEquals(KeyBinding.App(AppAction.EDIT_KEYS), conv.textToBinding(key("ak-vim-switch")!!["longPress"]))
-        val ls = key("u-ls")!!
-        assertEquals("kg-bar", ls["groupId"])
-        assertEquals("ls", ls["label"])
-        assertEquals(KeyBinding.Input(listOf(KeyPress.Text("ls -la"), KeyPress.Special(SpecialKey.ENTER))), conv.textToBinding(ls["tap"]))
-        val cc = key("u-cc")!!
-        assertEquals(KeyBinding.Input(listOf(KeyPress.Chord("c", setOf(KeyMod.CTRL)))), conv.textToBinding(cc["tap"]))
-        assertEquals(KeyBinding.Input(listOf(KeyPress.Chord("d", setOf(KeyMod.CTRL)))), conv.textToBinding(cc["longPress"]))
-        val sys = android.view.ViewConfiguration.getLongPressTimeout()
-        assertEquals("阈值和系统不同才另写", if (sys == 650) null else "650", cc["longPressMs"])
-        val odd = key("u-odd")!!
-        assertEquals(null, odd["tap"])
-        assertEquals(listOf(UnconvertedNote(UnconvertedNote.Issue.TAP_UNPARSED, "\\e[?1049h")), conv.textToNotes(odd["unconverted"]))
-        val rep = key("u-rep")!!
-        assertEquals("kg-common", rep["groupId"])
-        assertEquals(listOf(UnconvertedNote(UnconvertedNote.Issue.LONG_NO_REPEAT, "make")), conv.textToNotes(rep["unconverted"]))
-        assertEquals("kg-host-h1", key("h1-top")!!["groupId"])
-        val up = key("h2-up")!!
-        assertEquals("kg-host-h2", up["groupId"])
-        assertEquals("能连发的键长按没设、不算没转过来", null, up["unconverted"])
-
-        db.query("SELECT label, host, port, authRef, passwordEnc FROM hosts WHERE id='h1'").use { c ->
-            assertTrue("机器表应原样还在", c.moveToFirst())
-            assertEquals(listOf("devbox", "example.com", "2222", "k1", "ENC"), (0 until c.columnCount).map { c.getString(it) })
-        }
-        db.query("SELECT label, length(privateKeyEnc) FROM identities WHERE id='k1'").use { c ->
-            assertTrue("身份（钥匙）应原样还在", c.moveToFirst())
-            assertEquals("key", c.getString(0))
-            assertEquals(2, c.getInt(1))
-        }
-        for ((t, n) in listOf("known_hosts" to 1, "bookmarks" to 1, "settings" to 1, "sessions" to 1, "record_pages" to 1, "sync_anchors" to 1, "pending" to 1, "drafts" to 1)) {
-            db.query("SELECT COUNT(*) FROM $t").use { c ->
-                c.moveToFirst()
-                assertEquals("$t 应原样还在", n, c.getInt(0))
-            }
-        }
-        db.query("SELECT `rows`, `end` FROM record_pages WHERE sid='s1'").use { c ->
-            assertTrue(c.moveToFirst())
-            assertEquals("[]", c.getString(0))
-            assertEquals(10, c.getInt(1))
-        }
-    }
-
-    /** 18→19：续点多一格文件身份，旧行是空串（下一次从头读一回）；别的格与别的表原样。 */
-    @Test
-    fun migrate18To19GivesOldAnchorsAnEmptyFileAndKeepsTheRest() {
-        helper.createDatabase(dbName, 18).apply {
-            execSQL("INSERT INTO sync_anchors (hostId,scope,path,`offset`,seq) VALUES ('h1','s1','/p',10,1)")
-            execSQL("INSERT INTO record_pages (hostId,sid,start,`end`,`rows`,fetchedAt) VALUES ('h1','s1',0,10,'[]',5)")
-            execSQL("INSERT INTO settings (`key`,`value`) VALUES ('last_host','h1')")
-            close()
-        }
-        val db = helper.runMigrationsAndValidate(dbName, 19, true, MIGRATION_18_19)
-        db.query("SELECT path, `offset`, seq, file FROM sync_anchors WHERE hostId='h1' AND scope='s1'").use { c ->
-            assertTrue("续点那一行应还在", c.moveToFirst())
-            assertEquals(listOf("/p", "10", "1", ""), (0 until c.columnCount).map { c.getString(it) })
-        }
-        db.query("SELECT COUNT(*) FROM record_pages").use { c ->
-            c.moveToFirst()
-            assertEquals(1, c.getInt(0))
-        }
-        db.query("SELECT `value` FROM settings WHERE `key`='last_host'").use { c ->
-            assertTrue(c.moveToFirst())
-            assertEquals("h1", c.getString(0))
-        }
-    }
-
-    /** 19→20：hosts 去掉「远端系统」那一格，其余各格原样；身份 · 设置一字不动。 */
-    @Test
-    fun migrate19To20DropsTheOsColumnAndKeepsTheRest() {
-        helper.createDatabase(dbName, 19).apply {
-            execSQL(
-                "INSERT INTO hosts (id,label,host,port,username,authRef,extraAddresses,groupId,sortOrder,lastConnected," +
-                    "defaultWorkingDir,sessionManager,autoReconnect,proxyJumpHostId,passwordEnc,os,agentKind) " +
-                    "VALUES ('h1','pi','example.com',2222,'pi','k1','backup.example:22','g',3,99,'~/w','tmux',0,'h0','ENC','windows','claude')",
-            )
-            execSQL(
-                "INSERT INTO identities (id,label,keyType,privateKeyEnc,publicKeyOpenSsh,fingerprintSha256,createdAt) " +
-                    "VALUES ('k1','key','ed25519',X'0102','ssh-ed25519 AAAA','SHA256:x',1)",
-            )
-            execSQL("INSERT INTO settings (`key`,`value`) VALUES ('last_host','h1')")
-            close()
-        }
-        val db = helper.runMigrationsAndValidate(dbName, 20, true, MIGRATION_19_20)
-        val hostCols =
-            "label,host,port,username,authRef,extraAddresses,groupId,sortOrder,lastConnected,defaultWorkingDir,sessionManager," +
-                "autoReconnect,proxyJumpHostId,passwordEnc,agentKind"
-        db.query("SELECT $hostCols FROM hosts WHERE id='h1'").use { c ->
-            assertTrue("机器表应原样还在", c.moveToFirst())
-            val got = (0 until c.columnCount).map { if (c.isNull(it)) null else c.getString(it) }
-            assertEquals(listOf("pi", "example.com", "2222", "pi", "k1", "backup.example:22", "g", "3", "99", "~/w", "tmux", "0", "h0", "ENC", "claude"), got)
-        }
-        db.query("PRAGMA table_info(hosts)").use { c ->
-            val names = generateSequence { if (c.moveToNext()) c.getString(c.getColumnIndexOrThrow("name")) else null }.toList()
-            assertTrue("「远端系统」那一格应已删掉：$names", "os" !in names)
-        }
-        db.query("SELECT label FROM identities WHERE id='k1'").use { c ->
-            assertTrue("身份（钥匙）应原样还在", c.moveToFirst())
-        }
-        db.query("SELECT `value` FROM settings WHERE `key`='last_host'").use { c ->
-            assertTrue(c.moveToFirst())
-            assertEquals("h1", c.getString(0))
-        }
-    }
-
-    /** 20→21：加「在做的一组」那张表、能写能读；机器 · 草稿一字不动。 */
-    @Test
-    fun migrate20To21AddsThePendingBatchesAndKeepsTheRest() {
-        helper.createDatabase(dbName, 20).apply {
-            execSQL(
-                "INSERT INTO hosts (id,label,host,port,username,sortOrder,autoReconnect) VALUES ('h1','pi','example.com',22,'pi',0,1)",
-            )
-            execSQL("INSERT INTO drafts (hostId,sid,text,updatedAt) VALUES ('h1','s1','没发的字',5)")
-            close()
-        }
-        val db = helper.runMigrationsAndValidate(dbName, 21, true, MIGRATION_20_21)
-        db.execSQL("INSERT INTO pending_batches (hostId,ticket,plan) VALUES ('h1','t-1','{\"cmd\":\"files-delete\"}')")
-        db.query("SELECT plan FROM pending_batches WHERE hostId='h1' AND ticket='t-1'").use { c ->
-            assertTrue(c.moveToFirst())
-            assertEquals("{\"cmd\":\"files-delete\"}", c.getString(0))
-        }
-        db.query("SELECT label FROM hosts WHERE id='h1'").use { c ->
-            assertTrue("机器表应原样还在", c.moveToFirst())
-            assertEquals("pi", c.getString(0))
-        }
-        db.query("SELECT text FROM drafts WHERE hostId='h1' AND sid='s1'").use { c ->
-            assertTrue("草稿应原样还在", c.moveToFirst())
-            assertEquals("没发的字", c.getString(0))
-        }
-    }
-
-    /**
-     * 21→22：机器的密码 · 身份的私钥按「表名 · 行 id」重加一遍，每行原文不变、换到别的行就解不开；
-     * 解不开的旧密文：身份那一行删掉、机器只清掉密码那一格；Keystore 背书的身份不碰。
-     */
-    @Test
-    fun migrate21To22BindsEachSecretToItsRow() {
-        val before22 = "ccm-private-key".toByteArray() // 第 21 版全库共用的那份关联数据
-
-        fun oldPassword(p: String) = Base64.getEncoder().encodeToString(crypto.encrypt(p.toByteArray(), before22))
-        val key1 = "-----BEGIN OPENSSH PRIVATE KEY-----k1".toByteArray()
-        helper.createDatabase(dbName, 21).apply {
-            val hosts = "INSERT INTO hosts (id,label,host,port,username,sortOrder,autoReconnect,passwordEnc) VALUES (?,?,'example.com',22,'pi',0,1,?)"
-            execSQL(hosts, arrayOf("h1", "一号", oldPassword("pw-1")))
-            execSQL(hosts, arrayOf("h2", "二号", oldPassword("pw-2")))
-            execSQL(hosts, arrayOf("h3", "三号", Base64.getEncoder().encodeToString("坏了的".toByteArray())))
-            execSQL(hosts, arrayOf("h4", "四号", null))
-            val ids = "INSERT INTO identities (id,label,keyType,privateKeyEnc,publicKeyOpenSsh,fingerprintSha256,createdAt,keystoreAlias) VALUES (?,?,?,?,'ssh-ed25519 AAAA','SHA256:x',1,?)"
-            execSQL(ids, arrayOf("k1", "导入的", "imported", crypto.encrypt(key1, before22), null))
-            execSQL(ids, arrayOf("k2", "坏了的", "imported", byteArrayOf(1, 2, 3), null))
-            execSQL(ids, arrayOf("k3", "硬件的", "ecdsa-p256", ByteArray(0), "ccm-key-3"))
-            close()
-        }
-        val db = helper.runMigrationsAndValidate(dbName, 22, true, Migration21To22(crypto))
-
-        fun hostPassword(id: String): String? =
-            db.query("SELECT passwordEnc FROM hosts WHERE id='$id'").use { c ->
-                assertTrue("机器 $id 应还在", c.moveToFirst())
-                if (c.isNull(0)) null else c.getString(0)
-            }
-
-        fun open(
-            enc: String,
-            id: String,
-        ) = String(crypto.decrypt(Base64.getDecoder().decode(enc), rowBinding("hosts", id)))
-        val h1 = requireNotNull(hostPassword("h1"))
-        assertEquals("pw-1", open(h1, "h1"))
-        assertEquals("pw-2", open(requireNotNull(hostPassword("h2")), "h2"))
-        assertThrows("密文挪到别的行应解不开", GeneralSecurityException::class.java) { open(h1, "h2") }
-        assertEquals("解不开的密码那一格清掉", null, hostPassword("h3"))
-        assertEquals(null, hostPassword("h4"))
-        db.query("SELECT label FROM hosts WHERE id='h3'").use { c ->
-            assertTrue(c.moveToFirst())
-            assertEquals("机器的别的设置照留", "三号", c.getString(0))
+    private fun tables(db: androidx.sqlite.db.SupportSQLiteDatabase): Set<String> =
+        db.query("SELECT name FROM sqlite_master WHERE type = 'table'").use { c ->
+            generateSequence { if (c.moveToNext()) c.getString(0) else null }.toSet()
         }
 
-        db.query("SELECT privateKeyEnc FROM identities WHERE id='k1'").use { c ->
-            assertTrue("身份 k1 应还在", c.moveToFirst())
-            assertArrayEquals(key1, crypto.decrypt(c.getBlob(0), rowBinding("identities", "k1")))
+    private fun columns(
+        db: androidx.sqlite.db.SupportSQLiteDatabase,
+        table: String,
+    ): List<String> =
+        db.query("PRAGMA table_info($table)").use { c ->
+            generateSequence { if (c.moveToNext()) c.getString(c.getColumnIndexOrThrow("name")) else null }.toList()
         }
-        db.query("SELECT id FROM identities WHERE id='k2'").use { c -> assertFalse("解不开的身份那一行删掉", c.moveToFirst()) }
-        db.query("SELECT keystoreAlias, length(privateKeyEnc) FROM identities WHERE id='k3'").use { c ->
-            assertTrue("Keystore 背书的身份应原样还在", c.moveToFirst())
-            assertEquals("ccm-key-3", c.getString(0))
-            assertEquals(0, c.getInt(1))
-        }
-    }
-
-    /** 22→23：加「会话列表那一问上次的答」那张表（记号 ＋ 头）、能写能读；会话行一字不动。 */
-    @Test
-    fun migrate22To23AddsTheListHoldsAndKeepsTheSessions() {
-        helper.createDatabase(dbName, 22).apply {
-            execSQL("INSERT INTO sessions (hostId,sid,listRow,ord,viewedAt) VALUES ('h1','s1','{\"sessionId\":\"s1\"}',0,7)")
-            close()
-        }
-        val db = helper.runMigrationsAndValidate(dbName, 23, true, MIGRATION_22_23)
-        db.execSQL("INSERT INTO list_holds (hostId,held,head) VALUES ('h1','e.1.2',NULL)")
-        db.query("SELECT held, head FROM list_holds WHERE hostId='h1'").use { c ->
-            assertTrue(c.moveToFirst())
-            assertEquals("e.1.2", c.getString(0))
-            assertTrue(c.isNull(1))
-        }
-        db.query("SELECT listRow, ord, viewedAt FROM sessions WHERE hostId='h1' AND sid='s1'").use { c ->
-            assertTrue("会话行应原样还在", c.moveToFirst())
-            assertEquals("{\"sessionId\":\"s1\"}", c.getString(0))
-            assertEquals(0, c.getInt(1))
-            assertEquals(7, c.getLong(2))
-        }
-    }
 
     /**
      * 23→24：机器表换成拨号核心那一形 —— 跳板从 id 换成那一台的名字（名字是核心算的：`label` 空 ⇒ `host`）；A→B→A 原样留着（拨号时核心拒）；
@@ -851,18 +138,50 @@ class MigrationTest {
         }
     }
 
-    /** 全链路 1→27 schema 校验（validateDroppedTables=true 严格比对导出 schema）；一路种过的旧默认键到头成了三组。 */
+    /**
+     * 27→28：旧主机钥匙表整张删（钥匙只住核心那份库）· 待发删附件那一格 · 草稿删新建会话那四格 · 设置表删迁移说明那一格；
+     * 别的行 · 别的格一个不丢。
+     */
     @Test
-    fun migrateAll1To27Validates() {
-        helper.createDatabase(dbName, 1).close()
-        val db = helper.runMigrationsAndValidate(dbName, 27, true, *allMigrations(crypto))
-        db.query("SELECT name FROM key_groups ORDER BY sortOrder").use { c ->
-            val names = generateSequence { if (c.moveToNext()) c.getString(0) else null }.toList()
-            assertEquals(listOf("常用", "shell", "vim"), names)
+    fun migrate27To28DropsTheOldHostKeysAndTheUnreadCellsAndKeepsTheRest() {
+        helper.createDatabase(dbName, 27).apply {
+            execSQL("INSERT INTO known_hosts (host,port,keyType,publicKeyBase64,addedAt) VALUES ('example.com',2222,'ssh-ed25519','AAAA',7)")
+            execSQL("INSERT INTO pending (id,hostId,sid,text,attachments,mintedAt,outcome,attempts) VALUES ('p1','h','s','你好','[\"a\"]',3,'pending',1)")
+            execSQL("INSERT INTO drafts (hostId,sid,text,cwd,account,model,permission,updatedAt) VALUES ('h','s','字','~/w','work','opus','plan',5)")
+            execSQL("INSERT INTO settings (`key`,`value`) VALUES ('launch_moved','h\u001fcc\u001f\u001f\u001fclaude')")
+            execSQL("INSERT INTO settings (`key`,`value`) VALUES ('last_host','h')")
+            close()
         }
-        db.query("SELECT COUNT(*) FROM term_keys").use { c ->
-            c.moveToFirst()
-            assertEquals("旧默认 40 颗里工具条那三颗不进按键、其余都在", 37, c.getInt(0))
+        val db = helper.runMigrationsAndValidate(dbName, 28, true, MIGRATION_27_28)
+        val names = tables(db)
+        assertFalse("known_hosts 还在：$names", "known_hosts" in names)
+        assertFalse("list_holds 不在状态库：$names", "list_holds" in names)
+        assertEquals(listOf("id", "hostId", "sid", "text", "mintedAt", "outcome", "attempts"), columns(db, "pending"))
+        assertEquals(listOf("hostId", "sid", "text", "updatedAt"), columns(db, "drafts"))
+        db.query("SELECT id,hostId,sid,text,mintedAt,outcome,attempts FROM pending").use { c ->
+            assertTrue(c.moveToFirst())
+            assertEquals(listOf("p1", "h", "s", "你好", "3", "pending", "1"), (0 until c.columnCount).map { c.getString(it) })
+        }
+        db.query("SELECT text, updatedAt FROM drafts WHERE hostId='h' AND sid='s'").use { c ->
+            assertTrue(c.moveToFirst())
+            assertEquals("字", c.getString(0))
+            assertEquals(5, c.getLong(1))
+        }
+        db.query("SELECT `key` FROM settings ORDER BY `key`").use { c ->
+            assertEquals(listOf("last_host"), generateSequence { if (c.moveToNext()) c.getString(0) else null }.toList())
+        }
+    }
+
+    /** 全链路 23→28 schema 校验（validateDroppedTables=true 严格比对导出 schema）；23 版那几组按键一路照留。 */
+    @Test
+    fun migrateAllFrom23To28Validates() {
+        helper.createDatabase(dbName, OLDEST_STATE_DB).apply {
+            execSQL("INSERT INTO key_groups (id,name,sortOrder) VALUES ('g','常用',0)")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate(dbName, 28, true, *allMigrations())
+        db.query("SELECT name FROM key_groups").use { c ->
+            assertEquals(listOf("常用"), generateSequence { if (c.moveToNext()) c.getString(0) else null }.toList())
         }
     }
 }

@@ -17,7 +17,7 @@ const refused = (code: string, message: string): ChanError =>
   new ChanError({ layer: "peer", why: "refused", body: new TextEncoder().encode(JSON.stringify({ code, said: message })) }, message);
 // 回执前断了：没回执（同断线）。
 const offline = (): ChanError => new ChanError({ layer: "hop", at: { idx: 0, tag: "wait" }, reach: "Sent", why: "Overrun" }, "no-answer");
-const queued: QueuePut = { outcome: "queued", seq: 1, place: 1, said: "第 1" };
+const queued: QueuePut = { outcome: "queued", seq: 1, said: "第 1" };
 
 beforeEach(() => localStorage.clear());
 
@@ -99,6 +99,21 @@ describe("待发：一台接上就把它名下各会话的待发照原编号重�
     await box.say("devbox", "s-1", "x", []);
     expect(box.of("devbox", "s-1").length).toBe(1);
     expect(put.mock.calls[1]![1].id).toBe(put.mock.calls[0]![1].id);
+  });
+
+  it("★ 在飞那一刻 inFlight 是真、交完（没回执）就假，两下都叫订的那几处（那一行跟着换句）", async () => {
+    let fail: (e: unknown) => void = () => {};
+    const box = new Outbox(vi.fn(() => new Promise<QueuePut>((_ok, no) => (fail = no))));
+    const seen = vi.fn();
+    box.onChange(seen);
+    const end = box.say("devbox", "s-1", "x", []);
+    const id = box.of("devbox", "s-1")[0]!.id;
+    expect(box.inFlight(id)).toBe(true);
+    seen.mockClear();
+    fail(offline());
+    await end;
+    expect(box.inFlight(id)).toBe(false);
+    expect(seen).toHaveBeenCalled();
   });
 
   it("撤待发 ⇒ 本地拿掉，变了就叫订的那几处", async () => {

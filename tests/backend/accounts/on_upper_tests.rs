@@ -97,7 +97,6 @@ mod show_rows {
         Facts {
             kind,
             login: LoginState::Ok,
-            sub_id: None,
         }
     }
 
@@ -163,7 +162,6 @@ mod show_rows {
                 account: o.account.clone(),
                 seen_at: o.seen_at,
                 reading: o.reading.clone(),
-                windows_seen: Default::default(),
                 show: sh,
             },
             &clock,

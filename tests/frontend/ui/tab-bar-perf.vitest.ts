@@ -111,8 +111,6 @@ function rig(n: number, grouped = 0): Rig {
   const host: TabBarViewHost = {
     refreshTabBar: vi.fn(),
     closeEndedIn: vi.fn(),
-    openTabCwd: vi.fn().mockResolvedValue(undefined),
-    bringTerminalToFront: vi.fn().mockResolvedValue(undefined),
     closeTab: vi.fn(),
     switchTo: vi.fn(),
     answerAt: vi.fn(),
@@ -125,7 +123,6 @@ function rig(n: number, grouped = 0): Rig {
     openMenu: vi.fn(),
     toggleSelect: vi.fn(),
     openMenuAt: vi.fn(),
-    rereadAll: vi.fn().mockResolvedValue(undefined),
     fixMachine: vi.fn(),
   };
   const bar = document.createElement("div");
@@ -209,9 +206,10 @@ describe("P2 ＋ P7 ＋ P1：整刷改成差量刷", () => {
       // 11 → 13：跑完你还没看（`.unseen-done`，标题 600）· 在等你（`.waiting-you`，窄窗字母琥珀）。
       // 13 → 10：灯那一档 · 可重连改成 `data-*` 钩子（没有样式的三个类不再 toggle）。
       // 10 → 9：说不清 `.unseen` 也改成 `data-unseen` 钩子（↗ 不再按它藏，那个类没有样式了，A2-17-12-1）。
+      // 9 → 7：行尾只剩 ⋯ ×（目录 · ↗ 删了）⇒ `.has-cwd` 不再挂，`.remote` 没有样式了、改成 `data-remote` 钩子。
       (r.store.tabs.get("s5") as { pinned: boolean }).pinned = true;
       r.view.refresh();
-      expect(spy).toHaveBeenCalledTimes(9);
+      expect(spy).toHaveBeenCalledTimes(7);
     } finally {
       spy.mockRestore();
     }
@@ -402,7 +400,7 @@ describe("P3：拖拽时矩形只量一次、落点标记只动变了的那两�
 });
 
 describe("P8：事件委托 —— 每个 tab 零监听器，整条栏恒定那几个", () => {
-  it("建 TabBarView：手势六个在 barEl 上（点 · 双击 · 右键 · 按下 · 列表键按下 / 松开）、悬停两组（卡 · 行尾动作）各四个在列表上、栏顶「刷新」五个（「需手动」悬停菜单那进出两个随它并进点开的浮层删了）；之后新建 M 个 tab 的整刷里 `addEventListener` 0 次（M = 5 与 M = 40）", () => {
+  it("建 TabBarView：手势六个在 barEl 上（点 · 双击 · 右键 · 按下 · 列表键按下 / 松开）、悬停两组（卡 · 行尾动作）各四个在列表上（栏顶「刷新」删了，栏顶那一排是宿主交进来的）；之后新建 M 个 tab 的整刷里 `addEventListener` 0 次（M = 5 与 M = 40）", () => {
     for (const m of [5, 40]) {
       const spy = vi.spyOn(EventTarget.prototype, "addEventListener");
       try {
@@ -411,8 +409,8 @@ describe("P8：事件委托 —— 每个 tab 零监听器，整条栏恒定那�
           spy.mock.calls.filter((_, i) => spy.mock.contexts[i] === el).map((c) => c[0] as string).sort();
         expect(on(r.bar), "手势：恰好六个委托").toEqual(["click", "contextmenu", "dblclick", "keydown", "keyup", "mousedown"]);
         expect(on(r.view.listEl), "悬停：卡与行尾动作两组委托").toEqual(["focusin", "focusin", "focusout", "focusout", "mouseout", "mouseout", "mouseover", "mouseover"]);
-        // 栏顶「刷新」一份悬停提示（五个）（固定，不随 tab 数涨）；「需手动」点开浮层走栏上那个点的委托，不另挂。
-        expect(spy.mock.calls.length, "构造总数恒定").toBe(6 + 8 + 5);
+        // 「需手动」点开浮层走栏上那个点的委托，不另挂；栏顶没有自己挂的按钮了。
+        expect(spy.mock.calls.length, "构造总数恒定").toBe(6 + 8);
         spy.mockClear();
         for (let i = 0; i < m; i++) {
           r.store.tabs.set(`n${i}`, fakeTab(`n${i}`));
@@ -451,16 +449,14 @@ describe("P8：事件委托 —— 每个 tab 零监听器，整条栏恒定那�
       expect(r.host.switchTo).toHaveBeenCalledTimes(1);
     });
 
-    it("📂 / ↗ / × ⇒ 各自的动作、不切 tab、click 不冒到 document", () => {
+    it("行尾只有 ⋯ ×：各自的动作、不切 tab、click 不冒到 document", () => {
       const r = make(4); // s1 / s3 是远端
       const doc = seenAtDoc("click");
       try {
-        sub(r, "s0", "tab-cwd").click();
-        expect(r.host.openTabCwd).toHaveBeenCalledWith("s0");
-        sub(r, "s0", "tab-focus").click();
-        expect(r.host.bringTerminalToFront).toHaveBeenCalledWith("s0");
-        sub(r, "s1", "tab-focus").click();
-        expect(r.host.bringTerminalToFront).toHaveBeenCalledWith("s1");
+        const acts = [...btn(r, "s0").querySelectorAll(".tab-acts > *")].map((e) => e.className);
+        expect(acts).toEqual(["tab-more", "tab-close"]);
+        sub(r, "s1", "tab-more").click();
+        expect(r.host.openMenuAt).toHaveBeenCalledWith(sub(r, "s1", "tab-more"), "s1");
         sub(r, "s2", "tab-close").click();
         expect(r.host.closeTab).toHaveBeenCalledWith("s2");
         expect(r.host.switchTo).not.toHaveBeenCalled();
@@ -473,13 +469,6 @@ describe("P8：事件委托 —— 每个 tab 零监听器，整条栏恒定那�
       }
     });
 
-    it("↗ 在已结束的 tab 上 ⇒ 什么都不做", () => {
-      const r = make(2);
-      r.store.tabs.get("s0")!.face = goldenFace("ended");
-      sub(r, "s0", "tab-focus").click();
-      expect(r.host.bringTerminalToFront).not.toHaveBeenCalled();
-    });
-
     it("左键按下按钮 ⇒ 起拖（带上 sid 与按钮根）；按在子按钮上 ⇒ 不起拖、不冒到 document", () => {
       const r = make(2);
       const doc = seenAtDoc("mousedown");
@@ -488,7 +477,7 @@ describe("P8：事件委托 —— 每个 tab 零监听器，整条栏恒定那�
         btn(r, "s1").dispatchEvent(e);
         expect(r.host.beginDrag).toHaveBeenCalledWith(e, "s1", btn(r, "s1"));
         expect(doc.n).toBe(1);
-        for (const cls of ["tab-cwd", "tab-focus", "tab-close"]) {
+        for (const cls of ["tab-more", "tab-close"]) {
           sub(r, "s1", cls).dispatchEvent(new MouseEvent("mousedown", { button: 0, bubbles: true }));
         }
         expect(r.host.beginDrag).toHaveBeenCalledTimes(1);
@@ -517,7 +506,7 @@ describe("P8：事件委托 —— 每个 tab 零监听器，整条栏恒定那�
       const e1 = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
       btn(r, "s0").dispatchEvent(e1);
       const e2 = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
-      sub(r, "s1", "tab-cwd").dispatchEvent(e2);
+      sub(r, "s1", "tab-more").dispatchEvent(e2);
       expect((r.host.openMenu as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[1])).toEqual(["s0", "s1"]);
       expect([e1.defaultPrevented, e2.defaultPrevented]).toEqual([true, true]);
     });

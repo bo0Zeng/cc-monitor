@@ -205,7 +205,7 @@ fn the_new_session_facts_wire_names_its_cells() {
             .unwrap();
     assert_eq!(
         r,
-        serde_json::json!({"cwd": "/home/x/a", "shown": "~/a", "lastMs": 1, "lastText": "00:00"})
+        serde_json::json!({"cwd": "/home/x/a", "shown": "~/a", "lastText": "00:00"})
     );
 }
 

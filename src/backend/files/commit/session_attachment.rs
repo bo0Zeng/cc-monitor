@@ -13,12 +13,12 @@ use layout::{DIR, GITIGNORE, GITIGNORE_BODY};
 
 /// 这一支的失败（同上传提交那一形）。
 use crate::platform::fs::{Face, Ro};
+use cap_core::{Cap, Over};
 use cmd_wire::attachment::{
     AttachItem, AttachRefused, AttachVerdict, SessionAttachmentCommitReply,
     SessionAttachmentCommitReq,
 };
 use copy_core::{copy_text, io_reason, size_text};
-use relay_route_core::{Cap, Over};
 use std::path::{Path, PathBuf};
 
 /// 单份上限（超了那一份不收，说清为什么）。

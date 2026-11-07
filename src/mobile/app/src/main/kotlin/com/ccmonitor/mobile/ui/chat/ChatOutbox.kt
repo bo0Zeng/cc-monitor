@@ -9,16 +9,16 @@ import com.ccmonitor.mobile.core.claude.link.SessionQueuePut
 import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.PendingOutcome
+import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.Rewind
 import com.ccmonitor.mobile.link.problem
-import com.ccmonitor.mobile.link.unreadableReply
 import com.ccmonitor.mobile.ui.chat.attach.AttachTray
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 /**
- * 一条会话的待发：这一端交出去、会话那台还没回执的那几句（输入框上方「发送中」· 撤），同桌面 `outbox.ts`：回执到了（那台已落盘）⇒ 离开待发，
- * 之后只照那台的名单（排队 · 第 N）与记录画，这一端不另留一行。
+ * 一条会话的待发：这一端交出去、会话那台还没回执的那几句（输入框上方那一排 · 撤），同桌面 `outbox.ts`：回执到了（那台已落盘）⇒ 离开待发，
+ * 之后只照那台的名单与记录画，这一端不另留一行。
  * 编号就是投进那条会话输入队的 id：没回执（断线 · 期限到了 · App 被杀）⇒ 接上照同一个编号再交，那台去重只进一条。
  */
 internal class ChatOutbox(
@@ -33,22 +33,26 @@ internal class ChatOutbox(
 
     /**
      * 交那一句：投进 [sid] 那条会话的输入队（`session-queue-put`）。回执到了（那台已落盘）⇒ 离开待发（[received]）；那台拒了（码）⇒ 留在待发、标没送到；
-     * 没回执（断线 · 期限到了 · 那台离线）⇒ 照旧「发送中」，接上再交同一个编号。
+     * 没回执（断线 · 期限到了 · 回包读不出 · 那台离线）⇒ 那一行换成那台的 `heldSaid`，接上再交同一个编号。
      */
     suspend fun put(
         o: Outgoing,
         sid: String,
     ) {
         o.inFlight = true
+        o.ended = false
+        publish()
         val r = link.call(SessionQueuePut.COMMAND, SessionQueuePut.args(sid, o.localId, o.text, System.currentTimeMillis(), o.attachments, o.rewind), INPUT_MS)
         o.inFlight = false
         if (lines.none { it === o }) return
+        val landed = (r as? Reply.Ok)?.let { SessionQueuePut.of(it.data) }
         when {
-            r is Reply.Ok ->
-                SessionQueuePut.of(r.data)?.let { received(o) }
-                    ?: mark(o, DeliveryState.FAILED, unreadableReply(machine, SessionQueuePut.COMMAND, r.data.toString()).text)
+            landed != null -> received(o)
             r is Reply.Failed && r.failure.code != OFFLINE -> mark(o, DeliveryState.FAILED, r.problem(machine, SessionQueuePut.COMMAND, link.offline.value)?.text)
-            else -> Unit
+            else -> {
+                o.ended = true
+                publish()
+            }
         }
     }
 
@@ -72,12 +76,12 @@ internal class ChatOutbox(
         scope.launch { cache.settle(o.localId, outcomeOf(delivery), o.attempts) }
     }
 
-    /** 撤待发里一句：本地删掉；万一已经交到那台了，照编号请它撤掉（送过的撤不了，那台说了算）。 */
+    /** 撤待发里一句：本地删掉、回那一句的字（回到输入框）；万一已经交到那台了，照编号请它撤掉（送过的撤不了，那台说了算）。不在 ⇒ `null`。 */
     fun cancel(
         localId: String,
         sid: String?,
-    ) {
-        val o = lines.firstOrNull { it.localId == localId } ?: return
+    ): String? {
+        val o = lines.firstOrNull { it.localId == localId } ?: return null
         lines -= o
         publish()
         scope.launch {
@@ -85,15 +89,7 @@ internal class ChatOutbox(
             attach?.settled(o.localId)
             sid?.let { link.call(SessionQueueCancel.COMMAND, SessionQueueCancel.args(it, o.localId), INPUT_MS) }
         }
-    }
-
-    /** 再发一次那台拒了的那一句（能改的原因才有这颗）：同一个编号，标回「发送中」、次数加一；不是没送到的那一句 ⇒ `null`。 */
-    fun retrying(localId: String): Outgoing? {
-        val o = lines.firstOrNull { it.localId == localId && it.delivery == DeliveryState.FAILED } ?: return null
-        o.delivery = DeliveryState.SENDING
-        o.deliveryText = copyText("mobChat.delivery.sending")
-        o.attempts++
-        return o
+        return o.text
     }
 
     /** 收进待发（编辑已发的那几句：确认那一下 · 开屏照编辑草稿读回的）；同一个编号已在 ⇒ 不再收。 */
@@ -105,21 +101,18 @@ internal class ChatOutbox(
     fun due(): List<Outgoing> = lines.filter { !it.inFlight && it.delivery == DeliveryState.SENDING }
 
     /**
-     * 待发里这条会话的那几句挂回来：那台拒过的 ⇒ 没送到；别的（上次没等到回执 App 就没了）⇒ 回到「发送中」，等接上那台照同一个编号再交一遍（[due]）。
-     * 回执到过的（后台重交落的）不挂、删掉：那一句已在那台的名单或记录里。
+     * 待发里这条会话的那几句挂回来：那台拒过的 ⇒ 未送进会话；别的（上次没等到回执 App 就没了）⇒ 交了没回执（那台的 `heldSaid`），
+     * 等接上那台照同一个编号再交一遍（[due]）。回执到过的（后台重交落的）不挂、删掉：那一句已在那台的名单或记录里。
      */
     suspend fun restore(s: String) {
         val known = lines.map { it.localId }.toSet()
         val (landed, waiting) = cache.pending(s).filterNot { it.id in known }.partition { it.outcome == PendingOutcome.DELIVERED }
         if (landed.isNotEmpty()) cache.forget(landed.map { it.id })
         for (p in waiting) {
-            val (d, text) =
-                if (p.outcome == PendingOutcome.REFUSED) {
-                    DeliveryState.FAILED to copyText("mobChat.delivery.refused")
-                } else {
-                    DeliveryState.SENDING to copyText("mobChat.delivery.sending")
-                }
-            lines += Outgoing(p.id, p.text, d, text, p.attempts, attach?.handedOf(p.id).orEmpty())
+            val refused = p.outcome == PendingOutcome.REFUSED
+            val d = if (refused) DeliveryState.FAILED else DeliveryState.SENDING
+            val text = if (refused) copyText("beQueue.said.undelivered") else null
+            lines += Outgoing(p.id, p.text, d, text, p.attempts, attach?.handedOf(p.id).orEmpty()).also { it.ended = !refused }
         }
     }
 
@@ -130,12 +123,27 @@ internal class ChatOutbox(
         sid: String?,
     ) = cache.promote(draftKey, Pending(o.localId, sid, o.text, PendingOutcome.PENDING, o.attempts))
 
-    /** 输入框上方那一排（还没回执的那几句）。 */
-    fun view(): List<OutboxLine> =
-        lines.map {
+    /**
+     * 输入框上方那一排（还没回执的那几句），同桌面：那台拒了 ⇒ 那台写的那一句（错误色）；交出去、回执还没到 ⇒「发送中 · 等确认」；
+     * 交了没回执、这一问已结束（淡）：那台此刻断着 ⇒ 那台机器成品的 `heldSaid`；连着（超时 · 回包读不出）⇒「排队 · 无应答」
+     * （不借 heldSaid：连着时说离线是假话）。两种都是接上照原编号重交。
+     */
+    fun view(): List<OutboxLine> {
+        val st = link.state.value
+        val held = if (st is LinkLine.Down) st.machine.heldSaid else copyText("beQueue.said.noAnswer")
+        return lines.map {
             val failed = it.delivery == DeliveryState.FAILED || it.delivery == DeliveryState.FAILED_PERMANENT
-            OutboxLine(it.localId, it.text, it.deliveryText.orEmpty(), failed, it.delivery == DeliveryState.FAILED)
+            val waiting = it.delivery == DeliveryState.SENDING
+            val said =
+                when {
+                    failed -> it.deliveryText ?: copyText("beQueue.said.undelivered")
+                    waiting && it.ended -> held
+                    waiting -> copyText("beQueue.said.confirming")
+                    else -> it.deliveryText.orEmpty()
+                }
+            OutboxLine(it.localId, it.text, said, failed, held = waiting && it.ended)
         }
+    }
 
     private companion object {
         const val INPUT_MS = 20_000L
@@ -145,13 +153,13 @@ internal class ChatOutbox(
     }
 }
 
-/** 输入框上方那一排里的一句：交出去了、会话那台还没回执（「发送中」· 撤）；那台拒了 ⇒ [failed]、[said] 是那台写的那一句，原因改得了 ⇒ [retry]。 */
+/** 输入框上方那一排里的一句：交出去了、会话那台还没回执（那一句 ·［撤回］）；那台拒了 ⇒ [failed]；交了没回执 ⇒ [held]（淡着）。 */
 data class OutboxLine(
     val id: String,
     val text: String,
     val said: String,
     val failed: Boolean,
-    val retry: Boolean,
+    val held: Boolean,
 )
 
 /** 待发里的那一句：回执到之前在输入框上方，回执到了离开待发。 */
@@ -174,6 +182,9 @@ internal class Outgoing(
 
     /** 正在交（同一句不同时交两遍）。 */
     var inFlight = false
+
+    /** 交过、这一问结束了还没回执（断线 · 期限到了 · 回包读不出 · 上次 App 没等到）：那一行照那台的 `heldSaid`。再交那一下清掉。 */
+    var ended = false
 }
 
 /** 气泡下的标 ⇒ 落盘的那几种结局之一：回执到了（排着）记 `delivered`，还没回执记 `pending`。 */

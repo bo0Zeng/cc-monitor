@@ -382,15 +382,15 @@ fn a_pooled_connection_the_upstream_closed_is_dropped_before_any_byte_is_sent() 
 // 上游选择（判据自己的一张）进门就先报一声、再压着不答，放一次答一发：在途的那几发一直攥着自己那一笔账。
 
 /// 不量体量的那几条判据给的账：比判据里任何一发都宽得多。
-const BODIES_WIDE: relay_route_core::Cap = relay_route_core::Cap {
+const BODIES_WIDE: cap_core::Cap = cap_core::Cap {
     bytes: 1 << 30,
-    over: relay_route_core::Over::Reject,
+    over: cap_core::Over::Reject,
 };
 
 /// 判据的账与每一发的体：3 发记不下、2 发记得下。
-const BODIES_NARROW: relay_route_core::Cap = relay_route_core::Cap {
+const BODIES_NARROW: cap_core::Cap = cap_core::Cap {
     bytes: 8 * 1024 * 1024,
-    over: relay_route_core::Over::Reject,
+    over: cap_core::Over::Reject,
 };
 const ONE_BODY: usize = 3 * 1024 * 1024;
 
@@ -429,9 +429,7 @@ impl Destinations for Held {
 }
 
 /// 起一个账为 `bodies` 的中转，上游选择是 [`Held`]；回中转地址 ＋ 「进来了」的收端 ＋ 放行的发端。
-fn spawn_held_relay(
-    bodies: relay_route_core::Cap,
-) -> (SocketAddr, mpsc::Receiver<()>, mpsc::Sender<()>) {
+fn spawn_held_relay(bodies: cap_core::Cap) -> (SocketAddr, mpsc::Receiver<()>, mpsc::Sender<()>) {
     let (entered_tx, entered) = mpsc::channel();
     let (release, release_rx) = mpsc::channel();
     let open: Arc<OpenFor> =

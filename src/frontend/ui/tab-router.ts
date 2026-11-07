@@ -12,7 +12,7 @@
  * 这里只回「该切谁 / 放不放行」，不去切。
  */
 import { LS_KEYS, safeSet } from "./local-storage";
-import { hasTerminal } from "./face-can";
+import { terminalAlive } from "./face-can";
 import type { BehaviorConfig } from "./behavior";
 import type { TabStore } from "./tab-store";
 
@@ -91,7 +91,7 @@ export class TabRouter {
     if (Date.now() < this.manualOverrideUntil) return "ignore";
     const tab = this.store.tabs.get(sessionId);
     if (!tab) return "ignore";
-    if (!hasTerminal(tab.face)) return "ignore";
+    if (!terminalAlive(tab.face)) return "ignore";
     if (this.store.activeId === sessionId) return "front-only";
     return "switch";
   }

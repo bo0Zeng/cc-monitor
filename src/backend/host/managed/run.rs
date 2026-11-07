@@ -36,11 +36,13 @@ pub struct Spec {
     pub(crate) size: Size,
     pub(crate) cwd: String,
     pub(crate) agent: String,
+    /// 起它时点名的号（`--account`；空 ＝ 没点名）。
+    pub(crate) account: String,
     pub client: String,
     pub(crate) argv: Vec<String>,
 }
 
-/// `<id> [name=N] [size=列x行] [cwd=D] [agent=A] [client=C] -- <argv…>`（`--host-run` 之后那一串；那个词住 `ccm_line::argv::flag`）。
+/// `<id> [name=N] [size=列x行] [cwd=D] [agent=A] [account=号] [client=C] -- <argv…>`（`--host-run` 之后那一串；那个词住 `ccm_line::argv::flag`）。
 /// 选项写成 `键=值`：它们是 ccm 起托管进程时自己拼的，不是给人敲的旗标。
 pub(crate) fn parse(args: &[String]) -> Result<Spec, Said> {
     let bad = |what: &str| -> Said { copy_text("beHost.run.badArgs", &[("what", what)]).into() };
@@ -55,6 +57,7 @@ pub(crate) fn parse(args: &[String]) -> Result<Spec, Said> {
         size: DEFAULT_SIZE,
         cwd: String::new(),
         agent: String::new(),
+        account: String::new(),
         client: String::new(),
         argv: Vec::new(),
     };
@@ -70,6 +73,7 @@ pub(crate) fn parse(args: &[String]) -> Result<Spec, Said> {
             "size" => spec.size = size_of(&v).ok_or_else(|| bad(a))?,
             "cwd" => spec.cwd = v,
             "agent" => spec.agent = v,
+            "account" => spec.account = v,
             "client" => spec.client = v,
             _ => return Err(bad(a)),
         }
@@ -135,18 +139,13 @@ impl Ctx {
                     }
                 }
                 Effect::End => self.term.hangup(),
-                Effect::Tag { sid, agent } => {
-                    let mut f = locked(&self.facts);
+                Effect::Tag { sid, agent } => self.update_facts(|f| {
                     f.sid = sid;
                     if !agent.is_empty() {
                         f.agent = agent;
                     }
-                    if let Some(home) = locked(&self.home).as_ref() {
-                        if let Err(e) = home.write_facts(&f) {
-                            tracing::warn!("托管终端：写事实没写成：{}", e.logged());
-                        }
-                    }
-                }
+                }),
+                Effect::Attached(a) => self.update_facts(|f| f.attached = a),
                 Effect::Drop(id) => {
                     let more = locked(&self.hub).gone(id);
                     if let Some(h) = locked(&self.readers).remove(&id) {
@@ -154,6 +153,17 @@ impl Ctx {
                     }
                     self.apply(more);
                 }
+            }
+        }
+    }
+
+    /// 改一格事实、整份写回（家已收尾 ⇒ 只改内存里那份）。
+    fn update_facts(&self, change: impl FnOnce(&mut Facts)) {
+        let mut f = locked(&self.facts);
+        change(&mut f);
+        if let Some(home) = locked(&self.home).as_ref() {
+            if let Err(e) = home.write_facts(&f) {
+                tracing::warn!("托管终端：写事实没写成：{}", e.logged());
             }
         }
     }
@@ -220,6 +230,8 @@ pub(crate) async fn serve(
         cwd: spec.cwd.clone(),
         agent: spec.agent.clone(),
         client: spec.client.clone(),
+        account: spec.account.clone(),
+        attached: false,
         sid: String::new(),
     };
     home.write_facts(&facts)?;

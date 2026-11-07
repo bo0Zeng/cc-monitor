@@ -606,7 +606,6 @@ fn said(who: UserText, blocks: Vec<Block>) -> Body {
 fn reply(blocks: Vec<Block>) -> Body {
     Body::Reply {
         blocks,
-        model: None,
         auto_reply: false,
         cards: Default::default(),
         steps: Default::default(),

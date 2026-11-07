@@ -30,7 +30,7 @@ import type { AgentsPanel } from "./agents-panel";
 import type { GridSessionSnapshot, SessionPeek } from "./session-status";
 import type { Tab, TabsSummary } from "./tab-model";
 import type { SessionFace } from "./generated/SessionFace";
-import { activityOf, closesFromMenu, closesQuietly, frontWhy, isEnded, isLive } from "./face-can";
+import { activityOf, closesFromMenu, closesQuietly, isEnded, isLive, terminalWay } from "./face-can";
 import { isLocalOrigin, isRemoteOrigin, LOCAL, type Machine } from "./ipc/origin";
 // `Tab` 的形状与标题函数在 `tab-model.ts`；这里 re-export，调用方只 import 本文件（落点算术直接从 `tab-drop.ts` 取）。
 export type { Tab, TabsSummary } from "./tab-model";
@@ -69,14 +69,13 @@ import {
   reportWatching,
   reportKept,
 } from "./tab-session-actions";
-import { frontView, type FrontAct, type FrontView } from "./front-result";
+import { frontAskFailed, frontView, showFrontResult, type FrontAct, type FrontView } from "./front-result";
 import type { FrontTold } from "./generated/FrontTold";
 import { updateBackendOf } from "./backend-deploy";
 import { machineName } from "./control-said";
 import type { MachineFix } from "./generated/MachineFix";
 import { openSettingsWindow } from "./open-settings";
 import { machinePageOf } from "./settings-dest";
-import { closeFrontResult, flashFrontDone, frontAskFailed, setFrontBusy, showFrontResult } from "./front-pop";
 import { CHANNEL_ACTS, LaunchSlots, type SlotSpec } from "./launch-slot";
 import type { Watched } from "./terminal-page";
 import type { ActionId } from "./keybindings/actions";
@@ -123,8 +122,6 @@ export class TabManager {
     this.bar = new TabBarView(this.store, this.prefs, barEl, {
       refreshTabBar: () => this.refreshTabBar(),
       closeEndedIn: (gid) => this.closeEndedIn(gid),
-      openTabCwd: (sid) => this.openTabCwd(sid),
-      bringTerminalToFront: (sid) => this.frontFrom(sid, "row"),
       closeTab: (sid) => this.closeTab(sid),
       switchTo: (sid) => this.switchTo(sid),
       answerAt: (sid) => {
@@ -140,7 +137,6 @@ export class TabManager {
       openMenu: (e, sid) => this.openMenu(e, sid),
       toggleSelect: (sid) => this.pick(sid, "toggle"),
       openMenuAt: (el, sid) => this.openMenu(el, sid),
-      rereadAll: () => this.rereadAll(),
       fixMachine: (origin, fix) => this.fixMachine(origin, fix),
       planForGroup: (gid, name, members) => this.onPlanForGroup(gid, name, members),
     });
@@ -353,7 +349,7 @@ export class TabManager {
     "tab.open-cwd",
     "tab.pop-out",
     "tab.context-menu",
-    "terminal.bring-front",
+    "session.terminal",
   ]);
 
   /**
@@ -401,11 +397,7 @@ export class TabManager {
         setAutoAnswer(t.origin, sid, min).catch((e: unknown) => failToast(copyText("tabMenu.autoAnswer.failed"), e));
       },
       openCwd: (sid) => void this.openTabCwd(sid),
-      front: (sid) => this.frontFor(sid),
-      viewTerminal: (sid) => {
-        this.switchTo(sid);
-        this.onViewTerminal?.();
-      },
+      terminal: (sid) => this.terminalFor(sid),
     },
     this.actions,
   );
@@ -567,7 +559,7 @@ export class TabManager {
         sessionId: tab.sessionId,
         title: tab.title,
         origin: tab.origin,
-        cwd: tab.projectDir,
+        cwdShown: tab.cwdShown,
         face, // 与 tab 栏同一张脸
         needs: needsOf(tab)?.text ?? null,
         running: runs.groups.running_text ?? null,
@@ -711,10 +703,10 @@ export class TabManager {
       background: background ?? false,
       title,
       projectDir,
+      cwdShown: null, // 显示形：会话事实到了才有（`onSessionFacts`）
       label: pendingName?.label ?? null,
-      forkedFromSessionId: null, // 会话事实到了才有（`onSessionFacts`）
+      forkedLine: null, // 会话事实到了才有（`onSessionFacts`）
       agent: null, // 是哪一家：会话事实到了才有（`onSessionFacts`），之前要分家的那几项灰着
-      writersLine: null, // 同上
       whereLine: null, // 同上
       origin,
       // 脸早于建 Tab 到 ⇒ 落实；没有 ⇒ 画说不清，等那台的帧。
@@ -940,7 +932,7 @@ export class TabManager {
 
   /** 右键「账号…」开哪个面板（主窗口接；独立窗口不接 ⇒ 那一项照样在，点了不动）。 */
   onOpenAccountPanel: ((sid: string, origin: Machine) => void) | null = null;
-  /** 菜单「看它的终端」：切到那个标签页之后开底部抽屉的终端页（抽屉归主窗口入口）。 */
+  /** 占位标签页［终端画面］：切到那个标签页之后开底部抽屉的终端页（抽屉归主窗口入口）。 */
   onViewTerminal: (() => void) | null = null;
 
   /** 这个会话在哪台（没有这个 tab ⇒ `null`）。 */
@@ -1035,9 +1027,9 @@ export class TabManager {
     this.bar.localBackendChanged(l);
   }
 
-  /** 栏顶左边那几颗全局入口（宿主建好交进来）。 */
-  mountHeadActions(buttons: HTMLElement[]): void {
-    this.bar.mountHeadActions(buttons);
+  /** 栏顶那几颗全局入口（左：常驻那几颗；右端：更多去处 ⋯；宿主建好交进来）。 */
+  mountHeadActions(buttons: HTMLElement[], end: HTMLElement[]): void {
+    this.bar.mountHeadActions(buttons, end);
   }
 
   /** `Ctrl+J` · 点「需手动」：跳到下一个需手动的会话（等得最久的在前；当前就是 ⇒ 下一个）。 */
@@ -1087,16 +1079,19 @@ export class TabManager {
     this.menu.openResumeMenu(anchor, sid);
   }
 
-  /** 会话头 / 钉条 / 报错卡的［在终端里打开］（出不出照脸上的 `can.attach`）。 */
-  attachInTerminal(sid: string): void {
-    void this.menu.attachTo(sid);
-  }
-
-  /** 会话头 · 钉条 · 命令面板的 ↗ 与行尾那颗同一条路（结果锚在会话头的 ↗）。 */
-  frontFor(sid: string): void {
+  /**
+   * 「终端」那一颗（会话头 · 右键 · 命令面板 · 快捷键 · 报错卡同一条路）：做什么照脸上那一格（`terminalWay`，本机标签页挑 near、远端挑 far）——
+   * 拉它的外部窗口 · 在这里开它的终端（切过去、开底部抽屉的终端页）· 做不了 ⇒ 那一句进状态栏「消息」、不弹 toast、不发 IPC。
+   */
+  terminalFor(sid: string): void {
     const tab = this.store.tabs.get(sid);
-    if (!tab || this.frontRefused(tab)) return;
-    void this.frontFrom(sid, "head");
+    if (!tab) return;
+    const way = terminalWay(tab.face, isRemoteOrigin(tab.origin));
+    if (way === null) return;
+    const title = copyText("mobDrawer.item.terminal");
+    if (way.go === "no") noteMessage(title, way.why);
+    else if (way.go === "front") void this.frontFor(sid);
+    else this.onOpenHere?.(sid);
   }
 
   /** 会话头的「打开工作目录」。 */
@@ -1208,16 +1203,16 @@ export class TabManager {
   }
 
   /**
-   * 后端的一份会话事实到了 ⇒ 落到 tab 上（`applyFacts`），只刷变了的：分叉 ⇒ 悬停卡那一行 · 在写它的进程 ⇒ 悬停提示 · usage ⇒ HUD（只当前 tab）。
+   * 后端的一份会话事实到了 ⇒ 落到 tab 上（`applyFacts`），只刷变了的：分叉 ⇒ 悬停卡那一行 · usage ⇒ HUD（只当前 tab）。
    */
   private onSessionFacts(sid: string, f: SessionFacts): void {
     const tab = this.store.tabs.get(sid);
     if (!tab) return;
     const ch = applyFacts(tab, f);
-    // 消息流里跟着事实补画的那几样（交回 · 重试 · 卡头名字 · 等批准那几行 · 刻度 · 过程行）是流视图的事。
+    // 消息流里跟着事实补画的那几样（交回 · 重试 · 等批准那几行 · 刻度 · 过程行）是流视图的事。
     this.view.factsLanded(tab, f, ch);
-    if (ch.forkedFrom || ch.projectDir || ch.writers || ch.where || ch.needs || ch.peek || ch.lineage || ch.switchable) this.refreshTabBar();
-    if ((ch.usage || ch.projectDir || ch.forkedFrom || ch.switchable) && sid === this.store.activeId) this.publishActive();
+    if (ch.forkedLine || ch.projectDir || ch.where || ch.needs || ch.peek || ch.lineage || ch.switchable) this.refreshTabBar();
+    if ((ch.usage || ch.projectDir || ch.forkedLine || ch.switchable) && sid === this.store.activeId) this.publishActive();
   }
 
   /** 这个 tab 的会话事实可不可用变了 ⇒ 是 active 就告诉 HUD（要不到 ⇒ 出声，「不可用，不是空表」）。 */
@@ -1414,73 +1409,39 @@ export class TabManager {
     if (this.router.bringMonitorToFront) bringMonitorToFront();
   }
 
-  /**
-   * ↗ 此刻做不了（这台 ↗ 不是真的 · 那台说没有终端可去，`frontWhy`）⇒ 那一句进状态栏「消息」、不弹 toast、不发 IPC，回 `true`（A2-17-12-1）。
-   * 按钮那几处本来灰着点不到；快捷键 · 命令面板走到这里才用得上。
-   */
-  private frontRefused(tab: Tab): boolean {
-    const why = frontWhy(tab.face);
-    const title = copyText("terminal.head.front");
-    if (why === null) return false;
-    if (why !== "") noteMessage(title, why);
-    return true;
+  /** 快捷键 ` · 命令面板：当前标签页的「终端」那一颗。 */
+  terminalActive(): void {
+    if (this.store.activeId) this.terminalFor(this.store.activeId);
   }
 
-  /** Ctrl+`：把当前 Tab 的终端窗口拉到前台。 */
-  bringActiveTerminalToFront(): void {
-    if (!this.store.activeId) return;
-    const tab = this.store.tabs.get(this.store.activeId);
-    if (!tab || this.frontRefused(tab)) return;
-    void this.frontFrom(this.store.activeId, "head");
-  }
-
-  /** ↗ 浮层的［接上终端］（主窗口接到设置窗那一节）。 */
+  /** 拉窗没成那一条的［接上终端］（主窗口接到设置窗那一节）。 */
   onConnectTerminal: (() => void) | null = null;
-  /** ↗ 浮层的［在 cc-monitor 里打开］：切到这个会话的标签页、开底部抽屉的「终端」页（main.ts 接）。 */
+  /** 「终端」在这里开 · 拉窗没成那一条的［在 cc-monitor 里打开］：切到这个会话的标签页、开底部抽屉的「终端」页（main.ts 接）。 */
   onOpenHere: ((sid: string) => void) | null = null;
 
-  /** ↗ 的锚：行尾那颗（从行上点的）或会话头那颗（别的入口；会话头没在画它 ⇒ 退到行尾那颗）。 */
-  private frontAnchor(sid: string, from: "row" | "head"): HTMLElement | null {
-    const row = this.bar.frontButton(sid);
-    if (from === "row") return row;
-    const head = [...document.querySelectorAll<HTMLElement>("[data-role=head-front]")].find((b) => b.dataset.sid === sid);
-    return head ?? row;
-  }
-
   /**
-   * ↗ 的每个入口都经这里：在飞时不重发；慢了按钮进「进行中」、旁边出「查找终端…」；
-   * 切过去了 ↗ 换对勾 1 秒；其余结局一个浮层锚在 ↗ 下面（`front-result.ts` 排版）。
-   * 连那一张都没问到（壳那一问失败）⇒ 不出空浮层，照壳交来的那一句进失败提示（详情可复制）。
+   * 拉窗的每个入口都经这里：在飞时不重发；切过去了 ⇒ 什么都不出（窗口到了前面就是回执）；
+   * 其余结局底部一条（`front-result.ts` 照那一张摆）。连那一张都没问到（壳那一问失败）⇒ 照壳交来的那一句进失败提示（详情可复制）。
    */
-  private async frontFrom(sid: string, from: "row" | "head"): Promise<void> {
+  async frontFor(sid: string): Promise<void> {
     const tab = this.store.tabs.get(sid);
     if (!tab) return;
     const origin = tab.origin;
     const run = (): Promise<FrontTold> => bringTerminalToFront(origin, sid);
     let r: FrontTold | undefined;
     try {
-      r = await frontOnce(sid, run, (on) => {
-        this.bar.setFrontPending(sid, on);
-        setFrontBusy(this.frontAnchor(sid, from), on);
-      });
+      r = await frontOnce(sid, run, () => {});
     } catch (e) {
       frontAskFailed(e);
       return;
     }
     if (r === undefined) return;
-    const anchor = this.frontAnchor(sid, from);
     const view = frontView(r);
-    if (view === null) {
-      closeFrontResult(sid);
-      flashFrontDone(anchor);
-      return;
-    }
-    if (!anchor) return;
-    showFrontResult(anchor, sid, view, (a) => this.frontAct(sid, from, origin, a));
+    if (view !== null) showFrontResult(view, (a) => this.frontAct(sid, origin, a));
   }
 
-  /** ↗ 浮层上的按钮。 */
-  private async frontAct(sid: string, from: "row" | "head", origin: Machine, a: FrontAct): Promise<void> {
+  /** 底部那一条上的按钮。 */
+  private async frontAct(sid: string, origin: Machine, a: FrontAct): Promise<void> {
     switch (a.kind) {
       case "connect":
         this.onConnectTerminal?.();
@@ -1489,18 +1450,17 @@ export class TabManager {
         await this.menu.attachTo(sid);
         return;
       case "open-here":
-        closeFrontResult(sid);
         this.onOpenHere?.(sid);
         return;
       case "copy":
-        // 浮层里那颗自己复制（`kit/detail.ts`），不经这里。
+        // ［复制详情］是底部条自己那一颗（`kit/detail.ts`），不经这里。
         return;
       case "update":
       case "retry-update":
-        await this.updateInPlace(sid, from, origin);
+        await this.updateInPlace(sid, origin);
         return;
       case "retry":
-        await this.frontFrom(sid, from);
+        await this.frontFor(sid);
         return;
       case "reconnect":
         this.reconnect(origin);
@@ -1509,33 +1469,29 @@ export class TabManager {
   }
 
   /**
-   * ↗ 浮层的［更新］：就地把这一版换到那台（部署住 `backend-deploy.ts`，与机器卡同一处），不开设置；
-   * 正在更新 · 换上了 · 没换上都在同一个浮层里说。换上了就重拨那条流：拨成了只留关闭；没拨成才说要重连、给［重新连接］。
+   * 那一条的［更新］：就地把这一版换到那台（部署住 `backend-deploy.ts`，与机器卡同一处），不开设置；
+   * 正在更新 · 换上了 · 没换上各是一条底部条。换上了就重拨那条流：拨成了只说换上了；没拨成才说要重连、给［重新连接］。
    * 没换上 ⇒ ［重试］再更新一次 ·［复制详情］。确认框里取消 ⇒ 什么都不出。
    */
-  private async updateInPlace(sid: string, from: "row" | "head", origin: Machine): Promise<void> {
+  private async updateInPlace(sid: string, origin: Machine): Promise<void> {
     const machine = machineName(origin);
-    const show = (view: FrontView): void => {
-      const anchor = this.frontAnchor(sid, from);
-      if (anchor) showFrontResult(anchor, sid, view, (a) => this.frontAct(sid, from, origin, a));
-    };
-    const view = (title: string, body: string, tone: FrontView["tone"], acts: FrontAct[]): FrontView => ({ title, body, hint: null, tone, acts });
+    const show = (title: string, body: string, tone: FrontView["tone"], acts: FrontAct[]): void => showFrontResult({ title, body, hint: null, tone, acts }, (a) => this.frontAct(sid, origin, a));
     let done: string | null;
     try {
-      done = await updateBackendOf(origin, machine, () => show(view(copyText("front.title.updating", { machine }), "", "grey", [])));
+      done = await updateBackendOf(origin, machine, () => show(copyText("front.title.updating", { machine }), "", "plain", []));
     } catch (e) {
       const said = e instanceof Error ? e.message : String(e);
-      show(view(this.updateFailedTitle(machine), said, "red", [{ kind: "retry-update" }, { kind: "copy", detail: detailOf(e) }]));
+      show(this.updateFailedTitle(machine), said, "fail", [{ kind: "retry-update" }, { kind: "copy", detail: detailOf(e) }]);
       return;
     }
     if (done === null) return;
     const title = copyText("front.title.updated", { machine });
     try {
       await this.actions.redial(origin);
-      show(view(title, done, "grey", []));
+      show(title, done, "plain", []);
     } catch (e) {
       console.warn(`[front] ${origin} 换上之后重拨没成：`, e);
-      show(view(title, `${done} ${copyText("front.body.redialFailed")}`, "amber", [{ kind: "reconnect" }]));
+      show(title, `${done} ${copyText("front.body.redialFailed")}`, "warn", [{ kind: "reconnect" }]);
     }
   }
 

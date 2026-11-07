@@ -29,11 +29,11 @@ import { icon, type IconName } from "../kit/icon";
 // 「重启才生效」的改动给常驻条供货（`markRestartNeeded`）。
 import { createRestartBar, markRestartNeeded } from "./restart-notice";
 import { restartNowButton } from "./restart-now";
-import { FirstRun } from "./first-run";
 import { claudeDirProblem } from "./claude-dir-check";
 import { createUnknownKeysBar, rerenderUnknownKeys } from "./unknown-keys-notice"; // 🔴 P12：未知键要出声
 import { setCurrentMachine } from "../machine-context";
 import { LOCAL, isLocalOrigin } from "../ipc/origin";
+import { updateBackend } from "../backend-deploy";
 import { failToast } from "../kit/toast";
 import { toggleSwitch } from "../kit/switch";
 
@@ -233,7 +233,6 @@ export class SettingsPanel {
   /** Claude 数据目录输入框（改了要重启才生效）。 */
   private claudeDirInput!: HTMLInputElement;
   /** 机器页顶上「开始用」那一块。 */
-  private firstRun?: FirstRun;
   /** Claude 目录那一行下：「重启 cc-monitor 后生效 ［现在重启］」（存了一个新的目录之后出现）。 */
   private claudeDirRestart!: HTMLElement;
   /** 打开时 claudeDir 的快照（变了才提示重启）。 */
@@ -325,11 +324,7 @@ export class SettingsPanel {
     this.pagesLoaded.clear();
     this.perMachineLoaded = false;
     // 每次打开重拉远端配置，跟外部改动对齐。`refresh()` 失败会画在那一块自己的 banner 上；这里 catch 掉，免得同一件事在状态栏再说一遍。
-    // 「开始用」那一块：机器表读回来之后问一次（台数随问带上，不另读一遍配置）。
-    void this.remoteSection
-      ?.refresh()
-      .then(() => this.firstRun?.loadNow(this.remoteSection?.machineCount()))
-      .catch(() => {});
+    void this.remoteSection?.refresh().catch(() => {});
     // 后端状态是运行期的东西，每次打开都重拉；它住落地页（「机器」），不在延后那一档。
     void this.backendSection?.refresh();
     // 同步快捷键覆盖数（编辑器关闭时也可能改了）
@@ -540,7 +535,10 @@ export class SettingsPanel {
       return;
     }
     try {
-      if (fix === "update") await this.remoteSection?.updateMachine(pageId);
+      // 本机的［更新］（口上是上一版 app 留下的后端）：同一个更新框问过、停掉它、起这一版；取消 ⇒ 不再去起。
+      if (fix === "update" && isLocalOrigin(origin)) {
+        if ((await updateBackend(origin, machineName(origin))) === null) return;
+      } else if (fix === "update") await this.remoteSection?.updateMachine(pageId);
       await this.backendSection?.reconnect(origin);
     } catch (e) {
       failToast(copyText("mobIdentity.op.failed"), e);
@@ -936,8 +934,6 @@ export class SettingsPanel {
       );
     }
     // 「开始用」那一块：列表上方；三步由后端事实打勾，全做完 / 点过「跳过」不出现。机器页可见时才问。
-    this.firstRun = new FirstRun({ go: (t) => this.goTo(t), addMachine: () => void this.remoteSection?.addMachine() });
-    machinesPage.appendChild(this.firstRun.element);
     // 必须在 `safeBlock` 里：`RemoteSection` 构造会同步抛（远端分节里三句话必填的那个 `throw`），裸构造会让整个设置窗什么都上不了屏。
     // 失败时 `this.remoteSection` 留 `undefined`（`open()` 那边是 `?.refresh()`）。
     machinesPage.appendChild(
@@ -992,8 +988,6 @@ export class SettingsPanel {
             machinesReconciled: () => {
               this.repaintMachines();
               void this.backendSection?.refresh();
-              // 「开始用」第三步看机器表台数：加完一台当场重读（带新台数）。
-              void this.firstRun?.loadNow(this.remoteSection?.machineCount());
             },
           },
         });
@@ -1109,8 +1103,6 @@ export class SettingsPanel {
     });
     router.onNavigate((id) => {
       if (id === PAGE.ext) this.extSection?.loadNow();
-      // 回到机器页 ⇒ 「开始用」重读（照第一、二步去别处做完回来，该勾的当场勾上）。
-      if (id === PAGE.machines) void this.firstRun?.loadNow(this.remoteSection?.machineCount());
     });
 
 

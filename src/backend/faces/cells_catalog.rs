@@ -871,7 +871,6 @@ mod specimens {
                         input: serde_json::json!({}),
                     },
                 ],
-                model: some("m"),
                 auto_reply: false,
                 cards: one("c", ToolCard::Command),
                 steps: [
@@ -983,9 +982,11 @@ mod specimens {
                     model_text: Some(Words(s("m"))),
                     model_pick: some("m"),
                     project_dir: some("/w"),
+                    cwd_shown: Some(Words(s("~/w"))),
                     agent: Some("agent".into()),
                     writers: vec![1],
                     writers_line: Some(Words(s("w"))),
+                    forked_line: Some(Words(s("f"))),
                     where_line: Some(Words(s("w"))),
                     pending: vec![PendingCall {
                         id: s("c"),
@@ -1015,9 +1016,6 @@ mod specimens {
                         tone: crate::common::cells::Tone::Need,
                         rank: 1,
                         waited_ms: Some(1),
-                        waited_text: Some(crate::common::cells::Words(copy_core::short_duration(
-                            1,
-                        ))),
                         ask: Some(crate::agents::asks::specimen()),
                         manual_text: Some(Words(s("m"))),
                     }),
@@ -1048,7 +1046,6 @@ mod specimens {
                         last: None,
                     }),
                     cost: Some(Cost {
-                        micros: 1,
                         partial: false,
                         text: Words(s("$0.01")),
                     }),
@@ -1093,7 +1090,12 @@ mod specimens {
                         face: SessionFace::of(Life::Live {
                             activity: Some(SessionActivity::Working),
                             host: None,
-                        }),
+                        })
+                        .housed_in(Some(
+                            &crate::wire::SessionContainer::Tmux {
+                                terminal: Some(s("t")),
+                            },
+                        )),
                         hidden: crate::history::session_hidden::judge(
                             &crate::history::session_hidden::Facts {
                                 hide: Some(crate::history::history_annotations::Hide::On),
@@ -1107,7 +1109,12 @@ mod specimens {
                         face: SessionFace::of(Life::Live {
                             activity: Some(SessionActivity::Working),
                             host: None,
-                        }),
+                        })
+                        .housed_in(Some(
+                            &crate::wire::SessionContainer::Tmux {
+                                terminal: Some(s("t")),
+                            },
+                        )),
                         hidden: crate::history::session_hidden::judge(
                             &crate::history::session_hidden::Facts {
                                 hide: Some(crate::history::history_annotations::Hide::On),
@@ -1167,7 +1174,10 @@ mod specimens {
             face: crate::wire::SessionFace::of(crate::wire::Life::Live {
                 activity: Some(crate::agents::SessionActivity::NeedsYou),
                 host: None,
-            }),
+            })
+            .housed_in(Some(&crate::wire::SessionContainer::Tmux {
+                terminal: Some(s("t")),
+            })),
             needs: Needs {
                 kind: NeedsKind::Approve,
                 tool: some("Bash"),
@@ -1180,7 +1190,6 @@ mod specimens {
                 tone: crate::common::cells::Tone::Need,
                 rank: 1,
                 waited_ms: Some(1),
-                waited_text: Some(Words(s("1"))),
                 ask: Some(crate::agents::asks::specimen()),
                 manual_text: Some(Words(s("m"))),
             },
@@ -1235,7 +1244,10 @@ mod specimens {
                 activity: Some(activity),
                 host: None,
             })
-            .under(some("b")),
+            .under(some("b"))
+            .housed_in(Some(&crate::wire::SessionContainer::Tmux {
+                terminal: Some(s("t")),
+            })),
             name_face: named(),
             hidden: crate::history::session_hidden::judge(&crate::history::session_hidden::Facts {
                 hide: Some(crate::history::history_annotations::Hide::On),
@@ -1269,7 +1281,10 @@ mod specimens {
                         activity: Some(a),
                         host: None,
                     })
-                    .under(some("b")),
+                    .under(some("b"))
+                    .housed_in(Some(&crate::wire::SessionContainer::Tmux {
+                        terminal: Some(s("t")),
+                    })),
                     name_face: named(),
                     waiting_for: some("w"),
                     path: some("p"),

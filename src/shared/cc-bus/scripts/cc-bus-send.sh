@@ -46,4 +46,4 @@ if ! ccbus_ask send "$req"; then
     *) exit 1 ;;
   esac
 fi
-printf 'sent %s -> %s\n' "$(printf '%s' "$CCBUS_OUT" | jq -r '.envelope.id')" "$to"
+printf 'sent %s -> %s\n' "$(printf '%s' "$CCBUS_OUT" | jq -r '.id')" "$to"

@@ -1,0 +1,19 @@
+/* 「号 ＋ 余量」：号牌 · 号名 · 灰字余量，一行，长了号名先截。 */
+@layer components {
+  .acctLine {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-width: 0;
+  }
+  .acctLineName {
+    composes: one-line from global;
+    min-width: 0;
+  }
+  .acctLineQuota {
+    flex: none;
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+    font-variant-numeric: tabular-nums;
+  }
+}

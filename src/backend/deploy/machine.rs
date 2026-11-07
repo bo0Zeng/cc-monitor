@@ -265,7 +265,6 @@ pub fn product(e: &Entry, machine: &str, enabled: bool, installs: bool) -> Machi
             None
         },
         version: e.version.clone(),
-        version_relation: e.relation,
         os: e.os.clone(),
         word: word(state, e.relation),
         said: match (state, blocker, problem) {
@@ -279,6 +278,7 @@ pub fn product(e: &Entry, machine: &str, enabled: bool, installs: bool) -> Machi
             _ => said(state, e.stage, why, machine),
         },
         offline_said: comms_inward::chan::said::offline(machine),
+        held_said: held_said(state, machine),
         fixes: fixes(state, why, blocker, installs)
             .into_iter()
             .map(|fix| FixButton {
@@ -299,6 +299,32 @@ pub fn product(e: &Entry, machine: &str, enabled: bool, installs: bool) -> Machi
         // 到这台怎么连过去的不是这一轮的事实：宿主照机器表与它自己的连接池填（`ssh_dial::pool::Way::put`）。
         route: None,
         strip: strip(state, blocker, installs),
+    }
+}
+
+/// 这一条连接是不是用密码登上的（宿主那一端的事实，同 `route`：手机核心照这台交的拨号请求那一跳的钥匙；桌面不交）。
+/// 那台连着无事、用的是密码 ⇒ 条上那一行：「{machine} 用密码登录 · 可换成这部手机的密钥」＋［换成密钥］（语气 plain，撤得回、不打断）。
+/// 别的态（没连上 · 正在连 · 旧了 · 比这一版新 …）不叠这一行：先修那一件。
+pub fn signed_in(m: &mut MachineState, password: bool) {
+    if !password || m.state != K::Up || m.strip.is_some() {
+        return;
+    }
+    m.said = copy_text("beMachine.said.password", &[("machine", &m.name)]);
+    m.fixes = vec![FixButton {
+        fix: MachineFix::UseKey,
+        label: label(MachineFix::UseKey),
+    }];
+    m.strip = Some(MachineStripLine {
+        tone: Tone::Plain,
+        progress: false,
+    });
+}
+
+/// 待发交了没回执时那一行（[`MachineState::held_said`]）：还不知道那台什么样 ⇒ 状态不明；别的 ⇒ 离线 · 连上后补交。
+fn held_said(state: K, machine: &str) -> String {
+    match state {
+        K::Unknown => copy_text("beQueue.said.heldUnknown", &[("machine", machine)]),
+        _ => copy_text("beQueue.said.held", &[("machine", machine)]),
     }
 }
 
@@ -479,7 +505,8 @@ pub fn label(fix: MachineFix) -> String {
     match fix {
         MachineFix::Retry => copy_text("front.act.retry", &[]),
         MachineFix::ConnSettings => copy_text("machinePage.conn.toggle", &[]),
-        MachineFix::PushKey => copy_text("mobPalette.item.key", &[]),
+        // 钥匙被拒 · 正用密码登着：同一条路（请那台把这一端的公钥并进 `authorized_keys`）⇒ 同一个字。
+        MachineFix::PushKey | MachineFix::UseKey => copy_text("beMachine.fix.useKey", &[]),
         MachineFix::CompareFingerprint => copy_text("machineState.fix.compareFingerprint", &[]),
         MachineFix::Update => copy_text("front.act.update", &[]),
         MachineFix::Connect => copy_text("machinePage.problem.connect", &[]),

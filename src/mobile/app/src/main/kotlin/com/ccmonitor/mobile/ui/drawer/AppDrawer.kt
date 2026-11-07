@@ -92,7 +92,7 @@ private fun DrawerContent(
 ) {
     Column(Modifier.fillMaxHeight()) {
         Text(
-            DRAWER_TITLE,
+            drawerTitle(),
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(start = 28.dp, end = 16.dp, top = 20.dp, bottom = 12.dp),
         )

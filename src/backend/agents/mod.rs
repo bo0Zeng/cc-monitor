@@ -470,8 +470,6 @@ pub struct ModelSaid {
     pub name: String,
     /// 那一家说「没变」（本来就是它）。
     pub kept: bool,
-    /// 那一家顺带说的思考档（有才有，原样）。
-    pub effort: Option<String>,
 }
 
 /// 一个可选值：交给那一家的原值 ＋ 写给人看的那一句（模型 · 权限档）。
@@ -1739,9 +1737,9 @@ pub(crate) fn followed_among(registry: &[Adapter], tree_home: &Path) -> Vec<Foll
 }
 
 /// 找项目目录时记录开头至多读多少字节。带它的那一条实测在前一 KiB 内；上界是给几百 MB 的大会话的：不整读。
-pub(crate) const HEAD_CAP: relay_route_core::Cap = relay_route_core::Cap {
+pub(crate) const HEAD_CAP: cap_core::Cap = cap_core::Cap {
     bytes: 1 << 20,
-    over: relay_route_core::Over::SkipAndSay,
+    over: cap_core::Over::SkipAndSay,
 };
 
 /// 记录开头逐条交给 `pick`，第一个给出值的胜；读满 [`HEAD_CAP`] 字节就停（截在半截的那一行解析不出、不算）。
@@ -2965,11 +2963,6 @@ pub fn compact_request_of(kind: &str) -> Option<&'static str> {
         .iter()
         .find(|a| a.kind == kind)
         .and_then(|a| a.compact_request)
-}
-
-/// `kind` 那一家的这条记录是不是压缩之后续接用的摘要（同渲染模型里 `compactSummary` 那一种来源）。
-pub fn is_compact_summary(kind: &str, v: &serde_json::Value) -> bool {
-    user_text_of(kind, v).is_some_and(|t| matches!(t.speaker, Speaker::CompactSummary { .. }))
 }
 
 #[cfg(test)]

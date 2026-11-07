@@ -2,7 +2,7 @@
 //! `claudecode/drift.rs`），注册表 [`super::RecordFace::drift`] 交出来的是这一形；帧命令 `drift-report` 把各家的面并成一份。
 //!
 //! 面的名字是那一家自己的词（`unknown_record_type` …），通用层不认，原样带着；后果那一句也是那一家写好的。
-//! 也收得进来（`Deserialize`）：本机后端经常驻流问到别的台那一份（`drift-merge`）。
+//! 也收得进来（`Deserialize`）：本机后端经常驻流问到别的台那一份（诊断信息 `diagnostics-report`）。
 
 /// 一个键的记账。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -14,8 +14,6 @@ pub struct DriftEntry {
     /// 见过多少次（本进程内的计数，不落盘）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) count: u64,
-    /// **首见**的一条样例（截断）。后来的不再覆盖 —— 第一条最接近「它刚出现时长什么样」。
-    pub(crate) first_sample: Option<String>,
 }
 
 /// 一个面的快照。
@@ -25,12 +23,8 @@ pub struct DriftEntry {
 pub struct DriftFaceReport {
     /// 那一家的面的名字（那一家自己的词）。
     pub face: String,
-    /// 这个面「看不懂时会发生什么」（那一家写好的那一句）。
-    pub consequence: String,
-    /// 按 `count` 降序、同数按键名升序。
+    /// 按 `count` 降序、同数按键名升序（键数触顶后新键并进那一家的溢出键）。
     pub entries: Vec<DriftEntry>,
-    /// 该面是否已经溢出（键数触顶）。溢出后新键并进那一家的溢出键。
-    pub overflowed: bool,
 }
 
 /// `drift-report` 的应答：注册表里各家的面并在一起（注册序；不记的那一家没有面）。

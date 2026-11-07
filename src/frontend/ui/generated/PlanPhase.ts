@@ -3,4 +3,4 @@
 /**
  * 阶段表里的一步。
  */
-export type PlanPhase = { name: string | null, does: string | null, };
+export type PlanPhase = { name: string | null, };

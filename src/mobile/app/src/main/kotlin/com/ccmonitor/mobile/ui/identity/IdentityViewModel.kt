@@ -8,6 +8,7 @@ import com.ccmonitor.mobile.core.data.db.Identity
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
 import com.ccmonitor.mobile.core.ssh.PublicKeyDeriver
 import com.ccmonitor.mobile.core.wire.gen.SshPublicKey
+import com.ccmonitor.mobile.ui.common.newHardwareIdentity
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -69,22 +70,7 @@ class IdentityViewModel(
 
     /** 生成 ECDSA-P256 Keystore 不可导出密钥并存为身份（私钥留 Keystore，不落库）。 */
     fun generateEcdsa(label: String) =
-        runOp(copyText("mobIdentity.done.hardware")) {
-            val alias = "ccm-key-" + UUID.randomUUID()
-            val key = SshKeyGenerator.generateEcdsaP256InKeystore(alias, comment = label.ifBlank { "cc-monitor" })
-            repo.saveKeystoreBacked(
-                Identity(
-                    id = alias,
-                    label = label.ifBlank { "key" },
-                    keyType = "ecdsa-p256",
-                    privateKeyEnc = ByteArray(0),
-                    publicKeyOpenSsh = key.publicKeyOpenSsh,
-                    fingerprintSha256 = key.fingerprintSha256,
-                    createdAt = System.currentTimeMillis(),
-                    keystoreAlias = alias,
-                ),
-            )
-        }
+        runOp(copyText("mobIdentity.done.hardware")) { newHardwareIdentity(repo, label) }
 
     /** 软件生成 Ed25519 身份（私钥 OpenSSH PEM 经 CryptoBox 加密落库，走 imported/PrivateKey 路径）。 */
     fun generateEd25519(label: String) =

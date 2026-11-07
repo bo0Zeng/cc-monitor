@@ -316,9 +316,9 @@ fn tail_key(p: &JsonlLinePayload) -> TailKey {
 /// 64 MiB 是它的两倍半，开着几十个会话照样整份留得下，F5 那一屏不用去取。再多的会话（每份最多 750 条 × 几 KB）
 /// 不再按会话数线性涨：超了先丢已经不活的会话的整条留存，再丢最久没进过行的 —— 丢掉的正文界面按行号取回（头注）。
 /// 量的是正文字节（[`held_size`]），不是堆上真大小（解析后的结构体另有开销，没量）。
-pub const HELD_BYTES_CAP: relay_route_core::Cap = relay_route_core::Cap {
+pub const HELD_BYTES_CAP: cap_core::Cap = cap_core::Cap {
     bytes: 64 * 1024 * 1024,
-    over: relay_route_core::Over::TruncateAndSay,
+    over: cap_core::Over::TruncateAndSay,
 };
 
 /// →**每个会话在留存里只留尾巴这么多条可显示记录。**

@@ -33,6 +33,8 @@ copy-core = { path = "../../common/copy-core" }
 creds-core = { path = "../../common/creds-core" }
 # 后端的门牌与家的契约（`~/.cc-monitor/` 下每一样的相对路径）。
 relay-route-core = { path = "../../common/relay-route-core" }
+# 有上限读（读上限 `Cap` · 同步整读）的唯一一份；零依赖。
+cap-core = { path = "../../common/cap-core" }
 shell-quote-core = { path = "../../common/shell-quote-core" }
 # 机器表字段的宽松读法（同拨号核心那一份）。
 ssh-dial = { path = "../../comms/ssh-dial" }

@@ -13,7 +13,6 @@
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { LOCAL } from "./ipc/origin";
 import type { ForwardRow } from "./generated/ForwardRow";
-import { saidOf } from "./kit/detail";
 
 /** 一条转发的状态（列表展示）。 */
 export type ForwardStatus = ForwardRow;
@@ -32,35 +31,19 @@ export interface ForwardSpec {
 const FORWARD_START_BUDGET_MS = 30_000;
 const FORWARD_LEDGER_BUDGET_MS = 10_000;
 
-function said(e: unknown): Error {
-  return new Error(saidOf(e));
-}
-
-/** 起一条转发，回它的号（只交那台的名字：怎么拨照本机后端的机器表，流起没起来都一样）。口绑不上 / 断开 ⇒ 抛那句原话。 */
+/** 起一条转发，回它的号（只交那台的名字：怎么拨照本机后端的机器表，流起没起来都一样）。口绑不上 / 断开 ⇒ 原样抛通道那个错（那句原话 · 码 · 详情）。 */
 export async function startForward(spec: ForwardSpec): Promise<string> {
-  try {
-    const { id } = await callTyped(LOCAL, "forward-start", { ...spec }, budgetWithin(FORWARD_START_BUDGET_MS));
-    return id;
-  } catch (e) {
-    throw said(e);
-  }
+  const { id } = await callTyped(LOCAL, "forward-start", { ...spec }, budgetWithin(FORWARD_START_BUDGET_MS));
+  return id;
 }
 
 /** 停一条转发。 */
 export async function stopForward(id: string): Promise<void> {
-  try {
-    await callTyped(LOCAL, "forward-stop", { id }, budgetWithin(FORWARD_LEDGER_BUDGET_MS));
-  } catch (e) {
-    throw said(e);
-  }
+  await callTyped(LOCAL, "forward-stop", { id }, budgetWithin(FORWARD_LEDGER_BUDGET_MS));
 }
 
 /** 列当前所有转发。 */
 export async function listForwards(): Promise<ForwardStatus[]> {
-  try {
-    const { forwards } = await callTyped(LOCAL, "forward-list", {}, budgetWithin(FORWARD_LEDGER_BUDGET_MS));
-    return forwards;
-  } catch (e) {
-    throw said(e);
-  }
+  const { forwards } = await callTyped(LOCAL, "forward-list", {}, budgetWithin(FORWARD_LEDGER_BUDGET_MS));
+  return forwards;
 }

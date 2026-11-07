@@ -138,41 +138,6 @@
     flex: 1;
   }
 
-  .acctPick {
-    display: inline-flex;
-    flex: 1;
-    align-items: center;
-    gap: var(--space-3);
-    height: var(--control-h);
-    padding: 0 var(--space-4);
-    border: 1px solid var(--field-border);
-    border-radius: var(--radius-m);
-    background: var(--field-bg);
-    color: var(--text);
-    cursor: pointer;
-  }
-
-  /* 号名长了在框内截断，不把「管理账号…」挤出去；头像与箭头不让。 */
-  .acctFoot .acctPick {
-    flex: 0 1 auto;
-    min-width: 0;
-    height: var(--control-h-compact);
-  }
-
-  .acctPick > * {
-    flex: none;
-  }
-
-  .acctPickName {
-    composes: one-line from global;
-  }
-
-  .acctPick > .acctPickName {
-    flex: 0 1 auto;
-    min-width: 0;
-    color: var(--text);
-  }
-
   .acctFoot {
     position: sticky;
     bottom: 0;
@@ -182,9 +147,5 @@
     padding-top: var(--space-4);
     border-top: 1px solid var(--border-soft);
     background: var(--card);
-  }
-
-  .acctFootLabel {
-    color: var(--text-2);
   }
 }

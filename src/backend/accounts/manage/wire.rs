@@ -161,11 +161,11 @@ fn login_line(home: &str, name: &str) -> String {
     )
 }
 
-/// 这个号会拿到的两条别名的名字。
+/// 这个号会拿到的那几条别名的名字（三形各一条，`aliases::Form`）。
 fn alias_names_for(account: &str) -> Vec<String> {
-    [false, true]
+    super::aliases::Form::IN_ORDER
         .into_iter()
-        .filter_map(|t| super::aliases::alias_name(account, t))
+        .filter_map(|f| super::aliases::alias_name(account, f))
         .collect()
 }
 

@@ -1232,30 +1232,6 @@
       "args": ["cp"],
       "limited": ["tmux"]
     },
-    "beSessionRestart.locate.notInTerminal": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "{sid} 无运行中的终端",
-      "args": ["sid"]
-    },
-    "beSessionRestart.locate.ambiguous": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "多个终端运行同一会话 · {names}",
-      "args": ["names"]
-    },
-    "beSessionRestart.live.before": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未重启 · 会话在别处运行 ×{n} · pid {pids}",
-      "args": ["n", "pids"]
-    },
-    "beSessionRestart.live.afterStop": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未重启 · 原会话已停止 · 会话另在别处运行 · pid {pids}",
-      "args": ["pids"]
-    },
     "beKill.run.failed": {
       "kind": "error",
       "role": "原因格",
@@ -1975,35 +1951,11 @@
       "zh": "测试环境里的后端要用真实主目录下的 {path} · 拒绝启动",
       "args": ["path"]
     },
-    "beResident.legacy.stopped": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "上次留下的后端已停止 · pid {pid} · {how}",
-      "args": ["pid", "how"]
-    },
-    "beResident.legacy.stuck": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "上次留下的后端无法停止 · pid {pid} · {why}",
-      "args": ["pid", "why"]
-    },
     "beResident.spawn.failed": {
       "kind": "error",
       "role": "报错",
       "zh": "后端启动失败 · {exe} · {why}",
       "args": ["exe", "why"]
-    },
-    "beResident.stop.cannotVerify": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未停止进程 {pid} · 无法识别它 · 此机无法读取它运行的程序",
-      "args": ["pid"]
-    },
-    "beResident.stop.notOurs": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未停止进程 {pid} · 不是记下的后端\n它运行的是 {exe}",
-      "args": ["pid", "exe"]
     },
     "beResident.stop.cannotAsk": {
       "kind": "error",
@@ -2141,6 +2093,24 @@
       "kind": "body",
       "role": "说明",
       "zh": "该会话不可接回终端",
+      "args": []
+    },
+    "beTerminal.go.front": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "切到它的终端窗口",
+      "args": []
+    },
+    "beTerminal.go.here": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "在 cc-monitor 里打开它的终端",
+      "args": []
+    },
+    "beTerminal.go.resume": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "恢复后在 cc-monitor 里打开终端",
       "args": []
     },
     "sessionTitle.mark.forked": {
@@ -3162,12 +3132,6 @@
       "zh": "自动跟随",
       "args": []
     },
-    "keybindingActions.account.menu": {
-      "kind": "action",
-      "role": "菜单项",
-      "zh": "账号菜单",
-      "args": []
-    },
     "keybindingActions.app.closeOverlay": {
       "kind": "action",
       "role": "按钮",
@@ -3399,12 +3363,6 @@
       "zh": "task 任务 panel",
       "args": []
     },
-    "main.cmd.terminalFrontKeywords": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "terminal 终端 front",
-      "args": []
-    },
     "main.cmd.fullscreenKeywords": {
       "kind": "body",
       "role": "说明",
@@ -3433,12 +3391,6 @@
       "kind": "body",
       "role": "说明",
       "zh": "sftp file 文件 传输",
-      "args": []
-    },
-    "main.cmd.openFiles": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "远端文件",
       "args": []
     },
     "main.cmd.settingsKeywords": {
@@ -3481,18 +3433,6 @@
       "kind": "action",
       "role": "按钮",
       "zh": "历史",
-      "args": []
-    },
-    "main.topbar.filesHint": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "远端文件 · 浏览 / 上传 / 下载",
-      "args": []
-    },
-    "main.topbar.gridHint": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "会话总览 · 跨机器只读并排",
       "args": []
     },
     "main.topbar.historyHint": {
@@ -4161,18 +4101,6 @@
       "zh": "重试",
       "args": []
     },
-    "front.pending.label": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "查找终端…",
-      "args": []
-    },
-    "front.pop.aria": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "切到终端的结果",
-      "args": []
-    },
     "tabSessionActions.kill.failed": {
       "kind": "error",
       "role": "报错",
@@ -4185,35 +4113,11 @@
       "zh": "新窗口打开失败",
       "args": []
     },
-    "accountChip.selectDefault.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "设默认账号失败",
-      "args": []
-    },
     "accountChip.menu.refresh": {
       "kind": "action",
       "role": "菜单项",
       "zh": "刷新",
       "args": []
-    },
-    "accountChip.menu.manageDeploy": {
-      "kind": "action",
-      "role": "菜单项",
-      "zh": "管理 / 部署…",
-      "args": []
-    },
-    "accountChip.menu.notEnabled": {
-      "kind": "body",
-      "role": "状态",
-      "zh": "该远端未启用多账号",
-      "args": []
-    },
-    "accountChip.menu.queryFailed": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "读取账号失败 · {reason}",
-      "args": ["reason"]
     },
     "accountChip.label.disabled": {
       "kind": "body",
@@ -4239,33 +4143,6 @@
       "zh": "未连接远端",
       "args": [],
       "limited": ["连接"]
-    },
-    "accountCommands.manage.keywords": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "account 账号 管理 manage 设置",
-      "args": []
-    },
-    "accountCommands.setDefault.keywords": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "account 账号 切换 default 默认 {name} {email}",
-      "args": ["name", "email"]
-    },
-    "accountCommands.setDefault.title": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "设 {name} 为默认账号{current}",
-      "args": ["name", "current"],
-      "waive": {
-        "C-W15": "带账号名（用户起的名字）"
-      }
-    },
-    "accountCommands.setDefault.isCurrent": {
-      "kind": "body",
-      "role": "片段",
-      "zh": " · 已是默认",
-      "args": []
     },
     "agentProfile.lookup.unknown": {
       "kind": "error",
@@ -9191,42 +9068,6 @@
       "zh": "未读到 ~/.claude/settings.json · 不存在或无法读取",
       "args": []
     },
-    "rsDriftLedger.consequence.unknownSessionKind": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "按分身会话算 · 是否进标签栏照「分身会话」设置",
-      "args": []
-    },
-    "rsDriftLedger.consequence.unknownSessionStatus": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "会话状态未识别 · 活动灯按运行中显示",
-      "args": []
-    },
-    "rsDriftLedger.consequence.unknownWaitingFor": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "等待类型未识别 · 需手动的种类显示为未识别",
-      "args": []
-    },
-    "rsDriftLedger.consequence.unknownMcpList": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "该种 MCP 状态未识别 · 不进会话的 MCP 格",
-      "args": []
-    },
-    "rsDriftLedger.consequence.knownTypeParse": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "某类记录格式不对 · 只按原文显示",
-      "args": []
-    },
-    "rsDriftLedger.consequence.unknownRecord": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "此记录不显示 · 不进搜索 · 记录类型未识别",
-      "args": []
-    },
     "rsAccountAliases.install.changedElsewhere": {
       "kind": "error",
       "role": "报错",
@@ -9339,12 +9180,6 @@
       "role": "报错",
       "zh": "{what} 行 {line} 有 cc-monitor BEGIN 标记 · 后面无配对 END · 已中止\n手动修好该文件后重试",
       "args": ["what", "line"]
-    },
-    "rsAssetSync.call.failed": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "本机后端 · {said}",
-      "args": ["said"]
     },
     "rsPlatformFs.chmod.failed": {
       "kind": "error",
@@ -10029,6 +9864,12 @@
       "kind": "error",
       "role": "报错",
       "zh": "未找到本机主目录 · HOME 与 USERPROFILE 均无 · 无法查本机足迹",
+      "args": []
+    },
+    "rsDiagReport.call.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "诊断信息不可用 · 本机后端无应答",
       "args": []
     },
     "rsDiagReport.text.head": {
@@ -11835,6 +11676,12 @@
       "zh": "{name} 需要一个值",
       "args": ["name"]
     },
+    "beArgv.hostedEntry.extra": {
+      "kind": "error",
+      "role": "命令行",
+      "zh": "{word} 后面多出 {extra} · 只认 cch ls · cch attach <名>",
+      "args": ["word", "extra"]
+    },
     "beCcm.preview.noSession": {
       "kind": "error",
       "role": "命令行",
@@ -12026,7 +11873,7 @@
     "beCcm.usage.body": {
       "kind": "body",
       "role": "命令行",
-      "zh": "用法：ccm [交给 claude 的参数…] -- [new] [ccm 自己的选项…]\n\nccm 是 claude 的壳。没有 -- 时整行原样交给 claude（--ccm-agent codex 时交给 codex）；没有 -- 又没有终端可交互（被别的程序经管道叫）时不起 claude；\n有 -- 时按最后一个 -- 切开：左边原样交给 claude，右边只放下面这些 ccm 自己的选项，无法识别就报错。\n要给 claude 它自己的 -- 又没有 ccm 选项时，末尾补一个空的 --（如 ccm -p -- -x --）。\n\n配置文件（~/.cc-monitor/profiles.toml，一段 [名字] 是一组 ccm 选项，可写 from = \"另一段\" 基于它）\n  ccm @<名> [交给 claude 的参数…] [-- ccm 选项…]   用那一段：继承链父 → 子合并，-- 右边当场给的最后盖\n  <名> …            ~/.cc-monitor/bin/<名> 是指向 ccm 的链接：被叫成这个名字就等同 ccm @<名> …\n                     （与系统命令同名的，如 cc，是交互终端里的 shell 函数，同样只调 ccm @<名>）\n\n选项\n  new                起新会话（缺省就是它；只许是 -- 右边第一个词。ccm new 没有 -- 时交给 claude）\n  --hosted           在 cc-monitor 托管的终端里跑（不在 tmux 窗格里敲时缺省就是它；Linux · Windows）\n  --ccm-tmux[=<名>]  在一个 tmux 会话里跑；给名就用那个名\n  --tmux-base <基名> 以这个为底取名，撞了就换一个（与 --ccm-tmux=<名> 互斥）\n  --tmux-size <W>xH  新建终端的宽高（要带 --ccm-tmux 或 --hosted）\n  --detach           建完就返回，不接进去（要带 --ccm-tmux 或 --hosted）\n  --account <名>     用这个账号起（与 --base 互斥）\n  --account-dir <目录> 用这个账号配置目录起（不知道账号名时用；与 --account / --base 互斥）\n  --base             不用任何账号，按 agent 自己的默认配置起\n  --no-rotation      这一发不轮换，只用起它的那个号（不管「新会话用」设的哪一份；只管起新会话）\n  --cwd <目录>       工作目录；不给就是当前目录，开头的 ~ 是主目录，相对路径按当前目录补全\n  --cwd-if <在哪> <进哪> 正好在「在哪」这个目录里敲时进「进哪」（可写多次，按顺序第一条匹配的算；\n                     两边都可用 ~，链接解开再比；都不匹配才看 --cwd）\n  --ccm-agent <名>   claude | codex\n  --launcher <命令>  换掉默认的启动命令（可带参数，如 'ccr code'；开头的 ~/ 是主目录）\n  --attach <会话名>  不起 agent，直接接回一个 tmux 会话或托管终端（先在托管终端里认名字或句柄）\n  --host-run <句柄> [键=值…] -- <命令…>\n                     托管终端的托管进程：持一个伪终端跑那条命令（只许紧跟打头的 --：ccm -- --host-run …；由 cc-monitor 起）\n  --ccm-sid <会话ID> 给会话标上会话ID，cc-monitor 靠它找到终端窗口\n  --tab show|hide    进不进标签页（不给就照这台的偏好：子会话 · 分身会话各一格）\n  --tab-from <别名>  --tab 是哪个别名写的（ccm 往 tmux 里交下去时带）\n  --ccm-alias <别名> 这一发是哪个别名起的（ccm 往 tmux 里交下去时带）\n  --tab-group <名>   起出来的会话进哪个标签页分组（一组会话那一行没写组名时取它）\n  --say <那句>       第一句话：在 tmux 里起新会话时交给 agent（-- 左边自己写了第一句话就用那句）\n  --ccm-print        不跑，印出等价的一行 shell 命令，另起几行注释写每一项来自哪里\n  --ccm-probe        印出这台机器上 ccm 的身份信息（六行）\n  --ccm-version      印版本号\n  --ccm-help         这一段\n\n左边交给 claude 的参数里，ccm 只看一个（照样交给 claude）\n  --resume <会话ID>  这条会话已经在某个 tmux 会话里跑时，接上它、不另起（-r 同）\n\n中转\n  这台机器上 cc-monitor 的中转在听时，ccm 起 agent 前把 ANTHROPIC_BASE_URL 指向它（手动设过的也指过去，中转再转给手动设的那个地址）；\n  环境变量 CCM_RELAY_ALL_SESSIONS=0 时只有要经中转换 key 的账号才指过去\n",
+      "zh": "用法：ccm [交给 claude 的参数…] -- [new] [ccm 自己的选项…]\n\nccm 是 claude 的壳。没有 -- 时整行原样交给 claude（--ccm-agent codex 时交给 codex）；没有 -- 又没有终端可交互（被别的程序经管道叫）时不起 claude；\n有 -- 时按最后一个 -- 切开：左边原样交给 claude，右边只放下面这些 ccm 自己的选项，无法识别就报错。\n要给 claude 它自己的 -- 又没有 ccm 选项时，末尾补一个空的 --（如 ccm -p -- -x --）。\n\n配置文件（~/.cc-monitor/profiles.toml，一段 [名字] 是一组 ccm 选项，可写 from = \"另一段\" 基于它）\n  ccm @<名> [交给 claude 的参数…] [-- ccm 选项…]   用那一段：继承链父 → 子合并，-- 右边当场给的最后盖\n  <名> …            ~/.cc-monitor/bin/<名> 是指向 ccm 的链接：被叫成这个名字就等同 ccm @<名> …\n                     （与系统命令同名的，如 cc，是交互终端里的 shell 函数，同样只调 ccm @<名>）\n  写了 hosted = true 的那一段（如 cch）是托管入口，第一个词是它自己的就归它：\n    cch ls           等同 ccm -- --hosts\n    cch attach <名>  等同 ccm -- --attach <名>\n    其余             等同 ccm @cch …\n\n选项\n  new                起新会话（缺省就是它；只许是 -- 右边第一个词。ccm new 没有 -- 时交给 claude）\n  --hosted           在 cc-monitor 托管的终端里跑（Linux · Windows；没说进哪种终端就在当前终端里跑）\n  --ccm-tmux[=<名>]  在一个 tmux 会话里跑；给名就用那个名\n  --tmux-base <基名> 以这个为底取名，撞了就换一个（与 --ccm-tmux=<名> 互斥）\n  --tmux-size <W>xH  新建终端的宽高（要带 --ccm-tmux 或 --hosted）\n  --detach           建完就返回，不接进去（要带 --ccm-tmux 或 --hosted）\n  --account <名>     用这个账号起（与 --base 互斥）\n  --account-dir <目录> 用这个账号配置目录起（不知道账号名时用；与 --account / --base 互斥）\n  --base             不用任何账号，按 agent 自己的默认配置起\n  --no-rotation      这一发不轮换，只用起它的那个号（不管「新会话用」设的哪一份；只管起新会话）\n  --cwd <目录>       工作目录；不给就是当前目录，开头的 ~ 是主目录，相对路径按当前目录补全\n  --cwd-if <在哪> <进哪> 正好在「在哪」这个目录里敲时进「进哪」（可写多次，按顺序第一条匹配的算；\n                     两边都可用 ~，链接解开再比；都不匹配才看 --cwd）\n  --ccm-agent <名>   claude | codex\n  --launcher <命令>  换掉默认的启动命令（可带参数，如 'ccr code'；开头的 ~/ 是主目录）\n  --attach <会话名>  不起 agent，直接接回一个 tmux 会话或托管终端（先在托管终端里认名字或句柄）\n  --hosts            列出这台的托管终端，一行一个：名字 · 目录 · 账号 · 起的时刻 · 有没有人接着\n  --host-run <句柄> [键=值…] -- <命令…>\n                     托管终端的托管进程：持一个伪终端跑那条命令（只许紧跟打头的 --：ccm -- --host-run …；由 cc-monitor 起）\n  --ccm-sid <会话ID> 给会话标上会话ID，cc-monitor 靠它找到终端窗口\n  --tab show|hide    进不进标签页（不给就照这台的偏好：子会话 · 分身会话各一格）\n  --tab-from <别名>  --tab 是哪个别名写的（ccm 往 tmux 里交下去时带）\n  --ccm-alias <别名> 这一发是哪个别名起的（ccm 往 tmux 里交下去时带）\n  --tab-group <名>   起出来的会话进哪个标签页分组（一组会话那一行没写组名时取它）\n  --say <那句>       第一句话：在 tmux 里起新会话时交给 agent（-- 左边自己写了第一句话就用那句）\n  --ccm-print        不跑，印出等价的一行 shell 命令，另起几行注释写每一项来自哪里\n  --ccm-probe        印出这台机器上 ccm 的身份信息（六行）\n  --ccm-version      印版本号\n  --ccm-help         这一段\n\n左边交给 claude 的参数里，ccm 只看一个（照样交给 claude）\n  --resume <会话ID>  这条会话已经在某个 tmux 会话里跑时，接上它、不另起（-r 同）\n\n中转\n  这台机器上 cc-monitor 的中转在听时，ccm 起 agent 前把 ANTHROPIC_BASE_URL 指向它（手动设过的也指过去，中转再转给手动设的那个地址）；\n  环境变量 CCM_RELAY_ALL_SESSIONS=0 时只有要经中转换 key 的账号才指过去\n",
       "args": [],
       "limited": ["tmux", "ccm"],
       "waive": {
@@ -12230,7 +12077,7 @@
     "bePlan.dump.shape": {
       "kind": "error",
       "role": "报错",
-      "zh": "要更新 · 计划不可用\n需 planned-build 0.5 及以上（输出形状 6） · 现为形状 {shape}",
+      "zh": "要更新 · 计划不可用\n需 planned-build 0.7.2 及以上（输出形状 8） · 现为形状 {shape}",
       "args": ["shape"]
     },
     "bePlan.groups.unread": {
@@ -12496,6 +12343,36 @@
       "zh": "超出上限 {cap} 字节 · 文件 {size} 字节",
       "args": ["cap", "size"]
     },
+    "beHost.hosts.row": {
+      "kind": "body",
+      "role": "命令行",
+      "zh": "{name}  {cwd}  {account}  {at}  {attached}",
+      "args": ["name", "cwd", "account", "at", "attached"]
+    },
+    "beHost.hosts.none": {
+      "kind": "body",
+      "role": "命令行",
+      "zh": "无托管终端",
+      "args": []
+    },
+    "beHost.hosts.defaultAccount": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "缺省号",
+      "args": []
+    },
+    "beHost.hosts.attached": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "有人接着",
+      "args": []
+    },
+    "beHost.hosts.detached": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "无人接着",
+      "args": []
+    },
     "beHost.home.badId": {
       "kind": "error",
       "role": "报错",
@@ -12753,6 +12630,24 @@
       "zh": "连接读取中断",
       "args": [],
       "limited": ["连接"]
+    },
+    "beMachine.said.password": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{machine} 用密码登录 · 可换成这部手机的密钥",
+      "args": ["machine"]
+    },
+    "beMachine.fix.useKey": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "换成密钥",
+      "args": []
+    },
+    "beMachine.done.useKey": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已换成密钥",
+      "args": []
     },
     "beMachine.jump.loop": {
       "kind": "error",
@@ -15559,12 +15454,6 @@
       "kind": "error",
       "role": "报错",
       "zh": "刷新后重试失败",
-      "args": []
-    },
-    "tabBar.reread.hint": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "刷新 · 各机器会话",
       "args": []
     },
     "resync.machines.title": {
@@ -18637,12 +18526,6 @@
       "zh": "轮换",
       "args": []
     },
-    "acct.foot.default": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "新会话默认",
-      "args": []
-    },
     "acct.menu.manage": {
       "kind": "action",
       "role": "按钮",
@@ -18654,15 +18537,6 @@
       "role": "菜单项",
       "zh": "账号…",
       "args": []
-    },
-    "acct.cmd.default": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "新会话默认账号…",
-      "args": [],
-      "waive": {
-        "C-W15": "命令面板项（标题与搜索词同一条）"
-      }
     },
     "acct.usage.wv": {
       "kind": "body",
@@ -19139,23 +19013,11 @@
       "zh": "…",
       "args": []
     },
-    "tabBar.hover.key": {
-      "kind": "body",
-      "role": "悬停",
-      "zh": "切到此处 · {key}",
-      "args": ["key"]
-    },
     "tabBar.hover.account": {
       "kind": "body",
       "role": "悬停",
       "zh": "账号 {name}",
       "args": ["name"]
-    },
-    "tabBar.hover.forked": {
-      "kind": "body",
-      "role": "悬停",
-      "zh": "分叉自 {id}",
-      "args": ["id"]
     },
     "sessionFace.state.waiting": {
       "kind": "body",
@@ -19229,22 +19091,10 @@
       "zh": "固定在最右",
       "args": []
     },
-    "sessionHead.edit.onlyWindows": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "仅 Windows",
-      "args": []
-    },
     "sessionState.headEdit.onlyEnded": {
       "kind": "body",
       "role": "说明",
       "zh": "已结束时",
-      "args": []
-    },
-    "sessionHead.edit.displayNote": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "过程展开 · 系统注入",
       "args": []
     },
     "sessionHead.edit.removed": {
@@ -19275,12 +19125,6 @@
       "kind": "action",
       "role": "按钮",
       "zh": "在会话里找",
-      "args": []
-    },
-    "sessionHead.act.openTerm": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "在终端里打开",
       "args": []
     },
     "needs.bar.approve": {
@@ -19809,12 +19653,6 @@
       "zh": "回到最新",
       "args": []
     },
-    "terminal.head.front": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "切到终端",
-      "args": []
-    },
     "terminal.tag.background": {
       "kind": "control",
       "role": "标签",
@@ -20007,29 +19845,35 @@
       "zh": "发送中",
       "args": []
     },
-    "mobChat.delivery.refused": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未送达 · 内容保留",
-      "args": []
-    },
-    "beQueue.said.place": {
+    "beQueue.said.confirming": {
       "kind": "body",
       "role": "状态",
-      "zh": "排队 · 第 {place}",
-      "args": ["place"]
+      "zh": "发送中 · 等确认",
+      "args": []
     },
-    "beQueue.said.placeHalf": {
+    "beQueue.said.waitBox": {
       "kind": "body",
-      "role": "说明",
-      "zh": "排队 · 第 {place} · 终端里有未提交的输入 · 回车或清空后送进",
-      "args": ["place"]
+      "role": "状态",
+      "zh": "需手动 · 答完再送",
+      "args": []
     },
-    "beQueue.said.waitingHalf": {
+    "beQueue.said.held": {
       "kind": "body",
-      "role": "说明",
-      "zh": "排队 · {n} 条 · 终端里有未提交的输入 · 回车或清空后送进",
-      "args": ["n"]
+      "role": "状态",
+      "zh": "{machine} 离线 · 连上后补交",
+      "args": ["machine"]
+    },
+    "beQueue.said.heldUnknown": {
+      "kind": "body",
+      "role": "状态",
+      "zh": "{machine} 状态不明 · 待补交",
+      "args": ["machine"]
+    },
+    "beQueue.said.noAnswer": {
+      "kind": "body",
+      "role": "状态",
+      "zh": "排队 · 无应答",
+      "args": []
     },
     "beQueue.said.waiting": {
       "kind": "body",
@@ -20065,6 +19909,12 @@
       "kind": "body",
       "role": "说明",
       "zh": "上滑重试",
+      "args": []
+    },
+    "mobIdentity.row.unreadable": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "公钥无法读取",
       "args": []
     },
     "mobIdentity.import.unreadable": {
@@ -20126,12 +19976,6 @@
       "kind": "body",
       "role": "说明",
       "zh": "终端 terminal 画面 送字",
-      "args": []
-    },
-    "sessionHead.act.terminal": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "看它的终端",
       "args": []
     },
     "terminal.key.ctrlC": {
@@ -21782,12 +21626,6 @@
       "zh": "任务 / agent",
       "args": []
     },
-    "keys.row.front": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "切到终端（Windows）",
-      "args": []
-    },
     "keys.row.historySettings": {
       "kind": "body",
       "role": "片段",
@@ -21872,12 +21710,6 @@
       "zh": "会话记录 · 可恢复",
       "args": []
     },
-    "tabMenu.attach.dupesWhy": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "终端 ×{n} · 打开「{name}」",
-      "args": ["n", "name"]
-    },
     "tabMenu.close.unseen": {
       "kind": "body",
       "role": "说明",
@@ -21888,12 +21720,6 @@
       "kind": "action",
       "role": "菜单项",
       "zh": "结束会话…",
-      "args": []
-    },
-    "tabMenu.probe.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "所在终端未查到",
       "args": []
     },
     "sessionState.kill.done": {
@@ -21920,64 +21746,11 @@
       "zh": "开始用",
       "args": []
     },
-    "firstRun.head.sub": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{n} 步 · 完成自动勾选",
-      "args": ["n"]
-    },
     "firstRun.head.skipFailed": {
       "kind": "error",
       "role": "报错",
       "zh": "保存跳过失败",
       "args": []
-    },
-    "firstRun.terminal.hint": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "终端里 ccm 启动的会话会显示在 cc-monitor",
-      "args": [],
-      "limited": ["ccm"]
-    },
-    "firstRun.named.name": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "给当前登录命名",
-      "args": []
-    },
-    "firstRun.named.hint": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "可选 · 命名后可加更多账号、按账号启动",
-      "args": []
-    },
-    "firstRun.named.action": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "命名",
-      "args": []
-    },
-    "firstRun.remote.name": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "添加远端机器",
-      "args": []
-    },
-    "firstRun.remote.hint": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "可选 · 任意 ssh 可达机器",
-      "args": [],
-      "limited": ["SSH"]
-    },
-    "statusBar.start.label": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "开始用 · 剩 {n} 步",
-      "args": ["n"],
-      "waive": {
-        "C-W15": "压了换事实：「剩 {n} 步」是读数，去掉就不知道还差几步"
-      }
     },
     "statusBar.messages.keep": {
       "kind": "body",
@@ -22099,6 +21872,12 @@
       "zh": "名字取自工作目录（目录名-cc） · {clash}\n在会话窗格里敲则就地启动",
       "args": ["clash"]
     },
+    "beProfile.tmuxNaming.hosted": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "名字取自工作目录（目录名-cc） · {clash}\n起在 cc-monitor 托管的终端里 · cch ls 列出 · cch attach <名> 接回",
+      "args": ["clash"]
+    },
     "beProfile.tmuxNaming.fixed": {
       "kind": "body",
       "role": "说明",
@@ -22123,30 +21902,17 @@
       "zh": "被占用则报错退出 · 不改名",
       "args": []
     },
-    "beProfile.seedHint.two": {
+    "beProfile.seedHint.some": {
       "kind": "body",
       "role": "说明",
-      "zh": "别名 = ccm 的具名配置 · 一条一组选项\n可基于另一条 · 先建下面两条",
+      "zh": "别名 = ccm 的具名配置 · 一条一组选项\n可基于另一条 · 先建下面这几条",
       "args": [],
       "limited": ["ccm"]
     },
-    "beProfile.seedHint.one": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "别名 = ccm 的具名配置 · 一条一组选项\n可基于另一条 · 先建下面这条",
-      "args": [],
-      "limited": ["ccm"]
-    },
-    "beProfile.seedCreate.two": {
+    "beProfile.seedCreate.some": {
       "kind": "action",
       "role": "按钮",
-      "zh": "建这两条",
-      "args": []
-    },
-    "beProfile.seedCreate.one": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "建这条",
+      "zh": "建这几条",
       "args": []
     },
     "beProfile.name.own": {
@@ -22869,6 +22635,62 @@
       "role": "报错",
       "zh": "保存上次值失败 · 无主目录",
       "args": []
+    },
+    "beFirstRun.phone.hint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "地址 · 用户 · 密码即可",
+      "args": []
+    },
+    "beFirstRun.terminal.name": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "在终端里用 cc 起会话",
+      "args": []
+    },
+    "beFirstRun.terminal.hint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "装上后新开的终端认得 cc · cct · cch：cc 直接起 · cct 起在 tmux 里 · cch 起在托管终端里",
+      "args": [],
+      "limited": ["tmux"]
+    },
+    "beFirstRun.terminal.act": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "装上…",
+      "args": []
+    },
+    "beFirstRun.remote.name": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "添加一台远端机器",
+      "args": []
+    },
+    "beFirstRun.remote.hint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "可选 · 任意 ssh 连得上的机器",
+      "args": [],
+      "limited": ["SSH"]
+    },
+    "beQuota.cell.stale": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{cell} · 上次所知",
+      "args": ["cell"]
+    },
+    "bePlan.state.decided": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已定",
+      "args": []
+    },
+    "bePlan.state.removeValue": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "-{value}",
+      "args": ["value"]
     },
     "beLastSeen.said.sampled": {
       "kind": "body",
@@ -24254,12 +24076,6 @@
       "zh": "plan pb planned-build 计划",
       "args": []
     },
-    "main.topbar.planHint": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "计划 · 各片的格、状态与签收",
-      "args": []
-    },
     "plan.blocks.groups": {
       "kind": "control",
       "role": "标签",
@@ -24422,12 +24238,6 @@
       "zh": "待执行",
       "args": []
     },
-    "plan.state.removeValue": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "-{value}",
-      "args": ["value"]
-    },
     "plan.state.inner": {
       "kind": "body",
       "role": "片段",
@@ -24463,6 +24273,78 @@
       "role": "片段",
       "zh": "坏",
       "args": []
+    },
+    "plan.fileState.uncommitted": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "未提交",
+      "args": []
+    },
+    "plan.audit.head": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "审图",
+      "args": []
+    },
+    "plan.audit.colWhat": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "审哪",
+      "args": []
+    },
+    "plan.audit.colBy": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "谁按的",
+      "args": []
+    },
+    "plan.audit.colResult": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "结果",
+      "args": []
+    },
+    "plan.audit.tree": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{cell} 整棵",
+      "args": ["cell"]
+    },
+    "plan.audit.whole": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "整个仓库",
+      "args": []
+    },
+    "plan.audit.changed": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "上次审图后的改动 · {n}",
+      "args": ["n"]
+    },
+    "plan.audit.person": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "人",
+      "args": []
+    },
+    "plan.audit.done": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已审完 · 问题 {n}",
+      "args": ["n"]
+    },
+    "plan.audit.unfinished": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "未完成",
+      "args": []
+    },
+    "plan.audit.failed": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "无法启动 · {why}",
+      "args": ["why"]
     },
     "plan.handoff.title": {
       "kind": "title",
@@ -24892,45 +24774,11 @@
       "args": ["target"],
       "limited": ["连接", "SSH 主机指纹"]
     },
-    "mobSsh.hostKey.unmigrated": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "主机指纹转存不全 · 原有 {n} 条、转存 {m} 条 · 暂不连接 · 下次启动再试",
-      "args": ["n", "m"],
-      "limited": ["连接", "SSH 主机指纹"]
-    },
-    "mobSsh.forgetAll.action": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "忘记全部…",
-      "args": []
-    },
-    "mobSsh.forgetAll.title": {
-      "kind": "title",
-      "role": "确认框",
-      "zh": "忘记全部主机指纹",
-      "args": [],
-      "limited": ["SSH 主机指纹"]
-    },
-    "mobSsh.forgetAll.body": {
-      "kind": "body",
-      "role": "确认框",
-      "zh": "删除  已记录的全部主机指纹（含升级前的那份）\n之后  每台下次连接时重新记录 · 不可撤销",
-      "args": [],
-      "limited": ["SSH 主机指纹", "连接"]
-    },
     "mobSsh.forgetAll.ok": {
       "kind": "action",
       "role": "确认框",
       "zh": "忘记",
       "args": []
-    },
-    "mobSsh.forgetAll.done": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "已忘记全部主机指纹 · 下次连接时重新记录",
-      "args": [],
-      "limited": ["SSH 主机指纹", "连接"]
     },
     "mobPalette.search.label": {
       "kind": "control",
@@ -25075,48 +24923,11 @@
       "args": [],
       "limited": ["SSH"]
     },
-    "mobLaunch.migrate.title": {
-      "kind": "title",
-      "role": "确认框",
-      "zh": "启动配置换成别名",
+    "mobDb.open.tooOld": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "本地数据无法升级 · 需手动清除应用数据或重装",
       "args": []
-    },
-    "mobLaunch.migrate.body": {
-      "kind": "body",
-      "role": "确认框",
-      "zh": "启动配置已换成别名\n下列可复制或建成别名 · 关闭后不再显示",
-      "args": []
-    },
-    "mobLaunch.migrate.dir": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "目录 {dir}",
-      "args": ["dir"]
-    },
-    "mobLaunch.migrate.tmux": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "tmux 会话 {name}",
-      "args": ["name"],
-      "limited": ["tmux"]
-    },
-    "mobLaunch.migrate.cmd": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "命令 {cmd}",
-      "args": ["cmd"]
-    },
-    "mobLaunch.migrate.make": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "建别名",
-      "args": []
-    },
-    "mobLaunch.migrate.made": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "已新建别名 {name} · {machine}",
-      "args": ["machine", "name"]
     },
     "mobNeeds.act.answer": {
       "kind": "action",
@@ -25170,12 +24981,6 @@
       "kind": "title",
       "role": "标题",
       "zh": "常用",
-      "args": []
-    },
-    "mobKeys.seed.bar": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "按钮栏",
       "args": []
     },
     "mobKeys.action.nextGroup": {
@@ -25834,10 +25639,10 @@
       "zh": "密钥",
       "args": []
     },
-    "mobHosts.list.empty": {
+    "mobHosts.import.sample": {
       "kind": "body",
-      "role": "空态",
-      "zh": "无机器",
+      "role": "片段",
+      "zh": "Host myserver\n  HostName 1.2.3.4\n  Port 22\n  User pi",
       "args": []
     },
     "mobHosts.list.ungrouped": {
@@ -25887,6 +25692,30 @@
       "role": "按钮",
       "zh": "{label} · 更多",
       "args": ["label"]
+    },
+    "mobHostEdit.more.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "更多设置",
+      "args": []
+    },
+    "mobHostEdit.field.hostHint": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "192.0.2.20",
+      "args": []
+    },
+    "mobHostEdit.field.addressesHint": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "192.0.2.20\nwan.example.com:2222",
+      "args": []
+    },
+    "mobHostEdit.field.workDirHint": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "/home/pi",
+      "args": []
     },
     "mobHostEdit.load.missing": {
       "kind": "error",

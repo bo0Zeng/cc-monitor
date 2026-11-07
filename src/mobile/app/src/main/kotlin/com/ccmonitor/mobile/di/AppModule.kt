@@ -12,7 +12,6 @@ import com.ccmonitor.mobile.link.PendingResend
 import com.ccmonitor.mobile.link.hostOutbox
 import com.ccmonitor.mobile.service.KeepAliveWork
 import com.ccmonitor.mobile.ssh.HostConnector
-import com.ccmonitor.mobile.ssh.OldHostKeys
 import com.ccmonitor.mobile.ui.chat.ChatController
 import com.ccmonitor.mobile.ui.chat.ChatOpen
 import com.ccmonitor.mobile.ui.chat.ChatViewModel
@@ -158,7 +157,6 @@ val appModule =
                 manager = get(),
                 hostRepo = get(),
                 identityRepo = get(),
-                movedRepo = get(), // 迁移说明那一格：手机原来存的启动配置，每台列一次
                 hostConnector = get(),
                 backends = get(), // 这台的常驻流：终端那几件问那台核心
             )
@@ -168,7 +166,6 @@ val appModule =
         single { HostConnector(get(), get(), get()) }
         // 保活服务的存活判据（会话 · 在飞轮次 · 核心里在传的）：服务照它自停，应用照它在「有活」那一下起服务。
         single { KeepAliveWork(get(), get(), get()) }
-        single { OldHostKeys(get()) } // 主机钥匙旧表迁进核心（只活这一版）：迁移对不上那一句与它的出路
         single { SessionTabManager() } // 多 tab 的应用级状态：打开的会话和按 key 保活的 ViewModelStore
         single { DevSeeder(androidContext(), get(), get()) }
     }

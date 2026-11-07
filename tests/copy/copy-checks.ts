@@ -1,5 +1,5 @@
 /**
- * 文案机检：九条检法管 `src/shared/copy/rules.json` 里全部标「机检」的规矩（`copy-table.vitest.ts` 里以 `[C-xx]` 开头的那几条除外）。
+ * 文案机检：这几条检法（`CHECKS`）管 `src/shared/copy/rules.json` 里全部标「机检」的规矩（`copy-table.vitest.ts` 里以 `[C-xx]` 开头的那几条除外）。
  *
  * 规矩（rules.json 的一条，C-W1 · C-L2 …）是写给人看的规范，也是豁免的单位（文案表一条的 `waive` 按规矩号写）；
  * 检法是机器怎么判 —— 好几条规矩共用一张表、一个检查：
@@ -15,6 +15,7 @@
  * | J7 点名 | C-W13 |
  * | J8 原话与码不上句 | C-Y5 · C-W18 |
  * | J9 括号 | C-L3 · C-L4 |
+ * | J10 确认框项名 | C-W22 |
  *
  * 每条检法对一条文案给出一串命中，每个命中带它违反的规矩号 ⇒ 豁免、正反例都还按规矩号对；欠账名单按检法号记。
  * 词表 / 闭集都读 rules.json 那一条的 `words` · `cells` · `limits` · `families` · `symbols` 格，这里不另抄一份。
@@ -410,6 +411,31 @@ function parens(e: Entry): Hit[] {
   return out;
 }
 
+/** 确认框正文里「项名＋两个空格＋内容」那种行（两列排版的标签那一列）：项名到两个空格为止，不含空白与占位。 */
+const ITEM_LINE = /^([^\s{}]+) {2,}\S/;
+
+/** 一段确认框正文里各行的项名（不是「项名＋两个空格」的行不算）。 */
+export function confirmItemNames(zh: string): string[] {
+  return zh.split("\n").flatMap((line) => {
+    const m = ITEM_LINE.exec(line);
+    return m ? [m[1]] : [];
+  });
+}
+
+function confirmItems(e: Entry, ctx: CheckCtx): Hit[] {
+  if (e.role !== "确认框" || e.kind !== "body") return [];
+  const allowed = words(ctx, "C-W22");
+  const out: Hit[] = confirmItemNames(e.zh)
+    .filter((n) => !allowed.includes(n))
+    .map((n) => ({ rule: "C-W22", msg: `确认框项名「${n}」不在 ${allowed.join(" · ")} 里` }));
+  // 行首就是那几个项名之一、后面却接「 · 」或一个空格：是项名行，分隔写错了。
+  for (const line of e.zh.split("\n")) {
+    const n = allowed.find((w) => line.startsWith(`${w} · `) || new RegExp(`^${w} \\S`).test(line));
+    if (n !== undefined) out.push({ rule: "C-W22", msg: `确认框项名「${n}」后面要两个空格` });
+  }
+  return out;
+}
+
 export const CHECKS: Check[] = [
   { id: "J1", name: "字符 × 档", covers: [...new Set(CHAR_ROWS.map((r) => r.rule))], run: (e, ctx) => runRows(CHAR_ROWS, e, ctx) },
   { id: "J2", name: "词 × 档", covers: [...new Set(WORD_ROWS.map((r) => r.rule))], run: (e, ctx) => runRows(WORD_ROWS, e, ctx) },
@@ -420,6 +446,7 @@ export const CHECKS: Check[] = [
   { id: "J7", name: "点名", covers: ["C-W13"], run: pointers },
   { id: "J8", name: "原话与码不上句", covers: ["C-Y5", "C-W18"], run: rawWords },
   { id: "J9", name: "括号", covers: ["C-L3", "C-L4"], run: parens },
+  { id: "J10", name: "确认框项名", covers: ["C-W22"], run: confirmItems },
 ];
 
 /** 一条文案的全部命中（带检法号）。 */

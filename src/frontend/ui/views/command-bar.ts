@@ -7,7 +7,7 @@
  * - 会话行：状态点 ＋ 机器徽标（只出一次）＋ 项目 ＋ 标题 ＋ 在等什么；右侧它的数字键（1–9 内）。
  * - 不可用的项：灰，第二行写为什么。
  * - 写动作不列：结束 · 删除 · 恢复这类有后果的动作在标签页右键里（底栏一句）。这是裁定（U2），明确不做，不是漏做。
- * - 键盘：↑↓ 走 · Enter 执行并关 · Shift+Enter 做那一行的第二样（会话：在终端里打开）· Esc 关 · Tab 不出框；输入法组字时这几个键归输入法。
+ * - 键盘：↑↓ 走 · Enter 执行并关 · Shift+Enter 做那一行的第二样（会话：终端）· Esc 关 · Tab 不出框；输入法组字时这几个键归输入法。
  *
  * 只排版：哪几条、可不可用、为什么由调用方（`main.ts`）给，机器那一块由 {@link MachineSource} 给；`filterCommands` · `sections` 是纯函数。
  */
@@ -69,7 +69,7 @@ export interface Command {
   dot?: MachineDotState | null;
   /** 给了 ⇒ Enter 不执行、不关框，只把这串填进框（机器行 ⇒ 进那台的一块）。 */
   fill?: string;
-  /** Shift+Enter 做的那一样（会话行：在终端里打开）。 */
+  /** Shift+Enter 做的那一样（会话行：终端）。 */
   alt?: () => void;
   /** 「机器」那一块的头（给了就按头画、不可选）。 */
   machine?: MachineHeadFace;

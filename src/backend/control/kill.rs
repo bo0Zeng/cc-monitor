@@ -11,11 +11,7 @@
 //! 门与 tmux 那一下（本模块 / `gate`）：`bad_args` · `no_tmux` · `no_such_session` ·
 //! `wrong_owner`（Gate 2 不通过）· `too_many_windows`（Gate 3 不通过）· `kill_failed`。
 
-use crate::platform::child::Deadline;
 use copy_core::copy_text;
-
-/// `kill-session` / `kill-pane` 那一发的期限：tmux 一发 5 s（同 watcher 探测 tmux 的期限）。
-const KILL_TMUX_WITHIN: Deadline = Deadline::secs(5);
 
 /// 命令级错误：码 ＋ 那一句 ＋ 下层原话（tmux 的 stderr · 起不来时的系统报错，进复制详情）。与 [`super::launch`] 同型。
 use crate::common::said::Said;
@@ -108,7 +104,7 @@ pub(crate) fn end(ending: Ending<'_>) -> Result<(), Said> {
     )]
     let out = crate::host::tmux::child(None)
         .args(&argv)
-        .run(KILL_TMUX_WITHIN)
+        .run(crate::host::tmux::TMUX_WITHIN)
         .map_err(tmux_unavailable)?;
     if out.status.success() {
         return Ok(());

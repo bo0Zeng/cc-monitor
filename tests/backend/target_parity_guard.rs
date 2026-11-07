@@ -1270,10 +1270,6 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
         "分叉：回复里「源会话在哪个终端」那一格读终端名单；没 tmux ⇒ 当不在任何终端里，分叉照做",
     ),
     (
-        "session-restart",
-        "换号重启：没 tmux ⇒ 这条会话不在任何终端里，答 `not_in_terminal`（与「名单里没有它」同一个码）",
-    ),
-    (
         "sessions-stop",
         "批量停：没 tmux ⇒ 逐个答「这台没 tmux」跳过、命令照答（停的对象本来就只在 tmux 里）",
     ),

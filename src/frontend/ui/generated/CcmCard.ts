@@ -2,17 +2,14 @@
 import type { OnPath } from "./OnPath";
 
 /**
- * `ccm-probe` 的应答：这台的 `ccm` 会哪些（与名片 `ccm --ccm-probe` 同一组常量）＋ 终端里敲 `ccm` 走到哪。
+ * `ccm-probe` 的应答：这台的 `ccm` 是哪一版、认哪几种 agent（与名片 `ccm --ccm-probe` 同一组常量）＋ 终端里敲 `ccm` 走到哪。
+ * 能力表不上帧：能力协商读的是名片的 `capabilities=` 那一行。
  */
 export type CcmCard = { 
 /**
  * CLI 契约版本（`CCM_VERSION`）。
  */
 version: string, 
-/**
- * 这台 `ccm` 认得的能力（与名片的 `capabilities=` 行同一份）。
- */
-capabilities: Array<string>, 
 /**
  * 认得的 agent 种类。
  */

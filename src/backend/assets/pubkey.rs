@@ -43,9 +43,9 @@ const SSH_DIR: &str = ".ssh";
 const AUTH_FILE: &str = "authorized_keys";
 
 /// 本机那份 `.pub` 一次最多读多少（公钥一行几百字节；超了就不是公钥）：超了拒、回那一句，一个字节不推。
-const PUB_READ_MAX: relay_route_core::Cap = relay_route_core::Cap {
+const PUB_READ_MAX: cap_core::Cap = cap_core::Cap {
     bytes: 64 * 1024,
-    over: relay_route_core::Over::Reject,
+    over: cap_core::Over::Reject,
 };
 
 /// 已知公钥类型前缀（粗校验形态，拒明显非公钥内容如误选私钥 / 任意文本）。

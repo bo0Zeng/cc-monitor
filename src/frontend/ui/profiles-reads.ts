@@ -23,7 +23,6 @@ import type { ProfileAffected } from "./generated/ProfileAffected";
 import type { ProfileBase } from "./generated/ProfileBase";
 import type { ProfileOp as ProfileOpWire } from "./generated/ProfileOp";
 import type { ProfilesWriteDone } from "./generated/ProfilesWriteDone";
-import { saidOf } from "./kit/detail";
 
 /** 一段的表单：`null` / `false` ＝ 继承（没写进这一段）。 */
 export type ProfileForm = ProfileFormWire;
@@ -45,40 +44,24 @@ export type WriteDone = ProfilesWriteDone;
 /** 五问的期限：读一份小文件、合并几层、写一份（秒级）。给 30 秒。 */
 const PROFILES_BUDGET_MS = 30_000;
 
-const said = (e: unknown): Error => new Error(saidOf(e));
+// 下面几问失败一律原样抛通道那个错（那一句 · 码 · 详情都在）。
 
 export async function readProfiles(origin: Machine): Promise<ProfilesBook> {
-  try {
-    return await callTyped(origin, "profiles-read", {}, budgetWithin(PROFILES_BUDGET_MS));
-  } catch (e) {
-    throw said(e);
-  }
+  return await callTyped(origin, "profiles-read", {}, budgetWithin(PROFILES_BUDGET_MS));
 }
 
 export async function resolveProfile(origin: Machine, name: string, edit: ProfileForm | null, at: string | null): Promise<Resolved> {
-  try {
-    return await callTyped(origin, "profiles-resolve", { name, edit, at }, budgetWithin(PROFILES_BUDGET_MS));
-  } catch (e) {
-    throw said(e);
-  }
+  return await callTyped(origin, "profiles-resolve", { name, edit, at }, budgetWithin(PROFILES_BUDGET_MS));
 }
 
 export async function profileImpact(origin: Machine, changes: ProfileOp[]): Promise<Affected[]> {
-  try {
-    const { affected } = await callTyped(origin, "profiles-impact", { changes }, budgetWithin(PROFILES_BUDGET_MS));
-    return affected;
-  } catch (e) {
-    throw said(e);
-  }
+  const { affected } = await callTyped(origin, "profiles-impact", { changes }, budgetWithin(PROFILES_BUDGET_MS));
+  return affected;
 }
 
 export async function profileBases(origin: Machine, name: string): Promise<Base[]> {
-  try {
-    const { bases } = await callTyped(origin, "profiles-bases", { name }, budgetWithin(PROFILES_BUDGET_MS));
-    return bases;
-  } catch (e) {
-    throw said(e);
-  }
+  const { bases } = await callTyped(origin, "profiles-bases", { name }, budgetWithin(PROFILES_BUDGET_MS));
+  return bases;
 }
 
 /** 按条目改：结局交统一写口（`ipc/write.ts`）判 —— 盘上被别处改过是对端拒、码 `stale`（一个字节没写）。 */

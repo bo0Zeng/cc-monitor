@@ -62,8 +62,8 @@ class SessionsMidTest {
             mapOf("machine" to "<local>", "sid" to "s1", "id" to "m1", "end" to "mobile", "atMs" to 7L, "text" to "/compact"),
             SessionQueuePut.args("s1", "m1", "/compact", 7L),
         )
-        val got = SessionQueuePut.of(mapOf("outcome" to "queued", "seq" to 3L, "place" to 1L, "said" to "q"))!!
-        assertEquals(Triple(QueuePutOutcome.QUEUED, 3L, 1), Triple(got.outcome, got.seq, got.place))
+        val got = SessionQueuePut.of(mapOf("outcome" to "queued", "seq" to 3L, "said" to "q"))!!
+        assertEquals(Triple(QueuePutOutcome.QUEUED, 3L, "q"), Triple(got.outcome, got.seq, got.said))
         assertNull("回执缺必填格 ⇒ 解不出", SessionQueuePut.of(mapOf("seq" to 3L)))
     }
 

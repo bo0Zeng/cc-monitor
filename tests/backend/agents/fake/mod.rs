@@ -29,7 +29,7 @@
 //! 挖掉任一种能力（[`FakeCaps::without`]），那一格的面就拼不出来，流程停在点得出名字的那一段。
 
 use crate::platform::fs::Ro;
-use relay_route_core::{Cap, Over};
+use cap_core::{Cap, Over};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 

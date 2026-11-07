@@ -38,14 +38,14 @@ describe("重试细条：字照后端那一行 · 一串照会话事实的整句
     expect([bar.textContent, bar.dataset.state]).toEqual(["RUN-OK", "recovered"]);
   });
 
-  it("★ 没接上 ⇒ 细条收起、那一串的整句进紧跟着的报错卡（那两颗终端按钮不被冲掉）；卡头照后端那一句、原文进折叠", () => {
+  it("★ 没接上 ⇒ 细条收起、那一串的整句进紧跟着的报错卡（那一颗「终端」不被冲掉）；卡头照后端那一句、原文进折叠", () => {
     const bar = buildApiRetryCard({ text: "REC-LINE", id: "r1" });
     const card = buildApiErrorCard({ timeLabel: "02:12", title: "CARD-HEAD", text: "API Error: Overloaded", status: 529 });
     applyRetries(stream(bar, card), runs({ id: "r1", outcome: "failed", text: "RUN-NEXT" }));
     expect(bar.dataset.state).toBe("failed");
     expect(card.querySelector(".api-error-label")?.textContent).toBe("CARD-HEAD");
     expect(card.querySelector(".api-error-next-text")?.textContent).toBe("RUN-NEXT");
-    expect(card.querySelectorAll(".api-error-acts [data-act]").length).toBe(2);
+    expect(card.querySelectorAll(".api-error-acts [data-act]").length).toBe(1);
     expect(card.querySelector(".api-error-body")?.textContent).toBe("529 · API Error: Overloaded");
   });
 });

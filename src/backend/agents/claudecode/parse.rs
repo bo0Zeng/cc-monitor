@@ -37,7 +37,6 @@ pub fn parse_line(
                 v.get("type")
                     .and_then(serde_json::Value::as_str)
                     .unwrap_or(""),
-                Some(trimmed),
             );
             Ok(Some(salvage(v, trimmed, "unknown-type".to_string())))
         }
@@ -54,7 +53,6 @@ pub fn parse_line(
                     v.get("type")
                         .and_then(serde_json::Value::as_str)
                         .unwrap_or(""),
-                    Some(trimmed),
                 );
                 Ok(Some(salvage(v, trimmed, format!("parse-failed: {e}"))))
             }

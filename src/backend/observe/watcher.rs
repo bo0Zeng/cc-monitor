@@ -408,9 +408,9 @@ fn start_tmux_probe(
 /// 一条流连接的出方向通道最多压住多少字节（帧按序列化的大小记账：进通道时记上，写出那一头取走时还回）。
 ///
 /// 挡的是写出那一头跟不上时内存无界增长；一帧装不下就丢、记账，排空后先出 `Overflow`（[`Sub::push`]）。
-pub const CHANNEL_MAX_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+pub const CHANNEL_MAX_BYTES: cap_core::Cap = cap_core::Cap {
     bytes: 32 << 20,
-    over: relay_route_core::Over::DropAndReport,
+    over: cap_core::Over::DropAndReport,
 };
 
 /// 造一条出方向通道，最多压住 `cap` 字节（生产只用 [`CHANNEL_MAX_BYTES`]，夹具给小的）。
@@ -2011,6 +2011,7 @@ impl ReaderState {
         crate::wire::SessionFace::of(crate::wire::Life::live(activity, container))
             .under(account)
             .attachable(attachable)
+            .housed_in(container)
     }
 
     /// 这条会话此刻交出去的那一态，判法同活会话表（[`crate::history::live_table::doing_of`]）：有待答请求挂着 ⇒ 等人；
@@ -3927,6 +3928,7 @@ fn announced_face(
     })
     .under(account)
     .attachable(attachable)
+    .housed_in(container)
 }
 
 /// 给一条刚宣告的会话起一趟预读：记下代号、这条会话的内容帧从此刻拦下（[`FrameSink::send`]），交线程池（夹具没有池 ⇒ 就地跑、就地装回）。

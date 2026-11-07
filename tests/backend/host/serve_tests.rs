@@ -111,7 +111,10 @@ fn the_pty_takes_the_holders_size_and_a_viewer_never_changes_it() {
         hello(Want::Input, WhoKind::Terminal, Some(sz(120, 40))),
         0,
     );
-    assert_eq!(eff, vec![Effect::Resize(sz(120, 40))]);
+    assert_eq!(
+        eff,
+        vec![Effect::Resize(sz(120, 40)), Effect::Attached(true)]
+    );
     let (b, _) = hub.connect(None, 0);
     // B 接上只看：仍 120×40。
     assert!(hub
@@ -299,7 +302,7 @@ fn a_backend_saying_a_line_writes_it_into_the_pty_without_changing_the_holder() 
     let (mut hub, t, b, b_out) = held_by_a_terminal_with_a_backend_viewer();
     let eff = hub.frame(b, say("hi\r"), 1);
     assert_eq!(eff, vec![Effect::Write(b"hi\r".to_vec())]);
-    assert_eq!(take(&b_out), vec![Frame::Ctl(Ctl::Said { pending: false })]);
+    assert_eq!(take(&b_out), vec![Frame::Ctl(Ctl::Said)]);
     assert_eq!(hub.holder, Some(t), "持有者还是那个真终端");
     assert_eq!(
         hub.frame(t, Frame::In(b"x".to_vec()), 2),
@@ -310,64 +313,23 @@ fn a_backend_saying_a_line_writes_it_into_the_pty_without_changing_the_holder() 
     assert_eq!(hub.frame(t, say("no\r"), 3), vec![Effect::Drop(t)]);
 }
 
-/// ★ 持有者敲了半句没回车 ⇒ 这一句拒（`pending`），伪终端一个字节没多；回车之后 · 删回空行之后照写。
+/// ★ 持有者敲了半句没回车 ⇒ 后端那一句照写（托管进程不数输入行里的字）；换了持有者也一样。
 #[test]
-fn a_say_while_the_holder_has_typed_half_a_line_is_refused_and_writes_nothing() {
-    let (mut hub, t, b, b_out) = held_by_a_terminal_with_a_backend_viewer();
+fn a_say_is_written_even_while_the_holder_has_typed_half_a_line() {
+    let (mut hub, t, b, _b_out) = held_by_a_terminal_with_a_backend_viewer();
     hub.frame(t, Frame::In("半句".as_bytes().to_vec()), 1);
-    assert!(hub.frame(b, say("hi\r"), 2).is_empty(), "一个字节没多");
-    assert_eq!(take(&b_out), vec![Frame::Ctl(Ctl::Said { pending: true })]);
-    // 删两个字 ⇒ 行空了。
-    hub.frame(t, Frame::In(b"\x7f\x7f".to_vec()), 3);
     assert_eq!(
-        hub.frame(b, say("a\r"), 4),
-        vec![Effect::Write(b"a\r".to_vec())]
+        hub.frame(b, say("hi\r"), 2),
+        vec![Effect::Write(b"hi\r".to_vec())]
     );
-    // 再敲 ⇒ 拒；回车交了 ⇒ 照写。
-    hub.frame(t, Frame::In(b"ls".to_vec()), 5);
-    assert!(hub.frame(b, say("b\r"), 6).is_empty());
-    hub.frame(t, Frame::In(b"\r".to_vec()), 7);
-    assert_eq!(
-        hub.frame(b, say("b\r"), 8),
-        vec![Effect::Write(b"b\r".to_vec())]
-    );
-    // 方向键 · 焦点这类转义序列不算敲字。
-    hub.frame(t, Frame::In(b"\x1b[A\x1b[I\x1bOB".to_vec()), 9);
-    assert_eq!(
-        hub.frame(b, say("c\r"), 10),
-        vec![Effect::Write(b"c\r".to_vec())]
-    );
-}
-
-/// ★ 半句跟伪终端走、不跟持有者走（A3-3-32-13）：持有者 A 敲了 `abc` 没回车 → 后端接管 → 后端说一句 ⇒ 仍 `pending`、伪终端一个字节没多；
-/// 新持有者 Ctrl-U 清掉那一行之后照写。再敲半句、另一个真终端接上、原持有者走了 ⇒ 半句照旧挡着。
-#[test]
-fn changing_the_holder_keeps_the_half_typed_line_blocking_a_say() {
-    let (mut hub, t, b, b_out) = held_by_a_terminal_with_a_backend_viewer();
-    hub.frame(t, Frame::In(b"abc".to_vec()), 1);
-    let (d, _d_out) = hub.connect(Some(12), 2);
-    hub.frame(d, hello(Want::View, WhoKind::Backend, None), 2);
-    hub.frame(d, Frame::Ctl(Ctl::Take), 3);
-    assert_eq!(hub.holder, Some(d));
-    take(&b_out);
-    assert!(hub.frame(b, say("hi\r"), 4).is_empty(), "一个字节没多");
-    assert_eq!(take(&b_out), vec![Frame::Ctl(Ctl::Said { pending: true })]);
-    // 新持有者清掉那一行 ⇒ 照写。
-    hub.frame(d, Frame::In(b"\x15".to_vec()), 5);
+    let (d, _d_out) = hub.connect(Some(12), 3);
+    hub.frame(d, hello(Want::View, WhoKind::Backend, None), 3);
+    hub.frame(d, Frame::Ctl(Ctl::Take), 4);
+    hub.frame(d, Frame::In(b"xy".to_vec()), 5);
     assert_eq!(
         hub.frame(b, say("a\r"), 6),
         vec![Effect::Write(b"a\r".to_vec())]
     );
-    // 再敲半句，换个真终端接上、原持有者走了 ⇒ 半句还在、照旧挡着。
-    hub.frame(d, Frame::In(b"xy".to_vec()), 7);
-    let (t2, _o) = hub.connect(Some(13), 8);
-    hub.frame(
-        t2,
-        hello(Want::Input, WhoKind::Terminal, Some(sz(80, 24))),
-        8,
-    );
-    hub.gone(d);
-    assert!(hub.frame(b, say("b\r"), 9).is_empty());
 }
 
 /// ★ 中断（A3-3-32-10）：后端说 `interrupt` ⇒ 伪终端收一个 ESC、回 `interrupted`；不看持有者、不看半句、不换持有者。
@@ -380,9 +342,45 @@ fn an_interrupt_from_the_backend_writes_one_esc_whoever_holds_and_whatever_is_ha
     assert_eq!(eff, vec![Effect::Write(b"\x1b".to_vec())]);
     assert_eq!(take(&b_out), vec![Frame::Ctl(Ctl::Interrupted)]);
     assert_eq!(hub.holder, Some(t), "持有者不换");
-    assert!(hub.frame(b, say("x\r"), 3).is_empty(), "半句照旧在");
     assert_eq!(
         hub.frame(t, Frame::Ctl(Ctl::Interrupt), 4),
         vec![Effect::Drop(t)]
     );
+}
+
+/// 有没有真终端接着（`cch ls` 那一格）：第一个真终端说完 hello ⇒ `Attached(true)`；后端那几端来去不算；
+/// 第二个真终端来 · 走了一个还剩一个 ⇒ 不再说；最后一个走了 ⇒ `Attached(false)`。
+#[test]
+fn the_hub_says_when_a_real_terminal_first_joins_and_last_leaves() {
+    let attached = |eff: &[Effect]| -> Vec<bool> {
+        eff.iter()
+            .filter_map(|e| match e {
+                Effect::Attached(a) => Some(*a),
+                _ => None,
+            })
+            .collect()
+    };
+    let mut hub = Hub::new("h", sz(80, 24));
+    let (back, _bo) = hub.connect(Some(1), 0);
+    assert_eq!(
+        attached(&hub.frame(back, hello(Want::View, WhoKind::Backend, None), 0)),
+        Vec::<bool>::new()
+    );
+    let (t1, _o1) = hub.connect(Some(2), 0);
+    assert_eq!(
+        attached(&hub.frame(
+            t1,
+            hello(Want::Input, WhoKind::Terminal, Some(sz(80, 24))),
+            0
+        )),
+        vec![true]
+    );
+    let (t2, _o2) = hub.connect(Some(3), 0);
+    assert_eq!(
+        attached(&hub.frame(t2, hello(Want::View, WhoKind::Terminal, None), 0)),
+        Vec::<bool>::new()
+    );
+    assert_eq!(attached(&hub.gone(t1)), Vec::<bool>::new());
+    assert_eq!(attached(&hub.gone(back)), Vec::<bool>::new());
+    assert_eq!(attached(&hub.gone(t2)), vec![false]);
 }

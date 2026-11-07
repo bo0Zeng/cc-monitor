@@ -1,7 +1,7 @@
 /**
  * **独立查看窗**的入口（`viewer.html?viewer=<sid>&origin=<机器>` 加载它）：按会话 ID 开任意一个会话（在跑的跟着长，已结束的也开得了）。
  *
- * 外壳：细顶栏（收起 / 展开「你说过的话」· `{项目} › {标题}` · 在跑徽标 ｜［恢复 ▾］或［切过去］· 打开目录 · Windows 上在跑的多「切到终端」）·
+ * 外壳：细顶栏（收起 / 展开「你说过的话」· `{项目} › {标题}` · 在跑徽标 ｜［恢复 ▾］或［切过去］· 打开目录 · Windows 上在跑的多「终端」）·
  * 左侧「你说过的话」一栏 ＋ 消息流（与历史页右边同一个只读查看器、同一套卡）· 细状态栏 `只读 · {n} 条 · 实时` / `只读 · {n} 条 · 已结束`。
  * 系统标题 `{会话标题} · {状态} · {项目}`（远端再加 `· {机器}`），状态变了跟着改。`Esc` 不关窗。
  *
@@ -16,7 +16,7 @@ import "./entry-common"; // 全局错误捕获（模块副作用）
 import { installGlobalClickDelegation } from "./entry-render-common";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { emit } from "@tauri-apps/api/event";
-import { isLocalOrigin, LOCAL, type Machine } from "./ipc/origin";
+import { isLocalOrigin, isRemoteOrigin, LOCAL, type Machine } from "./ipc/origin";
 import { loadTheme } from "./theme";
 import { bindErrorToast } from "./backend-errors";
 import { dispatcher } from "./keybindings/registry";
@@ -36,17 +36,15 @@ import { standingOf } from "./sessions-where";
 import type { Launch } from "./generated/Launch";
 import { openNewSession } from "./new-session";
 import { revealInFolder } from "./reveal-in-folder";
-import { terminalFrontAvailable } from "./terminal-front";
 import { bringTerminalToFront } from "./tab-session-actions";
-import { frontView } from "./front-result";
-import { flashFrontDone, frontAskFailed, showFrontResult } from "./front-pop";
+import { frontAskFailed, frontView, showFrontResult } from "./front-result";
 import type { FrontTold } from "./generated/FrontTold";
 import { onMachineState } from "./machine-feed";
 import { openSettingsWindow } from "./open-settings";
 import { connectTerminalOf } from "./settings-dest";
 import { SWITCH_TO_SESSION_EVENT } from "./window-events";
 import { windowStatus, windowTitle } from "./viewer-window-text";
-import { isLive, isUnclear } from "./face-can";
+import { isLive, isUnclear, terminalWay } from "./face-can";
 import { bootstrapAgentWindow } from "./views/agent-window";
 
 // Vite HMR：任何热更新一律整页重载（理由见 `main.ts` 同名那段）。
@@ -168,7 +166,6 @@ async function bootstrapViewer(sid: string, origin: Machine): Promise<void> {
     jsonlPath: r.jsonlPath,
     displayTitle: r.label,
     origin,
-    agent: r.agent,
     cwd: r.projectPath,
     suppressBranch: !r.can.fork,
     statusOf: windowStatus,
@@ -203,8 +200,8 @@ function crumbsOf(r: HistoryRow, live: boolean): Node[] {
 }
 
 /**
- * 顶栏 ↗：切过去了换对勾；其余结局一个浮层锚在它下面（这扇窗做得了的那几颗按钮；更新 · 重新连接 · 在 cc-monitor 里打开在主窗口做）。
- * 连那一张都没问到（壳那一问失败）⇒ 不出空浮层，照壳交来的那一句进失败提示（详情可复制）。
+ * 顶栏「终端」拉窗：切过去了 ⇒ 什么都不出；其余结局底部一条（这扇窗做得了的那几颗按钮；更新 · 重新连接 · 在 cc-monitor 里打开在主窗口做）。
+ * 连那一张都没问到（壳那一问失败）⇒ 照壳交来的那一句进失败提示（详情可复制）。
  */
 async function viewerFront(b: HTMLElement, r: HistoryRow, origin: Machine): Promise<void> {
   let res: FrontTold;
@@ -215,19 +212,16 @@ async function viewerFront(b: HTMLElement, r: HistoryRow, origin: Machine): Prom
     return;
   }
   const view = frontView(res);
-  if (view === null) {
-    flashFrontDone(b);
-    return;
-  }
+  if (view === null) return;
   const acts = view.acts.filter((a) => a.kind !== "update" && a.kind !== "reconnect" && a.kind !== "open-here");
-  showFrontResult(b, r.sessionId, { ...view, acts }, async (a) => {
+  showFrontResult({ ...view, acts }, async (a) => {
     if (a.kind === "retry") await viewerFront(b, r, origin);
     else if (a.kind === "connect") await openSettingsWindow(undefined, connectTerminalOf(LOCAL));
     else if (a.kind === "open-in-terminal") await openSession(origin, { what: { kind: "look", sid: r.sessionId }, local: isLocalOrigin(origin) });
   });
 }
 
-/** 右端：［恢复 ▾］或［切过去］· 打开目录（本机）· Windows 上在跑的「切到终端」。 */
+/** 右端：［恢复 ▾］或［切过去］· 打开目录（本机）· Windows 上在跑的「终端」。 */
 function actionsOf(r: HistoryRow, live: boolean): HTMLElement[] {
   const out: HTMLElement[] = [];
   if (live) {
@@ -247,13 +241,16 @@ function actionsOf(r: HistoryRow, live: boolean): HTMLElement[] {
   if (r.reveal) {
     out.push(button({ label: copyText("history.menu.openDir"), kind: "icon", icon: "folder", hint: copyText("history.menu.openDir"), onClick: () => void revealInFolder(r.projectPath) }));
   }
-  if (live && terminalFrontAvailable()) {
+  // 「终端」：这扇窗开不了终端页，只在脸上说「拉它的外部窗口」时给（在这里开 ⇒ 走［切过去］到主窗口）。
+  const way = live ? terminalWay(r.face, isRemoteOrigin(r.origin)) : null;
+  const termLabel = copyText("mobDrawer.item.terminal");
+  if (way?.go === "front") {
     out.push(
       button({
-        label: copyText("terminal.head.front"),
+        label: termLabel,
         kind: "icon",
-        icon: "front",
-        hint: copyText("terminal.head.front"),
+        icon: "terminal",
+        hint: way.said,
         onClick: (ev) => void viewerFront(ev.currentTarget as HTMLElement, r, r.origin),
       }),
     );

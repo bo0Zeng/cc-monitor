@@ -19,3 +19,15 @@ describe("卡上的时刻照抄后端写好的钟面", () => {
     }
   });
 });
+
+describe("回复卡头只写钟面", () => {
+  it("★ 一条会话只有一家 ⇒ 卡头不出那一家的名字，也不出型号：头上只有钟面那一格", () => {
+    const asst = { agent: "codex", t: "reply", id: "a1", at: AT, timeText: "17:46", blocks: [{ type: "text", text: "ok" }], autoReply: false, draw: "card", human: false, model: "gpt-x-raw" } as unknown as LineRecord;
+    // 宿主若还在交「那一家叫什么」，卡头也不摆它。
+    const r = renderMessage(asst, { ...ctx(), speaker: "Codex" } as Parameters<typeof renderMessage>[1]);
+    if (r.kind !== "card") throw new Error(r.kind);
+    const head = r.element.querySelector<HTMLElement>(".card-header")!;
+    expect([...head.children].map((c) => c.className)).toEqual(["ts"]);
+    expect(head.textContent).toBe("17:46");
+  });
+});

@@ -48,14 +48,14 @@
 //! （用户以为在复用那个 idle 会话，实际上被丢进一个新建的空 shell）。
 //! 由 `send_into_never_creates_a_session` 钉住。
 
-use crate::platform::child::{Child, Deadline};
+use crate::platform::child::Child;
 use copy_core::copy_text;
 
 /// 载荷 / 名字 / cwd 的长度上限。取值同 monitor 侧 `launch.rs::MAX_REMOTE_CMD` 的量级 ——
 /// 那是「一条人能读的启动命令」的宽松上界，不是安全阈值。
-const MAX_FIELD_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+const MAX_FIELD_BYTES: cap_core::Cap = cap_core::Cap {
     bytes: 8 * 1024,
-    over: relay_route_core::Over::Reject,
+    over: cap_core::Over::Reject,
 };
 
 /// 起会话的模式。**没有 `attach-only`** —— attach 是平面 ③。
@@ -397,7 +397,7 @@ fn tmux(args: &[&str]) -> Result<Ran, Said> {
 /// [`tmux`] 的本体：`cmd` 由调用方造（生产 = `host::tmux::child(None)`；判据换一个假 tmux 的绝对路径，
 /// 不碰进程级 `PATH`）。stdout 照旧不要（这几条子命令本来就不往 stdout 写）。
 pub(crate) fn ran(cmd: Child, args: &[&str]) -> Result<Ran, Said> {
-    match cmd.args(args).run(LAUNCH_TMUX_WITHIN) {
+    match cmd.args(args).run(crate::host::tmux::TMUX_WITHIN) {
         Ok(out) => Ok(Ran {
             ok: out.status.success(),
             stderr: said_of(&out.stderr),
@@ -410,12 +410,6 @@ pub(crate) fn ran(cmd: Child, args: &[&str]) -> Result<Ran, Said> {
         }
     }
 }
-
-/// 建会话 · 打标 · 送键那几发 tmux 各自的期限：tmux 一发 5 s（同 watcher 探测 tmux 的期限）。
-const LAUNCH_TMUX_WITHIN: Deadline = Deadline::secs(5);
-
-/// `launch` 整条命令总期限的上限（过门 · 建会话 · 打标 · 送键共用）。
-pub(crate) const LAUNCH_CAP: Deadline = Deadline::secs(8);
 
 /// 建会话之后那几步**次要动作**（失败不阻断键入载荷）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

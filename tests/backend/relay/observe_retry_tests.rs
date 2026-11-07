@@ -1636,36 +1636,3 @@ fn an_undeclared_session_that_logs_in_elsewhere_follows_its_new_account() {
     assert!(s.temp.is_empty(), "拖出来的顺序没清：{:?}", s.temp);
     assert_eq!(home.ledger_accounts(), ["a", "b"]);
 }
-
-/// `_` 不是哪一份登录：显示态不带订阅标识（不拿默认配置目录那份登录顶）。
-#[test]
-fn the_undeclared_account_is_not_taken_for_the_default_login() {
-    let home = Home::new("undeclared-hop");
-    let base = home.root.join(".claude");
-    std::fs::create_dir_all(&base).expect("mkdir");
-    std::fs::copy(
-        home.root.join("accts/a/.credentials.json"),
-        base.join(".credentials.json"),
-    )
-    .expect("creds");
-    home.identity("0", UUID_ZERO);
-    let hop = Hop::new(
-        Arc::new(RotationStore::at(Some(home.rotation_path()))),
-        &crate::accounts::quota::adoptions_at(),
-        Arc::new(Ledger::at(Some(home.root.join(ledger::FILE_NAME)))),
-        Some(home.root.clone()),
-        home.library_of(&["0", "a", "b"]),
-        Arc::new(std::collections::BTreeSet::new),
-        Some(dead_token_endpoint()),
-    );
-    let none = |_: &str| None;
-    let lib = hop.library();
-    assert!(hop
-        .show_facts("claude-code", &lib, "0", &none, 0)
-        .sub_id
-        .is_some());
-    assert_eq!(
-        hop.show_facts("claude-code", &lib, "_", &none, 0).sub_id,
-        None
-    );
-}

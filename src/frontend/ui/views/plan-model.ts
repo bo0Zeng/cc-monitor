@@ -1,9 +1,16 @@
 /**
  * 计划页的排版模型（纯函数，零 DOM）：把 `plan-read` 的一个仓库排成大纲的行、概览的几张表。
  *
- * 只排版：状态、原因、负责人是谁、几格签收了都是后端给的成品；这里只做「按排期先后摆」「按过滤藏」「按标题找」。
+ * 只排版：状态、原因、负责人是谁、几格签收了都是后端给的成品；这里只做「照 pb 给的先后摆」「按过滤藏」「按标题找」。
  */
-import type { PlanBlock, PlanCell, PlanRef, PlanSlice } from "../plan-reads";
+import type { PlanBlock, PlanCell, PlanFile, PlanRef, PlanSlice } from "../plan-reads";
+
+/** 文件行那一枚画哪一档：在 ⇒ ok；没提交 · 空 ⇒ warn（签不上，补一下就好）；缺 · 坏 · 认不出 ⇒ bad。 */
+export function fileTone(code: PlanFile["stateCode"]): "ok" | "warn" | "bad" {
+  if (code === "ok") return "ok";
+  if (code === "uncommitted" || code === "empty") return "warn";
+  return "bad";
+}
 
 /** 一格写成「编号 标题」：后端拼好的那一份（`labels`）；表里没有 ⇒ 只写编号。界面不自己拼。 */
 export function labelOf(slice: Pick<PlanSlice, "labels">, id: string): string {
@@ -80,7 +87,7 @@ export interface OutlineOpts {
 }
 
 /**
- * 大纲的行：从顶层格起照排期深度优先摆；过滤 / 找的时候命中的格连同它的上级都留（看得出在哪），
+ * 大纲的行：从顶层格起照 pb 给的先后（pb 照 after 排好）深度优先摆；过滤 / 找的时候命中的格连同它的上级都留（看得出在哪），
  * 命中格的子孙不另列（除非自己也命中）。折着的格不往下摆（找的时候不管折没折）。
  */
 export function outlineRows(slice: PlanSlice, opts: OutlineOpts): OutlineRow[] {

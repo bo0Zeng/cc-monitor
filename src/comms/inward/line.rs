@@ -1,5 +1,5 @@
 //! 带上限的异步读：读一行（[`read_capped_line`]）· 读整份（[`read_capped_all`]）。
-//! 后端 · 常驻客户端 · 壳 · 手机异步地读对端的字节只经这一份；同步那一形住 `relay_route_core`（[`relay_route_core::read_capped_from`]）。
+//! 后端 · 常驻客户端 · 壳 · 手机异步地读对端的字节只经这一份；同步那一形住 `cap_core`（[`cap_core::read_capped_from`]）。
 //!
 //! 上限在读的时候生效：超了之后不再往缓冲里塞字节（读完再判的话，喂一条几百 MiB 无换行的流内存就跟着涨）。
 //! 超了一律回「超限」，不截断：截下前 `cap.bytes` 字节当一行 · 一份用，正是上限要挡的。超了之后怎么办（拒收 · 丢弃并报告 …）
@@ -7,7 +7,7 @@
 //! 只用 `fill_buf` / `consume` 与一次次的 `read`：tokio 的整读（`read_line` · `read_until` · `read_to_end` · `read_to_string`）
 //! 先读完再判，这里不用。
 
-use relay_route_core::Cap;
+use cap_core::Cap;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncReadExt};
 
 /// 一次带上限读一行的结果。
@@ -70,8 +70,8 @@ where
     }
 }
 
-/// 一次带上限读整份的结果：与同步那一形（`relay_route_core::read_capped_from`）同一个类型。
-pub use relay_route_core::CappedAll;
+/// 一次带上限读整份的结果：与同步那一形（`cap_core::read_capped_from`）同一个类型。
+pub use cap_core::CappedAll;
 
 /// 读到流尽，至多 `cap.bytes` 字节。多读一个字节分得出「正好到上限」与「超了」。
 pub async fn read_capped_all<R>(mut rd: R, cap: Cap) -> std::io::Result<CappedAll>

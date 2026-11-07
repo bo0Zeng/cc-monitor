@@ -3,7 +3,7 @@
  *
  * | 问什么 | 帧命令 | 成品 |
  * |---|---|---|
- * | 写 key（`creds.apikey`） | `apikey-key-set` | `{masked}` |
+ * | 写 key（`creds.apikey`） | `apikey-key-set` | 空回执（写完重读那台） |
  *
  * 「这几个号在这台表里有没有行 · 这台的中转在不在」两格并进了账号清单那一枚徽章（`accounts-list` 每号 `badge`，那台后端判），
  * 界面不单问这两样。
@@ -17,17 +17,15 @@
  * ⚠ 账号 id 只由后端推：前端交 `configDir`，一个字都不从它推账号 id。
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
-import { saidOf } from "./kit/detail";
 import type { Machine } from "./ipc/origin";
-import type { KeySet } from "./generated/KeySet";
 
 /** 那一问的期限：10 秒：盖的是「那台后端写一份凭据文件再读回 ＋ 回程」，不含握手（长连接早就连着）。 */
 const APIKEY_BUDGET_MS = 10_000;
 
 /**
  * 给 `configDir` 那个号配一把 key（与可选的 Base URL），交**那台机器的后端**写（本机 ＝ `<local>` 那条长连接）；
- * 回写完读回的掩码（**只有掩码**，`KS6`；账号 id · 文件路径 · 端点两端零读者，不上线）。
- * 明文只在这一发的请求体里（`key`）：不进任何返回值、不进报错文案（报错只说那台后端回的话）。
+ * 那台只回空回执：掩码 · 端点由调用方写完重读账号清单拿（账号 id · 文件路径不上线）。
+ * 明文只在这一发的请求体里（`key`，`KS6`）：不进任何返回值、不进报错文案（报错只说那台后端回的话）。
  * `baseUrl` 缺席 = 不碰那一格。
  */
 export async function writeApikeyKey(
@@ -35,11 +33,8 @@ export async function writeApikeyKey(
   configDir: string,
   key: string,
   baseUrl?: string,
-): Promise<KeySet> {
-  try {
-    const req = baseUrl === undefined ? { configDir, key } : { configDir, key, baseUrl };
-    return await callTyped(origin, "apikey-key-set", req, budgetWithin(APIKEY_BUDGET_MS));
-  } catch (e) {
-    throw new Error(saidOf(e));
-  }
+): Promise<void> {
+  // 失败原样抛通道那个错：那台回的码（`refusalIn`：`bad_args` 是地址那一格）与复制详情都在它上面。
+  const req = baseUrl === undefined ? { configDir, key } : { configDir, key, baseUrl };
+  await callTyped(origin, "apikey-key-set", req, budgetWithin(APIKEY_BUDGET_MS));
 }

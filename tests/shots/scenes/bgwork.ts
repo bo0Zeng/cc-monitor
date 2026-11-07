@@ -6,7 +6,8 @@ import type { Scene } from "./index";
 import type { SessionSpec, World } from "../fake/types";
 import { Convo } from "../fake/records";
 import { defaultWorld, LOCAL, session } from "../fake/world";
-import { click, mainReady, sleep, waitFor } from "./helpers";
+import { byText, click, mainReady, sleep, waitFor } from "./helpers";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 
 const MIN = 60_000;
 
@@ -104,7 +105,8 @@ export const BGWORK_SCENES: Scene[] = [
   }, () => bgWorld(["g2"]), [900, 700]),
   bw("bw-04-grid", "监控板", "监控板：kit 状态点（空闲是灰、不再是红）· 后台任务运行中那一格多一枚「后台任务 · make test-all」· 组内排序 需手动 ＞ 运行中 ＞ 后台任务运行中 ＞ 空闲", async () => {
     await mainReady(N);
-    await click(".grid-monitor-trigger");
+    await click(".head-more-trigger");
+    await click(await byText("[role^=menuitem]", copyText("main.cmd.openGrid")));
     await waitFor(".grid-monitor");
     await sleep(600);
   }),

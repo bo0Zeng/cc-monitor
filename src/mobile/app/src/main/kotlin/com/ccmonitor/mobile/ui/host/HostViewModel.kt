@@ -71,14 +71,15 @@ class HostViewModel(
     fun hostPassword(host: Host): String? = hostRepo.password(host)
 
     /**
-     * 删一台：它在状态库每张表里的行一个事务删光（[HostRemovalDao.remove]）、缓存库里它那几行另清一次（[CacheDao.forgetHost]），
-     * 再从核心那份库里忘掉只有它用着的主机钥匙。回撤销要的那一份（这一台已经不在 ⇒ `null`）。
+     * 删一台：它在状态库每张表里的行一个事务删光（[HostRemovalDao.remove]）、缓存库里它那几行另清一次（[CacheDao.forgetHost]）、
+     * 核心里它的会话列表副本丢掉（[Core.listingForget]），再从核心那份库里忘掉只有它用着的主机钥匙。回撤销要的那一份（这一台已经不在 ⇒ `null`）。
      */
     fun deleteHost(host: Host): Deferred<HostRows?> =
         viewModelScope.async(Dispatchers.IO) {
             val table = hostRepo.observeAll().first()
             val gone = removal.remove(host.id) ?: return@async null
             cache.forgetHost(host.id)
+            Core.listingForget(host.id)
             keysOnlyItUsed(table, host.id, ::dialEndpoints).forEach { forgetHostKey(it.host, it.port) }
             gone
         }

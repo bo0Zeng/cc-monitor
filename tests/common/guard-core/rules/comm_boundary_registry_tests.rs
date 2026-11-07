@@ -37,8 +37,8 @@ const ALLOWED_DEPS: &[(&str, &[&str])] = &[
             "cmd-wire",
             // 契约 crate、零依赖：经 `cmd-wire` 的 `Sid` 进来（会话 id 解码按它那一份 `session_id_ok` 判）。
             "shell-quote-core",
-            // 契约 crate、零依赖：读上限的类型 `Cap`（`line` 那一份带上限读收它）。
-            "relay-route-core",
+            // 零依赖：读上限的类型 `Cap`（`line` 那一份带上限读收它）与同步那一形。
+            "cap-core",
             "serde",
             "serde_json",
             "tokio",
@@ -57,6 +57,8 @@ const ALLOWED_DEPS: &[(&str, &[&str])] = &[
             // 契约 crate、零依赖：经 `cmd-wire` 的 `Sid` 进来。
             "shell-quote-core",
             "relay-route-core",
+            // 零依赖：读上限的类型 `Cap`（经 `copy-core` 与 `relay-route-core` 也进来）。
+            "cap-core",
             "upstream-url-core",
             "rustls",
             "webpki-roots",
@@ -75,6 +77,8 @@ const ALLOWED_DEPS: &[(&str, &[&str])] = &[
             "shell-quote-core",
             // 契约 crate：远端落点在 shell 里的写法（`BACKEND_LANDING_SHELL`）。
             "relay-route-core",
+            // 零依赖：读上限的类型 `Cap`（经 `copy-core` 与 `relay-route-core` 也进来）。
+            "cap-core",
             "serde",
             "serde_json",
             "tokio",

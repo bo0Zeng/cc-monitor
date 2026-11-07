@@ -75,7 +75,6 @@ fn whether_the_settings_are_shared_is_judged_for_the_session_s_own_account() {
             Some(crate::agents::ModelSaid {
                 name: "Sonnet 5.5".into(),
                 kept: false,
-                effort: None,
             }),
             crate::observe::accounts_query::shared_with_other_accounts_in(
                 accts,

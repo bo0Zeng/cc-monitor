@@ -337,3 +337,33 @@ fn own_names_are_the_binary_names_whatever_package_this_code_sits_in() {
         assert!(!is_own_name(other), "`{other}` 被认成了自己");
     }
 }
+
+/// `ccm -- --hosts` ⇒ 立即答「这台的托管终端」，不起会话。
+#[test]
+fn hosts_is_an_early_answer() {
+    match parse(&v(&["--", "--hosts"])).expect("该解析得动") {
+        Parsed::Early(Early::Hosts) => {}
+        other => panic!("该是 Early::Hosts：{other:?}"),
+    }
+}
+
+/// 托管入口的两个词：`ls` ⇒ `-- --hosts`；`attach <名>` ⇒ `-- --attach <名>`；别的第一个词不归它（`None`）。
+/// 缺名 · 多出词 ⇒ 说清、不猜。
+#[test]
+fn the_hosted_entry_owns_only_ls_and_attach() {
+    assert_eq!(hosted_entry(&v(&["ls"])), Some(Ok(v(&["--", "--hosts"]))));
+    assert_eq!(
+        hosted_entry(&v(&["attach", "proj-cc"])),
+        Some(Ok(v(&["--", "--attach", "proj-cc"])))
+    );
+    for other in [v(&[]), v(&["--resume", "x"]), v(&["lsx"]), v(&["讲讲 ls"])] {
+        assert_eq!(hosted_entry(&other), None, "{other:?} 不归托管入口");
+    }
+    assert!(matches!(hosted_entry(&v(&["attach"])), Some(Err(_))));
+    assert!(matches!(hosted_entry(&v(&["attach", "--x"])), Some(Err(_))));
+    assert!(matches!(hosted_entry(&v(&["ls", "x"])), Some(Err(_))));
+    assert!(matches!(
+        hosted_entry(&v(&["attach", "a", "b"])),
+        Some(Err(_))
+    ));
+}

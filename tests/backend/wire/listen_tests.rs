@@ -44,15 +44,6 @@ fn the_resident_switch_is_empty_one_or_refused() {
             "拒绝的诊断没点名开关：{e} / {diag}"
         );
     }
-    assert_eq!(
-        mode_from(&env_of(&[
-            ("CCM_LISTEN_PORT", "51000"),
-            ("CCM_LISTEN_TOKEN_FILE", "/h/k")
-        ]))
-        .unwrap(),
-        Mode::Stdio,
-        "旧的两个变量还在起作用"
-    );
 }
 
 /// attach 行只认 `cmd_wire::attach::AttachLine` 那一形（认不得的格 · `attach` 不是 `true` · 不是 JSON ⇒ malformed，同一句拒）；

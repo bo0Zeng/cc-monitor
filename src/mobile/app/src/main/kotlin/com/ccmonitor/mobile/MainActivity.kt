@@ -10,6 +10,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import com.ccmonitor.mobile.core.ui.theme.AppTheme
+import com.ccmonitor.mobile.ui.common.TooOldScreen
 import com.ccmonitor.mobile.ui.nav.AppNavHost
 
 class MainActivity : ComponentActivity() {
@@ -19,7 +20,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        requestNotificationPermissionIfNeeded()
+        val refused = (application as CcMonitorApp).refused
+        if (refused == null) requestNotificationPermissionIfNeeded()
         // 固定深色（`AppTheme`）：系统栏图标也固定浅色，不跟系统深浅走。
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
@@ -27,7 +29,8 @@ class MainActivity : ComponentActivity() {
         )
         setContent {
             AppTheme {
-                AppNavHost()
+                // 状态库太老：什么都没起（[CcMonitorApp.refused]），整屏只说这一句。
+                if (refused != null) TooOldScreen() else AppNavHost()
             }
         }
     }

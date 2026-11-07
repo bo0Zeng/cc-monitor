@@ -28,7 +28,7 @@
 //! 写经分叉那只只会新建的手（`NewFile`）。
 
 use crate::platform::fs::{NewFile, NewFileFail};
-use relay_route_core::{Cap, Over};
+use cap_core::{Cap, Over};
 use std::path::Path;
 
 /// 本体落完盘的结果（帧面回包由它 ＋ `launch` 那三格拼成 [`Forked`]）。

@@ -89,13 +89,23 @@ impl Here {
     /// [`Here::read_now`] 的可喂夹具那一半：数据目录 · 偏好由调用方给。
     pub(crate) fn read_in(data: Option<&std::path::Path>, rules: Rules) -> Here {
         let ledger = data
-            .and_then(|d| super::launch_book::read_book(d).ok())
+            .and_then(|d| {
+                super::launch_book::read_book(d)
+                    .map_err(|e| {
+                        tracing::warn!(target: "session_hidden", reason = %e.logged(), "launch ledger unreadable; hides from it not applied");
+                    })
+                    .ok()
+            })
             .unwrap_or_default();
         let lineage = data
             .map(
                 |d| match crate::lineage::read_at(&d.join(crate::lineage::FILE_NAME)) {
                     crate::common::own_state::Read::Present(b) => b,
-                    _ => crate::lineage::Book::default(),
+                    crate::common::own_state::Read::Absent => crate::lineage::Book::default(),
+                    crate::common::own_state::Read::Unreadable(e) => {
+                        tracing::warn!(target: "session_hidden", reason = %e.logged(), "lineage unreadable; child hides not applied");
+                        crate::lineage::Book::default()
+                    }
                 },
             )
             .unwrap_or_default();

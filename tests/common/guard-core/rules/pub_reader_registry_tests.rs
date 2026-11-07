@@ -20,6 +20,11 @@ use std::collections::{BTreeMap, BTreeSet};
 /// 零读者而留着的那几项：`(文件, 项名, 理由)`。
 const EXEMPT: &[(&str, &str, &str)] = &[
     (
+        "src/backend/deploy/machine.rs",
+        "signed_in",
+        "用密码登着的那一行：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/resident.rs`，不在扫描面里）",
+    ),
+    (
         "src/common/cmd-wire/src/attach.rs",
         "AttachWant",
         "附件那一排的进口形：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/attach.rs`，后端那棵 workspace，不在扫描面里）",

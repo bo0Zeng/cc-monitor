@@ -6,17 +6,16 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 /**
- * 缓存库（⑤ 别台东西的副本：会话列表 · 列表记号 · 记录页 · 续读点）。跟状态库（[AppDatabase]）分开住：
+ * 缓存库（⑤ 别台东西的副本：记录页 · 续读点 · 看过哪几条；会话列表副本住嵌的核心）。跟状态库（[AppDatabase]）分开住：
  * 不写迁移，版本一换整份丢了重建（缓存丢了照那台重取）；状态库里的 ④ 从不跟着它动。
  */
 @Database(
     entities = [
         CachedSession::class,
-        ListHold::class,
         RecordPage::class,
         SyncAnchor::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = false,
 )
 abstract class CacheDatabase : RoomDatabase() {

@@ -53,6 +53,9 @@ pub struct TurnRow {
     pub(crate) background: u32,
     pub(crate) retries: u32,
     /// 失败合计：工具（含派 agent）结果标了出错、且不是人拒的 ＋ 后台任务 / 子 agent 收场说失败。
+    /// 后端接着累加、写过程行用，不上线，骨架落它（[`skel`]）。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub(crate) fails: u32,
     /// 露着的那几条（uuid，文件序）：带正文的 assistant 记录（中间说的话与结论）＋ 停下这一轮的那一条中断标记 / 报错卡。
     pub(crate) shown: Vec<String>,
@@ -709,6 +712,8 @@ pub(crate) mod skel {
         pending: Vec<PendingCall>,
         /// 每段过程的（起 · 止 · 起的钟面）。
         folds: Vec<(String, String, String)>,
+        /// [`TurnRow::fails`]。
+        fails: u32,
     }
 
     #[derive(Serialize)]
@@ -732,6 +737,7 @@ pub(crate) mod skel {
                 .iter()
                 .map(|f: &Fold| (f.start.clone(), f.end.clone(), f.start_text.clone()))
                 .collect(),
+            fails: r.fails,
         }
     }
 
@@ -739,6 +745,7 @@ pub(crate) mod skel {
         let RowOwned { mut row, side } = o;
         row.tail_fold = side.tail_fold;
         row.pending = side.pending;
+        row.fails = side.fails;
         for (f, (start, end, start_text)) in row.folds.iter_mut().zip(side.folds) {
             f.start = start;
             f.end = end;

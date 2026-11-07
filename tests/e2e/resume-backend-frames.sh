@@ -49,7 +49,7 @@ WORK="$(mktemp -d /tmp/e2e-resume-frames.XXXXXX)"
 # 后端盯的账号目录默认落本趟私有的 $WORK 下（原先是固定的 /tmp/e2e-resume-frames：两趟同时跑时后起的那一趟开头
 #   `rm -rf` 会把先起那一趟的夹具整个删掉）。假 claude 只许写 /tmp 下 ⇒ $WORK 本来就在。
 CLAUDE_DIR="${CCM_E2E_CLAUDE_DIR:-$WORK/claude}"
-# 〔纪律 25〕启动器路径要过 §47 的字符闸（只许 ASCII 那一族）；仓可能住在非 ASCII 的目录里⇒ 同 `restart-suite.sh`，
+# 〔纪律 25〕启动器路径要过 §47 的字符闸（只许 ASCII 那一族）；仓可能住在非 ASCII 的目录里⇒
 #   把 fake-claude 拷进 ASCII 的 $WORK 再当启动器（主树路径下跑，否则就地 resume 那一步被拒）。
 cp "$FAKE" "$WORK/fake-claude" && chmod +x "$WORK/fake-claude" && FAKE="$WORK/fake-claude"
 FRAMES="$WORK/frames.jsonl"
@@ -145,7 +145,7 @@ else bad "claude 死后会话没了($GRAY_ALIVE) 或 life 不是 {is:reconnectab
 echo "-- 就地 resume(session-open 空 tmux 那一形交出去的那一行,复用 $SESSION,账号目录 = 后端所看目录)--"
 # configDir = backend 监视目录 → 复活的 fake-claude pidfile 落这里,backend 判活得到 = 后端复活。
 # 后端监视的那个目录登记成沙箱账号清单里的一个号，按名字点它。
-# 选得了才起：号要「登录过」（目录里有凭据文件；同 `restart-suite.sh`，空的一份就够），否则 ccm 拒「账号 'e2e' 不可用」、复活那一步起不来。
+# 选得了才起：号要「登录过」（目录里有凭据文件，空的一份就够），否则 ccm 拒「账号 'e2e' 不可用」、复活那一步起不来。
 printf '{}\n' >"$CLAUDE_DIR/.credentials.json"
 cat > "$CCM_SHIM_ACCOUNTS/accounts.json" <<JSON
 { "version": 1, "accounts": [ { "name": "e2e", "configDir": "$CLAUDE_DIR", "isDefault": false } ] }

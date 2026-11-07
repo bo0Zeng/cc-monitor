@@ -4,7 +4,7 @@ import { describe, it, expect } from "vitest";
 import { TasksPanel, type TaskEntry } from "../../../src/frontend/ui/tasks-panel";
 import type { TasksList } from "../../../src/frontend/ui/generated/TasksList";
 
-const task = (id: string, status: string, statusText: string): TaskEntry => ({ id, subject: `任务 ${id}`, status, statusText, blocks: [], blockedBy: [] });
+const task = (id: string, status: string, statusText: string): TaskEntry => ({ id, subject: `任务 ${id}`, status, statusText, blocks: [] });
 const list = (tasks: TaskEntry[], chip = "", hint = ""): TasksList => ({ tasks, chip, hint });
 
 describe("任务面板：只摆后端那几句", () => {

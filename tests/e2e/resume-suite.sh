@@ -127,7 +127,7 @@ echo "== F-E2 resume 命令级整合套件（真源 builder + 真 tmux + fake-cl
 echo "repo=$REPO  remote=$REMOTE_DIR  acctA=$ACCT_A  acctB=$ACCT_B  base=$BASE_DEFAULT"
 rm -rf "$ACCT_A" "$ACCT_B" "$BASE_DEFAULT"
 mkdir -p "$ACCT_A/sessions" "$ACCT_A/projects" "$ACCT_B/sessions" "$ACCT_B/projects" "$BASE_DEFAULT/sessions" "$CWD_DIR"
-# 点号起会话只经 `launch_account::pick`：号要选得了（`auth_ready`）⇒ 各放一份占位凭据（同 restart-suite · resume-backend-frames）。
+# 点号起会话只经 `launch_account::pick`：号要选得了（`auth_ready`）⇒ 各放一份占位凭据（同 resume-backend-frames）。
 printf '{}\n' >"$ACCT_A/.credentials.json"; printf '{}\n' >"$ACCT_B/.credentials.json"
 # 账号 A / B 登记进沙箱家目录的账号清单（起会话按名字点号，ccm 照清单落那个目录）。
 cat > "$CCM_SHIM_ACCOUNTS/accounts.json" <<JSON

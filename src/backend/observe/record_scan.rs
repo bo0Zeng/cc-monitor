@@ -438,9 +438,9 @@ pub struct RecordScans {
 
 /// 全进程那一份的上限：条数（同时开着的大会话）与估算字节（单张超了照留、独占，见 [`RecordScans::evict`]）。
 const MAX_ENTRIES: usize = 16;
-const MAX_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+const MAX_BYTES: cap_core::Cap = cap_core::Cap {
     bytes: 64 << 20,
-    over: relay_route_core::Over::IndexTrim,
+    over: cap_core::Over::IndexTrim,
 };
 
 /// 事实尾巴至多留几条：每个开着的 tab（桌面）/ 会话页（手机）占一条；一条最大约 140 KB（改动文件 1000 条封顶），64 条封顶约 9 MB。

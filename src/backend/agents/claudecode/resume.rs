@@ -204,7 +204,7 @@ pub(crate) fn model_command(value: &str) -> String {
 /// 本地命令输出那一对标签（`/model` 之后那一条记录里装着那一句）。
 const LOCAL_STDOUT: (&str, &str) = ("<local-command-stdout>", "</local-command-stdout>");
 
-/// 换模型读回：记录里一条本地命令输出，里面是 ``Set model to `X` …``（后面也许接 `` with `Y` effort``）或 ``Kept model as `X` ``。
+/// 换模型读回：记录里一条本地命令输出，里面是 ``Set model to `X` …``（后面也许接 `` with `Y` effort``，不取）或 ``Kept model as `X` ``。
 /// 输出在顶层 `content`，或在 `message.content` 里（串）。认不出 ⇒ `None`（不猜）。
 pub(crate) fn model_said(v: &serde_json::Value) -> Option<crate::agents::ModelSaid> {
     let text = v
@@ -219,9 +219,9 @@ pub(crate) fn model_said(v: &serde_json::Value) -> Option<crate::agents::ModelSa
         .1
         .split_once(LOCAL_STDOUT.1)?
         .0;
-    let quoted = |rest: &str| -> Option<(String, String)> {
-        let (name, tail) = rest.strip_prefix('`')?.split_once('`')?;
-        Some((name.to_string(), tail.to_string()))
+    let quoted = |rest: &str| -> Option<String> {
+        let (name, _) = rest.strip_prefix('`')?.split_once('`')?;
+        Some(name.to_string())
     };
     let (kept, rest) = match (
         inner.strip_prefix("Set model to "),
@@ -231,12 +231,8 @@ pub(crate) fn model_said(v: &serde_json::Value) -> Option<crate::agents::ModelSa
         (_, Some(r)) => (true, r),
         _ => return None,
     };
-    let (name, tail) = quoted(rest)?;
-    let effort = tail
-        .split_once(" with `")
-        .and_then(|(_, e)| e.split_once("` effort"))
-        .map(|(e, _)| e.to_string());
-    Some(crate::agents::ModelSaid { name, kept, effort })
+    let name = quoted(rest)?;
+    Some(crate::agents::ModelSaid { name, kept })
 }
 
 #[cfg(test)]

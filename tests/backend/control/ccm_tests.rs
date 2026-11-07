@@ -3,11 +3,7 @@ use super::*;
 // 那一格（终端里敲 `ccm` 走到哪）要起登录 shell，判它的在 `on_path_tests`；这里只比名片那几格。
 fn answer_probe() -> serde_json::Value {
     let here = on_path::on_path(&on_path::Reach::Ours, "");
-    serde_json::to_value(super::answer_probe_for(
-        crate::platform::tmux::TMUX_PLATFORM,
-        here,
-    ))
-    .unwrap()
+    serde_json::to_value(super::answer_probe_for(here)).unwrap()
 }
 
 /// ★★ **死值验：铸名避让只许问那一张快照，且算完就定死。**
@@ -641,11 +637,6 @@ fn the_probe_frame_answers_the_same_card_as_the_cli_flag() {
     assert_eq!(v["version"].as_str(), Some(line("version").as_str()));
     assert_eq!(v["build"].as_str(), Some(crate::common::id::BUILD_ID));
     assert_eq!(line("build"), crate::common::id::BUILD_ID);
-    assert_eq!(
-        list("capabilities"),
-        line("capabilities"),
-        "帧面与 CLI 那一口的能力不是同一份"
-    );
     assert_eq!(list("agents"), line("agents"));
     let golden: serde_json::Value =
         serde_json::from_str(include_str!("../../__fixtures__/ccm-probe.golden.json")).unwrap();
@@ -1124,7 +1115,6 @@ fn the_hosted_self_check_plans_what_the_hop_inside_will_plan() {
         accts_manifest: "/nonexistent/accounts.json".into(),
         account_env: "CLAUDE_CONFIG_DIR".into(),
         self_argv: vec!["/usr/local/bin/ccm".into()],
-        can_host: true,
         ..Default::default()
     };
     let a: Vec<String> = ["--hosted", "--cwd", "/p"]

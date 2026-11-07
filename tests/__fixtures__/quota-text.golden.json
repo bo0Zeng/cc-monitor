@@ -33,7 +33,6 @@
           "warm": {
             "act": "wait",
             "at": 1791196260,
-            "atRelText": "+1h51m",
             "atText": "18:31",
             "text": "5h 63% ↻18:30"
           }
@@ -126,7 +125,6 @@
           "warm": {
             "act": "wait",
             "at": 1791196260,
-            "atRelText": "+1h51m",
             "atText": "18:31",
             "text": "5h 63% ↻18:30"
           }
@@ -247,7 +245,6 @@
           "warm": {
             "act": "wait",
             "at": 1791196260,
-            "atRelText": "+1h51m",
             "atText": "18:31",
             "text": "5h 86% ↻18:30"
           }
@@ -334,7 +331,6 @@
           "warm": {
             "act": "wait",
             "at": 1791198060,
-            "atRelText": "+2h21m",
             "atText": "19:01",
             "text": "被拒（5h）↻19:00"
           }
@@ -426,7 +422,6 @@
           "warm": {
             "act": "wait",
             "at": 1791198060,
-            "atRelText": "+2h21m",
             "atText": "19:01",
             "text": "被拒（5h）↻19:00"
           }
@@ -518,7 +513,6 @@
           "warm": {
             "act": "wait",
             "at": 1791198060,
-            "atRelText": "+2h21m",
             "atText": "19:01",
             "text": "5h 104% ↻19:00"
           }
@@ -767,7 +761,6 @@
           "warm": {
             "act": "wait",
             "at": 1791193200,
-            "atRelText": "+1h",
             "atText": "17:40",
             "text": "需登录"
           }
@@ -851,7 +844,6 @@
           "warm": {
             "act": "wait",
             "at": 1791196860,
-            "atRelText": "+2h1m",
             "atText": "18:41",
             "text": "5h 31% ↻18:40"
           }
@@ -973,7 +965,6 @@
           "warm": {
             "act": "wait",
             "at": 1791193200,
-            "atRelText": "+1h",
             "atText": "17:40",
             "text": "需 key"
           }
@@ -1081,7 +1072,6 @@
           "warm": {
             "act": "wait",
             "at": 1791195060,
-            "atRelText": "+1h31m",
             "atText": "18:11",
             "text": "5h 4% ↻18:10"
           }
@@ -1107,7 +1097,6 @@
           "warm": {
             "act": "wait",
             "at": 1791193200,
-            "atRelText": "+1h",
             "atText": "17:40",
             "text": "需登录"
           }

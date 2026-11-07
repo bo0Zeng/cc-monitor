@@ -175,11 +175,7 @@ pub struct Conflict {
     pub mtime_text: Option<String>,
     /// 已在那儿的那一项是什么。
     pub there: crate::files::FileKind,
-    /// 已在那儿的那一项的大小（文件）。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
-    pub there_size: Option<u64>,
-    /// `there_size` 写好的字。
+    /// 已在那儿的那一项的大小（文件）写好的字。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub there_size_text: Option<String>,

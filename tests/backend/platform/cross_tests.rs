@@ -28,7 +28,7 @@ mod child {
         );
     }
 
-    /// `CCM_LISTEN_PORT` → `Ccm_lIsTeN_…`：逐字母交替大小写（下划线不动），保证与全大写、全小写都不逐字相等。
+    /// `CCM_BACKEND_BIN` → `CcM_BaCkEnD_…`：逐字母交替大小写（下划线不动），保证与全大写、全小写都不逐字相等。
     fn mixed_case(k: &str) -> String {
         k.chars()
             .enumerate()
@@ -42,12 +42,10 @@ mod child {
             .collect()
     }
 
-    /// 〔环境里没有后端内部变量，也没有会话号变量〕会话环境里混进来的后端内部变量（monitor 给终端窗口导的后端二进制路径 · 旧版常驻后端留在长寿 tmux server
-    /// 全局环境里的监听口与钥匙文件 · 常驻开关 · 诊断文件）—— 起出来的每个子进程（agent 会话就在里面）一个都看不见；
+    /// 〔环境里没有后端内部变量，也没有会话号变量〕会话环境里混进来的后端内部变量（monitor 给终端窗口导的后端二进制路径 · 常驻开关 · 诊断文件）—— 起出来的每个子进程（agent 会话就在里面）一个都看不见；
     /// 真要往下传的那几格（中转口 · 家）照旧到得了。外层带着这些变量把本测试二进制当子进程起、跑内层（进程环境不能在多线程测试里改）。
     #[test]
     fn a_child_never_inherits_the_backend_internal_families() {
-        assert!(crate::platform::child_env::is_internal("CCM_LISTEN_PORT"));
         assert!(crate::platform::child_env::is_internal("CCM_BACKEND_BIN"));
         assert!(crate::platform::child_env::is_internal("CCM_RESIDENT"));
         assert!(!crate::platform::child_env::is_internal("CCM_RELAY_PORT"));
@@ -69,11 +67,6 @@ mod child {
                 "--test-threads=1",
             ])
             .env(INTERNAL_MARK, "1")
-            .env(spell("CCM_LISTEN_PORT"), "52917")
-            .env(
-                spell("CCM_LISTEN_TOKEN_FILE"),
-                "/h/.cc-monitor/listen-token",
-            )
             .env(
                 spell("CCM_BACKEND_STDERR_LOG"),
                 "/h/.cc-monitor/logs/backend/stderr.log",

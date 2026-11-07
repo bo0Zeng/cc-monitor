@@ -11,13 +11,14 @@
 
 **例外（穷举，都是用户显式动作）**：
 
-1. **删历史会话**：帧命令 `files-delete-session`，只收 sid；落点由后端按 sid 在自己的记录树里找（`agents::claudecode::paths::session_file_for_delete`：解到底必须恰是 `projects/<项目>/<sid>.jsonl`，链接出界不跟），删前二次确认。
-2. **后端自部署**：写那台的 `~/.cc-monitor/bin/`（非用户数据、幂等、按 `deploy-install` 只升不降），绝不碰 `<claude_dir>`。
-3. 已并进第 1 条（远端删历史也是 `files-delete-session`）。
-4. **别名块与别名文件**：rc / `$PROFILE` 里的 BEGIN / END 块（`aliases_block_install` / `aliases_block_remove`，本机远端同一条），经 `Door::put`（§4）。
-5. **项目 MCP 配置**：帧命令 `mcp-sync-apply`（装）/ `ext-uninstall-apply`（卸），写面只有项目 `.mcp.json`（落点必须是那台上的绝对项目目录，不含 `..`），绝不写 `~/.claude.json` / `settings.json`。
-6. **公钥推送**：帧命令 `pubkey-push`，只追加到远端 `~/.ssh/authorized_keys`（幂等去重）。那台后端不在时走一次 SSH exec：这是建立信任那一跳，按构造发生在后端可达之前，是「用户文件只经后端写」唯一的 monitor 侧远端例外。
-7. **装 cc-bus skill**：往 `<claude_dir>/skills/cc-bus/` 写（`src/backend/assets/cc_bus_install.rs`），四个配套一条不许省：只由扩展页确认卡触发 · realpath 白名单（解到底仍在 claude 目录底下）· 逐文件比、一致就不写 · 覆盖前整目录改名成 `cc-bus.bak-<秒>`。
+例外的号被代码头注引用，不改号；号不复用。
+
+- 例外 1 · **删历史会话**（本机远端同一条）：帧命令 `files-delete-session`，只收 sid；落点由后端按 sid 在自己的记录树里找（`agents::claudecode::paths::session_file_for_delete`：解到底必须恰是 `projects/<项目>/<sid>.jsonl`，链接出界不跟），删前二次确认。
+- 例外 2 · **后端自部署**：写那台的 `~/.cc-monitor/bin/`（非用户数据、幂等、按 `deploy-install` 只升不降），绝不碰 `<claude_dir>`。
+- 例外 4 · **别名块与别名文件**：rc / `$PROFILE` 里的 BEGIN / END 块（`aliases_block_install` / `aliases_block_remove`，本机远端同一条），经 `Door::put`（§4）。
+- 例外 5 · **项目 MCP 配置**：帧命令 `mcp-sync-apply`（装）/ `ext-uninstall-apply`（卸），写面只有项目 `.mcp.json`（落点必须是那台上的绝对项目目录，不含 `..`），绝不写 `~/.claude.json` / `settings.json`。
+- 例外 6 · **公钥推送**：帧命令 `pubkey-push`，只追加到远端 `~/.ssh/authorized_keys`（幂等去重）。那台后端不在时走一次 SSH exec：这是建立信任那一跳，按构造发生在后端可达之前，是「用户文件只经后端写」唯一的 monitor 侧远端例外。
+- 例外 7 · **装 cc-bus skill**：往 `<claude_dir>/skills/cc-bus/` 写（`src/backend/assets/cc_bus_install.rs`），四个配套一条不许省：只由扩展页确认卡触发 · realpath 白名单（解到底仍在 claude 目录底下）· 逐文件比、一致就不写 · 覆盖前整目录改名成 `cc-bus.bak-<秒>`。
 
 **分叉不是例外**：从某一轮分叉（帧命令 `session-fork`，本体 `control/fork_write.rs`）只新增一份 `<new-sid>.jsonl`：`create_new(true)`（`O_EXCL`）、只收 sid、原会话零改动。后端写盘只许发生在登记过的模块里（§41.6）。
 
@@ -75,7 +76,7 @@
 
 写入端 Rust 直接写 UTF-8；PowerShell 用 `[System.IO.File]::WriteAllText` ＋ `UTF8Encoding($false)`（禁用 PS 5.1 的 `Out-File -Encoding utf8`，它写 BOM）。读取端解析前剥 BOM。
 
-**为什么不能松动**：`serde_json` 不剥 BOM 直接失败；这曾让整套 cc 集成七个版本「装上没用」。
+**为什么不能松动**：`serde_json` 不剥 BOM、直接解析失败：写端多一个 BOM，读端整份读不进来，装上的东西照样在、却一样都不起作用。
 
 ---
 
@@ -90,11 +91,11 @@
 
 ---
 
-## 5. JSONL 单一时序由 seq 字段 + RecordTimeline binary insert 共同保证（v2.6 B 重构）
+## 5. JSONL 单一时序由 seq 字段 + RecordTimeline binary insert 共同保证
 
 后端给每一行分配 per-file 单调递增的 `seq`（从 0 重读时照数不出行、读完发 `session_file_reread` 带行数，客户端从尾段重取；流不重放历史，起点是当前完整行数 ⇒ seq 就是行号，与旁路快照同一个编号空间，§25a）。本机与远端同一个来源（本机会话的行也是本机后端的 `line` 帧）。所有交付路径透传 seq。前端每个 Tab / 查看器持一个 `RecordTimeline`，按 seq 二分插入 DOM。后端交格顺序、切块到达顺序、实时与成批混合，都不影响视觉顺序。seq 保时序、不保投递次数（§25）。
 
-**为什么不能松动**：此前用五个 flag 协调「批 / 实时 / 前插」反复出相位 bug；seq ＋ 二分插入把「后端保序」变成「前端排序」，一次性消掉了那整套机制。
+**为什么不能松动**：批 · 实时 · 前插几条路各自到达，靠标志位协调先后就会在交界处出相位错；seq ＋ 二分插入把「后端保序」变成「前端排序」，到达顺序与视觉顺序从此无关。
 
 ---
 
@@ -118,7 +119,7 @@
 
 任何 `State<'_, X>` 参数都对应 `setup()` 里一次 `app.manage(x)`。漏了 `cargo check` 抓不住，运行时第一次调用才 panic。改 State 时照 [CONTRIBUTING.md § 3.1](CONTRIBUTING.md) 那几条 grep 找全消费者与跨线程持有者（从代码现查，不另抄清单）。
 
-**为什么不能松动**：撤一个 State 时漏 `manage` 曾让一处功能带病五个版本。
+**为什么不能松动**：漏 `manage` 只在第一次调到那条命令时才 panic，不常走的路径能带着它发好几个版本都没人发现。
 
 ---
 
@@ -144,7 +145,7 @@
 
 平台原语与平台 cfg 只住 `platform/`（后端与壳各一份）。判据不是「cfg 出现在哪」，是跨 target 编译：后端 `cargo check --all-targets --target x86_64-pc-windows-msvc`（CI）、本地门禁 `winchk` / `winchk-backend` 两格；不带 cfg 的平台代码由 `tests/backend/platform/cfgless_guard.rs` 补盲区；平台降级分支不许凭空返回「成功」（`platform/fallback_guard.rs`）。
 
-**为什么不能松动**：平台代码散出去之后，换平台就要全文 review 一遍；降级分支恒真曾让会话永远不被归档且毫无信号。
+**为什么不能松动**：平台代码散出去之后，换平台就要全文 review 一遍；降级分支恒返回「成功」，调用方就照做成了往下走（判活恒真 ⇒ 会话永远不归档），没有任何信号。
 
 ---
 
@@ -210,7 +211,7 @@
 
 ### 18.1 看不懂的记录不静默丢 —— 抢救成 `Unrecognized`
 
-未知 `type`、或已知 `type` 但字段解析失败而原文仍是合法 JSON ⇒ 抢救成 `JsonlRecord::Unrecognized`（留原文与链身份），不出 `parse_line` 之外丢掉；只有连 JSON 都不成立的行才回 `Err`。带链身份（`uuid` / `parentUuid`）的记录不论认不认得都进链（`chain.rs`）。各降级点各记一笔有界的账，住那台后端 `src/backend/agents/claudecode/drift.rs`（帧命令 `drift-report`，各台合一份是本机后端的 `drift-merge`）；设置「诊断」复制出的诊断信息里「未识别数据」那一段就是它。
+未知 `type`、或已知 `type` 但字段解析失败而原文仍是合法 JSON ⇒ 抢救成 `JsonlRecord::Unrecognized`（留原文与链身份），不出 `parse_line` 之外丢掉；只有连 JSON 都不成立的行才回 `Err`。带链身份（`uuid` / `parentUuid`）的记录不论认不认得都进链（`chain.rs`）。各降级点各记一笔有界的账，住那台后端 `src/backend/agents/claudecode/drift.rs`（帧命令 `drift-report`）；设置「诊断」复制出的诊断信息里「未识别数据」那一段就是它。
 
 上屏只分一刀，判在适配层一处（`record_of::quiet_unread_of`）：没见过的 `type` 又没有链身份 ⇒ 那一家的簿记行，不画「认不出的记录」卡，会话事实 `quietUnread` 照实记几行、哪几种；带链身份的、已知类型形状变了的，照旧一行一张卡。
 
@@ -265,12 +266,12 @@ Claude Code 把很多不是人说的东西也写成 `type=user`。判定只有�
 
 ## 22. 独立窗口契约
 
-独立窗口（查看窗 · agent 窗 · 设置窗）违反下列任一条都是**静默失败**（白屏 · 收不到 · 卡死 · 点了没反应）：
+独立窗口（查看窗 · agent 窗 · 设置窗 · 终端窗）违反下列任一条都是**静默失败**（白屏 · 收不到 · 卡死 · 点了没反应）：
 
 1. **建窗的命令必须 `async`**：同步命令跑在主线程，`WebviewWindowBuilder::build()` 又要派发到主线程等 ⇒ 死锁。判据 `lib_window_lifecycle_tests.rs::every_window_building_command_is_async`。
 2. **定向事件 target-kind 对齐**：给单个窗口投递用 `emit_to(EventTarget::webview_window(label))` ↔ 前端 `getCurrentWebviewWindow().listen`；禁止 `&str` 目标（`AnyLabel`）配模块级 `listen`（`Any`），Tauri 按 kind 匹配、静默丢。广播（`Any` ↔ `Any`）不受影响。判据 `lib_window_lifecycle_tests.rs::every_emit_to_targets_a_webview_window_not_a_bare_label`。
 3. **先注册监听，再触发会交格的订阅**：`listen()` 是异步注册，注册完之前到的事件会丢。
-4. **查看窗的精简布局不许塌 grid 行**：隐藏一个 grid item 会让后面的前移落行 ⇒ 只为剩下的 item 定义行数。三窗各自的模块图与 CSS 清单由 `tests/frontend/ui/entry-graphs.vitest.ts` 钉。
+4. **查看窗的精简布局不许塌 grid 行**：隐藏一个 grid item 会让后面的前移落行 ⇒ 只为剩下的 item 定义行数。四个入口各自的模块图与 CSS 清单由 `tests/frontend/ui/entry-graphs.vitest.ts` 钉。
 5. **关窗要 `core:window:allow-close`**（`core:window:default` 只含读）。
 6. **复用 `dispatcher` 的独立窗口自己调 `dispatcher.start()` ＋ `applyOverrides`**，面板作 overlay 栈底；别手搓窗口级 Esc 监听（会双触发）。
 7. **接管了关窗又放行的窗口要 `core:window:allow-destroy`**。判据 `lib_window_lifecycle_tests.rs::a_window_that_lets_close_through_may_destroy_itself`。
@@ -286,7 +287,7 @@ Claude Code 把很多不是人说的东西也写成 `type=user`。判定只有�
 
 ---
 
-## 25. 行事件投递是 at-least-once —— 按 uuid 累积状态的前端模块必须自行幂等（issue #25）
+## 25. 行事件投递是 at-least-once —— 按 uuid 累积状态的前端模块必须自行幂等
 
 行投递不保证恰好一次：重连重放、快照与实时的重叠区是同 seq 重投；截断重读时后端从 0 重数、不逐行重发，发 `session_file_reread` 带行数（前端那个会话整份重来、照宣告那样从尾段取）。两端只消费以 `\n` 结尾的完整行。`tab.seenSeqs` 挡同 seq 重投；**任何按 uuid 累积状态或构建拓扑的前端模块必须对「同一条再来一遍」幂等**（入口按 uuid 拒重、保首见）。
 
@@ -294,7 +295,7 @@ Claude Code 把很多不是人说的东西也写成 `type=user`。判定只有�
 
 已知不管的两形：最后一行合法却永远等不到 `\n`（写端被杀）⇒ 永不投递；两次事件之间文件先长再被重写到中间长度 ⇒ 只凭长度检不出截断。
 
-## 25a. 远端 seq 是行号空间（Batch8 起）——重连碰撞在无截断前提下源头已除
+## 25a. 远端 seq 是行号空间——重连碰撞在无截断前提下源头已除
 
 后端连接时把各文件的 seq 计数器初始化为当前完整行数、新行 seq = 行号；旁路快照按行号编号 ⇒ 无截断时重连后的新行 seq 不低于断连前的高水位。断连期间截断（`/clear`）仍可能短暂吞行，靠快照重拉与 §25 的幂等兜底。
 
@@ -302,9 +303,9 @@ Claude Code 把很多不是人说的东西也写成 `type=user`。判定只有�
 
 - 会话是不是后台、此刻在干什么只看后端判好的 `background` · `activity`（那一家的原词不上线）。后台会话是**标注而非过滤**：后端照宣告（`background: true`），显示与否由出口按用户开关定（本机远端两条流同一个口径）。
 - **后端任何新的流模式旗标必须在一次性查询模式判定之前从参数里剥掉**（`stream/cli.rs::split_stream_flags`），否则旗标落进查询分支、后端打印结果就退出，monitor 等不到 hello。
-- **流要什么不靠协商旗标**：流模式起参只有 `--stream` · `--tz` · `--view`，这条流要什么由声明说（attach 行的 `view` / `--view`）；hello 不带能力 token。`build_id` 管换不换后端，`v` 只为破坏性变更加。
+- **流要什么不靠协商旗标**：流模式起参只有 `--stream` · `--tz` · `--view`，这条流要什么由声明说（attach 行的 `view` / `--view`）；hello 不带能力 token。`build_id` 管换不换后端。
 
-## 27. 远端会话生命周期信号的两条载荷型约束（Batch9）
+## 27. 远端会话生命周期信号的两条载荷型约束
 
 - **F5 时起停与骨架先于重放**：就绪点（`event_replay.rs::ready_point`）之前，这条流上的起停帧已经先交（起停帧没 credit 也照交、照扣，不许丢）。
 - **缺省一律按最保守的待**：`status` 缺 ⇒ 未知（不加灯）。
@@ -313,7 +314,7 @@ Claude Code 把很多不是人说的东西也写成 `type=user`。判定只有�
 
 任何会落盘、跨进程或上线的身份标识，必须 **opaque ＋ 稳定 ＋ 出生一次 ＋ 永不从名字 / 路径 / 位置算**。想不清就先别发，用外部已有的稳定 id 顶着（Claude Code 的 `sessionId`）。
 
-今天的持久身份全挂外部稳定 id：会话与历史注解按 `sessionId`（`cmd-wire/src/listing.rs::Table`）· `ps-registry` 按 pid。`origin`（机器表里那一台的名字：`label`，空则回退 `host`；只在拨号核心 `ssh_dial::machine::Host::name` 算，`machines-read` 每行带着它）是用户可控的外部 id，只做结构字段与内存表的键，不当任何落盘登记表的主键；别把它换成从 IP / 路径现算的值。会话 / 后端登记表的主键不许拿 tmux 会话名 · 主机名 · 路径。
+持久身份全挂外部稳定 id：会话与历史注解按 `sessionId`（`cmd-wire/src/listing.rs::Table`）· `ps-registry` 按 pid。`origin`（机器表里那一台的名字：`label`，空则回退 `host`；只在拨号核心 `ssh_dial::machine::Host::name` 算，`machines-read` 每行带着它）是用户可控的外部 id，只做结构字段与内存表的键，不当任何落盘登记表的主键；别把它换成从 IP / 路径现算的值。会话 / 后端登记表的主键不许拿 tmux 会话名 · 主机名 · 路径。
 
 **为什么是单向门**：id 一旦被别处引用或落盘就锁死；拿会变的值当键（Claude Code 自己的 `enc(cwd)`）一搬目录历史全对不上。
 
@@ -339,7 +340,7 @@ Claude Code 把很多不是人说的东西也写成 `type=user`。判定只有�
 
 裸 `-t <名>` 按「精确 → 名字开头 → glob」解析：只有 `sib-2` 在时 `kill-session -t sib` 杀掉 `sib-2` 且 rc=0。`=` 只在 target-session 路径上被认，`send-keys` / `capture-pane` / `set-option` 走 pane 解析 ⇒ 必须带尾冒号 `=<名>:`，它是所有动词上都既通用又精确的唯一形式。`new-session -s <名>` 收的是名字，不加 `=` / `:`。e2e 的 shell 探针同样用 `=<名>:`。
 
-今天的构造点：后端 `control/launch.rs::exact_target`（argv 直传）与调用行渲染器（`ccm_invocation.rs` 就地 resume 那一形，由 `ccm_invocation_tests.rs` 那张表逐字节钉）· `control/ccm/plan.rs`。新建的名字走 `gate_rules::new_tmux_name_issue`（禁 glob 与目标语法字符、前导 `-`、控制符、视觉欺骗字符、超长），attach 已有会话走 `gate_rules::existing_tmux_name_issue`（只拒空 · 控制符 · 视觉欺骗字符）。
+构造点：后端 `control/launch.rs::exact_target`（argv 直传）与调用行渲染器（`ccm_invocation.rs` 就地 resume 那一形，由 `ccm_invocation_tests.rs` 那张表逐字节钉）· `control/ccm/plan.rs`。新建的名字走 `gate_rules::new_tmux_name_issue`（禁 glob 与目标语法字符、前导 `-`、控制符、视觉欺骗字符、超长），attach 已有会话走 `gate_rules::existing_tmux_name_issue`（只拒空 · 控制符 · 视觉欺骗字符）。
 
 **谁在守**：`exact_target_is_the_exact_match_shape` · `tmux_backend_gate_guard_tests.rs::every_target_placeholder_comes_from_exact_target`（monitor 生产段零处 `-t {…}`）。
 
@@ -353,7 +354,7 @@ monitor 的每一条起会话路径（新起 · resume · 换号重启 · 分叉
 
 **谁在守**：`ccm_invocation_tests.rs::every_rendered_ccm_line_is_accepted_by_the_ccm_argv` · `ccm_tests.rs::nothing_but_ccm_renders_a_command_that_starts_an_agent`（后端生产段除 `ccm` 自己的最终 exec 外零处渲出直接起 agent 的命令，一个例外都没有）。
 
-## 33a. `ccm --print` 是平价预言机——它对**环境变量**说的必须逐条等于真跑做的（U9a / unified-backend）
+## 33a. `ccm --print` 是平价预言机——它对**环境变量**说的必须逐条等于真跑做的
 
 `ccm --print` 打印将要执行的命令而不执行，全仓把它当离线预言机用。① 凡是真 exec 会设的、`ccm` 自己决定的环境变量，`--print` 必须说出来且顺序对齐；② `--print` 必须是纯的（不查实时 tmux、不写文件、对宿主环境逐字节稳定）——值不知道就打印配方（执行时才求值）。它刻意不说撞名避让退到第几个（要查实时状态）。`--ccm-probe` 首行逐字 `name=ccm`（调用方的能力协商读同一张名片），`capabilities=` 必须覆盖 `src/backend/control/launch_render/ccm_invocation.rs::CLI_REQUIRED_CAPS`（⊇，不是 ==）。
 
@@ -387,9 +388,9 @@ monitor 的每一条起会话路径（新起 · resume · 换号重启 · 分叉
 
 ## 40. 「本地」= 不走 ssh 的远端 —— 一条路径，transport 是它唯一的差异
 
-要求：「我的目的就是把本地当成不走 ssh 的远端。后面都要这么搞。」凡新增「起会话 / 看会话 / 管配置」的能力，先问它能不能只是远端那条路少一跳 ssh；能，就不许另起一套。本机与远端是同一个后端二进制、同一套帧命令，差别只在载体（本机：本人套接字 / 管道；远端：SSH 上的链路）。
+本机当成不走 ssh 的远端：凡新增「起会话 / 看会话 / 管配置」的能力，先问它能不能只是远端那条路少一跳 ssh；能，就不许另起一套。本机与远端是同一个后端二进制、同一套帧命令，差别只在载体（本机：本人套接字 / 管道；远端：SSH 上的链路）。
 
-**功能面也要一致**（「本地的功能要和远程功能一致」）：新能力必须同时落在本机与远端，或者显式登记为天然不对称并写理由。既有缺口逐条登记、按节奏还。天然不对称的：端口转发（本地没有「转发到自己」）· 多地址故障切换（本地没有地址）· 本机那份后端由宿主启动时自己释放、不经部署命令。Windows 本机是唯一的平台例外（没有 tmux：托管终端照常有，tmux 那一形没有，§36）。
+**功能面也要一致**：新能力必须同时落在本机与远端，或者显式登记为天然不对称并写理由。天然不对称的：端口转发（本地没有「转发到自己」）· 多地址故障切换（本地没有地址）· 本机那份后端由宿主启动时自己释放、不经部署命令。Windows 本机是唯一的平台例外（没有 tmux：托管终端照常有，tmux 那一形没有，§36）。
 
 **谁在守**：`parity_ledger`（Tauri 命令逐条：两侧都有，或在白名单里带理由；新增不登记就红）。
 
@@ -427,11 +428,11 @@ PID 死亡判定用 `pidfd` 绑进程实例本身 ⇒ PID 复用在机制上无�
 
 ### 41.4 红线：绝不为了让守卫变绿而删掉唯一信号源
 
-后端与拨号核心的生产段由 clippy 挡（`src/backend/clippy.toml` 的 `disallowed-methods`，deny）：sleep · 带期限的等待 · interval · 掐表 · 造 `Duration` · 带期限的 `poll`，每用一处在那一处就地放行并写理由（今天都是一次性期限，不是节拍）。clippy 看不见的两格（交给 shell 的自带循环的串 · 只在 Windows 编的那一臂）留在 `no_timer_guard.rs`；散文里许诺定时 / 轮询兜底的话也归它（只许变少）。
+后端与拨号核心的生产段由 clippy 挡（`src/backend/clippy.toml` 的 `disallowed-methods`，deny）：sleep · 带期限的等待 · interval · 掐表 · 造 `Duration` · 带期限的 `poll`，每用一处在那一处就地放行并写理由（放行的都是一次性期限，不是节拍）。clippy 看不见的两格（交给 shell 的自带循环的串 · 只在 Windows 编的那一臂）留在 `no_timer_guard.rs`；散文里许诺定时 / 轮询兜底的话也归它（只许变少）。
 
 三条派生纪律：① 后端源码的散文里不逐字引守卫的禁用模式（守卫连注释一起扫，改措辞，不改守卫）；② 删一个周期性信号时，要连依赖那个节拍的 e2e 一起跑；③ 源码扫描型守卫「剥测试段」的剥法必须同时防欠剥与过剥 —— 剥法只有共享 crate `src/common/guard-core` 一份，剥完断言残留 `#[test]` 为 0（`guard_core::assert_no_test_code`），扫描面用字节总量下限 ＋ 文件数与独立遍历相等双判据钉住。验证一条守卫只有一种算数：把违规代码分别放进「应被扫到」与「应被剥掉」的位置，看红绿是否相反。
 
-### 41.6 后端的写盘边界（铁律 I7，2026-07-31 G2 起收窄）
+### 41.6 后端的写盘边界（红线 I7）
 
 **后端不许改动用户既有数据：碰盘只经 `platform/fs/` 交出去的几种句柄，写要拿到句柄，句柄只在该造的那几处造**（`readonly_guard.rs` 头注）：
 
@@ -459,9 +460,9 @@ PID 死亡判定用 `pidfd` 绑进程实例本身 ⇒ PID 复用在机制上无�
 
 ## 42. 协议文档从代码生成，不手抄
 
-逐格那一半（每一帧的字段 · 每一条命令的字段 / 向 / 码 / 档位 · 每一个 CLI 子命令）只有一个家：代码（`wire.rs` 的 serde 类型与它们的 `///` · 入方向命令注册表 · CLI 子命令表），`src/doc/IPC-COMMANDS.md` 由它生成；`src/doc/IPC-PROTOCOL.md` 只写不随命令变的总述。别的文档提到帧命令，名字必须在注册表里。
+逐格那一半（每一帧的字段 · 每一条命令的字段 / 向 / 码 / 档位 · 每一个 CLI 子命令）只有一个家：代码（`cmd-wire` 的线上类型与它们的 `///`，帧在 `src/common/cmd-wire/src/frame.rs` · 入方向命令注册表 · CLI 子命令表），`src/doc/IPC-COMMANDS.md` 由它生成；`src/doc/IPC-PROTOCOL.md` 只写不随命令变的总述。别的文档提到帧命令，名字必须在注册表里。
 
-**为什么不能松动**：手抄再对拍的那几年，照文档写的客户端静默读错过字段名；对拍只能查「名字在」，查不了「说得对」。
+**为什么不能松动**：手抄的一份会和代码分叉，照文档写的客户端就静默读错字段名；对拍只查得出「名字在」，查不出「说得对」。
 
 **谁在守**：`tests/backend/protocol_doc_gen.rs`（重新生成 == 仓里那份）· `doc_claim_registry_tests.rs::every_frame_command_named_in_the_durable_docs_is_registered`（耐久文档里紧跟在「帧命令」「帧」后面的名字都在注册表里）。
 
@@ -538,7 +539,7 @@ webview 拿得到的 Tauri 权限只许是登记过的那一批；webview 里跑
 
 **为什么不能松动**：回环 TCP 口没有权限位，只能靠一把钥匙补，而钥匙文件会被别的实例改写（远端从此一直被拒）；内核给的本人门不靠钥匙，能连上套接字的只有本账号自己的进程。
 
-**谁在守**：`listen_tests.rs::the_resident_switch_is_empty_one_or_refused` · `listen_tests.rs::the_attach_reply_says_how_this_build_stands_against_the_clients` · `listen_on_control_tests.rs::refusal_reasons_are_a_closed_set` · `lib_tests.rs::the_dir_lock_is_exclusive_and_released_on_drop` · `lib_tests.rs::a_peer_with_my_uid_is_ours_and_nobody_means_nobody` · `main_claim_tests.rs::a_late_starter_that_cannot_claim_never_touches_the_log_or_the_socket` · `main_claim_tests.rs::a_sandboxed_start_refuses_the_real_home` · `resident_tests.rs::the_sandbox_refusal_truth_table` · `cross_tests.rs::a_child_never_inherits_the_backend_internal_families` · `local_backend_host_tests.rs::the_host_never_writes_the_resident_dir_and_carries_no_key` · `local_backend_host_tests.rs::a_stranger_on_our_port_is_refused_out_loud_not_silently_reused` · `feed_tests.rs::a_relay_that_stays_absent_is_tried_a_capped_number_of_times` · e2e `local-backend-supervise.sh`。
+**谁在守**：`listen_tests.rs::the_resident_switch_is_empty_one_or_refused` · `listen_tests.rs::the_attach_reply_says_how_this_build_stands_against_the_clients` · `listen_on_control_tests.rs::refusal_reasons_are_a_closed_set` · `lib_tests.rs::the_dir_lock_is_exclusive_and_released_on_drop` · `lib_tests.rs::a_peer_with_my_uid_is_ours_and_nobody_means_nobody` · `main_claim_tests.rs::a_late_starter_that_cannot_claim_never_touches_the_log_or_the_socket` · `main_claim_tests.rs::a_sandboxed_start_refuses_the_real_home` · `resident_tests.rs::the_sandbox_refusal_truth_table` · `cross_tests.rs::a_child_never_inherits_the_backend_internal_families` · `local_backend_host_tests.rs::the_host_never_writes_the_resident_dir_and_carries_no_key` · `local_backend_host_tests.rs::a_stranger_on_our_port_is_refused_out_loud_not_silently_reused` · `feed_tests.rs::a_relay_still_absent_after_ensure_is_one_transient_failure` · e2e `local-backend-supervise.sh`。
 
 #### 48.1a 中转口的钥匙
 
@@ -560,7 +561,7 @@ webview 拿得到的 Tauri 权限只许是登记过的那一批；webview 里跑
 
 **仓里每一处起 tmux 的地方都说清连哪台 server**：测试与脚本显式 `-S <私有 socket>` / `-L <私有名>`（或挂强插 `-L` 的共享原语 `tests/e2e/tmux-shim.sh`）并摘掉继承来的 `$TMUX` 与 `TMUX_PANE`（`env -u TMUX -u TMUX_PANE` · `. sandbox-env.sh`）；产品代码只经 `platform::child::Child` 起 tmux（测试构建里那一道 `tests/backend/platform/child_tmux_fence.rs` 摘掉 `$TMUX` / `TMUX_PANE` 并落到本进程自己的空目录）。起真后端二进制的测试必须经唯一的口拿到私有 tmux（shim 放进后端 `PATH` 最前），拿不到就炸、不许降级裸跑；进程内走到 `identity_tag::tag` 的测试必须注入假 tmux，没注入就在入口炸。只靠 `TMUX_TMPDIR` 不算隔离（`$TMUX` 一有值就压过它）。
 
-**为什么不能松动**：后端一上来就往连得到的 tmux server 装全局 hook；不隔离就是去改用户真 tmux。靠 `TMUX_TMPDIR` 的隔离被 `$TMUX` 压过、一句 `kill-server` 打掉开发机上正在用的 server，这事发生过不止一次（最近一次 10-09）。
+**为什么不能松动**：后端一上来就往连得到的 tmux server 装全局 hook；不隔离就是去改用户真 tmux。靠 `TMUX_TMPDIR` 的隔离被 `$TMUX` 压过、一句 `kill-server` 就打掉开发机上正在用的 server。
 
 **谁在守**：`e2e_gate_registry_tests.rs::every_tmux_call_names_its_server_and_drops_the_inherited_tmux`（`src/` ＋ `tests/` 全部脚本与代码）· `e2e_gate_registry_tests.rs::no_e2e_suite_isolates_with_tmux_tmpdir` · `e2e_gate_registry_tests.rs::the_tmux_shim_primitive_has_exactly_one_home` · `local_backend_host_tests.rs::every_test_that_starts_the_real_backend_demands_a_private_tmux` · `local_backend_host_tests.rs::the_one_shim_gate_really_fails_closed` · `local_backend_tests.rs::every_real_backend_e2e_demands_a_private_tmux_dir` · `identity_tag_tests.rs::an_in_process_tag_without_a_fake_tmux_blows_up`。程序名在变量里的调用（`"$REALTMUX"` · `Command::new(&tmux)`）判据认不出。
 

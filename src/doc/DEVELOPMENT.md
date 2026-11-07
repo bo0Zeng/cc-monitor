@@ -82,7 +82,7 @@ cargo clippy --all-targets
 - `npm run gate`（＝ `bash tests/scripts/gate.sh`）：全量门禁，格的唯一名单，逐格跑 cargo（三处）· npm · 各类判据 · e2e，末尾只吐一行 `GATE: OK` / `GATE: FAIL …`。它故意不提交任何东西。
   末尾另印一行墙钟（整趟合计与最慢的几格）。`GATE_ONLY="<格> …"` 只跑点名的几格（e2e 可写组名 `e2e`），裁决行是 `GATE: PARTIAL`；CI 的 Linux job 就是这么调它的。
 - 平时不直接敲 `npm run gate`，也不拿它当调试回路；写的时候只跑改到的那几块测试，之后走这几个入口（都在 `tests/scripts/`，跑法见各自头注与 [`tests/scripts/README.md`](../../tests/scripts/README.md)）：
-  - 交门禁之前：`bash tests/scripts/quick-check.sh`（不拿锁；两棵 Rust 树的全部单测 ＋ 整套 vitest ＋ 后端那棵改到的包的 clippy，改到手机读的东西时加跑手机的 ktlint · detekt · 单测；跑哪几条见它的头注）。
+  - 交门禁之前：`bash tests/scripts/quick-check.sh`（不拿门禁锁；跑哪几段、按什么挑见上面那份 README）。
   - 合并用的工作树推送之前：`bash tests/scripts/gate-affected.sh --trust-ci`（按改动挑格，`--dry-run` 只印计划），绿了 `bash tests/scripts/push-candidate.sh <合并工作树名>`（先推候选分支 `next`，CI 全绿才快进 `main`）。
   - 发版：照 [RELEASING.md](RELEASING.md) 走，步骤只写在那里。
   - 重活（编译 · 测试 · 门禁）经 `bash tests/scripts/heavy.sh <命令…>`：单独一个封顶内存的 systemd scope ＋ 槽位排队；没有 `systemd-run --user` 的机器上直接跑。
@@ -169,7 +169,7 @@ Claude Code 给它 shell 里起的子进程注入 `CLAUDECODE=1` / `CLAUDE_CODE_
 
 ### ↗ 切不到终端窗口
 
-- Windows：monitor 自己挂着控制台（从一个终端里 `cargo run` 起的 dev 构建）时借不到别人的控制台，↗ 只剩按进程找窗口那一档；从开始菜单 / 资源管理器起就好。
+- Windows：↗ 沿会话的进程链逐级借控制台、问它显示在哪个窗口（机制见 [ARCHITECTURE.md § 5「按控制台认窗口」](ARCHITECTURE.md#按控制台认窗口windows)）。切到了窗口、没切到标签页时，↗ 浮层照实说是哪一种：标签名不随程序标题变化（手动改过名 · 设了「禁止更改标题」）· 读不到标签页 · 终端提权 · 借不到控制台。
 - Linux：本机桌面上开的 shell 要装了 bash / zsh 接入块，`~/.cc-monitor/ps-await/<PID>.tty` 落地后 monitor 认窗口；dev 终端里找 `bind: registered shell_pid=`。
   机制见 [IPC-PROTOCOL.md § 切到终端](IPC-PROTOCOL.md)。
 

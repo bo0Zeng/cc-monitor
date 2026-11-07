@@ -1,7 +1,7 @@
 package com.ccmonitor.mobile.ui.host
 
-import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -39,7 +39,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -59,6 +58,7 @@ import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.feedback.ErrorLine
 import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
 import com.ccmonitor.mobile.core.ui.feedback.clearOfNotice
+import com.ccmonitor.mobile.core.ui.icon.BackButton
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.icon.PhIconButton
@@ -68,11 +68,17 @@ import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.FirstRunAct
+import com.ccmonitor.mobile.core.wire.gen.FirstRunGo
+import com.ccmonitor.mobile.core.wire.gen.FirstRunStep
+import com.ccmonitor.mobile.core.wire.gen.FirstRunStepId
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.MachineCheck
 import com.ccmonitor.mobile.core.wire.gen.MachineDot
 import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.link.HostBackends
+import com.ccmonitor.mobile.ssh.HostLogin
+import com.ccmonitor.mobile.ssh.login
 import com.ccmonitor.mobile.ui.common.BusyLine
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
 import com.ccmonitor.mobile.ui.common.HostLink
@@ -108,6 +114,7 @@ fun HostListScreen(
     onIdentities: () -> Unit,
     onFiles: (String) -> Unit = {},
     onEdit: (String) -> Unit = {},
+    onBack: (() -> Unit)? = null,
 ) {
     val vm = koinViewModel<HostViewModel>()
     val hosts by vm.hosts.collectAsState()
@@ -123,11 +130,9 @@ fun HostListScreen(
     // 垫在最外层 Box 上，FAB 的 `BottomEnd` 也跟着让开。
     Box(Modifier.fillMaxSize().settingsGroupScreenInsets()) {
         Column(Modifier.fillMaxSize()) {
-            HostListHeader(vm, onIdentities)
+            HostListHeader(vm, onIdentities, onBack)
             if (hosts.isEmpty()) {
-                Box(Modifier.fillMaxSize(), Alignment.Center) {
-                    Text(copyText("mobHosts.list.empty"), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                Box(Modifier.fillMaxSize().padding(24.dp), Alignment.Center) { StartCard(zeroHostStart(), onAddHost) }
             } else {
                 LazyColumn(Modifier.fillMaxSize()) {
                     groups.forEach { (group, groupHosts) ->
@@ -176,18 +181,59 @@ fun HostListScreen(
     }
 }
 
-/** 列表头部：标题与动作行。 */
+/**
+ * 零台时那一屏的「开始用」：照桌面 `first-run` 那一形（`FirstRunStep`），手机只一步「加一台机器」。
+ * 机器表住这部手机、手上就知道是零台，不为这一步另问谁。
+ */
+internal fun zeroHostStart(): List<FirstRunStep> =
+    listOf(
+        FirstRunStep(
+            id = FirstRunStepId.REMOTE,
+            done = false,
+            name = copyText("beFirstRun.remote.name"),
+            hint = copyText("beFirstRun.phone.hint"),
+            act = FirstRunAct(copyText("mobHosts.fab.aria"), FirstRunGo.ADD_MACHINE),
+        ),
+    )
+
+/** 「开始用」卡：标题 ＋ 一步一行（圈 · 名字 · 一句 · 按钮）；字都是那一步写好的，按钮去处只有加机器那一处。 */
+@Composable
+private fun StartCard(
+    steps: List<FirstRunStep>,
+    onAddHost: () -> Unit,
+) {
+    val tokens = LocalAppTokens.current
+    Column(
+        Modifier.fillMaxWidth().background(tokens.card, RoundedCornerShape(tokens.radius.l)).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(copyText("firstRun.head.title"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.align(Alignment.CenterHorizontally))
+        steps.forEach { st ->
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                PhIcon(if (st.done) Ph.Check else Ph.Circle, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(Modifier.weight(1f)) {
+                    Text(st.name, style = MaterialTheme.typography.bodyLarge)
+                    Text(st.hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (!st.done && st.act.go == FirstRunGo.ADD_MACHINE) Button(onClick = onAddHost) { Text(st.act.label) }
+            }
+        }
+    }
+}
+
+/** 列表头部：返回（有上一屏才有）· 标题 · 动作行。 */
 @Composable
 private fun HostListHeader(
     vm: HostViewModel,
     onIdentities: () -> Unit,
+    onBack: (() -> Unit)?,
 ) {
     Row(
-        Modifier.fillMaxWidth().padding(16.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        Modifier.fillMaxWidth().heightIn(min = Touch.topBar).padding(start = if (onBack == null) 16.dp else 4.dp, end = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(HOSTS_SCREEN_TITLE, style = MaterialTheme.typography.titleMedium)
+        onBack?.let { BackButton(it) }
+        Text(HOSTS_SCREEN_TITLE, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
         HostListActions(vm, onIdentities)
     }
 }
@@ -195,7 +241,7 @@ private fun HostListHeader(
 /** 导入按钮与对话框，状态自管。 */
 @Composable
 private fun ImportSshConfigButton(vm: HostViewModel) {
-    val context = LocalContext.current
+    val snackbar = LocalAppSnackbar.current
     val scope = rememberCoroutineScope()
     var show by remember { mutableStateOf(false) }
     PhIconButton(Ph.UploadSimple, copyText("mobIdentity.import.ok"), onClick = { show = true }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -206,7 +252,7 @@ private fun ImportSshConfigButton(vm: HostViewModel) {
                 scope.launch {
                     val n = vm.importSshConfig(text)
                     val msg = if (n > 0) copyText("mobHosts.import.added", "n" to n) else copyText("mobHosts.import.none")
-                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                    snackbar.show(msg)
                     show = false
                 }
             },
@@ -236,7 +282,7 @@ private fun ImportSshConfigDialog(
                     value = text,
                     onValueChange = { text = it },
                     modifier = Modifier.fillMaxWidth().heightIn(min = 140.dp, max = 300.dp).padding(top = 8.dp),
-                    placeholder = { Text("Host myserver\n  HostName 1.2.3.4\n  Port 22\n  User pi") },
+                    placeholder = { Text(copyText("mobHosts.import.sample")) },
                 )
             }
         },
@@ -302,27 +348,16 @@ private fun HostRow(
             StatusDot(look?.dot, look?.takeIf { it.dot != null }?.let(::hostDotLabel))
             Column(Modifier.weight(1f)) {
                 Text(host.label, style = MaterialTheme.typography.titleSmall)
-                // 主地址；有额外地址时标出数量；成品有那个词（连接中 · 要更新 · 离线 …）⇒ 后面跟着它，颜色随点
-                val extraCount = host.addresses.size
-                Row {
-                    Text(
-                        "${host.username}@${host.host}:${host.port}" + if (extraCount > 0) "  +$extraCount" else "",
-                        style = monoSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false),
-                    )
-                    look?.word?.let { w ->
-                        val tokens = LocalAppTokens.current
-                        val ink =
-                            when (look.dot) {
-                                MachineDot.FAILED -> tokens.errorText
-                                MachineDot.WARN -> tokens.warn
-                                else -> MaterialTheme.colorScheme.onSurfaceVariant
-                            }
-                        Text(copyText("kit.text.sep") + w, style = MaterialTheme.typography.bodySmall, color = ink)
-                    }
+                // 第二行只照那台状态成品的那个词（连接中 · 要更新 · 离线 …），颜色随点；没有 ⇒ 不出。地址在编辑页里。
+                look?.word?.let { w ->
+                    val tokens = LocalAppTokens.current
+                    val ink =
+                        when (look.dot) {
+                            MachineDot.FAILED -> tokens.errorText
+                            MachineDot.WARN -> tokens.warn
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                    Text(w, style = MaterialTheme.typography.bodySmall, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
             PhIconButton(Ph.DotsThree, copyText("mobHosts.row.more", "label" to host.label), onClick = { showMenu = true }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -377,7 +412,9 @@ fun HostEditorScreen(
     var port by remember { mutableStateOf("22") }
     var user by remember { mutableStateOf("") }
     var authRef by remember { mutableStateOf<String?>(null) }
-    var authIsPassword by remember { mutableStateOf(false) } // 认证方式：钥匙 / 密码
+    val fresh = remember { hostEditStart(null) }
+    var authIsPassword by remember { mutableStateOf(fresh.authIsPassword) } // 认证方式：密码 / 钥匙
+    var moreOpen by remember { mutableStateOf(fresh.moreOpen) } // 「更多设置」展没展开
     var password by remember { mutableStateOf("") } // 明文密码，保存时加密
     var addressText by remember { mutableStateOf("") }
     var workingDir by remember { mutableStateOf("") }
@@ -400,7 +437,9 @@ fun HostEditorScreen(
                 port = h.port.toString()
                 user = h.username
                 authRef = h.authRef
-                authIsPassword = h.passwordEnc != null
+                val start = hostEditStart(h)
+                authIsPassword = start.authIsPassword
+                moreOpen = start.moreOpen
                 if (h.passwordEnc != null) password = vm.hostPassword(h) ?: "" // 回显解密后的密码
                 addressText = h.addresses.joinToString("\n")
                 workingDir = h.defaultWorkingDir ?: ""
@@ -454,70 +493,79 @@ fun HostEditorScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(if (hostId == null) copyText("mobHosts.fab.aria") else copyText("mobHostEdit.page.editTitle"), style = MaterialTheme.typography.titleLarge)
-        OutlinedTextField(label, { label = it }, label = { Text(copyText("machineForm.field.name")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(host, { host = it }, label = { Text(copyText("machineForm.field.host")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(port, { v -> port = v.filter { it.isDigit() } }, label = { Text(copyText("machineForm.field.port")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(user, { user = it }, label = { Text(copyText("machineForm.field.user")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-
-        // 多地址：每行一个 host / host:port / [IPv6]:port，连接时与主地址并发竞速，先连通者胜。
+        // 上面四格：地址 · 用户 · 密码 · 名称（空 ⇒ 用地址）；别的都在「更多设置」里。
         OutlinedTextField(
-            addressText,
-            { addressText = it },
-            label = { Text(copyText("machineForm.field.addresses")) },
-            placeholder = { Text("192.0.2.20\nwan.example.com:2222") },
-            minLines = 2,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        if (addressText.isNotBlank()) {
-            Text(
-                copyText("mobHostEdit.field.extraPreview", "n" to previewEps.size, "addresses" to previewEps.joinToString(", ") { "${it.host}:${it.port}" }),
-                style = monoSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-
-        OutlinedTextField(
-            workingDir,
-            { workingDir = it },
-            label = { Text(copyText("mobHostEdit.field.workDir")) },
-            placeholder = { Text("/home/pi") },
+            host,
+            { host = it },
+            label = { Text(copyText("machineForm.field.host")) },
+            placeholder = { Text(copyText("mobHostEdit.field.hostHint")) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
-        OutlinedTextField(group, { group = it }, label = { Text(copyText("mobHostEdit.field.group")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        SwitchRow(copyText("mobHostEdit.switch.reconnect"), autoReconnect) { autoReconnect = it }
-
-        // 认证方式：钥匙或密码，二选一。
-        Text(copyText("mobHostEdit.auth.title"), style = MaterialTheme.typography.labelMedium)
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-            ChoiceRow(copyText("mobIdentity.page.title"), !authIsPassword) { authIsPassword = false }
-            ChoiceRow(copyText("mobHostEdit.auth.password"), authIsPassword) { authIsPassword = true }
-        }
+        OutlinedTextField(user, { user = it }, label = { Text(copyText("machineForm.field.user")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
         if (authIsPassword) {
             OutlinedTextField(
                 value = password,
                 onValueChange = { password = it },
                 label = { Text(copyText("mobHostEdit.auth.password")) },
+                supportingText = { Text(copyText("mobHostEdit.auth.passwordHint")) },
                 visualTransformation = PasswordVisualTransformation(),
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
-            Text(
-                copyText("mobHostEdit.auth.passwordHint"),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        } else {
-            identities.forEach { id ->
-                ChoiceRow(id.label, authRef == id.id, Modifier.fillMaxWidth()) { authRef = id.id }
-            }
         }
+        OutlinedTextField(label, { label = it }, label = { Text(copyText("machineForm.field.name")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
 
-        ProxyJumpPicker(
-            candidates = others,
-            selected = jump,
-            onSelect = { jump = it },
-        )
+        MoreToggle(open = moreOpen) { moreOpen = !moreOpen }
+        if (moreOpen) {
+            OutlinedTextField(port, { v -> port = v.filter { it.isDigit() } }, label = { Text(copyText("machineForm.field.port")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+
+            // 多地址：每行一个 host / host:port / [IPv6]:port，连接时与主地址并发竞速，先连通者胜。
+            OutlinedTextField(
+                addressText,
+                { addressText = it },
+                label = { Text(copyText("machineForm.field.addresses")) },
+                placeholder = { Text(copyText("mobHostEdit.field.addressesHint")) },
+                minLines = 2,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (addressText.isNotBlank()) {
+                Text(
+                    copyText("mobHostEdit.field.extraPreview", "n" to previewEps.size, "addresses" to previewEps.joinToString(", ") { "${it.host}:${it.port}" }),
+                    style = monoSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            OutlinedTextField(
+                workingDir,
+                { workingDir = it },
+                label = { Text(copyText("mobHostEdit.field.workDir")) },
+                placeholder = { Text(copyText("mobHostEdit.field.workDirHint")) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(group, { group = it }, label = { Text(copyText("mobHostEdit.field.group")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            SwitchRow(copyText("mobHostEdit.switch.reconnect"), autoReconnect) { autoReconnect = it }
+
+            // 认证方式：密码（上面那一格）或已有的一把钥匙，二选一。
+            Text(copyText("mobHostEdit.auth.title"), style = MaterialTheme.typography.labelMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                ChoiceRow(copyText("mobHostEdit.auth.password"), authIsPassword) { authIsPassword = true }
+                ChoiceRow(copyText("mobIdentity.page.title"), !authIsPassword) { authIsPassword = false }
+            }
+            if (!authIsPassword) {
+                identities.forEach { id ->
+                    ChoiceRow(id.label, authRef == id.id, Modifier.fillMaxWidth()) { authRef = id.id }
+                }
+            }
+
+            ProxyJumpPicker(
+                candidates = others,
+                selected = jump,
+                onSelect = { jump = it },
+            )
+        }
 
         // 机器表那一道没过（重名 · 端口 · `-` 打头 …）：说那一句、不许存。地址 · 用户还空着时只灰着存按钮，不先报错。
         val fault = check.fault?.takeIf { host.isNotBlank() && user.isNotBlank() }
@@ -540,6 +588,47 @@ fun HostEditorScreen(
                 enabled = host.isNotBlank() && user.isNotBlank() && (!authIsPassword || password.isNotBlank()) && fault == null,
             ) { Text(copyText("rsFilewinShell.editor.save")) }
         }
+    }
+}
+
+/** 编辑页起手那两样：认证缺省是不是密码 · 「更多设置」展不展开。 */
+internal data class HostEditStart(
+    val authIsPassword: Boolean,
+    val moreOpen: Boolean,
+)
+
+/**
+ * 编辑页起手（[host] 为空 ⇒ 新建：密码登录、收着）。编辑一台：照它实际登的那一种（[login]）；
+ * 更多设置里有不是缺省值的格 ⇒ 展开，免得那一格的值藏在折叠里。
+ */
+internal fun hostEditStart(host: Host?): HostEditStart {
+    if (host == null) return HostEditStart(authIsPassword = true, moreOpen = false)
+    val password = host.login() == HostLogin.Password
+    val fresh = Host(id = "", label = "", host = "", username = "")
+    val more =
+        host.port != fresh.port ||
+            host.addresses.isNotEmpty() ||
+            host.defaultWorkingDir != null ||
+            host.groupId != null ||
+            host.jump != fresh.jump ||
+            host.autoReconnect != fresh.autoReconnect ||
+            !password
+    return HostEditStart(authIsPassword = password, moreOpen = more)
+}
+
+/** 「更多设置」那一行：整行可点，▸ / ▾ 跟着展没展开。 */
+@Composable
+private fun MoreToggle(
+    open: Boolean,
+    onToggle: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = Touch.rowSingle).clickable(role = Role.Button, onClick = onToggle),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        PhIcon(if (open) Ph.CaretDown else Ph.CaretRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(copyText("mobHostEdit.more.title"), style = MaterialTheme.typography.labelLarge)
     }
 }
 

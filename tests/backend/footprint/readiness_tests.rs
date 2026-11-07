@@ -1,40 +1,56 @@
-//! 首次运行「开始用 · 剩 N 步」那份数：三步各自的事实 ⇒ 打没打勾；剩几步 ＝ 没打勾的几步。
+//! 首次运行「开始用」那份成品：两步各自照事实打勾，每步的名字 · 那一句 · 按钮的字与去处都由这里写好。
 
 use super::*;
+use copy_core::copy_text;
 use serde_json::json;
 
 /// 成品序列化回 JSON 比（同帧面那一跳）。
-fn product(terminal: bool, named: bool, remotes: u64, skipped: bool) -> serde_json::Value {
-    serde_json::to_value(super::product(terminal, named, remotes, skipped)).unwrap()
+fn product(terminal: bool, remotes: u64, skipped: bool) -> serde_json::Value {
+    serde_json::to_value(super::product(terminal, remotes, skipped)).unwrap()
 }
 fn remotes_arg(a: &serde_json::Value) -> Result<u64, crate::common::said::Said> {
     crate::wire::typed::take::<FirstRunReq>(a).map(|r| r.remotes)
 }
 
 #[test]
-fn 三步照事实打勾_哪步必做由这里说_剩几步只数必做的() {
+fn 两步照事实打勾_字与去处由这里写好() {
     assert_eq!(
-        product(false, false, 0, false),
+        product(false, 0, false),
         json!({"steps": [
-            {"id": "terminal", "done": false, "required": true},
-            {"id": "named", "done": false, "required": false},
-            {"id": "remote", "done": false, "required": false},
-        ], "left": 1, "skipped": false})
+            {"id": "terminal", "done": false,
+             "name": copy_text("beFirstRun.terminal.name", &[]),
+             "hint": copy_text("beFirstRun.terminal.hint", &[]),
+             "act": {"label": copy_text("beFirstRun.terminal.act", &[]), "go": "aliases"}},
+            {"id": "remote", "done": false,
+             "name": copy_text("beFirstRun.remote.name", &[]),
+             "hint": copy_text("beFirstRun.remote.hint", &[]),
+             "act": {"label": copy_text("mobHosts.fab.aria", &[]), "go": "add_machine"}},
+        ], "skipped": false})
+    );
+    let done = product(true, 1, false);
+    assert_eq!(done["steps"][0]["done"], json!(true));
+    assert_eq!(
+        done["steps"][1]["done"],
+        json!(true),
+        "机器表里有一台 ⇒ 那一步打勾"
     );
     assert_eq!(
-        product(true, false, 0, false)["left"],
-        json!(0),
-        "可选的没做不算剩下的（状态栏不为它们一直催）"
-    );
-    assert_eq!(
-        product(true, true, 1, false)["steps"][2],
-        json!({"id": "remote", "done": true, "required": false})
-    );
-    assert_eq!(
-        product(false, false, 0, true)["skipped"],
+        product(false, 0, true)["skipped"],
         json!(true),
         "点过「跳过」原样带回"
     );
+}
+
+#[test]
+fn 没有给登录命名那一步() {
+    let p = product(false, 0, false);
+    let ids: Vec<&str> = p["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, ["terminal", "remote"]);
 }
 
 #[test]

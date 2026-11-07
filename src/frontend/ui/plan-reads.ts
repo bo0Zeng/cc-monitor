@@ -12,6 +12,7 @@ import type { PlanAckReply } from "./generated/PlanAckReply";
 import type { PlanArchived } from "./generated/PlanArchived";
 import type { PlanAsk } from "./generated/PlanAsk";
 import type { PlanReturnReply } from "./generated/PlanReturnReply";
+import type { PlanAudit } from "./generated/PlanAudit";
 import type { PlanBlock } from "./generated/PlanBlock";
 import type { PlanCell } from "./generated/PlanCell";
 import type { PlanCheck } from "./generated/PlanCheck";
@@ -54,6 +55,7 @@ export type {
   PlanAsk,
   PlanReturnReply,
   PlanArchived,
+  PlanAudit,
   PlanBlock,
   PlanCell,
   PlanCheck,

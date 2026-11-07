@@ -28,9 +28,6 @@ mod session_batch_tests;
 mod session_open_new_tests;
 #[path = "../control/session_open_tests.rs"]
 mod session_open_tests;
-// 换号重启（报到那一本 · 等压缩摘要都是观测面的真件）。
-#[path = "../control/session_restart_tests.rs"]
-mod session_restart_tests;
 // 终端实时预览（订阅客户端不改观测面读的 tmux 快照）。
 #[path = "../control/terminal_follow_tests.rs"]
 mod terminal_follow_tests;

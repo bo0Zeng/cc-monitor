@@ -4,11 +4,7 @@
  * 一个窗口（`5h` / `7d`）的事实：在计时吗 · 用了多少（0–100）· 几点重置 · 用速（%/分，没根据 ⇒ 缺）。
  * 一个语义位有几个窗口（按模型分的 7 天额度）⇒ 取用得最多的那个。
  */
-export type WinFact = { open: boolean, used: number, resets?: number, 
-/**
- * `resets` 写给人看的样子（按看的那一台的时区）。
- */
-resetsText?: string, rate?: number, 
+export type WinFact = { open: boolean, used: number, resets?: number, rate?: number, 
 /**
  * 这一窗「1% ≈ 多少用量」（折合输入 token；同额度账那一格）：量不到 ⇒ 缺。
  */

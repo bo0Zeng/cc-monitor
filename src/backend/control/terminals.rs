@@ -492,14 +492,8 @@ fn parse_line(raw: &str, style: &mut Style) -> (String, Vec<Span>) {
 }
 
 /// `terminal-preview` 的成品构造器（纯）：抓回来的原文 ＋ 尺寸光标 ⇒ 回话。
-/// `captured_text` ＝ `captured_at` 在看的那一台钟上的（请求的 `tz`） `HH:MM:SS`（调用方按这台写好；界面照抄、不换算）。
-pub fn preview_reply(
-    view: &View,
-    color: bool,
-    capped: bool,
-    captured_at: u64,
-    captured_text: &str,
-) -> Preview {
+/// `captured_text` ＝ 抓屏时刻在看的那一台钟上的（请求的 `tz`） `HH:MM:SS`（调用方按这台写好；界面照抄、不换算）。
+pub fn preview_reply(view: &View, color: bool, capped: bool, captured_text: &str) -> Preview {
     let mut style = Style::default();
     let mut plain = Vec::new();
     let lines: Vec<ScreenLine> = split_lines(&view.text)
@@ -526,7 +520,6 @@ pub fn preview_reply(
         lines,
         scrollback_lines: back,
         capped,
-        captured_at,
         captured_at_text: captured_text.to_string(),
     }
 }
@@ -557,7 +550,6 @@ pub fn preview_on(
             &view,
             color,
             asked > u64::from(MAX_SCROLLBACK),
-            at,
             &crate::common::time::secs_hms(i64::try_from(at).unwrap_or(i64::MAX), tz),
         ));
     }
@@ -580,7 +572,6 @@ pub fn preview_on(
         &view,
         color,
         asked > u64::from(MAX_SCROLLBACK),
-        at,
         &crate::common::time::secs_hms(i64::try_from(at).unwrap_or(i64::MAX), tz),
     ))
 }
@@ -687,7 +678,6 @@ pub(crate) fn screen_view_on(
         &view,
         true,
         false,
-        at,
         &crate::common::time::secs_hms(i64::try_from(at).unwrap_or(i64::MAX), tz),
     ))
 }
@@ -993,7 +983,6 @@ pub(crate) fn hosted_screen_at(
         &view,
         true,
         false,
-        at,
         &crate::common::time::secs_hms(i64::try_from(at).unwrap_or(i64::MAX), tz),
     ))
 }
@@ -1012,14 +1001,12 @@ fn view_of_captured(got: crate::host::managed::client::Captured) -> Result<View,
 }
 
 /// 投递那一句进托管终端（[`Via::Queued`]）：经托管口 `say`，不持有输入、不换持有者。
-/// 写进去了 ⇒ 送到；持有者输入行里有没交的字 ⇒ `waiting`（投递照排着，别和人打到一半的字搅在一起）；
-/// 托管口不在 · 终端结束了 ⇒ 已经没了（投递照它恢复再送）；是不认 `say` 的旧托管进程（`welcome` 报的 proto 低）⇒ `host_outdated`（那个终端要重开）；
+/// 写进去了 ⇒ 送到（不看持有者输入行里有没有字）；托管口不在 · 终端结束了 ⇒ 已经没了（投递照它恢复再送）；是不认 `say` 的旧托管进程（`welcome` 报的 proto 低）⇒ `host_outdated`（那个终端要重开）；
 /// 连上之后没等到回音 ⇒ 不知道送没送到。
 pub(crate) fn say_managed_at(sock: &std::path::Path, input: &Input, pastes: &[String]) -> Sent {
     use std::io::ErrorKind as K;
     match crate::host::managed::client::say(sock, &managed_bytes(input, pastes)) {
-        Ok(true) => input_reply(SentResult::Delivered, None, None),
-        Ok(false) => refused(Refused::Waiting),
+        Ok(()) => input_reply(SentResult::Delivered, None, None),
         Err(e) if e.kind() == K::Unsupported => refused(Refused::HostOutdated),
         Err(e) if matches!(e.kind(), K::WouldBlock | K::TimedOut) => {
             input_reply(SentResult::Unsure, None, None)

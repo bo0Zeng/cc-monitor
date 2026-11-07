@@ -9,7 +9,6 @@ declare const classes: {
   readonly acctChipValue: string;
   readonly acctChipWindow: string;
   readonly acctFoot: string;
-  readonly acctFootLabel: string;
   readonly acctHomeAvatar: string;
   readonly acctHover: string;
   readonly acctHoverCell: string;
@@ -19,8 +18,6 @@ declare const classes: {
   readonly acctHoverName: string;
   readonly acctHoverTag: string;
   readonly acctPanel: string;
-  readonly acctPick: string;
-  readonly acctPickName: string;
   readonly acctSpacer: string;
 };
 export default classes;

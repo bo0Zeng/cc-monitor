@@ -13,8 +13,11 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,6 +35,8 @@ import com.ccmonitor.mobile.core.ui.feedback.Notice
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
+import com.ccmonitor.mobile.ui.agents.AgentsTopBar
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 /** 管理窗里的一组：小标题与这一组的几行。 */
@@ -62,10 +67,55 @@ internal fun terminalPlan(rows: List<TerminalsList.Row>): List<TermGroup> {
 }
 
 /**
- * 终端管理弹窗：列出、附着、结束、新建，不用手输命令。
- * 列 · 结束 · 新建都是那台核心的命令（[terminals] 带着它们，见 `TerminalOps`）；附着要进终端，经 [onAttach] 交给调用方
- * （新 tab 敲那台渲出的那一行）。状态与 scope 都在本函数，子块只收参数。
- * 名单照那台列（tmux 与托管两种都在），照 [terminalPlan] 分两组；新建那一排只交名字，建在托管还是 tmux 里由那台定。
+ * 一台的终端名单这一份状态（读到的 · 在读 · 读不出那一句 · 新建框里的字 · 待确认结束的那一行）：弹窗与整页都经 [rememberTerminalRoster] 拿它，
+ * 名单只在这里读、只在这里结束。列 · 结束 · 新建都是那台核心的命令（[terminals] 带着它们，见 `TerminalOps`）。
+ */
+@Stable
+class TerminalRoster internal constructor(
+    val terminals: TerminalOps,
+    val scope: CoroutineScope,
+) {
+    var sessions by mutableStateOf<List<TerminalsList.Row>>(emptyList())
+        internal set
+    var loading by mutableStateOf(true)
+        internal set
+
+    /** 名单读不出时那台那一句（不画成「无终端」，［刷新］再问）；读到了 ⇒ null。 */
+    var failed by mutableStateOf<String?>(null)
+        internal set
+    var newName by mutableStateOf("")
+
+    /** 待确认要结束的那一行（null = 没有）。 */
+    var pendingKill by mutableStateOf<TerminalsList.Row?>(null)
+    internal var tick by mutableStateOf(0)
+
+    fun refresh() {
+        tick++
+    }
+}
+
+/** [terminals] 那台的名单状态；进来读一次，[TerminalRoster.refresh] 再读。 */
+@Composable
+fun rememberTerminalRoster(terminals: TerminalOps): TerminalRoster {
+    val scope = rememberCoroutineScope()
+    val roster = remember(terminals) { TerminalRoster(terminals, scope) }
+    LaunchedEffect(roster, roster.tick) {
+        roster.loading = true
+        terminals.list().fold(
+            onSuccess = {
+                roster.sessions = it
+                roster.failed = null
+            },
+            onFailure = { roster.failed = it.message.orEmpty() },
+        )
+        roster.loading = false
+    }
+    return roster
+}
+
+/**
+ * 终端管理弹窗（终端页 ⋯ 里开）：列出、附着、结束、新建，不用手输命令。附着要进终端，经 [onAttach] 交给调用方
+ * （新 tab 敲那台渲出的那一行）。名单照那台列（tmux 与托管两种都在），照 [terminalPlan] 分两组；新建那一排只交名字，建在托管还是 tmux 里由那台定。
  */
 @Composable
 fun TerminalManagerDialog(
@@ -73,110 +123,89 @@ fun TerminalManagerDialog(
     onAttach: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val scope = rememberCoroutineScope()
-    var sessions by remember { mutableStateOf<List<TerminalsList.Row>>(emptyList()) }
-    var newName by remember { mutableStateOf("") }
-    var loading by remember { mutableStateOf(true) }
-    // 名单读不出时那台那一句（不画成「无终端」，［刷新］再问）；读到了 ⇒ null。
-    var failed by remember { mutableStateOf<String?>(null) }
-    var refreshTick by remember { mutableStateOf(0) }
-    // 待确认要结束的会话（null = 没有）
-    var pendingKill by remember { mutableStateOf<TerminalsList.Row?>(null) }
-    val snackbar = LocalAppSnackbar.current // 结束会话后的结果反馈
-
-    androidx.compose.runtime.LaunchedEffect(refreshTick) {
-        loading = true
-        terminals.list().fold(
-            onSuccess = {
-                sessions = it
-                failed = null
-            },
-            onFailure = { failed = it.message.orEmpty() },
-        )
-        loading = false
-    }
-
-    fun refresh() {
-        refreshTick++
-    }
-
+    val roster = rememberTerminalRoster(terminals)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(copyText("mobDrawer.item.terminal")) },
-        text = {
-            TerminalManagerBody(
-                terminals = terminals,
-                loading = loading,
-                failed = failed,
-                sessions = sessions,
-                newName = newName,
-                onNameChange = { newName = it },
-                onAttach = onAttach,
-                onKillRequested = { pendingKill = it },
-                onCreated = {
-                    newName = ""
-                    refresh()
-                },
-                onFailed = { snackbar.show(Notice(it)) },
-                scope = scope,
-            )
-        },
-        confirmButton = { SecondaryButton(onClick = { refresh() }) { Text(copyText("accountChip.menu.refresh")) } },
+        text = { TerminalManagerBody(roster, onAttach, Modifier.heightIn(max = 420.dp)) },
+        confirmButton = { SecondaryButton(onClick = roster::refresh) { Text(copyText("accountChip.menu.refresh")) } },
         dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("kit.drawer.close")) } },
     )
+    KillConfirmControl(roster)
+}
 
+/**
+ * 终端名单整页（抽屉「终端名单」进，同桌面直开名单）：与终端页里那个管理窗同一份名单 · 新建 · 结束；进页不开终端标签页，点「附着」才经 [onAttach] 开。
+ */
+@Composable
+fun TerminalsPage(
+    terminals: TerminalOps,
+    onAttach: (String) -> Unit,
+    onBack: () -> Unit,
+) {
+    val roster = rememberTerminalRoster(terminals)
+    val tokens = LocalAppTokens.current
+    Scaffold(topBar = { AgentsTopBar(copyText("mobDrawer.item.terminal"), "", onBack) }) { inner ->
+        Column(Modifier.padding(inner).padding(horizontal = tokens.spacing.md)) {
+            TerminalManagerBody(roster, onAttach, Modifier.weight(1f, fill = false))
+            Row(Modifier.fillMaxWidth().padding(vertical = tokens.spacing.sm), horizontalArrangement = Arrangement.End) {
+                SecondaryButton(onClick = roster::refresh) { Text(copyText("accountChip.menu.refresh")) }
+            }
+        }
+    }
+    KillConfirmControl(roster)
+}
+
+/** 结束前的二次确认与结果反馈（结束不可逆，结果必须可见，所以不给撤销）。 */
+@Composable
+private fun KillConfirmControl(roster: TerminalRoster) {
+    val snackbar = LocalAppSnackbar.current
     KillConfirmDialog(
-        target = pendingKill,
-        onDismiss = { pendingKill = null },
+        target = roster.pendingKill,
+        onDismiss = { roster.pendingKill = null },
         onConfirm = { t ->
-            pendingKill = null
-            scope.launch {
-                // 结果必须可见；结束会话不可逆，所以不给撤销
-                snackbar.show(terminals.end(t))
-                refresh()
+            roster.pendingKill = null
+            roster.scope.launch {
+                snackbar.show(roster.terminals.end(t))
+                roster.refresh()
             }
         },
     )
 }
 
-/** 弹窗主体：会话列表 + 新建行。 */
+/** 名单主体：两组终端 + 新建行。 */
 @Composable
 private fun TerminalManagerBody(
-    terminals: TerminalOps,
-    loading: Boolean,
-    failed: String?,
-    sessions: List<TerminalsList.Row>,
-    newName: String,
-    onNameChange: (String) -> Unit,
+    roster: TerminalRoster,
     onAttach: (String) -> Unit,
-    onKillRequested: (TerminalsList.Row) -> Unit,
-    onCreated: () -> Unit,
-    onFailed: (String) -> Unit,
-    scope: kotlinx.coroutines.CoroutineScope,
+    modifier: Modifier = Modifier,
 ) {
     val tokens = LocalAppTokens.current
-    Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+    val snackbar = LocalAppSnackbar.current
+    val onFailed: (String) -> Unit = { snackbar.show(Notice(it)) }
+    Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
         TerminalList(
-            loading = loading,
-            failed = failed,
-            sessions = sessions,
+            loading = roster.loading,
+            failed = roster.failed,
+            sessions = roster.sessions,
             onAttach = onAttach,
-            onKillRequested = onKillRequested,
+            onKillRequested = { roster.pendingKill = it },
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(vertical = tokens.spacing.sm))
         TmuxNewSessionRow(
-            newName = newName,
-            onNameChange = onNameChange,
+            newName = roster.newName,
+            onNameChange = { roster.newName = it },
             onNewDetached = { n ->
-                scope.launch {
-                    terminals.create(n)?.let(onFailed)
-                    onCreated()
+                roster.scope.launch {
+                    roster.terminals.create(n)?.let(onFailed)
+                    roster.newName = ""
+                    roster.refresh()
                 }
             },
             // 先请那台建（在了就不动），再像附着已有的一样进去；没建成 ⇒ 那一句、不进。
             onNewAttach = { n ->
-                scope.launch {
-                    val refused = terminals.create(n)
+                roster.scope.launch {
+                    val refused = roster.terminals.create(n)
                     if (refused != null) onFailed(refused) else onAttach(n)
                 }
             },

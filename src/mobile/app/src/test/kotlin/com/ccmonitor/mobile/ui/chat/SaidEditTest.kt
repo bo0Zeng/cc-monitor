@@ -29,14 +29,12 @@ class SaidEditTest {
         override suspend fun saveDraft(
             sid: String,
             text: String,
-            cwd: String?,
-            account: String?,
         ) {
             if (text.isEmpty()) drafts.remove(sid) else drafts[sid] = text
         }
     }
 
-    private val queued = Reply.Ok(mapOf("outcome" to "queued", "seq" to 1L, "place" to 1L, "said" to "q-1"))
+    private val queued = Reply.Ok(mapOf("outcome" to "queued", "seq" to 1L, "said" to "q-1"))
 
     @Test
     fun `编辑草稿写成一格字再读回来一样（带换行 · 带待发编号）；读不懂的那几条不要`() {

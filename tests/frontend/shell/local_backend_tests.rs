@@ -339,11 +339,32 @@ fn nothing_in_the_production_path_runs_code_between_fork_and_exec() {
         }
     }
 
+    // 放行的那几处：逐处写 (文件, 剥后那一行逐字, 为什么不碍 `SPAWN_ETXTBSY_TRIES` 那个读数)。两向：放行的那一行必须恰好命中一次，
+    // 不在了 ⇒ 红（登记过期，删掉这一项）。
+    const PASSED: &[(&str, &str, &str)] = &[(
+        "src/backend/platform/child.rs",
+        "cmd.pre_exec(|| {",
+        "`Child::off_terminal` 的 `setsid`：只给问登录 shell 要 PATH 那一趟（起的是用户的 bash，不是刚写进盘的二进制，\
+         ETXTBSY 那件事不涉及）；钩子里只这一个异步信号安全的系统调用",
+    )];
+    let mut passed_seen = vec![0usize; PASSED.len()];
     let (mut files, mut bytes) = (0usize, 0usize);
     let (mut hit_files, mut hit_blocks) = (0usize, 0usize);
     let mut hit_lines: Vec<String> = Vec::new();
     for (rel, src) in &corpus {
-        let (n, h) = probe(rel.as_str(), src.as_str());
+        let (n, mut h) = probe(rel.as_str(), src.as_str());
+        h.retain(|(_, d)| {
+            match PASSED
+                .iter()
+                .position(|(f, l, _)| rel == f && d.ends_with(&format!("〕 {l}")))
+            {
+                Some(k) => {
+                    passed_seen[k] += 1;
+                    false
+                }
+                None => true,
+            }
+        });
         files += 1;
         bytes += n;
         if !h.is_empty() {
@@ -351,6 +372,13 @@ fn nothing_in_the_production_path_runs_code_between_fork_and_exec() {
             hit_blocks += count_blocks(&h);
             hit_lines.extend(h.into_iter().map(|(_, d)| d));
         }
+    }
+
+    for ((f, l, why), n) in PASSED.iter().zip(&passed_seen) {
+        assert_eq!(
+            *n, 1,
+            "放行的那一处 `{f}` 「{l}」命中 {n} 次（该恰好 1 次）：不在了 ⇒ 删掉这一项；多了 ⇒ 第二处没有登记的理由（{why}）"
+        );
     }
 
     // ③ 扫描面地板：**先证明扫到了东西**，否则下面那条在空串上恒真。
@@ -685,7 +713,7 @@ fn the_local_frame_reader_is_bounded_and_lossy() {
 }
 
 /// 同步有界读行照 `cap.over` 办：读端缓冲故意开得很小（3 字节），一行跨好几次 `fill_buf`。
-fn sync_lines(input: &[u8], cap: relay_route_core::Cap) -> Vec<SyncLine> {
+fn sync_lines(input: &[u8], cap: cap_core::Cap) -> Vec<SyncLine> {
     let mut rd = std::io::BufReader::with_capacity(3, input);
     let mut out = Vec::new();
     loop {
@@ -707,9 +735,9 @@ fn line(text: &str, cut: bool) -> SyncLine {
 /// 「丢弃＋带身份报告」（帧行那一档）：超了的那一行整行丢、下一行照读；刚好到上限的整行留；没换行的残行也交。
 #[test]
 fn a_frame_line_over_the_cap_is_dropped_whole_and_the_next_line_still_reads() {
-    let cap = relay_route_core::Cap {
+    let cap = cap_core::Cap {
         bytes: 4,
-        over: relay_route_core::Over::DropAndReport,
+        over: cap_core::Over::DropAndReport,
     };
     assert_eq!(
         sync_lines(b"abcd\nabcdefgh\n\nxy", cap),
@@ -727,9 +755,9 @@ fn a_frame_line_over_the_cap_is_dropped_whole_and_the_next_line_still_reads() {
 /// 刚好到上限再换行的不算切开。
 #[test]
 fn a_stderr_line_over_the_cap_is_cut_at_the_cap_and_the_rest_is_the_next_line() {
-    let cap = relay_route_core::Cap {
+    let cap = cap_core::Cap {
         bytes: 4,
-        over: relay_route_core::Over::TruncateAndSay,
+        over: cap_core::Over::TruncateAndSay,
     };
     assert_eq!(
         sync_lines(b"abcdefghij\nabcd\nxy\n", cap),
@@ -750,9 +778,9 @@ fn a_stderr_line_over_the_cap_is_cut_at_the_cap_and_the_rest_is_the_next_line() 
 /// 不是合法 UTF-8 的一行按替换字符读、旁边带一位 `lossy`（调用方记进丢帧账），不当读错误。
 #[test]
 fn a_sync_line_that_is_not_utf8_reads_lossy_instead_of_failing() {
-    let cap = relay_route_core::Cap {
+    let cap = cap_core::Cap {
         bytes: 64,
-        over: relay_route_core::Over::DropAndReport,
+        over: cap_core::Over::DropAndReport,
     };
     assert_eq!(
         sync_lines(b"a\xffb\n", cap),

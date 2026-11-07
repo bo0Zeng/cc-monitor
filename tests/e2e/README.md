@@ -58,9 +58,6 @@ canary 例外：它问的正是用户那台默认 server）。
 3. **跑后**再记一次，`diff` 两份 —— **一个字都不该变**；
 4. 确认自己那台收干净了：`tmux -L <私有名> ls` 应回 `no server running`。
 
-08-12 实测两套：`restart-suite` **24 过/0 败**、`resume-suite` **17 过/0 败**，
-真实 server 跑前跑后**均为 9 个会话、逐字未变**，私有 server 均已收。
-
 ## 全链套件的台架
 
 GUI 那几套（`graylight-suite` · `f40-suite`）的台架用脚本搭，不手搓（手搓容易让后端用真 `~/.claude` 起来）。
@@ -142,8 +139,8 @@ CI 的 e2e job 就是调门禁（`GATE_ONLY=e2e`），不另记一份名单。
 `npm test` 要保持「不需要 tmux / 不需要后端就能跑」，否则每个开发动作都变重。
 
 > **代价**：本地改了后端的 `ccm`（或别的被上面套件驱动的真源）时，`npm test` 不会有任何反应。
-> 要拿到信号得手跑，例如 `npm run test:restart` / `npm run test:ccm-cli`；
-> 想连门禁那套判法一起验就 `bash tests/e2e/assert-pass-floor.sh restart`。
+> 要拿到信号得手跑，例如 `npm run test:resume` / `npm run test:ccm-cli`；
+> 想连门禁那套判法一起验就 `bash tests/e2e/assert-pass-floor.sh resume`。
 > 不手跑的话，第一次发现是在候选分支 `next` 的 CI 上（`ci.yml` 在 `next` 与 `main` 的 push 上跑同一套 job，e2e 那一格调门禁），
 > 或者在 `gate-affected.sh` 按改动挑到这一套的时候。
 >
@@ -229,12 +226,6 @@ fixtures / 驱动:
    `CCM_E2E_BACKEND=<某 p1p+ 的 cc-monitor-backend>`)。序列 `session_added`(live)→(kill fake-claude)
    `session_left`、`face.life.is` = `reconnectable`(灰)→(真源就地 resume 命令复用原名)`session_added` **再现**
    = 后端灰→live 复活边沿;全程 tmux 单会话无 `-N` 孤儿。
-
-## auto-e2e:换号重启(帧命令 `session-restart`)
-
-整条在后端：真后端二进制经流的入方向收 `session-restart`，私有 tmux server ＋ 假 claude（`CCM_FAKE_COMPACT`：收到 `/compact` 写一条压缩摘要）。
-验：先压缩等到摘要 ⇒ 同名用新号起、新进程报出（新号目录、经 ccm、带中转地址）· 压缩超时照常重启（本机那一形）· 停不了 ⇒ 不起新的 ·
-号选不了 ⇒ 什么都不动 · 等压缩时撤单 ⇒ 不停不起。跑：`bash tests/e2e/restart-suite.sh`。
 
 ## auto-e2e:Tier2 Windows DOM 冒烟(F-E5)
 

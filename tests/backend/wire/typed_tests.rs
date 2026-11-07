@@ -241,111 +241,383 @@ fn take_bad_args_omits_sentinel_value_from_rejection() {
     );
 }
 
-/// 线上那一形里没有两端都不读的格：桌面 · 壳 · 手机 · 文件窗口都不读、给 AI 读的说明也没点名的格不上线。
-/// 后端自己还要用的那几格留在类型里、不出帧（`serde(skip)`）；照生成的 TS 声明认（与线上 `serde_json` 同一套属性）。
+/// 读者那几处（相对仓根）：界面 TS · 手机 Kotlin · 壳 / 文件窗口 / 手机核心 / 端核心的 Rust · 给 AI 读的说明与脚本。
+/// 不算：生成物（`generated/` · `gen/`）与测试。
+const READERS: &[(&str, &[&str])] = &[
+    ("src/frontend/ui", &["ts", "tsx"]),
+    ("src/mobile", &["kt"]),
+    ("src/frontend/shell", &["rs"]),
+    ("src/frontend/filewin", &["rs"]),
+    ("src/mobile/core-rs", &["rs"]),
+    ("src/common/face-core", &["rs"]),
+    ("src/common/batch-core", &["rs"]),
+    ("src/common/chunk-core", &["rs"]),
+    ("src/common/pick-core", &["rs"]),
+];
+/// 给 AI 读的那一处：任何位置出现都算（说明里点名一格就是在叫 AI 读它）。
+const PROSE: &str = "src/shared";
+const SKIP_DIRS: &[&str] = &[
+    "generated",
+    "gen",
+    "test",
+    "tests",
+    "androidTest",
+    "testing",
+    "node_modules",
+    "build",
+    "target",
+    ".gradle",
+];
+
+/// 读者不在上面那几处的格：`(类型, 格, 谁读)`。只许三种读者：对端后端（后端问后端那几条命令的回包 / 入参）·
+/// 原样往返（客户端拿到原样交回后端）· 拨号层（`src/comms/ssh-dial`）。
+const ELSEWHERE: &[(&str, &str, &str)] = &[
+    ("CcBusInstalled", "recordFailed", "对端后端：`cc-bus-install` 问的那台（assets/hub.rs）"),
+    ("SkillApplied", "chmodFailed", "对端后端：`skill-install-apply` 问的那台（assets/hub.rs）"),
+    ("SkillApplied", "recordFailed", "对端后端：`skill-install-apply` 问的那台（assets/hub.rs）"),
+    ("McpApplied", "recordFailed", "对端后端：`mcp-sync-apply` 问的那台（assets/hub.rs）"),
+    ("HistoryListingHead", "annotations", "对端后端：`history-listing` 问的那台照它出行（history/history_list.rs）"),
+    ("HistoryListingHead", "annotationsNotice", "对端后端：`history-listing` 问的那台（history/history_list.rs）"),
+    ("HistoryRawRow", "launchTab", "对端后端：`history-listing` 问的那台出启动 tab 那一格（history/history_list.rs）"),
+    ("Entry", "resumeWith", "对端后端：`history-listing` 带的注解表，问的那台读（history/history_annotations.rs）"),
+    ("CatalogMachine", "projectDirs", "对端后端：资产目录两台互拉互推（assets/asset_catalog.rs）"),
+    ("CatalogMachine", "seenAt", "对端后端：资产目录两台互拉互推（assets/asset_catalog.rs）"),
+    ("CatalogMachine", "sharedMcp", "对端后端：资产目录两台互拉互推（assets/asset_catalog.rs）"),
+    ("AssetsCatalogMergeReq", "catalog", "对端后端：`assets-catalog-merge` 由本机后端推给那台（assets/asset_sync.rs）"),
+    ("SshConnection", "clientAddr", "原样往返：`session-terminals` 的终端原样交回 `terminal-processes`（dial/terminal_processes.rs）"),
+    ("SshConnection", "clientPort", "原样往返：`session-terminals` 的终端原样交回 `terminal-processes`（dial/terminal_processes.rs）"),
+    ("SshConnection", "serverAddr", "原样往返：`session-terminals` 的终端原样交回 `terminal-processes`（dial/terminal_processes.rs）"),
+    ("SshConnection", "serverPort", "原样往返：`session-terminals` 的终端原样交回 `terminal-processes`（dial/terminal_processes.rs）"),
+    ("DialRequest", "agent_sock", "拨号层：ssh-dial 认 ssh-agent 套接字（comms/ssh-dial/connect.rs）"),
+    ("DialRequest", "forward", "拨号层：ssh-dial 开转发（comms/ssh-dial/uses.rs）"),
+    ("CaptureOpts", "abort_marker", "拨号层：ssh-dial 见到就收工（comms/ssh-dial/uses.rs）"),
+    ("DeleteExpect", "empty_dir", "后端自己交：common/door.rs 删空目录走同一条入参，没有客户端交它"),
+];
+
+/// 没有读者、还没裁的格：`(类型, 格, 为什么裁不了)`。裁一格删一条；两向相等。
+const UNCUT: &[(&str, &str, &str)] = &[
+    ("ChoresMarks", "startSkipped", "盘上那一份原样作 `chores-mark` 回包：回包要另成一形"),
+    ("QuotaWindow", "warnedAt", "额度账盘上那一形原样作 `quota-probe` 回包：回包要另成一形"),
+    ("RotSawAcct", "used5h", "轮换记录本盘上那一形原样上线：回包要另成一形"),
+    ("RotSawAcct", "resets5h", "轮换记录本盘上那一形原样上线：回包要另成一形"),
+    ("RotSawAcct", "rate5h", "轮换记录本盘上那一形原样上线：回包要另成一形"),
+    ("BrowseReply", "watch_failed", "该删；守它的 tests/backend/files/browse_watch_tests.rs 要连带改（另排）"),
+    ("BrowseReply", "watch_error", "该删；守它的 tests/backend/files/browse_watch_tests.rs 要连带改（另排）"),
+    ("ScannedAccount", "authReady", "后端自己用、该不出帧；界面那几份账号判据（accounts · account-chip · account-color · account-commands · judgment-single-home · account-availability-guard）的夹具与 eslint 守则都写着它，要连带改（另排）"),
+    ("AccountRow", "authReady", "同 `ScannedAccount.authReady`"),
+    ("AccountChange", "applied", "后端自己用、该不出帧；账号那几族判据（accounts_face · mcp_share_exec · trust_share_exec）经回包读它看行为，要先改成直接测本体"),
+    ("VerifyReport", "checks", "同 `AccountChange.applied`：核对那几条判据经回包读逐项"),
+    ("VerifyReport", "fails", "同 `VerifyReport.checks`"),
+    ("DialAck", "winner", "写它的是 src/comms/ssh-dial，要连带改（另排）"),
+    ("TerminalPreviewReq", "scrollback", "终端往回看整条没有调用方，牵到托管终端那一侧（host/managed 要连带改（另排））"),
+    ("Preview", "capped", "同 `TerminalPreviewReq.scrollback`：往回看那一截的回包"),
+    ("Preview", "scrollback_lines", "同 `TerminalPreviewReq.scrollback`：往回看那一截的回包"),
+    ("SessionFacts", "forkedFrom", "两端只摆后端起好的 `forkedLine`，不读父会话号；后端起名要用它，该 `serde(skip)` 或删（后端那一路，另排）"),
+    ("FactsReply", "forkedFrom", "同 `SessionFacts.forkedFrom`"),
+    ("HistoryRow", "forkedFrom", "同 `SessionFacts.forkedFrom`：历史行只摆整行标题里的分叉记号"),
+    ("MergedRow", "forkedFrom", "同 `HistoryRow.forkedFrom`"),
+    ("SearchRow", "forkedFrom", "同 `HistoryRow.forkedFrom`"),
+    ("SessionHits", "forkedFrom", "同 `HistoryRow.forkedFrom`"),
+];
+
+/// 去掉注释：`//` 到行尾 · `/* … */`；字符串原样留着（注释的记号在字符串里不算）。
+fn strip_comments(s: &str) -> String {
+    let b: Vec<char> = s.chars().collect();
+    let mut out = String::with_capacity(s.len());
+    let mut i = 0;
+    while i < b.len() {
+        let c = b[i];
+        if c == '"' || c == '`' {
+            let end = string_end(&b, i).unwrap_or(i);
+            out.extend(&b[i..=end]);
+            i = end + 1;
+        } else if c == '/' && b.get(i + 1) == Some(&'/') {
+            while i < b.len() && b[i] != '\n' {
+                i += 1;
+            }
+        } else if c == '/' && b.get(i + 1) == Some(&'*') {
+            i += 2;
+            while i + 1 < b.len() && !(b[i] == '*' && b[i + 1] == '/') {
+                i += 1;
+            }
+            i += 2;
+        } else {
+            out.push(c);
+            i += 1;
+        }
+    }
+    out
+}
+
+/// 从 `at` 那个引号起，同一种引号收尾的位置（`"` `'` 不跨行，`` ` `` 跨行）；收不了尾 ⇒ `None`。
+fn string_end(b: &[char], at: usize) -> Option<usize> {
+    let q = b[at];
+    let mut i = at + 1;
+    while i < b.len() {
+        match b[i] {
+            '\\' => i += 1,
+            '\n' if q != '`' => return None,
+            c if c == q => return Some(i),
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
+fn is_word(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}
+
+/// 一份读者源码里以取格的写法出现的名字：`.名` · `::名` · `{名,` · `,名}` · `{名:` · `,名:` · `(名:` · `(名=` · `,名=` · 整串 `"名"`。
+fn cell_reads(src: &str) -> std::collections::BTreeSet<String> {
+    let b: Vec<char> = strip_comments(src).chars().collect();
+    let mut code: Vec<char> = Vec::with_capacity(b.len());
+    let mut got = std::collections::BTreeSet::new();
+    let mut i = 0;
+    while i < b.len() {
+        let c = b[i];
+        if c == '"' || c == '\'' {
+            if let Some(end) = string_end(&b, i) {
+                let inner: String = b[i + 1..end].iter().collect();
+                if !inner.is_empty() && inner.chars().all(is_word) {
+                    got.insert(inner);
+                }
+                code.extend(std::iter::repeat_n(' ', end + 1 - i));
+                i = end + 1;
+                continue;
+            }
+        }
+        code.push(c);
+        i += 1;
+    }
+    let prev = |at: usize| {
+        code[..at]
+            .iter()
+            .rev()
+            .find(|c| !c.is_whitespace())
+            .copied()
+    };
+    let prev2 = |at: usize| {
+        let mut it = code[..at].iter().rev().filter(|c| !c.is_whitespace());
+        (it.next().copied(), it.next().copied())
+    };
+    let mut i = 0;
+    while i < code.len() {
+        if !is_word(code[i]) || (i > 0 && is_word(code[i - 1])) {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < code.len() && is_word(code[i]) {
+            i += 1;
+        }
+        let name: String = code[start..i].iter().collect();
+        let rest: String = code[i..code.len().min(i + 8)]
+            .iter()
+            .filter(|c| !c.is_whitespace())
+            .collect();
+        let before = prev(start);
+        let member = before == Some('.') || prev2(start) == (Some(':'), Some(':'));
+        let keyed = matches!(before, Some('{' | ',' | '('))
+            && (rest.starts_with(':') && !rest.starts_with("::") || rest.starts_with("?:"));
+        let short =
+            matches!(before, Some('{' | ',')) && (rest.starts_with(',') || rest.starts_with('}'));
+        let named_arg = matches!(before, Some('(' | ','))
+            && rest.starts_with('=')
+            && !rest.starts_with("==")
+            && !rest.starts_with("=>");
+        if member || keyed || short || named_arg {
+            got.insert(name);
+        }
+    }
+    got
+}
+
+/// `dir` 底下扩展名在 `exts` 里的那几份（`exts` 为空 ⇒ 没有扩展名的那几份）的正文；生成物 · 测试不算。
+fn walk(dir: &std::path::Path, exts: &[&str]) -> Vec<String> {
+    guard_core::scan_tree!(dir, exts)
+        .into_iter()
+        .filter(|(p, _)| {
+            let rel = p.strip_prefix(dir).unwrap_or(p);
+            let name = p
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let wanted = if exts.is_empty() {
+                !name.contains('.')
+            } else {
+                exts.iter().any(|x| name.ends_with(&format!(".{x}")))
+            };
+            let parts: Vec<&str> = name.split('.').collect();
+            let test_file = parts.contains(&"test")
+                || parts.first().and_then(|s| s.rsplit('_').next()) == Some("tests");
+            wanted
+                && !test_file
+                && !rel
+                    .components()
+                    .any(|c| SKIP_DIRS.contains(&c.as_os_str().to_string_lossy().as_ref()))
+        })
+        .map(|(_, src)| src)
+        .collect()
+}
+
+/// 生成的 TS 声明里一个类型的各格（对象键，连内联的）：`名:` · `名?:` · `"名":`。
+fn cells_of_decl(src: &str) -> std::collections::BTreeSet<String> {
+    let b: Vec<char> = strip_comments(src).chars().collect();
+    let mut got = std::collections::BTreeSet::new();
+    let mut i = 0;
+    while i < b.len() {
+        let (name, end) = if b[i] == '"' {
+            match string_end(&b, i) {
+                Some(e) => (b[i + 1..e].iter().collect::<String>(), e + 1),
+                None => {
+                    i += 1;
+                    continue;
+                }
+            }
+        } else if is_word(b[i]) && (i == 0 || !is_word(b[i - 1])) {
+            let mut e = i;
+            while e < b.len() && is_word(b[e]) {
+                e += 1;
+            }
+            (b[i..e].iter().collect::<String>(), e)
+        } else {
+            i += 1;
+            continue;
+        };
+        let mut j = end;
+        if b.get(j) == Some(&'?') {
+            j += 1;
+        }
+        if b.get(j) == Some(&':') && b.get(j + 1) != Some(&':') {
+            got.insert(name);
+        }
+        i = end;
+    }
+    got
+}
+
+fn snake(n: &str) -> String {
+    let mut s = String::new();
+    for (k, c) in n.chars().enumerate() {
+        if c.is_uppercase() && k > 0 {
+            s.push('_');
+        }
+        s.extend(c.to_lowercase());
+    }
+    s
+}
+
+fn camel(n: &str) -> String {
+    let mut s = String::new();
+    let mut up = false;
+    for c in n.chars() {
+        if c == '_' {
+            up = true;
+        } else if up {
+            s.extend(c.to_uppercase());
+            up = false;
+        } else {
+            s.push(c);
+        }
+    }
+    s
+}
+
+/// 线上每一格都有读者：生成的 TS 声明（`src/frontend/ui/generated/`，与线上 `serde_json` 同一套属性）里每个类型的每一格，
+/// 在读者那几处（[`READERS`] · [`PROSE`]）以取格的写法出现过（名字按原样 · snake · camel 找），不然就得登在 [`ELSEWHERE`]（写谁读），
+/// 或登在 [`UNCUT`]（没有读者、还裁不了，写为什么、要连带改什么）。后端自己还要用、两端不读的格留在类型里、不出帧（`serde(skip)`）。
+/// 两向相等：表里的那一格得真在线上、真找不到读者。
+/// 判法宽的一侧：同名的别的格也算读者 —— 零命中的一定没读者，有命中的不担保。
 #[test]
 fn cells_no_reader_reads_are_off_the_wire() {
-    fn decl<T: ts_rs::TS>() -> String {
-        T::decl(&ts_rs::Config::default())
+    let root = guard_core::addr::repo_root();
+    let mut reads = std::collections::BTreeSet::new();
+    for (dir, exts) in READERS {
+        let files = walk(&root.join(dir), exts);
+        assert!(
+            !files.is_empty(),
+            "`{dir}` 底下一份读者都没有 —— 本条在空转"
+        );
+        for s in files {
+            reads.extend(cell_reads(&s));
+        }
     }
-    let cases: Vec<(&str, String, &[&str])> = vec![
-        (
-            "PlanStale",
-            decl::<cmd_wire::plan::PlanStale>(),
-            &["sinceText"],
-        ),
-        (
-            "PlanArchived",
-            decl::<cmd_wire::plan::PlanArchived>(),
-            &["replacedBy"],
-        ),
-        (
-            "PlanPendingSet",
-            decl::<cmd_wire::plan::PlanPendingSet>(),
-            &["blockedCode"],
-        ),
-        (
-            "TurnRow",
-            decl::<crate::observe::recognize::turns::TurnRow>(),
-            &["endText", "peers"],
-        ),
-        (
-            "Merged",
-            decl::<cmd_wire::search::Merged>(),
-            &["sessionCount"],
-        ),
-        (
-            "AgentFacts",
-            decl::<cmd_wire::session::AgentFacts>(),
-            &["permissionDefault"],
-        ),
-        (
-            "SessionCommand",
-            decl::<cmd_wire::session::SessionCommand>(),
-            &["needsArgs"],
-        ),
-        (
-            "SessionAccountReply",
-            decl::<cmd_wire::accounts::SessionAccountReply>(),
-            &["queryable"],
-        ),
-        (
-            "VerifyReport",
-            decl::<cmd_wire::accounts::VerifyReport>(),
-            &["warns"],
-        ),
-        (
-            "SessionFacts",
-            decl::<crate::observe::recognize::facts::SessionFacts>(),
-            &["handedBack", "bgTasks", "answerOff"],
-        ),
-        (
-            "RotTryDecision",
-            decl::<cmd_wire::rotation::RotTryDecision>(),
-            &["holdAccount"],
-        ),
-        (
-            "RotTryUse",
-            decl::<cmd_wire::rotation::RotTryUse>(),
-            &["capUnknown"],
-        ),
-        (
-            "RotStrategyItem",
-            decl::<cmd_wire::rotation::RotStrategyItem>(),
-            &["wordsBad"],
-        ),
-        (
-            "ReplyError",
-            decl::<cmd_wire::record::ReplyError>(),
-            &["reason"],
-        ),
-        (
-            "Body",
-            decl::<cmd_wire::record::Body>(),
-            &["reason", "attempt", "max"],
-        ),
-        (
-            "Pasted",
-            decl::<cmd_wire::record::Pasted>(),
-            &["id", "lines"],
-        ),
-        ("Opened", decl::<cmd_wire::session::Opened>(), &["host"]),
-    ];
-    let mut on: Vec<String> = Vec::new();
-    for (ty, d, gone) in &cases {
-        for g in *gone {
-            let named = d.match_indices(*g).any(|(at, _)| {
-                let before = d[..at].chars().next_back();
-                let after = &d[at + g.len()..];
-                before.is_some_and(|c| c.is_whitespace() || c == '{')
-                    && (after.starts_with(':') || after.starts_with("?:"))
-            });
-            if named {
-                on.push(format!("{ty}.{g}"));
+    let mut prose = walk(&root.join(PROSE), &["md", "rhai", "sh", "tpl"]);
+    prose.extend(walk(&root.join(PROSE), &[]));
+    assert!(
+        !prose.is_empty(),
+        "`{PROSE}` 底下一份说明都没有 —— 本条在空转"
+    );
+    for s in prose {
+        reads.extend(
+            s.split(|c: char| !is_word(c))
+                .filter(|w| !w.is_empty())
+                .map(str::to_string),
+        );
+    }
+    let gen = root.join("src/frontend/ui/generated");
+    let mut unread = std::collections::BTreeSet::new();
+    let mut cells = 0;
+    for (path, src) in guard_core::scan_tree!(&gen, &["ts"]) {
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let Some(ty) = name.strip_suffix(".ts") else {
+            continue;
+        };
+        if ty == "TypedCommands" {
+            continue;
+        }
+        for cell in cells_of_decl(&src) {
+            cells += 1;
+            if ![cell.clone(), snake(&cell), camel(&cell)]
+                .iter()
+                .any(|n| reads.contains(n))
+            {
+                unread.insert(format!("{ty}.{cell}"));
             }
         }
     }
-    assert!(on.is_empty(), "这几格还在线上：{on:?}");
+    assert!(cells > 1000, "generated/ 里只认出 {cells} 格 —— 本条在空转");
+    let listed: std::collections::BTreeSet<String> = ELSEWHERE
+        .iter()
+        .chain(UNCUT)
+        .map(|(t, c, _)| format!("{t}.{c}"))
+        .collect();
+    let off: Vec<&String> = unread.difference(&listed).collect();
+    let stale: Vec<&String> = listed.difference(&unread).collect();
+    assert!(
+        off.is_empty() && stale.is_empty(),
+        "线上没有读者的格（删，或后端自己用的 `serde(skip)`；读者真在别处 ⇒ 登 ELSEWHERE 写谁读）：{off:?}\n\
+         ELSEWHERE · UNCUT 里已不在线上、或在读者那几处读得到的：{stale:?}"
+    );
+}
+
+/// 判法自己的正控：取格的写法认得出，注释 · 带别的字的字符串 · 声明里的名字不算。
+#[test]
+fn a_cell_read_is_told_from_a_mention() {
+    let got = cell_reads(
+        "const reading = t(\"kit.state.reading\"); // x.gone\n\
+         a.seen; f(b?.deep); { short, other }; g({ key: 1 }); h(named = 2); m[\"quoted\"];",
+    );
+    let want: std::collections::BTreeSet<String> =
+        ["seen", "deep", "short", "other", "key", "named", "quoted"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+    assert_eq!(got, want);
+    let decl =
+        cells_of_decl("export type X = { a: string, \"b\"?: number, c: { d: Y }, e: A::B };");
+    assert_eq!(
+        decl,
+        ["a", "b", "c", "d", "e"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect()
+    );
 }
 
 /// 失败只一种值（`Said`）：经 `spec::fail` 带码，投出去那一下码缺 ⇒ 兜底码。

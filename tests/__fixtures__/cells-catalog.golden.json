@@ -125,12 +125,6 @@
         {
           "frozen": true,
           "kind": "value",
-          "path": "{t=reply}.model",
-          "type": "string"
-        },
-        {
-          "frozen": true,
-          "kind": "value",
           "path": "{t=reply}.runs.*.kind",
           "type": "string"
         },
@@ -844,18 +838,6 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "children[].face.can.attach.can",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "children[].face.can.attach.from",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
           "path": "children[].face.can.close.can",
           "type": "string"
         },
@@ -934,14 +916,38 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "children[].face.can.term.can",
+          "path": "children[].face.can.terminal.far.go",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "children[].face.can.term.host",
-          "type": "enum"
+          "path": "children[].face.can.terminal.far.open.kind",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "children[].face.can.terminal.far.open.terminal",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "children[].face.can.terminal.far.said",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "children[].face.can.terminal.near.go",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "children[].face.can.terminal.near.said",
+          "type": "string"
         },
         {
           "frozen": false,
@@ -1024,12 +1030,6 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "cost.micros",
-          "type": "number"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
           "path": "cost.partial",
           "type": "bool"
         },
@@ -1041,8 +1041,20 @@
         },
         {
           "frozen": false,
+          "kind": "text",
+          "path": "cwdShown",
+          "type": "string"
+        },
+        {
+          "frozen": false,
           "kind": "value",
           "path": "forkedFrom",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "forkedLine",
           "type": "string"
         },
         {
@@ -1240,12 +1252,6 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "needs.ask.sinceMs",
-          "type": "number"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
           "path": "needs.ask.tool",
           "type": "string"
         },
@@ -1293,12 +1299,6 @@
         },
         {
           "frozen": false,
-          "kind": "value",
-          "path": "needs.sinceMs",
-          "type": "number"
-        },
-        {
-          "frozen": false,
           "kind": "text",
           "path": "needs.text",
           "type": "string"
@@ -1320,12 +1320,6 @@
           "kind": "value",
           "path": "needs.waitedMs",
           "type": "number"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "needs.waitedText",
-          "type": "string"
         },
         {
           "frozen": false,
@@ -1438,24 +1432,6 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "quietUnread.count",
-          "type": "number"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "quietUnread.kinds[]",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "quietUnread.text",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
           "path": "retries[].id",
           "type": "string"
         },
@@ -1470,18 +1446,6 @@
           "kind": "text",
           "path": "retries[].text",
           "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "startedBy.face.can.attach.can",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "startedBy.face.can.attach.from",
-          "type": "enum"
         },
         {
           "frozen": false,
@@ -1564,14 +1528,38 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "startedBy.face.can.term.can",
+          "path": "startedBy.face.can.terminal.far.go",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "startedBy.face.can.term.host",
-          "type": "enum"
+          "path": "startedBy.face.can.terminal.far.open.kind",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "startedBy.face.can.terminal.far.open.terminal",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "startedBy.face.can.terminal.far.said",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "startedBy.face.can.terminal.near.go",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "startedBy.face.can.terminal.near.said",
+          "type": "string"
         },
         {
           "frozen": false,
@@ -1660,24 +1648,6 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "tokens.cacheRead",
-          "type": "number"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "tokens.cacheWrite1h",
-          "type": "number"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "tokens.cacheWrite5m",
-          "type": "number"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
           "path": "tokens.input",
           "type": "number"
         },
@@ -1685,12 +1655,6 @@
           "frozen": false,
           "kind": "value",
           "path": "tokens.output",
-          "type": "number"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "tokens.requests",
           "type": "number"
         },
         {
@@ -1725,12 +1689,6 @@
         },
         {
           "frozen": false,
-          "kind": "value",
-          "path": "usage.limitFrom",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
           "kind": "text",
           "path": "usage.limitFromText",
           "type": "string"
@@ -1750,19 +1708,7 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "usage.peakPromptTokens",
-          "type": "number"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
           "path": "usage.percent",
-          "type": "number"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "usage.promptTokens",
           "type": "number"
         },
         {
@@ -1794,18 +1740,6 @@
     },
     {
       "cells": [
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "face.can.attach.can",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "face.can.attach.from",
-          "type": "enum"
-        },
         {
           "frozen": false,
           "kind": "value",
@@ -1899,14 +1833,38 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "face.can.term.can",
+          "path": "face.can.terminal.far.go",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "face.can.term.host",
-          "type": "enum"
+          "path": "face.can.terminal.far.open.kind",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.terminal.far.open.terminal",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.can.terminal.far.said",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.terminal.near.go",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.can.terminal.near.said",
+          "type": "string"
         },
         {
           "frozen": false,
@@ -2091,12 +2049,6 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "needs.ask.sinceMs",
-          "type": "number"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
           "path": "needs.ask.tool",
           "type": "string"
         },
@@ -2144,12 +2096,6 @@
         },
         {
           "frozen": false,
-          "kind": "value",
-          "path": "needs.sinceMs",
-          "type": "number"
-        },
-        {
-          "frozen": false,
           "kind": "text",
           "path": "needs.text",
           "type": "string"
@@ -2171,12 +2117,6 @@
           "kind": "value",
           "path": "needs.waitedMs",
           "type": "number"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "needs.waitedText",
-          "type": "string"
         },
         {
           "frozen": false,
@@ -2328,12 +2268,6 @@
         {
           "frozen": true,
           "kind": "value",
-          "path": "attachable",
-          "type": "bool"
-        },
-        {
-          "frozen": true,
-          "kind": "value",
           "path": "background",
           "type": "bool"
         },
@@ -2360,18 +2294,6 @@
           "kind": "value",
           "path": "face.account",
           "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "face.can.attach.can",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "face.can.attach.from",
-          "type": "enum"
         },
         {
           "frozen": false,
@@ -2466,14 +2388,38 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "face.can.term.can",
+          "path": "face.can.terminal.far.go",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "face.can.term.host",
-          "type": "enum"
+          "path": "face.can.terminal.far.open.kind",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.terminal.far.open.terminal",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.can.terminal.far.said",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.terminal.near.go",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.can.terminal.near.said",
+          "type": "string"
         },
         {
           "frozen": true,
@@ -2603,18 +2549,6 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "face.can.attach.can",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "face.can.attach.from",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
           "path": "face.can.close.can",
           "type": "string"
         },
@@ -2705,14 +2639,38 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "face.can.term.can",
+          "path": "face.can.terminal.far.go",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "face.can.term.host",
-          "type": "enum"
+          "path": "face.can.terminal.far.open.kind",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.terminal.far.open.terminal",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.can.terminal.far.said",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.terminal.near.go",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.can.terminal.near.said",
+          "type": "string"
         },
         {
           "frozen": true,
@@ -2813,24 +2771,6 @@
           "frozen": false,
           "kind": "value",
           "path": "face.account",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "face.can.attach.can",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "face.can.attach.from",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "face.can.attach.why",
           "type": "string"
         },
         {
@@ -2938,19 +2878,49 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "face.can.term.can",
+          "path": "face.can.terminal.far.go",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "face.can.term.host",
-          "type": "enum"
+          "path": "face.can.terminal.far.open.kind",
+          "type": "string"
         },
         {
           "frozen": false,
           "kind": "text",
-          "path": "face.can.term.why",
+          "path": "face.can.terminal.far.said",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.can.terminal.far.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.terminal.near.go",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.terminal.near.open.kind",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.can.terminal.near.said",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.can.terminal.near.why",
           "type": "string"
         },
         {
@@ -3051,122 +3021,8 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "accounts[].limiting",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
           "path": "accounts[].login",
           "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "accounts[].reading.limiting",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "accounts[].reading.overage.disabled",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "accounts[].reading.overage.inUse",
-          "type": "bool"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "accounts[].reading.overage.resetsAt",
-          "type": "number"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "accounts[].reading.overage.resetsAtRelText",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "accounts[].reading.overage.resetsAtText",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "accounts[].reading.overage.status",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "accounts[].reading.refused",
-          "type": "bool"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "accounts[].reading.resetsAt",
-          "type": "number"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "accounts[].reading.resetsAtRelText",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "accounts[].reading.resetsAtText",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "accounts[].reading.status",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "accounts[].reading.windows[].name",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "accounts[].reading.windows[].resetsAt",
-          "type": "number"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "accounts[].reading.windows[].resetsAtRelText",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "accounts[].reading.windows[].resetsAtText",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "accounts[].reading.windows[].used",
-          "type": "number"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "accounts[].reading.windows[].warnedAt",
-          "type": "number"
         },
         {
           "frozen": true,
@@ -3179,24 +3035,6 @@
           "kind": "tone",
           "path": "accounts[].rows[][].tone",
           "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "accounts[].seenAt",
-          "type": "number"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "accounts[].seenAtRelText",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "accounts[].seenAtText",
-          "type": "string"
         },
         {
           "frozen": false,
@@ -3236,12 +3074,6 @@
         },
         {
           "frozen": false,
-          "kind": "text",
-          "path": "accounts[].slots[].resetsAtText",
-          "type": "string"
-        },
-        {
-          "frozen": false,
           "kind": "value",
           "path": "accounts[].slots[].slot",
           "type": "string"
@@ -3269,12 +3101,6 @@
           "kind": "value",
           "path": "accounts[].state",
           "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "accounts[].subId",
-          "type": "string"
         },
         {
           "frozen": false,
@@ -3327,12 +3153,6 @@
         {
           "frozen": false,
           "kind": "text",
-          "path": "accounts[].warm.atRelText",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
           "path": "accounts[].warm.atText",
           "type": "string"
         },
@@ -3341,30 +3161,6 @@
           "kind": "text",
           "path": "accounts[].warm.text",
           "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "accounts[].windowsSeen.*.at",
-          "type": "number"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "accounts[].windowsSeen.*.atRelText",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "accounts[].windowsSeen.*.atText",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "accounts[].windowsSeen.*.from",
-          "type": "enum"
         },
         {
           "frozen": false,
@@ -3399,12 +3195,6 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "accounts[].windows[].resetSinceSeen",
-          "type": "bool"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
           "path": "accounts[].windows[].resetsAt",
           "type": "number"
         },
@@ -3412,30 +3202,6 @@
           "frozen": false,
           "kind": "text",
           "path": "accounts[].windows[].resetsAtRelText",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "accounts[].windows[].resetsAtText",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "accounts[].windows[].seenAt",
-          "type": "number"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "accounts[].windows[].seenAtRelText",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "accounts[].windows[].seenAtText",
           "type": "string"
         },
         {
@@ -3567,12 +3333,6 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "unseen[].subId",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
           "path": "unseen[].usage.slot",
           "type": "string"
         },
@@ -3611,12 +3371,6 @@
           "kind": "value",
           "path": "unseen[].warm.at",
           "type": "number"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "unseen[].warm.atRelText",
-          "type": "string"
         },
         {
           "frozen": false,
@@ -3688,12 +3442,6 @@
           "kind": "value",
           "path": "head.info.groups[].key",
           "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "head.info.groups[].lastActivity",
-          "type": "number"
         },
         {
           "frozen": false,
@@ -3836,24 +3584,6 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "up.*.face.can.attach.can",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "up.*.face.can.attach.from",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "up.*.face.can.attach.why",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
           "path": "up.*.face.can.close.can",
           "type": "string"
         },
@@ -3956,19 +3686,49 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "up.*.face.can.term.can",
+          "path": "up.*.face.can.terminal.far.go",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "up.*.face.can.term.host",
-          "type": "enum"
+          "path": "up.*.face.can.terminal.far.open.kind",
+          "type": "string"
         },
         {
           "frozen": false,
           "kind": "text",
-          "path": "up.*.face.can.term.why",
+          "path": "up.*.face.can.terminal.far.said",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "up.*.face.can.terminal.far.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "up.*.face.can.terminal.near.go",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "up.*.face.can.terminal.near.open.kind",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "up.*.face.can.terminal.near.said",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "up.*.face.can.terminal.near.why",
           "type": "string"
         },
         {
@@ -4035,12 +3795,6 @@
           "frozen": false,
           "kind": "text",
           "path": "up.*.forkedFrom.label",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "up.*.forkedFromMessageUuid",
           "type": "string"
         },
         {
@@ -4237,24 +3991,6 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "groups[].members[].face.can.attach.can",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "groups[].members[].face.can.attach.from",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "groups[].members[].face.can.attach.why",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
           "path": "groups[].members[].face.can.close.can",
           "type": "string"
         },
@@ -4351,19 +4087,43 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "groups[].members[].face.can.term.can",
+          "path": "groups[].members[].face.can.terminal.far.go",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "groups[].members[].face.can.term.host",
-          "type": "enum"
+          "path": "groups[].members[].face.can.terminal.far.open.kind",
+          "type": "string"
         },
         {
           "frozen": false,
           "kind": "text",
-          "path": "groups[].members[].face.can.term.why",
+          "path": "groups[].members[].face.can.terminal.far.said",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "groups[].members[].face.can.terminal.far.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "groups[].members[].face.can.terminal.near.go",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "groups[].members[].face.can.terminal.near.said",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "groups[].members[].face.can.terminal.near.why",
           "type": "string"
         },
         {
@@ -4525,24 +4285,6 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "pinned[].face.can.attach.can",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "pinned[].face.can.attach.from",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "pinned[].face.can.attach.why",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
           "path": "pinned[].face.can.close.can",
           "type": "string"
         },
@@ -4639,19 +4381,43 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "pinned[].face.can.term.can",
+          "path": "pinned[].face.can.terminal.far.go",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "pinned[].face.can.term.host",
-          "type": "enum"
+          "path": "pinned[].face.can.terminal.far.open.kind",
+          "type": "string"
         },
         {
           "frozen": false,
           "kind": "text",
-          "path": "pinned[].face.can.term.why",
+          "path": "pinned[].face.can.terminal.far.said",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "pinned[].face.can.terminal.far.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "pinned[].face.can.terminal.near.go",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "pinned[].face.can.terminal.near.said",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "pinned[].face.can.terminal.near.why",
           "type": "string"
         },
         {

@@ -406,6 +406,8 @@ describe("C01 边界生成物", () => {
           let attrTop = q;
           while (attrTop > 1 && !FIELD_HEAD.test(body[attrTop - 1])) attrTop -= 1;
           const own = body.slice(attrTop, q).join("\n");
+          // 不出帧的格（`ts(skip)`）不过边界 ⇒ 本条性质不适用。
+          if (/ts\(skip\)/.test(own)) continue;
           expect(
             own,
             `${f}: 字段 ${body[q].trim()} 是大整数却没配 ts(type = …)` +
@@ -453,7 +455,7 @@ describe("C01 边界生成物", () => {
       }
     }
     // 正控（按符号认，不数个数）：两个分支各点名一处（省略语义 · 线上是 null）。
-    for (const anchor of ["src/frontend/shell/src/ui_contract.rs::skipped_from", "src/frontend/shell/src/diagnostics_report.rs::records"])
+    for (const anchor of ["src/frontend/shell/src/ui_contract.rs::skipped_from", "src/common/cmd-wire/src/diagnostics.rs::records"])
       expect(seen, `正控：没扫到 \`${anchor}\` —— 扫描瞎了（或那个字段真删了：换一处点名）`).toContain(anchor);
   });
 

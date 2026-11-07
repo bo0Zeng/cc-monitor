@@ -73,11 +73,17 @@ pub fn watched_count() -> usize {
     WATCHED.read().map(|g| g.len()).unwrap_or(0)
 }
 
-/// 列一个目录的直接子项（全路径原始字节 ＋ 类型字节）。`None` = 打不开。
+/// 列一个目录的直接子项（全路径原始字节 ＋ 类型字节）。`None` = 打不开（记一条 warn：哪个目录 · 原因）。
 ///
 /// ⚠ 它**不递归**、不跟 symlink、不 `stat` —— 只要名字与目录项自带的类型。
 fn list_dir(dir: &Path) -> Option<Vec<(Vec<u8>, u8)>> {
-    let rd = Ro::read_dir(dir).ok()?;
+    let rd = match Ro::read_dir(dir) {
+        Ok(rd) => rd,
+        Err(e) => {
+            tracing::warn!(target: "browse_watch", dir = ?dir, reason = %e, "watched dir not listed; kept as empty");
+            return None;
+        }
+    };
     let mut out = Vec::new();
     for e in rd {
         let Ok(e) = e else { continue };

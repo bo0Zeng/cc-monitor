@@ -282,23 +282,6 @@
     margin-top: var(--space-4);
   }
 
-  /* 「显示 ▾」：图标后面一枚小三角。开着一个流开关 ⇒ C21「开」样（`aria-pressed`）。 */
-  .shIbDrop {
-    display: inline-flex;
-    gap: 1px;
-    width: auto;
-    padding: 0 4px;
-  }
-
-  .shIb[aria-pressed="true"] {
-    background: var(--state-active);
-    color: var(--text);
-  }
-
-  .shIb[aria-pressed="true"] > svg:first-child {
-    color: var(--accent);
-  }
-
   .shIb[aria-disabled="true"] {
     opacity: var(--state-disabled-opacity);
     cursor: default;

@@ -36,10 +36,6 @@ said: string,
  */
 tools: number, thinking: number, agents: number, background: number, retries: number, 
 /**
- * 失败合计：工具（含派 agent）结果标了出错、且不是人拒的 ＋ 后台任务 / 子 agent 收场说失败。
- */
-fails: number, 
-/**
  * 露着的那几条（uuid，文件序）：带正文的 assistant 记录（中间说的话与结论）＋ 停下这一轮的那一条中断标记 / 报错卡。
  */
 shown: Array<string>, 

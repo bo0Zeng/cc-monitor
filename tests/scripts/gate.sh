@@ -971,7 +971,7 @@ gate_selftest_e2e() {
 gate_selftest_e2e
 
 # e2e 的被测对象是后端二进制 ⇒ 先编出来（`backend` 那格的 `cargo test` 只编 test 版，不产 `debug/cc-monitor-backend`）。
-# 它不进判定面：编不出来时每一套各自 fail-closed 红并说清原因。
+# 编不出来 ⇒ 前置自己按红记、印编译原文，并删掉上一趟留下的那一份（各套随后找不到被测对象，也各自 fail-closed 红）。
 gate_e2e_wanted() {
   if [ -z "$GATE_ONLY" ]; then return 0; fi
   local tok
@@ -981,30 +981,66 @@ gate_e2e_wanted() {
   done
   return 1
 }
+gate_prep_build() { ( cd src/backend && gate_yield cargo build --bin cc-monitor-backend ); }
 gate_exec_prep() {
   gate_now_ms > "$GATE_K.t0"
   # 编完当场留一份给 e2e（`ccm-shim.sh` 照 `CCM_E2E_BACKEND_BIN`）：同一棵 target 里随后 `backend` 那一格的 `cargo test`
   #   会把 `debug/cc-monitor-backend` 换成带测试档特性的那一份。先拷到旁边再改名换上：`env-sandbox` 的内层门禁也走这一步，
   #   外层那几套此刻正跑着这一份 ⇒ 不先删、不就地写（正在跑的进程留着旧的那一份，新起的拿到同源同编法的新一份）。
-  ( cd src/backend && gate_yield cargo build --bin cc-monitor-backend >/dev/null 2>&1 ) \
-    && mkdir -p "${CCM_E2E_BACKEND_BIN%/*}" \
-    && cp -f "${CARGO_TARGET_DIR:-.build/backend}/debug/cc-monitor-backend" "$CCM_E2E_BACKEND_BIN.$$" \
-    && mv -f "$CCM_E2E_BACKEND_BIN.$$" "$CCM_E2E_BACKEND_BIN" || true
-  printf 0 > "$GATE_K.rc"
+  # 编、拷、换任一步失败 ⇒ 这时才删掉留着的那一份（上一趟的旧字节不许冒充这一趟），退出码照实记下，判的那半按红记。
+  local rc
+  { "$@" \
+      && mkdir -p "${CCM_E2E_BACKEND_BIN%/*}" \
+      && cp -f "${CARGO_TARGET_DIR:-.build/backend}/debug/cc-monitor-backend" "$CCM_E2E_BACKEND_BIN.$$" \
+      && mv -f "$CCM_E2E_BACKEND_BIN.$$" "$CCM_E2E_BACKEND_BIN"; } > "$GATE_K.out" 2>&1
+  rc=$?
+  [ "$rc" -eq 0 ] || rm -f "$CCM_E2E_BACKEND_BIN" "$CCM_E2E_BACKEND_BIN.$$"
+  printf '%s' "$rc" > "$GATE_K.rc"
   gate_now_ms > "$GATE_K.t1"
 }
 gate_judge_prep() {
-  local t0 t1
-  t0="$(cat "$GATE_K.t0" 2>/dev/null)"; t1="$(cat "$GATE_K.t1" 2>/dev/null)"
-  GATE_PREP_MS="$(( ${t1:-0} - ${t0:-0} ))"
-  printf '  ·    %-14s %s\n' "e2e 前置" "build 后端二进制（e2e 那几套与 env-sandbox 的被测对象；$(gate_fmt_ms "$GATE_PREP_MS")）"
+  gate_cell_read e2e-prep || return 0
+  GATE_PREP_MS="$(( GATE_C_T1 - GATE_C_T0 ))"
+  if [ "$GATE_C_RC" -eq 0 ]; then
+    printf '  ·    %-14s %s\n' "e2e 前置" "build 后端二进制（e2e 那几套与 env-sandbox 的被测对象；$(gate_fmt_ms "$GATE_PREP_MS")）"
+    return 0
+  fi
+  printf '  FAIL %-14s %s\n' "e2e 前置" "build 后端二进制退出码 $GATE_C_RC（e2e 那几套没有被测对象；上一趟留下的那一份已删）"
+  fails+=("e2e 前置（cargo build 后端二进制退出码 $GATE_C_RC —— e2e 那几套与 env-sandbox 没有这一趟的被测对象）")
+  gate_diag "e2e 前置" "$GATE_C_OUT"
 }
+
+# 探针⑬ · e2e 前置编不出来 ⇒ 红，且上一趟留下的那一份不留着冒充：喂一条必败的「编」（印哨兵、退 101），
+#   被测对象的路径换成探针自己的、先放一份「旧的」。两侧都断：红了（fails 多了一条）· 旧的那一份没了 · 哨兵在诊断里。
+gate_selftest_prep() {
+  local GATE_PROBE=1 probe ex
+  printf -v ex '%q ' gate_exec_prep bash -c 'echo GATE-PROBE-M; exit 101'
+  probe="$(
+    CCM_E2E_BACKEND_BIN="$GATE_CELL_DIR/probe-e2e-backend"
+    : > "$CCM_E2E_BACKEND_BIN"
+    fails=()
+    gate_cell 自检⑬ "$ex" gate_judge_prep
+    [ -e "$CCM_E2E_BACKEND_BIN" ] && echo "PROBE-STALE-KEPT"
+    printf 'PROBE-FAILS=%s\n' "${#fails[@]}"
+  2>&1)"
+  case "$probe" in
+    *PROBE-FAILS=0*) fails+=("gate 自检⑬（e2e 前置编不出来却没按红记 —— e2e 那几套会拿上一趟的旧二进制照跑、照绿）") ;;
+  esac
+  case "$probe" in
+    *PROBE-STALE-KEPT*) fails+=("gate 自检⑬（e2e 前置编不出来时上一趟的被测对象还留着 —— 套件拿旧字节冒充这一趟的）") ;;
+  esac
+  case "$probe" in
+    *GATE-PROBE-M*) ;;
+    *) fails+=("gate 自检⑬（e2e 前置编不出来时诊断里没有编译的原文 —— 红了说不出为什么）") ;;
+  esac
+}
+gate_selftest_prep
 
 # ── 「后端 Rust」道：`src/backend` 那一棵（一把 target 锁）；先编 e2e 的被测对象，e2e 那几条道等它 ──
 gate_lane 后端Rust
 
 if gate_e2e_wanted; then
-  gate_cell e2e-prep gate_exec_prep gate_judge_prep
+  gate_cell e2e-prep "gate_exec_prep gate_prep_build" gate_judge_prep
 else
   printf '  ·    %-14s %s\n' "e2e 前置" "跳过（GATE_ONLY 一套 e2e 都没点 ⇒ 不白编那一趟 cargo build）"
 fi
@@ -1139,12 +1175,11 @@ gate_lane 覆盖率 after cargo backend
 run_gate coverage '这一趟 vitest（带 v8 覆盖率）真跑过的条数：`ci.yml` 的 `coverage floor (vitest jsdom)`（`npm run coverage`，`vitest.config.ts` 里的全局阈值）＋ `coverage per-file floors + zero-coverage ratchet`（逐文件地板与零覆盖棘轮）两步原样跑。⚠ 与 `npm` 那格是同一批 vitest 文件再跑一遍（带插桩，慢一截）；覆盖率只量 `src/**/*.ts`，Rust 不进分母' \
          gate_vitest_share gate_private_vite gate_ci_steps coverage "coverage floor (vitest jsdom)" "coverage per-file floors + zero-coverage ratchet"
 
-# 21 套摊成几条道（按热缓存时长大致拉平）；各套各在自己的网络命名空间与 `/tmp` 里，互不相见。
+# 20 套摊成几条道（按热缓存时长大致拉平）；各套各在自己的网络命名空间与 `/tmp` 里，互不相见。
 # `local-backend` 在壳里跑 `cargo test --lib`，等 `cargo` 那格编完再起，免得两条道抢壳的 target 锁。
 gate_lane e2e-1 after e2e-prep
 run_e2e backend-tmux-late-server
 run_e2e tmux-target
-run_e2e restart
 gate_lane e2e-2 after e2e-prep
 run_e2e backend-sessions-rewatch
 run_e2e backend-cc-bus
@@ -1177,7 +1212,8 @@ gate_lane env-sandbox after e2e-prep
 # ── `env-sandbox`：在一台假开发机上，带着指向「真目录」「真口」的会话环境起一趟门禁 ─────────────
 # 假开发机 = bwrap 撑着的一个新网络命名空间（命令用 nsenter 进去），默认中转口（`relay-route-core` 的 `PORT`）在里面听着；
 # 「真目录」是一棵临时假家（日志目录 ＋ 哨兵 stderr.log ＋ 常驻后端的门牌目录），另有现找的三个空闲口。
-# 带着指向它们的 `CCM_*` / `CLAUDE_CONFIG_DIR` / `ANTHROPIC_BASE_URL` / `TMUX` 起内层门禁，跑 `backend-tmux-late-server` · `restart` 两套。
+# 带着指向它们的 `CCM_*` / `CLAUDE_CONFIG_DIR` / `ANTHROPIC_BASE_URL` / `TMUX` 起内层门禁，跑 `backend-tmux-late-server` · `tmux-target` 两套
+# （`resume` 不行：它在假开发机上主动建连 49 次，④ 判红）。
 # 判：① 内层门禁绿；② 假家前后逐份（路径 · 大小 · mtime）相同；③ 那三个口全程没有监听（`ss` 每 0.1 秒看一次）；
 #   ④ 假开发机上 TCP 主动建连计数（`/proc/<pid>/net/snmp` 的 `ActiveOpens`）前后不变、假真口零连接。
 # CI 上 e2e 不包 ⇒ 不造假开发机、④ 不判。
@@ -1218,7 +1254,7 @@ print(*[x.getsockname()[1] for x in s])')
              CCM_BACKEND_STDERR_LOG="$d/cc/logs/backend/stderr.log" CCM_HISTORY_METADATA="$d/cc/history.json" \
              CCM_APIKEY_CREDENTIALS="$d/cc/apikey.json" CLAUDE_CONFIG_DIR="$d/claude" \
              ANTHROPIC_BASE_URL="http://127.0.0.1:$p3" TMUX="$d/tmux.sock,1,0" \
-             GATE_ONLY="backend-tmux-late-server restart" \
+             GATE_ONLY="backend-tmux-late-server tmux-target" \
              bash tests/scripts/gate.sh 2>&1)"; rc=$?
   kill "$w" 2>/dev/null; wait "$w" 2>/dev/null
   if [ -n "$rport" ]; then

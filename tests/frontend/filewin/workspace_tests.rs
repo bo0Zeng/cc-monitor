@@ -1762,7 +1762,6 @@ async fn screenshot_for_the_shots_tool() {
                 size_text: Some(copy_core::size_text(size)),
                 mtime_text: Some(at.into()),
                 there: cmd_wire::files::FileKind::File,
-                there_size: Some(there),
                 there_size_text: Some(copy_core::size_text(there)),
                 there_mtime_text: Some(there_at.into()),
                 answers: vec![
@@ -1823,7 +1822,6 @@ async fn screenshot_for_the_shots_tool() {
                 size_text: size.map(copy_core::size_text),
                 mtime_text: size.map(|_| "14:02".to_string()),
                 there: kind,
-                there_size: there,
                 there_size_text: there.map(copy_core::size_text),
                 there_mtime_text: there.map(|_| "10-01 09:10".to_string()),
                 answers: if dir {

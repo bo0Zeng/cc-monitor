@@ -7,6 +7,7 @@
 use crate::agents::ModelSaid;
 use crate::common::contract::malformed;
 use crate::common::said::Said;
+use crate::control::screen_drive::{settle, Drive, REDRAWS_AFTER_SEND};
 use crate::control::terminals::{no_said, Refused};
 use crate::control::terminals_wire::{Sent, SentResult, TerminalInputReq};
 use crate::faces::session_mode_face::SwitchResult;
@@ -42,7 +43,6 @@ fn reply(result: SwitchResult, why: Option<Refused>, said: Option<String>) -> Mo
     ModelSwitched {
         result,
         model: None,
-        effort: None,
         why,
         said,
     }
@@ -95,14 +95,10 @@ pub fn settled(got: Option<ModelSaid>, shared: bool) -> ModelSwitched {
     ModelSwitched {
         result: SwitchResult::Done,
         model: Some(s.name),
-        effort: s.effort,
         why: None,
         said: Some(said),
     }
 }
-
-/// 送出那一行之后最多看几次重画找确认框（每次至多 `terminal_follow::REDRAW_WAIT`；不变了就不再等）。
-const CONFIRM_REDRAWS: usize = 8;
 
 /// 找确认框那几样副作用（判据拿合成的屏喂）。
 pub(crate) trait ConfirmIo {
@@ -128,18 +124,42 @@ pub(crate) enum Confirmed {
     Nothing,
 }
 
-/// 送出那一行之后：读回到了就停；每看一屏认一次框，认出 ⇒ 按一下确认键；屏不再变 ⇒ 停。
+/// 看一屏看到的：读回先到了 · 认出了框 · 都没有。
+enum Look {
+    Arrived(ModelSaid),
+    Boxed,
+    Nothing,
+}
+
+fn look(bx: &crate::agents::ScreenBox, io: &mut dyn ConfirmIo) -> Result<Look, Said> {
+    if let Some(s) = io.arrived() {
+        return Ok(Look::Arrived(s));
+    }
+    Ok(if (bx.seen)(&io.screen()?) {
+        Look::Boxed
+    } else {
+        Look::Nothing
+    })
+}
+
+/// 送出那一行之后：读回到了就停；每看一屏认一次框，认出 ⇒ 按一下确认键；屏不再变 · 看满了次数 ⇒ 停。
 pub(crate) fn confirm_with(
     bx: &crate::agents::ScreenBox,
     io: &mut dyn ConfirmIo,
 ) -> Result<Confirmed, Said> {
-    for _ in 0..CONFIRM_REDRAWS {
-        if let Some(s) = io.arrived() {
-            return Ok(Confirmed::Arrived(s));
-        }
-        if (bx.seen)(&io.screen()?) {
+    let first = look(bx, io)?;
+    let seen = settle(
+        first,
+        REDRAWS_AFTER_SEND,
+        |l| !matches!(l, Look::Nothing),
+        || io.redrawn().then(|| look(bx, io)).transpose(),
+    )?;
+    Ok(match seen {
+        Look::Arrived(s) => Confirmed::Arrived(s),
+        Look::Nothing => Confirmed::Nothing,
+        Look::Boxed => {
             let sent = io.press(bx.key)?;
-            return Ok(match sent.result {
+            match sent.result {
                 SentResult::Delivered => Confirmed::Pressed,
                 SentResult::Unsure => {
                     Confirmed::Ended(reply(SwitchResult::Unsure, None, sent.said))
@@ -147,20 +167,14 @@ pub(crate) fn confirm_with(
                 SentResult::Refused => {
                     Confirmed::Ended(reply(SwitchResult::Refused, sent.why, sent.said))
                 }
-            });
+            }
         }
-        if !io.redrawn() {
-            break;
-        }
-    }
-    Ok(Confirmed::Nothing)
+    })
 }
 
-/// 生产那一份：看屏走 `terminal-preview` 那一条（不带色），按键同 `session-say` 那一道，等重画用实时预览那个只读客户端，读回问那只耳朵。
+/// 生产那一份：读屏驱动（抓屏不带色 · 按键同 `session-say` 那一道 · 等重画用实时预览那个只读客户端），读回问那只耳朵。
 struct LiveBox<'a> {
-    sid: &'a str,
-    client: Option<String>,
-    watch: crate::control::terminal_follow::Watch,
+    drive: Drive<'a>,
     ears: &'a mut crate::observe::one_wait::Armed<ModelSaid>,
 }
 
@@ -169,41 +183,20 @@ impl ConfirmIo for LiveBox<'_> {
         self.ears.take_now()
     }
     fn redrawn(&mut self) -> bool {
-        self.watch.changed()
+        self.drive.redrawn()
     }
     fn screen(&mut self) -> Result<Vec<String>, Said> {
-        let shot = crate::control::terminals::preview_on(
-            crate::control::terminals::On::default(),
-            &crate::control::terminals_wire::TerminalPreviewReq {
-                sid: Some(self.sid.to_string()),
-                color: Some(false),
-                ..Default::default()
-            },
-            &crate::common::time::Tz::default(),
-        )?;
-        Ok(shot.lines.into_iter().map(|l| l.text).collect())
+        self.drive.screen()
     }
     fn press(&mut self, key: &'static str) -> Result<Sent, Said> {
-        self.watch.forget();
-        crate::control::terminals_wire::say(&TerminalInputReq {
-            sid: Some(self.sid.to_string()),
-            key: Some(key.to_string()),
-            client: self.client.clone(),
-            ..TerminalInputReq::default()
-        })
+        self.drive.press(key)
     }
 }
 
 /// 看屏的那只只读客户端：终端收（同 `session-say` 那一道门）才起；起不来 ⇒ `None`（不找框，照旧等读回）。
-fn box_watch(sid: &str, client: Option<&str>) -> Option<crate::control::terminal_follow::Watch> {
-    let t = crate::control::terminals::say_target_on(
-        crate::control::terminals::On::default(),
-        sid,
-        client,
-    )
-    .ok()?
-    .ok()?;
-    crate::control::terminal_follow::Watch::open(None, &t).ok()
+fn box_drive<'a>(sid: &'a str, client: Option<String>) -> Option<Drive<'a>> {
+    let mut d = Drive::new(sid, client);
+    matches!(d.open(), Ok(None)).then_some(d)
 }
 
 /// `session-model`：换模型（终端没了 ⇒ 记下、恢复照它起）。异步档：送那一行在阻塞线程池里做，等读回是一次有界等待（文件事件叫醒）。
@@ -282,7 +275,7 @@ fn send(req: &SessionModelReq, own: &crate::platform::Own) -> Result<Sent2, Said
         .map_err(|e| crate::wire::spec::fail("unobservable", malformed(&e)))?;
     let watch = sw
         .confirm
-        .and_then(|bx| box_watch(&req.sid, req.client.as_deref()).map(|w| (bx, w)));
+        .and_then(|bx| box_drive(&req.sid, req.client.clone()).map(|d| (bx, d)));
     let shared = sw.saves.is_some_and(|rel| {
         crate::observe::accounts_query::session_home(&live, &req.sid)
             .is_some_and(|h| crate::observe::accounts_query::shared_with_other_accounts(&h, rel))
@@ -307,13 +300,11 @@ fn send(req: &SessionModelReq, own: &crate::platform::Own) -> Result<Sent2, Said
     if let Some(r) = after_send(sent, &keep)? {
         return Ok(Sent2::Done(r));
     }
-    let Some((bx, watch)) = watch else {
+    let Some((bx, drive)) = watch else {
         return Ok(Sent2::Wait(ears, shared));
     };
     let mut io = LiveBox {
-        sid: &req.sid,
-        client: req.client.clone(),
-        watch,
+        drive,
         ears: &mut ears,
     };
     Ok(match confirm_with(&bx, &mut io)? {

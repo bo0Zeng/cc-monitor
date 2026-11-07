@@ -74,4 +74,44 @@ class MachineBarTest {
         assertTrue(usage.contains("MachineBar("))
         assertTrue("用量屏离线那一条交给机器条", !usage.contains("history.list.reconnect"))
     }
+
+    @Test
+    fun `机器条只一种：读一台的那几屏都摆它，旧的那几种条一个不剩`() {
+        val root = generateSequence(File(".").absoluteFile.normalize()) { it.parentFile }.first { File(it, "settings.gradle.kts").isFile }
+        val base = File(root, "app/src/main/kotlin/com/ccmonitor/mobile")
+        val code = { rel: String -> KotlinSourceScanner.codeOnlyKeepingLiterals(File(base, rel).readText()) }
+        val bar = Regex("""\bMachineBar(View)?\(""")
+        val screens =
+            listOf(
+                "ui/chats/ChatsScreen.kt",
+                "ui/session/SessionScreen.kt",
+                "ui/files/FilesScreen.kt",
+                "ui/rotation/RotationScreen.kt",
+                "ui/chat/ChatRoute.kt",
+                "ui/usage/UsageScreen.kt",
+                "ui/settings/SettingsScreen.kt",
+                "ui/settings/AccountsScreen.kt",
+                "ui/agents/AgentsScreen.kt",
+            )
+        val missing = screens.filterNot { bar.containsMatchIn(code(it)) }
+        assertEquals("这几屏读一台，却没摆机器条", emptyList<String>(), missing)
+        // 原来各屏自画的那几种（会话列表顶条 · 终端掉线条幅 · 文件离线框 · 轮换离线框）。
+        val old = Regex("""\b(HostBarView|DroppedBanner|OfflineBand|DownBox)\b""")
+        val all = base.walkTopDown().filter { it.isFile && it.extension == "kt" }.toList()
+        assertTrue("前提：扫到了机器条自己", all.any { it.name == "MachineBar.kt" })
+        val left = all.filter { old.containsMatchIn(KotlinSourceScanner.codeOnlyKeepingLiterals(it.readText())) }.map { it.name }
+        assertEquals("还有屏自画机器条", emptyList<String>(), left)
+    }
+
+    @Test
+    fun `修法各做什么只一张表：换成密钥走换钥匙那一下，改设置那几种没给编辑页就不画按钮`() {
+        val hit = mutableListOf<String>()
+        val acts = FixActs({ hit += "reconnect" }, { hit += "deploy" }, null, { hit += "useKey" })
+        fixAction(MachineFix.USE_KEY, acts)?.invoke()
+        fixAction(MachineFix.RETRY, acts)?.invoke()
+        fixAction(MachineFix.INSTALL, acts)?.invoke()
+        assertEquals(listOf("useKey", "reconnect", "deploy"), hit)
+        assertNull(fixAction(MachineFix.PUSH_KEY, acts))
+        assertNull(fixAction(MachineFix.CONN_SETTINGS, acts))
+    }
 }

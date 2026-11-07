@@ -151,7 +151,6 @@ class NeedsSheetShotTest {
             detail = "",
             choices = listOf(choice("answer", "提交答案", NeedsChoiceRow.MAIN), choice("dismiss", "不回答", NeedsChoiceRow.RELEASE)),
             questions = questions,
-            sinceMs = 0,
         )
 
     private fun approve(script: String) =
@@ -171,7 +170,6 @@ class NeedsSheetShotTest {
                     choice("deny-stop", "拒绝并停下", NeedsChoiceRow.HOLD, tone = Tone.FAIL),
                 ),
             questions = emptyList(),
-            sinceMs = 0,
         )
 
     /** 一题四项、每项说明一整句（真 Claude 的 AskUserQuestion 每项都带 description）。 */

@@ -4,7 +4,7 @@
  * | 入口 | 落到 |
  * |---|---|
  * | 标签页栏顶「设置」· `,` · 命令面板「设置」 | 不带目的地（上次离开的地方） |
- * | 账号 chip「管理账号…」· 命令面板「管理账号…」· 账号面板里的「管理账号…」「设置…」「接入…」 | 那台的「账号」栏 |
+ * | 账号 chip「管理账号…」· 没有会话时的状态栏账号按钮与命令面板「账号…」· 账号面板里的「管理账号…」「设置…」「接入…」 | 那台的「账号」栏 |
  * | 账号面板配置下拉「管理配置…」· 策略那一格「看说明与源码 ›」 | 那台的「轮换」栏（配置页 / 策略页；给了哪份 ⇒ 打开那一份） |
  * | ↗ 浮层的［接上终端］ | 那台 ›「别名与配置文件」› 接上终端那一节 |
  * | 上下文浮层［设上限］ | 当前标签页那台 › 上下文上限那一折 |
@@ -12,13 +12,15 @@
  * | 栏底机器条那一行的修法（重新连接以外：连接设置 · 推公钥 · 比对指纹 · 更新 …） | 那台的页 |
  * | 命令面板「加入机器表… · <名字>」 | 机器页、添加框开着、名字预填 |
  * | 状态栏「待办 N」 | 文件与数据（「待办」那一栏是它的默认栏） |
+ * | 主窗口空态「开始用」卡的按钮 | 照后端给的 `go`：本机 ›「别名与配置文件」› 接上终端那一节 · 机器页添加框开着 |
  * | 计划页「未装 planned-build」［填 pb 路径…］ | 那台 › pb 路径那一行 |
  *
  * ↗ 浮层「要更新」的［更新］不开设置：就地部署（`backend-deploy.ts`，与机器卡同一处）。
  *
  * 认不出的那一节设置窗会忽略（照常打开那一页、高亮页头）。
  */
-import type { Machine } from "./ipc/origin";
+import type { FirstRunGo } from "./generated/FirstRunGo";
+import { LOCAL, type Machine } from "./ipc/origin";
 import type { SettingsTarget } from "./open-settings";
 
 /** 那台的「账号」栏（没有当前标签页时调用方给本机）。 */
@@ -52,9 +54,6 @@ export function pbDirOf(origin: Machine): SettingsTarget {
 /** 文件与数据（「待办」那一栏）。 */
 export const CHORES: SettingsTarget = { page: "data" };
 
-/** 机器页顶上「开始用」那一块。 */
-export const START: SettingsTarget = { page: "machines", anchor: "first-run" };
-
 /** 快捷键那一节。 */
 export const KEYBINDINGS: SettingsTarget = { page: "appearance", anchor: "keybindings" };
 
@@ -64,4 +63,9 @@ export const ADD_MACHINE_ANCHOR = "add-machine:";
 /** 命令面板「加入机器表… · <名字>」：机器页、添加框开着、名字预填。 */
 export function addMachineOf(name: string): SettingsTarget {
   return { page: "machines", anchor: `${ADD_MACHINE_ANCHOR}${name}` };
+}
+
+/** 「开始用」卡上按钮开哪一处（后端给的闭集 ⇒ 设置窗里那一处）。 */
+export function firstRunGoOf(go: FirstRunGo): SettingsTarget {
+  return go === "aliases" ? connectTerminalOf(LOCAL) : addMachineOf("");
 }

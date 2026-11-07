@@ -201,7 +201,16 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 
 ### 2.7 共享 crate 与 workspace
 
-`src/common/` 住 monitor 与后端共同 link 的共享 crate。它们只放两边必须对上的**契约**（路径 · 端口 · 文件格式 · 文案表 · 令牌形状 · 字节表键），不放**判定**；判定只在后端。monitor 生产段只许依赖契约类 crate，由 `tests/frontend/shell/contract_crate_guard_tests.rs` 两向钉住。共享常量让两侧「想不一致」得先把 import 删掉，漂移变成不可表示。
+`src/common/` 住几侧共同 link 的共享 crate，每个恰归一类、写清理由（`tests/frontend/shell/contract_crate_guard_tests.rs` 的 `CRATES`，与目录两向相等）：
+
+| 类 | 谁链 | 放什么 |
+|---|---|---|
+| 契约 | monitor 生产段可链 | 两侧必须对上的形状（路径 · 端口 · 文件格式 · 文案表 · 令牌形状 · 字节表键 · 线上类型），以及两端照同一份做的写字 · 问法 · 排法（face-core · batch-core · chunk-core · pick-core）；能不能做仍由那台在做的时候判 |
+| 判定 | 只后端生产段链，monitor 至多在 dev 侧链 | 裁决：账号能不能用（acct-core）· 正文怎么解析成块树（md-core）· 上游 URL 能不能用（upstream-url-core） |
+| 判据原语 | 只在 dev 侧 | 测试的家（test-home）· 源码扫描判据的原语（guard-core） |
+| 前端宿主原语 | 两个前端（monitor · 文件窗口）链，后端不链 | 两个前端只该有一份的宿主那几件（host-core · win-manifest） |
+
+monitor 生产段连同它的依赖闭包只许链契约与前端宿主原语，判定类出现即红、没有例外；部署判定只在后端 `deploy` crate（`place_verdict` 在 `control/deploy_plan.rs`）。共享常量让两侧「想不一致」得先把 import 删掉，漂移变成不可表示。
 
 后端 crate 刻意不是 workspace 成员：它要能在目标机上原生构建（发版交叉编成 musl 静态二进制）。壳的 workspace 成员是 `monitor` ＋ 共享 crate ＋ 通信层 ＋ 文件窗口包，个数以 `src/frontend/shell/Cargo.toml` 现量为准。
 
@@ -229,23 +238,23 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 |---|---|---|
 | 值 | 机器要的码、数、时刻（epoch / ISO 原样）、id | 普通类型；闭集的词是枚举的单元变体 |
 | 写好的字（`text` · `…Text`） | 核心按文案表与看的那一台的语言、时区写好的一句 | `common::cells::Words` |
-| 语气（`tone` · `…Tone`） | 闭集：`plain` · `fail` · `now` · `need` · `warn`（该留意了，还没出错：上下文快满）· `busy`（后台有事在跑、不要人）；要用到再加 `ok` | `common::cells::Tone` |
+| 语气（`tone` · `…Tone`） | 闭集：`plain` · `fail` · `now` · `need` · `warn`（该留意了，还没出错：上下文快满）· `busy`（后台有事在跑、不要人）· `offline`（那一端此刻够不着：画离线的灰，不算出错）；要用到再加 `ok` | `common::cells::Tone` |
 | 活钟 `{dur}` | 要随时间走的那一截：`{text: "…{dur}…", from, to}`，出口用登记过的那一个读口填 | 过程行 `span` |
 | `detail` · `raw` | 复制详情（只在失败时）· 原文透传（受认证约束的可选格） | — |
 
 「这一格是值还是写好的字」由它的 Rust 类型说，不按格名猜：`blocks[].text` 是原文（值），`cost.text` 是核心写的字。界面自己的骨架字（按钮、菜单、标题、空状态）留在界面、也从文案表取；凡是描述数据或状态的字都由核心写。
 
-**出口扫描判据**：按意思判两句——出口取的文案键只许骨架那几档（文案表 `kind` 的 title · control · action · aria · body）且不带插值；拿一个值去比字面的码的分支里不许取文。扫的树照上表「输出适配层」那一行：界面 TS（`tests/frontend/ui/exit-rules.ts`，typescript 语法树）、壳与文件窗口的 Rust（`tests/frontend/filewin/exit_scan_tests.rs`）、手机 Kotlin（`src/mobile/detekt-rules` 的 detekt 规则）。今天的存量登在欠账名单 `tests/frontend/ui/exit-debt.json`，三门语言共用，逐格恒等、只许删不许加。
+**出口扫描判据**：按意思判两句——出口取的文案键只许骨架那几档（文案表 `kind` 的 title · control · action · aria · body）且不带插值；拿一个值去比字面的码的分支里不许取文。扫的树照上表「输出适配层」那一行：界面 TS（`tests/frontend/ui/exit-rules.ts`，typescript 语法树）、壳与文件窗口的 Rust（`tests/frontend/filewin/exit_scan_tests.rs`）、手机 Kotlin（`src/mobile/detekt-rules` 的 detekt 规则）。存量登在欠账名单 `tests/frontend/ui/exit-debt.json`，三门语言共用，逐格恒等、只许删不许加。
 
 **会走的钟**：核心写的时刻字是发出那一刻的字。秒级要走的那几处（过程行 `{dur}` · 「已等」）核心交起点或答出那一刻已等多久，出口从收到起按本机的钟接着走，不重问那台。时长只一个读口：桌面 TS `duration-format.ts::fmtDur`，手机 `core-copy` 的 `DurationFormat`（经 JNI 调 `copy_core::short_duration`），对同一份金样 `short-duration.golden.json`。
 
 #### 格目录
 
-格目录（本体 `faces/cells_catalog.rs`，落盘一份金样 `tests/__fixtures__/cells-catalog.golden.json`）列出每件成品有哪些格（路径 · `value` / `text` / `tone` · 类型），出口照金样就知道有没有那一格，不必读核心代码；`view` 投影按它认成品名与路径。它不是帧命令（原先那条没有调用方，第 8 批删了），整份目录只在测试档现算。目录不手写：每件成品登记一组用自己的 Rust 类型造的样本，经同一份 `Serialize` 走查出格路径。哪些成品已登记、格的路径写法、`pending`（判了要补、还没落地的格）与冻结规则，以金样与 `tests/backend/faces/cells_catalog_tests.rs` 的头注为准；冻结的格（每格带 `frozen`：`record` · `read_row` 整件，会话三帧 `session_added` · `session_status` · `session_left` 只冻手机读的那几格）不删、不改名、不换类型。
+格目录（本体 `faces/cells_catalog.rs`，落盘一份金样 `tests/__fixtures__/cells-catalog.golden.json`）列出每件成品有哪些格（路径 · `value` / `text` / `tone` · 类型），出口照金样就知道有没有那一格，不必读核心代码；`view` 投影按它认成品名与路径。它不是帧命令，整份目录只在测试档现算。目录不手写：每件成品登记一组用自己的 Rust 类型造的样本，经同一份 `Serialize` 走查出格路径。哪些成品已登记、格的路径写法、`pending`（判了要补、还没落地的格）与冻结规则，以金样与 `tests/backend/faces/cells_catalog_tests.rs` 的头注为准；冻结的格（每格带 `frozen`：`record` · `read_row` 整件，会话三帧 `session_added` · `session_status` · `session_left` 只冻手机读的那几格）不删、不改名、不换类型。
 
 #### 出口怎么挑格：请求信封里的声明
 
-出口在请求信封里交自己的声明 `view`（帧面那一格 · CLI 面 `--view`，同一份）：今天的词是 `cells`（只要这几格）与 `omit`（这几格不要），路径照格目录写。
+出口在请求信封里交自己的声明 `view`（帧面那一格 · CLI 面 `--view`，同一份）：词是 `cells`（只要这几格）与 `omit`（这几格不要），路径照格目录写。
 核心只一个通用投影（`faces/project.rs::project`）：声明先按格目录校验（认不出的词 · 成品 · 格 ⇒ `bad_args`，不静默放过），每条命令的应答里哪几处住着哪件成品登记一次（`stream/inbound/views.rs::PLACES`），成功的应答照声明裁好再装运；各命令不自己认「要不要正文」一类的开关。
 流要什么由 attach 行 / `--view` 交的声明说（`IPC-PROTOCOL.md` §2），没有流旗标。还靠开关定形的：入参 `raw`。CLI 面的 `--text`（给人看那一形）是所有命令通用的一个出法（`control/ship_text.rs` 把核心写好的 `text` · `rows` 拼成字），不按命令写。
 
@@ -272,7 +281,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 | 记录解释（一行 → 通用记录） | `agents/<家>/`，Claude 的链与主线在 `agents/claudecode/` · `agents/mainline.rs` |
 | 划段（一轮里哪几条收进「过程」） | `observe/recognize/turns.rs` |
 | 子运行（子 agent）表 | `observe/runs.rs`，帧 `session_runs` |
-| 帧定义与发帧 | `wire/mod.rs` · `stream/tap.rs` · 活卡 `stream/live.rs` · 主题表 `wire/topic.rs` |
+| 帧定义与发帧 | 线上形 `src/common/cmd-wire/src/frame.rs`（`Frame`）· 后端在它上面的写字与丢帧规矩 `wire/mod.rs` · `stream/tap.rs` · 活卡 `stream/live.rs` · 主题表 `wire/topic.rs` |
 | 收口 · 重放 · 就绪点 | 壳 `stream_source/` · `event_replay.rs` · `session_book.rs` · `stream_watch.rs` |
 | 排版 | 界面 `events.ts` → `tabs.ts` → `render-stream-record.ts` → `cards/` |
 | 手机 | `core-claude` 的 `link/`（常驻流客户端 · 帧解码）→ `app` 的聊天屏 |
@@ -293,24 +302,24 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 
 **账号**：一个账号 ＝ 一个配置目录（`CLAUDE_CONFIG_DIR`），账号库由 `accounts/manage/` 建立和维护；订阅号的登录令牌由 `accounts/oauth/` 读与续；API 号的 key 只在它所在那台的凭据表里（§5「账号：隔离又同步」）。
 
-**额度与轮换（今天的实现）**：轮换的后端分两块 —— **基础功能层**（`accounts/quota/` 除 `setup/` 外 · `accounts/upstream_select/` · `faces/rotation_facts_face.rs` · `faces/rotation_act_face.rs`）只给信息、只执行动作；**配置编辑层**（`accounts/quota/setup/` · `faces/rotation_view_face.rs` · `rotation_edit_face.rs` · `rotation_try_face.rs`）管界面与手写的配置，可以问基础层，基础层不认它（只认它交的 `rules::Adopted`，判据 `accounts/quota/layer_guard`）。两块只在 `faces/rotation_face.rs` 接上。
+**额度与轮换**：轮换的后端分两块 —— **基础功能层**（`accounts/quota/` 除 `setup/` 外 · `accounts/upstream_select/` · `faces/rotation_facts_face.rs` · `faces/rotation_act_face.rs`）只给信息、只执行动作；**配置编辑层**（`accounts/quota/setup/` · `faces/rotation_view_face.rs` · `rotation_edit_face.rs` · `rotation_try_face.rs`）管界面与手写的配置，可以问基础层，基础层不认它（只认它交的 `rules::Adopted`，判据 `accounts/quota/layer_guard`）。两块只在 `faces/rotation_face.rs` 接上。
 
 | 块 | 住址 | 做什么 |
 |---|---|---|
 | 额度账 | `accounts/quota/ledger.rs`（`~/.cc-monitor/quota.json`） | 每号每窗口的用量、重置时刻、被拒 · 超额。两个来源：中转经手的回包头（读法在适配层 `agents::quota_read_of`）· `quota-probe` 起官方客户端报的用量（`agents::usage_of`）。另记每窗口「1% ≈ 多少用量」：中转从应答流里数到的每发用量（`accounts/quota/spend.rs`，读法在流面 `spent`）÷ 读数涨的点数，量不到就空着 |
-| 轮换存储 | 存取一处 `accounts/quota/rotation.rs`；账本 `~/.cc-monitor/rotation.json` 第四版（`rules/book.rs`，配置那一侧经 `setup/uses.rs`；载入的策略副本按版本只存一份 `copies`，会话的 `uses` 只写键）· 策略目录 `~/.cc-monitor/strategies/`（`setup/shelf.rs`） | `rotation.json` 按会话 id 存在用的号 · 它载入的那份策略副本（代码 · 设置 · 版本；缺 ⇒ 不轮换，文件再改不跟，「载入新版」才换）· 会话侧的临时动作（拖出来的顺序 · 先不用的号）· 策略交的 memo 与叫醒 · 换号记录 · 新会话用哪份（`forNew`，默认空）。策略文件都是用户自己的，没有随包策略 |
+| 轮换存储 | 存取一处 `accounts/quota/rotation.rs`；账本 `~/.cc-monitor/rotation.json`（`rules/book.rs`，配置那一侧经 `setup/uses.rs`；载入的策略副本按版本只存一份 `copies`，会话的 `uses` 只写键）· 策略目录 `~/.cc-monitor/strategies/`（`setup/shelf.rs`） | `rotation.json` 按会话 id 存在用的号 · 它载入的那份策略副本（代码 · 设置 · 版本；缺 ⇒ 不轮换，文件再改不跟，「载入新版」才换）· 会话侧的临时动作（拖出来的顺序 · 先不用的号）· 策略交的 memo 与叫醒 · 换号记录 · 新会话用哪份（`forNew`，默认空）。策略文件都是用户自己的，没有随包策略 |
 | 事实 | `accounts/quota/facts.rs`（拼装在 `upstream_select/rotate.rs` 的 `Hop::facts`） | 每个号的用量 · 重置 · 用速 · 1% ≈ 多少用量 · 被拒 · 超额 · 登录；只读额度账 ＋ 账号库 ＋ 登录，换一份策略不变 |
 | 节点 | `accounts/quota/nodes.rs` | 事实或设置变了的那一刻（读数 · 被拒 · 续期失败 · `quota.json` · 账号库 · 策略目录 · 会话那一条）；全进程一条通道，判的缓存与推送只订它。重置这类已知时刻不走它，判的那一侧记成下一个节点时刻 |
 | 判 | `accounts/quota/rules/decide.rs`（`turn`，纯函数）· `rules/standing.rs` · 策略文件里的 `decide(ctx)` · 积木库 `src/shared/rotation/lib.rhai` | 「换不换、换谁」全在策略里；后端只照策略交的先后取第一个事实上发得出去的号（`standing`）、停发、兜底 |
 | 推演 | `accounts/quota/rules/simulate.rs` | 离散事件推演，每个事件点调的是同一个 `turn`；每号照自己量出来的用速涨，量不到不编数 |
-| 策略文件 | `accounts/quota/setup/shelf.rs`（目录）· `setup/script.rs`（JSON 头 ＋ Rhai 代码）· 代码在沙箱里的调用 `rules/code.rs` · 沙箱 `accounts/quota/strategy/` | 一份策略一个 `.rhai`，文件名即 id；没有随包策略；第三版的旧脚本升级时挪进 `strategies/v3/`、不加载 |
-| 换 | `accounts/upstream_select/turn.rs` · `rotate.rs` | 中转那一发里只在节点上判（结论缓存到下一个节点）、备料（订阅号：鉴权头换成那个号的令牌，请求体里的身份格一起换；按量号：照它在 key 表里那一行）、记一条。不重启进程；要重启换就走 `session-restart` |
+| 策略文件 | `accounts/quota/setup/shelf.rs`（目录）· `setup/script.rs`（JSON 头 ＋ Rhai 代码）· 代码在沙箱里的调用 `rules/code.rs` · 沙箱 `accounts/quota/strategy/` | 一份策略一个 `.rhai`，文件名即 id；没有随包策略；`strategies/v3/` 里第三版的旧脚本不加载，界面只说有几份没加载、是哪几份（`shelf::old_files`） |
+| 换 | `accounts/upstream_select/turn.rs` · `rotate.rs` | 中转那一发里只在节点上判（结论缓存到下一个节点）、备料（订阅号：鉴权头换成那个号的令牌，请求体里的身份格一起换；按量号：照它在 key 表里那一行）、记一条。不重启进程 |
 | 血缘 | `src/backend/history/lineage.rs`（`~/.cc-monitor/lineage.json`） | 谁起的谁，只在中转那一路认 |
 | 帧面 | 基础层 `faces/rotation_facts_face.rs` · `rotation_act_face.rs`（拖出来的顺序 · 现在用）；配置层 `faces/rotation_view_face.rs` · `rotation_edit_face.rs` · `rotation_try_face.rs`；接线与 `quota-read` 在 `faces/rotation_face.rs` · `faces/quota_rows.rs` | `quota-read` · `rotation-*`（策略目录 · 一个会话或一份策略的四块 `rotation-view` · 设置 · 拖出来的顺序 · 现在用 · 试跑）；quota-warm 读的「该不该发一句」也在 `quota_rows.rs` 判 |
 
 谁调谁：agent → 中转 → 上游选择（问轮换、拿令牌）→ 上游；回包头 → 额度账；界面 / 手机 / skill 经 `quota-read` · `rotation-*` 读写，不自己判。
 
-两份账本的版本照声明（`relay_route_core::QUOTA_FILE` · `ROTATION_FILE`）：轮换账本只读得懂第 3 版，盘上是更老的那一版 ⇒ 当没有（不升级），读法见 INVARIANTS §2.2。桌面设置页与会话面板、手机都经 `rotation-*` 命令读写。
+两份账本的版本照声明（`relay_route_core::QUOTA_FILE` · `ROTATION_FILE`）：轮换账本只读得懂声明的那一版，盘上是更老的 ⇒ 当没有（不升级），读法见 INVARIANTS §2.2。桌面设置页与会话面板、手机都经 `rotation-*` 命令读写。
 
 ### 3.4 文件
 
@@ -442,7 +451,7 @@ monitor 起子进程一律经 `spawn_managed.rs`，三个策略都是必填参�
 
 ### 每个窗口一个入口
 
-`index.html` · `settings.html` · `viewer.html` 各有自己的入口（`entry-main.ts` · `entry-settings.ts` · `entry-viewer.ts`）。设置窗的模块图里没有高亮、数学排版与 tab 管理；设置窗关窗是隐藏、复用时重跑取值，主窗销毁时连带销毁它（`lib.rs::windows_to_destroy_after`）。独立只读窗口复用 `TabManager` 过滤到那个会话，订一条 `session-lines/<sid>`，不发 `frontend-ready`。
+`index.html` · `settings.html` · `viewer.html` · `terminal.html` 各有自己的入口（`entry-main.ts` · `entry-settings.ts` · `entry-viewer.ts` · `entry-terminal.ts`；名单只在 `vite.config.ts` 的 `input`）。终端窗只装终端面部件，一个终端一扇（`lib.rs::open_terminal_in_new_window`）。设置窗的模块图里没有高亮、数学排版与 tab 管理；设置窗关窗是隐藏、复用时重跑取值，主窗销毁时连带销毁它（`lib.rs::windows_to_destroy_after`）。独立只读窗口复用 `TabManager` 过滤到那个会话，订一条 `session-lines/<sid>`，不发 `frontend-ready`。
 
 **为什么**：webview 之间的 JS realm 互不共享，一个入口顶层同步 import 了全部视图，运行期分派到哪一支都要把整张模块图执行一遍——修法只有多入口。viewer 不另写渲染器：再写一套就会与主管线漂移。
 
@@ -465,7 +474,7 @@ Windows Terminal 里每个标签的伪控制台窗口的属主就是承载它的
 **切到那个标签页**：Windows Terminal 没有从外部选中别人标签的接口。小助手借那个会话的控制台挂一个记号标题（`ccm-front-` ＋ 8 位），
 UI Automation 在那个窗口的标签页里找名字带记号的那个、选中，原标题写回（`bind.rs::pick_tab`，Win11 虚拟机上整趟 100–400 ms）。
 标签名不随程序标题变化（手动改过名 · 设置了「禁止更改标题」）、读不到标签页、终端提权时只切窗口，照实说为什么。
-「切过去了」要核过前台：系统答应了、前台也确实是它才算（真机见过答应了前台却没换）。
+「切过去了」要核过前台：系统答应了、前台也确实是它才算（系统答应了，前台也可能没换）。
 
 ### 日志：tracing 在 Builder 之前初始化
 
@@ -500,18 +509,8 @@ UI Automation 在那个窗口的标签页里找名字带记号的那个、选中
 
 **判据**是 `tests/` 下的测试：单测、登记表（`*_registry` · `*_guard` · `*_ledger`，从盘上全集派生人群、默认拒绝，INVARIANTS §46）、金样（`tests/__fixtures__/`）、e2e 套件（`tests/e2e/`）。Rust 判据经 `#[path]` 挂进各自的 crate，跟那棵树的单测一起跑。
 
-**入口分四层**（脚本都在 `tests/scripts/`，跑法见 [`tests/scripts/README.md`](../../tests/scripts/README.md)）：
+**入口**（写的时候只跑改到的那几块 · 交回前 `quick-check.sh` · 推候选分支前 `gate-affected.sh --trust-ci` · 打发版标签前 `gate-affected.sh --full`）各跑什么、什么时候跑，只写在 [`tests/scripts/README.md`](../../tests/scripts/README.md)；`gate.sh` 是格的唯一名单。
 
-| 层 | 脚本 | 什么时候 | 跑什么 |
-|---|---|---|---|
-| 写的时候 | — | 每改一处 | 增量编 ＋ 只跑改到的那几块（`cargo test --lib -- <模块>` · `npx vitest run <文件>`） |
-| 交回前 | `quick-check.sh` | 一份改动做完 | 两棵 Rust 树的排版 · tsc · 后端整套单测 ＋ 壳那棵 `cargo test --workspace --lib` · 整套 vitest · 后端那棵改到的包的 clippy，在 `.build/` 下的一次性沙箱里跑、不拿锁；改到手机读的东西才加跑 ktlint · detekt · 手机 JVM 单测。「加了子命令要打版本号」单列成待办、不算红 |
-| 推候选分支前 | `gate-affected.sh --trust-ci` | 合进主线之前 | 按改动挑门禁的格（`gate-affected/map` 路径 → 格组，`gate-affected/plan.py` 挑），只跑恒跑的便宜格 ＋ 被改到的本机才有的格 ＋ 被改到被测对象的 e2e 套件，CI 会跑的交给 CI；拿门禁锁 |
-| 打发版标签前 | `gate-affected.sh --full` | 发版 | 清掉会话变量、排门禁锁，跑全量 `gate.sh`（各格一遍，`GATE: OK` 才打标签） |
-
-- `gate.sh` 是格的唯一名单（`run_gate` · `run_e2e` …），`GATE_ONLY=<格>` 只跑点名的；CI 的 Linux job 就是这么调它。
-- 推送：`push-candidate.sh` 先把合并好的分支推到候选分支 `next`，`ci.yml` 在上面跑与 main 同一套 job，全绿才快进 `main`；`release.yml` 只认标签，第一个 job `ci-gate` 要求这个提交上有一条绿的 CI。
-- 重活（编译 · 测试 · 门禁 · gradle）经 `heavy.sh`：单独一个封顶内存的 scope ＋ 槽位排队，没有 `systemd-run --user` 的机器直接跑。
 - 门禁、挑格、推送这几份脚本自己也有判据（`tests/backend/flow_scripts_guard.rs`）。
 - 新加一条判据之前先问编译器挡不挡得住：类型 · `clippy.toml` 的 `disallowed-methods`（后端，`Cargo.toml` 里定成 deny）· `eslint.config.js` 的 `no-restricted-syntax`（界面）能挡的，就不写扫源码文字的判据。
 - 新加的判据在文件头（或那条测试的头注）写一句**什么时候删它**：它防的那件事改由类型 / 结构挡住时 · 它的登记表 / 豁免表数到 0 时（连表带那几条只判表的断言一起删，主断言留着、改成不认例外）· 它说的那件事整个撤了时。写不出删除条件的，多半是在给一次事故叠一层，先想有没有结构上的挡法。

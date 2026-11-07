@@ -1,13 +1,14 @@
-//! 计划读面的夹具：一份照 pb 0.5（`pb dump` 形状 6）写的合成 dump 与 `pb dump --node` · 一个假 pb 插件（入口脚本把夹具原样吐出来，并记下自己被怎么起的）。
-//! 键与值的写法照 pb 0.5 的 `pb dump` 字段表，逐键对过 0.5.2 对一份真工作区跑出来的那一份（只对键的形状，不抄内容）。
+//! 计划读面的夹具：一份照 pb 0.7.2（`pb dump` 形状 8）写的合成 dump 与 `pb dump --node` · 一个假 pb 插件（入口脚本把夹具原样吐出来，并记下自己被怎么起的）。
+//! 键与值的写法照 pb 0.7 的 `pb dump` 字段表（只对键的形状，不抄任何工作区的内容）。
 //! 合成工作区：两个仓库 `alpha`（软件，登记在 `repos/alpha`）· `beta`（研究，只做计划、仓库还不在）；名字与正文全是合成的（「甲功能」之类），
 //! 不引 pb 仓与任何真工作区的文件。工作区根在常量里写成占位 `/synthetic/ws`，[`dump`] 换成交进来的那个。
 //!
 //! alpha：顶层 A1 能力（A1-1 模块已签收 2 笔、依据它的是 A1-4 · A1-2 模块没签、`to: A9` 指着图上没有的节点（不通过）、
-//! 它的文件是空的 · A1-3 测试 · A1-4 验收记录（执行过，成了 with）· A1-5 验收记录 sets A1-2 已签收（还没执行，查都过了））·
+//! 它的文件是空的 · A1-3 测试（一份坏 · 一份没提交）· A1-4 验收记录（执行过，成了 with）· A1-5 验收记录 sets A1-2 已签收（还没执行，查都过了））·
 //! A2 能力划成一个权力范围（负责人 SUB，在回看；A2-1 已签收 · A2-2 交回的那一条 sets A2 已签收，等上一级删掉划出那一项）·
 //! A3 规矩 covers A1 · A4 规矩 covers project · A5 待定（还没定）· A6 待定（定了，A6-1 原话）· A7 能力划出了、还没建（pending_scopes）·
-//! A8 元数据坏了（判不了的节点）· 排期 P1–P5（P3 划出 A2 · P5 划出 A7）· P2-1 在 A2 那一份排期里；`src/stray.txt` 无主。
+//! A8 元数据坏了（判不了的节点）· 排期只有划出（P3 划出 A2 · P5 划出 A7；先后是节点上的 after，见下面各节点的边）；`src/stray.txt` 无主；
+//! 审图两份：人按的审 A1 整棵、审完报了 3 条 · SUB 不带编号按的、起不了。阶段五个（定架构 · 审架构 · 开发 · 审实现 · 回看）。
 //! beta：B1 问题 · B1-1 来源（支持 1，依据它的是 B1-2）· B1-2 佐证；仓库不在 ⇒ `unowned.paths` 为 null、`error` 说为什么；
 //! project 没人接着、不在当前仓库 ⇒ `handoff` 为 null、`handoff_error` 说为什么。研究那一张表没有加 · 去的值 ⇒ 不出进度。
 
@@ -25,12 +26,12 @@ const WS: &str = "/synthetic/ws";
 /// 软件那张表（插件那一份的形状；阶段说明 · 规则只留判据用得上的几条）。
 fn software() -> Value {
     let labels = |w: &str| json!({"to": w, "with": w, "after": "排在后面", "covers": w, "file": "管文件", "replaces": "替换", "sets": "改状态"});
-    let kind = |name: &str, w: &str, evidence: bool, values: Value| json!({"name": name, "graph": "架构", "evidence": evidence, "values": values, "edge_labels": labels(w)});
+    let kind = |name: &str, w: &str, evidence: bool, values: Value| json!({"name": name, "graph": "架构", "stored_in": null, "evidence": evidence, "values": values, "edge_labels": labels(w)});
     json!({
         "name": "软件", "source": "plugin",
         "graphs": [
-            {"name": "架构", "file": "图.md", "lifetime": "permanent", "copies": "per_scope", "prefix": null, "order_by": null, "scope_by": null},
-            {"name": "排期", "file": "排期.md", "lifetime": "temporary", "copies": "per_scope", "prefix": "P", "order_by": "to", "scope_by": "covers"}
+            {"name": "架构", "file": "图.md", "lifetime": "permanent", "prefix": null, "scope_by": null},
+            {"name": "排期", "file": "排期.md", "lifetime": "temporary", "prefix": "P", "scope_by": "covers"}
         ],
         "kinds": [
             kind("能力", "连着", false, json!(["已签收", "decided"])),
@@ -40,12 +41,13 @@ fn software() -> Value {
             kind("原话", "连着", true, json!([])),
             kind("规矩", "管", false, json!(["decided"])),
             kind("待定", "连着", false, json!(["decided"])),
-            {"name": "排期", "graph": "排期", "evidence": false, "values": [], "edge_labels": labels("指向")}
+            {"name": "排期", "graph": "排期", "stored_in": null, "evidence": false, "values": [], "edge_labels": labels("指向")}
         ],
         "phases": [
             {"name": "定架构", "description": "先定结构"},
-            {"name": "审计", "description": "审架构与实现"},
+            {"name": "审架构", "description": "审架构"},
             {"name": "开发", "description": "写代码"},
+            {"name": "审实现", "description": "审实现"},
             {"name": "回看", "description": "回看整体，决定下一步"}
         ],
         "views": [{"name": "没签收的", "query": "subtree=this kind=能力,模块 state!=已签收"}],
@@ -63,12 +65,12 @@ fn software() -> Value {
 /// 研究那张表（没有加 · 去状态的规则）。
 fn research() -> Value {
     let labels = |w: &str| json!({"to": w, "with": w, "after": "排在后面", "covers": w, "file": "管文件", "replaces": "替换", "sets": "改状态"});
-    let kind = |name: &str, w: &str, evidence: bool, values: Value| json!({"name": name, "graph": "知识", "evidence": evidence, "values": values, "edge_labels": labels(w)});
+    let kind = |name: &str, w: &str, evidence: bool, values: Value| json!({"name": name, "graph": "知识", "stored_in": null, "evidence": evidence, "values": values, "edge_labels": labels(w)});
     json!({
         "name": "研究", "source": "plugin",
         "graphs": [
-            {"name": "知识", "file": "图.md", "lifetime": "permanent", "copies": "per_scope", "prefix": null, "order_by": null, "scope_by": null},
-            {"name": "排期", "file": "排期.md", "lifetime": "temporary", "copies": "per_scope", "prefix": "P", "order_by": "to", "scope_by": "covers"}
+            {"name": "知识", "file": "图.md", "lifetime": "permanent", "prefix": null, "scope_by": null},
+            {"name": "排期", "file": "排期.md", "lifetime": "temporary", "prefix": "P", "scope_by": "covers"}
         ],
         "kinds": [
             kind("问题", "连着", false, json!(["decided"])),
@@ -122,7 +124,7 @@ fn node(
 ) -> Value {
     let (children_in, assignee, signer) = scope;
     json!({
-        "id": id, "title": title, "kind": kind, "graph": graph, "body": body,
+        "id": id, "title": title, "kind": kind, "graph": graph, "stored_in": ".planned-build/synthetic/图.md", "body": body,
         "parent": parent, "children": children, "edges": edges,
         "files": [], "state": [], "evidenced_by": [],
         "children_in": children_in, "assignee": assignee, "signer": signer,
@@ -197,7 +199,11 @@ fn alpha() -> Value {
         top,
         &in_a1,
     );
-    a1_3["files"] = json!([{"path": "tests/a.txt", "file_check": "invalid", "note": "是个目录", "chars": null, "bytes": null}]);
+    a1_3["edges"]["file"] = json!(["tests/a.txt", "tests/b.txt"]);
+    a1_3["files"] = json!([
+        {"path": "tests/a.txt", "file_check": "invalid", "note": "是个目录", "chars": null, "bytes": null},
+        {"path": "tests/b.txt", "file_check": "uncommitted", "note": "没跟踪 · 4 个字符", "chars": 4, "bytes": 4}
+    ]);
     let a1_4 = node(
         "A1-4",
         "签收甲的读入",
@@ -345,26 +351,23 @@ fn alpha() -> Value {
         "丙那一半。",
         None,
         &[],
-        edges(&[], &[], &[], &[], &["src/third.txt"], none.clone()),
+        edges(&[], &[], &["A2"], &[], &["src/third.txt"], none.clone()),
         top,
         &["A4", "P5"],
     );
     a7["files"] = json!([{"path": "src/third.txt", "file_check": "missing", "note": "", "chars": null, "bytes": null}]);
-    let p = |id: &str, to: &[&str], covers: &[&str], scope| {
+    // 排期只剩划出（先后住节点上的 after）。
+    let p = |id: &str, covers: &[&str]| {
         node(
             id,
-            if covers.is_empty() {
-                "先后"
-            } else {
-                "划出"
-            },
+            "划出",
             "排期",
             "排期",
             "",
             None,
             &[],
-            edges(to, &[], &[], covers, &[], json!([])),
-            scope,
+            edges(&[], &[], &[], covers, &[], json!([])),
+            top,
             &[],
         )
     };
@@ -395,8 +398,7 @@ fn alpha() -> Value {
             "unknown": [{"rule": "无主文件", "reason": "beta 的仓库不在"}]
         },
         "nodes": [a1, a1_1, a1_2, a1_3, a1_4, a1_5, a2n, a2_1, a2_2, a3, a4, a5, a6, a6_1, a7,
-            p("P1", &["A1"], &[], top), p("P2", &["A2"], &[], top), p("P2-1", &["A2-1"], &[], a2),
-            p("P3", &[], &["A2"], top), p("P4", &["A7"], &[], top), p("P5", &[], &["A7"], top)],
+            p("P3", &["A2"]), p("P5", &["A7"])],
         "pending_sets": [
             {"source": "A1-5", "target": "A1-2", "value": "已签收", "op": "add", "blocked_reason": null, "blocked_code": null, "rule": null},
             {"source": "A2-2", "target": "A2", "value": "已签收", "op": "add",
@@ -404,7 +406,15 @@ fn alpha() -> Value {
              "blocked_code": "source_delegated", "rule": null}
         ],
         "pending_replaces": [],
-        "archived": []
+        "archived": [],
+        "audits": [
+            {"file": ".planned-build/.临时/审图/alpha/20260101-080000-人.md", "by": "person", "who": null,
+             "started_at": "2026-01-01T08:00:00+00:00", "tree": "A1", "in_scopes": null, "due": 6,
+             "nodes": ["A1", "A1-1", "A1-2", "A1-3", "A1-4", "A1-5"], "status": "done", "failed_reason": null, "check": 1, "findings": 3},
+            {"file": ".planned-build/.临时/审图/alpha/20260101-100000-agent.md", "by": "agent", "who": SUB,
+             "started_at": "2026-01-01T10:00:00+00:00", "tree": null, "in_scopes": ["A2"], "due": 2,
+             "nodes": ["A2", "A2-1"], "status": "failed", "failed_reason": "审图 agent 起不来", "check": 0, "findings": null}
+        ]
     })
 }
 
@@ -445,14 +455,14 @@ fn beta() -> Value {
             node("B1-2", "调查的佐证", "佐证", "知识", "见 B1-1。", Some("B1"), &[],
                 edges(&[], &["B1-1"], &[], &[], &[], json!([])), top, &[])
         ],
-        "pending_sets": [], "pending_replaces": [], "archived": []
+        "pending_sets": [], "pending_replaces": [], "archived": [], "audits": []
     })
 }
 
 /// 一份 dump，工作区根是 `workspace`。
 pub fn dump(workspace: &str) -> Value {
     json!({
-        "pb": "0.5.2", "shape": 6, "workspace": workspace, "current_repo": "alpha", "auto_continue": false,
+        "pb": "0.7.2", "shape": 8, "workspace": workspace, "current_repo": "alpha", "auto_continue": false,
         "domains": [research(), software()],
         "repos": [alpha(), beta()]
     })
@@ -461,14 +471,14 @@ pub fn dump(workspace: &str) -> Value {
 /// `pb dump --node alpha A1-2` 那一份。
 pub fn node_view(workspace: &str) -> Value {
     json!({
-        "pb": "0.5.2", "shape": 6, "workspace": workspace, "repo": "alpha", "id": "A1-2",
+        "pb": "0.7.2", "shape": 8, "workspace": workspace, "repo": "alpha", "id": "A1-2",
         "agent_view": "── A1-2 甲的写出（模块 · — · 元数据写在 .planned-build/alpha/图.md）\n> id: A1-2 | kind: 模块 | with: A1 | after: A1-1 | to: A9\n> file: src/write.txt\n\n照 A1-1 读进来的写出去。\n\nA1-2 的边 3 条\n  A1-2 --with--> A1 · A1 住 .planned-build/alpha/图.md\n待执行 1 条：\n  A1-5 sets A1-2 已签收\nA1-2 底下下一个可用编号：A1-2-1"
     })
 }
 
 /// `pb dump --node alpha A9` 那一份（图上没有的节点，带 `error`）。
 pub fn node_view_missing(workspace: &str) -> Value {
-    json!({"pb": "0.5.2", "shape": 6, "workspace": workspace, "repo": "alpha", "id": "A9", "error": "A9 不在 alpha 的图上"})
+    json!({"pb": "0.7.2", "shape": 8, "workspace": workspace, "repo": "alpha", "id": "A9", "error": "A9 不在 alpha 的图上"})
 }
 
 /// 同一份，只是 alpha 顶层算活的那几个（A1 · A2 · A7）都记成了已签收（顶层全签收 ⇒ 要人过目那一条）。
@@ -629,7 +639,7 @@ while True:
     .unwrap();
     std::fs::write(
         root.join("domains.json"),
-        json!({"pb": "0.5.2", "shape": 6, "workspace": null, "domains": [research(), software()]})
+        json!({"pb": "0.7.2", "shape": 8, "workspace": null, "domains": [research(), software()]})
             .to_string(),
     )
     .unwrap();

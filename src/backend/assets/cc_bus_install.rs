@@ -26,9 +26,9 @@ pub const NAME: &str = "cc-bus";
 
 /// 装之前看一眼时读落点上那一份的上限：内嵌的每一份都比它小（下面编译期查）⇒ 超了的那一份必定不一样，
 /// 跳过不读（读的那一口 `warn!` 带路径）、照「要写」算。
-const INSTALLED_FILE_CAP: relay_route_core::Cap = relay_route_core::Cap {
+const INSTALLED_FILE_CAP: cap_core::Cap = cap_core::Cap {
     bytes: 1024 * 1024,
-    over: relay_route_core::Over::SkipAndSay,
+    over: cap_core::Over::SkipAndSay,
 };
 const _: () = {
     let mut i = 0;

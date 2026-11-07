@@ -15,7 +15,6 @@ import com.ccmonitor.mobile.core.claude.link.deployFix
 import com.ccmonitor.mobile.core.claude.link.face
 import com.ccmonitor.mobile.core.claude.link.retry
 import com.ccmonitor.mobile.core.claude.link.seen
-import com.ccmonitor.mobile.core.claude.link.wire.SyncHand
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.CanDelete
 import com.ccmonitor.mobile.core.wire.gen.Changed
@@ -52,7 +51,7 @@ import kotlinx.coroutines.sync.withLock
 
 /**
  * 一台机器的会话清单：问 `history-list`（带这一屏的筛选）· 本地缓存 · 会话帧上的状态。会话屏每台一份、抽屉「最近」一份。
- * 缓存是没筛选那一问手上那一份（[ListCache]）：只在没筛选时画；没筛选那一问带着它的记号问、照答换了（[SyncHand.apply]）整份存回，
+ * 缓存是没筛选那一问手上那一份（[ListCache]，住嵌的核心）：只在没筛选时画；没筛选那一问带着它的记号问、答交核心换好再画，
  * 那台只给变了的那几行。带筛选的每次整份、不存。
  */
 @OptIn(FlowPreview::class)
@@ -76,8 +75,7 @@ class HostChats(
     private val asked = MutableStateFlow(ListAsk())
     private val groups = MutableStateFlow(GroupsHeld())
 
-    /** 没筛选那一问手上那一份（先从缓存读）；读 · 问 · 换 · 存一趟一趟来，不叠着（叠着就拿旧记号的答盖新的那一份）。 */
-    private var hand: SyncHand? = null
+    /** 没筛选那一问：读记号 · 问 · 交核心换一趟一趟来，不叠着（叠着就拿旧记号的答盖新的那一份）。 */
     private val syncing = Mutex()
 
     val state: StateFlow<HostSnap> =
@@ -86,7 +84,7 @@ class HostChats(
         }.stateIn(scope, SharingStarted.Eagerly, HostSnap(hostId, machine, link.state.value, link.table.value, Fetched.Loading, null, null, ListAsk()))
 
     init {
-        scope.launch { cached.value = syncing.withLock { held() }.takeIf { it.order.isNotEmpty() }?.let(HistoryList::page) }
+        scope.launch { cached.value = syncing.withLock { cache.held() }?.takeIf { !it.order.isNullOrEmpty() }?.let(HistoryList::page) }
         // 接上的每一回（核心那一格，断着漏了的推送跟着补上）：清单 · 组各问一次。
         scope.launch {
             link.seen.collect {
@@ -139,18 +137,10 @@ class HostChats(
         }
     }
 
-    private suspend fun held(): SyncHand = hand ?: cache.hand().also { hand = it }
-
-    /** 没筛选那一问：带着手上那一份的记号问，照答换好、整份存回；答不上 · 解不开 ⇒ 手上那一份不动。 */
+    /** 没筛选那一问：带着手上那一份的记号问，答交核心换好（核心存盘）、画换好的整份；答不上 · 读不动 ⇒ 手上那一份不动。 */
     private suspend fun synced(): Fetched<HistoryListPage> {
-        val mine = held()
-        val reply = link.call(HistoryList.COMMAND, HistoryList.args(ListAsk(), mine.held))
-        val next = (reply as? Reply.Ok)?.let { HistoryList.patch(it.data) }?.let(mine::apply)
-        val page = next?.let(HistoryList::page)
-        if (next != null && page != null) {
-            hand = next
-            cache.keep(next)
-        }
+        val reply = link.call(HistoryList.COMMAND, HistoryList.args(ListAsk(), cache.held()?.held))
+        val page = (reply as? Reply.Ok)?.let { cache.keep(it.data) }?.let(HistoryList::page)
         return fetched(reply, HistoryList.COMMAND) { page }
     }
 
@@ -309,7 +299,7 @@ data class Slice(
 
 /**
  * 一台顶上那一条。那台通着或断着时整条是成品条那一格（[barOf]，机器条同一份）：语气 [tone] · 那一句 · 进度 [progress]；
- * 语气 busy ⇒ 只摆那一句；offline ⇒ 虚线条 ＋［重试］；别的 ⇒ 红 / 琥珀那一句 ＋［重试］［复制详情］。
+ * 画它的是机器条那一个组件（`MachineBarView`，样子照语气）；成品没点名装 / 更新 ⇒ 按钮是［重试］。
  * 手机这一侧的三样（SSH 那层接不上 · 带筛选时那台断着 ⇒ offline；清单读不出 ⇒ fail）不在成品里，这里照那一侧给。
  * [fix] 是成品给的「装一次会好」那一颗；[edit] 是改哪一台的设置能修好（跳板坏了）⇒ 条下给［编辑］。
  */

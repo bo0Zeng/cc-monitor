@@ -89,8 +89,6 @@ pub struct ExtTarget {
 #[serde(rename_all = "camelCase")]
 pub struct ExtBring {
     pub from: Option<String>,
-    /// 来源给人看的名字（本机 · 别的台 · cc-monitor 自带）。
-    pub from_name: String,
     pub scope: ExtScope,
     pub targets: Vec<ExtTarget>,
 }
@@ -1065,17 +1063,9 @@ fn bring_for(
     c: &Column,
     src: &Source,
 ) -> (Option<ExtBring>, Option<String>) {
-    let (from, from_name, from_loc) = match src {
-        Source::Builtin => (None, copy_text("beExt.from.builtin", &[]), ExtLoc::User),
-        Source::Machine(col, a) => (
-            col.m.key.clone(),
-            if col.m.here {
-                copy_text("detail.label.local", &[])
-            } else {
-                col.m.name.clone()
-            },
-            ExtLoc::of(a),
-        ),
+    let (from, from_loc) = match src {
+        Source::Builtin => (None, ExtLoc::User),
+        Source::Machine(col, a) => (col.m.key.clone(), ExtLoc::of(a)),
     };
     let from_machine = matches!(src, Source::Machine(..));
     // 插件只有用户级那一处（装进 skills 目录、各号共用），不列项目。
@@ -1120,7 +1110,6 @@ fn bring_for(
     (
         Some(ExtBring {
             from,
-            from_name,
             scope: ExtScope { from: from_loc, to },
             targets,
         }),

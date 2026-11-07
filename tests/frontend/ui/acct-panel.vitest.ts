@@ -1,7 +1,7 @@
 /**
- * 「账号」面板：头下那一条（中转没见过这个会话 · 额度账读不出）＋ 底栏（新会话默认 · 管理账号…）。
+ * 「账号」面板：只管这条会话的号。头下那一条（中转没见过这个会话 · 额度账读不出）＋ 底栏［管理账号…］；「新会话默认」不在这里（只在设置窗）。
  * 轮换那一块此刻空着：这里也验它不画任何第三版的东西。数据只从 `appStore` 来。期望手写。
- * 末尾一节：策略下拉 · 底栏号名长了在框内截断的那几条样式。
+ * 末尾一节：策略下拉里长名字在框内截断的那几条样式。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
@@ -15,16 +15,15 @@ vi.mock("../../../src/frontend/ui/quota-reads", async (orig) => ({
   readQuota: vi.fn(never),
 }));
 
-import { openAccountPanel, toggleAccountPanel, type AcctPanelHost } from "../../../src/frontend/ui/acct-panel.ts";
+import { followActive, openAccountPanel, toggleAccountPanel, type AcctPanelHost } from "../../../src/frontend/ui/acct-panel.ts";
 import { appStore } from "../../../src/frontend/ui/app-store.ts";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { RotationViewReply } from "../../../src/frontend/ui/generated/RotationViewReply";
+import { UNTIL_CEILING } from "../../test-support/wall-ceiling";
 
 const host: AcctPanelHost = {
   sessionTitle: () => "orders",
   openSettings: vi.fn(),
-  openDefaultMenu: vi.fn(),
-  defaultOf: () => "work",
 };
 
 const view = { now: 1, nowText: "00:00", title: null, strategy: null, board: { all: [], rows: [] }, start: "work", current: "work", lineup: [], manual: false, off: [], accounts: [], listed: 0, decision: null, log: [], hints: [] } satisfies RotationViewReply;
@@ -47,19 +46,16 @@ describe("账号面板", () => {
     const bar = panel().querySelector<HTMLElement>("[data-intent=warn]")!;
     expect(bar.textContent).toBe(copyText("acct.now.noRelay"));
     expect(bar.querySelector("button")).toBeNull();
-    expect(panel().textContent).toContain(copyText("acct.foot.default"));
     btn(copyText("acct.menu.manage"))!.click();
     expect(host.openSettings).toHaveBeenCalledWith("<local>");
   });
 
-  it("★ 没有当前会话 ⇒ 同一个面板，只有底栏（新会话默认 · 管理账号…），不画轮换、不问会话", () => {
-    toggleAccountPanel(null, "<local>", host);
-    expect(panel().textContent).toContain(copyText("acct.foot.default"));
-    expect(btn(copyText("acct.menu.manage"))).toBeDefined();
-    expect(panel().textContent).not.toContain(copyText("acct.now.noRelay"));
-    expect(panel().textContent).not.toContain(copyText("kit.state.reading"));
-    expect(panel().querySelector("[data-rot-cfg], [data-rc-row], [data-rot-switch]")).toBeNull();
-    toggleAccountPanel(null, "<local>", host);
+  it("★ 当前 tab 没了 ⇒ 面板跟着关（不留一个没有会话的面板）", async () => {
+    appStore.sessionRotation.set(new Map([["s1", { origin: "<local>", read: null }]]));
+    openAccountPanel("s1", "<local>", host);
+    expect(document.querySelector("aside[role=dialog]")).not.toBeNull();
+    followActive(null, host);
+    await vi.waitFor(() => expect(document.querySelector("aside[role=dialog]")).toBeNull(), UNTIL_CEILING);
   });
 
   it("★ 上游是自设的（session-account 带那一句）⇒ 头下照抄那一句；不说中转没见过，也不画轮换那几块", () => {
@@ -148,10 +144,5 @@ describe("长名字在框内截断", () => {
 
   it("★ 策略下拉框上：名字与灰字都能截断", () => {
     for (const sel of [".selectText", ".selectNote"]) clips("kit/select.module.css", sel);
-  });
-
-  it("★ 底栏「新会话默认」那个号名能截断，框能缩、不把「管理账号…」挤出去", () => {
-    clips("acct.module.css", ".acctPick > .acctPickName");
-    expect(declsOf("acct.module.css", ".acctFoot .acctPick").get("min-width")).toBe("0");
   });
 });

@@ -30,10 +30,7 @@ attachments?: Array<string>,
  */
 rewind?: Rewind, state: "queued" | "held" | "undelivered", 
 /**
- * 那一条此刻的样子，会话那台写好（排队 · 第 N · 排队 · 失败 · 未送进会话；同回执那一句）：各端照摆，不按 `state` 自己挑字。
+ * 那一条此刻在等什么，会话那台写好（发送中 · 等确认 · 需手动 · 答完再送 · 未送进会话 · {为什么}；同回执那一句）：
+ * 不写第几、不写哪一端；各端照摆，不按 `state` 自己挑字。
  */
-said: string, 
-/**
- * 发自哪一端，会话那台写好的那个词（认得的端写名字，别的照 `end` 原样）。
- */
-from: string, };
+said: string, };

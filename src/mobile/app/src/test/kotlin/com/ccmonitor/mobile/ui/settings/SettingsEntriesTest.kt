@@ -14,13 +14,14 @@ import java.io.File
  */
 class SettingsEntriesTest {
     @Test
-    fun theFourEntriesAreMachinesAccountsRotationKeysInThatOrder() {
+    fun theThreeEntriesAreAccountsRotationKeysInThatOrder() {
+        // 机器表只一个入口：抽屉底行「机器」；设置里不再另给一行。
         assertEquals(
-            listOf(Screen.Hosts.route, Screen.Accounts.route, Screen.RotationHere.route, Screen.Identities.route),
+            listOf(Screen.Accounts.route, Screen.RotationHere.route, Screen.Identities.route),
             settingsEntries().map { it.route },
         )
-        assertEquals("读那台的是账号 · 轮换；机器 · 密钥住手机", listOf(false, true, true, false), settingsEntries().map { it.readsMachine })
-        assertEquals("行尾数的是机器表与保险箱", listOf(EntryCount.MACHINES, null, null, EntryCount.KEYS), settingsEntries().map { it.count })
+        assertEquals("读那台的是账号 · 轮换；密钥住手机", listOf(true, true, false), settingsEntries().map { it.readsMachine })
+        assertEquals("行尾数的是保险箱", listOf(null, null, EntryCount.KEYS), settingsEntries().map { it.count })
     }
 
     /** 打错一个路由串在 Compose 里是运行期才炸的（`navigate` 找不到目的地）：这条把它提到门禁里。 */

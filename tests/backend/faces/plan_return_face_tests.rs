@@ -72,7 +72,6 @@ fn queued(_: &SessionQueuePutReq) -> Result<QueuePut, Said> {
     Ok(QueuePut {
         outcome: QueuePutOutcome::Queued,
         seq: Some(1),
-        place: Some(1),
         said: String::new(),
     })
 }

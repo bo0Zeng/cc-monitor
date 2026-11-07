@@ -110,16 +110,6 @@ data class Identity(
  */
 fun Identity.isKeystoreBacked(): Boolean = keystoreAlias != null
 
-/** 旧表的一行（主机钥匙原先住这里；迁进核心那份库之后清空，下一版删表）。 */
-@Entity(tableName = "known_hosts", primaryKeys = ["host", "port", "keyType"])
-data class KnownHost(
-    val host: String,
-    val port: Int,
-    val keyType: String,
-    val publicKeyBase64: String,
-    val addedAt: Long,
-)
-
 /** 应用级设置（键值表，增键不用迁移）。类型化访问经 SettingsRepository。 */
 @Entity(tableName = "settings")
 data class Settings(
@@ -139,8 +129,6 @@ data class PendingSend(
     /** 哪条会话；新建会话（还没起成）⇒ `null`。 */
     val sid: String?,
     val text: String,
-    /** 附件引用（JSON）；没有 ⇒ `null`。 */
-    val attachments: String?,
     val mintedAt: Long,
     val outcome: String,
     val attempts: Int,
@@ -169,16 +157,12 @@ data class PendingBatch(
     val plan: String,
 )
 
-/** 草稿：一条会话（新建会话 [sid] 为空串）输入框里还没发的字 ＋ 新建会话那几样选项。 */
+/** 草稿：一条会话（新建会话 [sid] 为空串）输入框里还没发的字。 */
 @Entity(tableName = "drafts", primaryKeys = ["hostId", "sid"])
 data class Draft(
     val hostId: String,
     val sid: String,
     val text: String,
-    val cwd: String?,
-    val account: String?,
-    val model: String?,
-    val permission: String?,
     val updatedAt: Long,
 ) {
     companion object {

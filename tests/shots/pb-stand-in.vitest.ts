@@ -1,6 +1,6 @@
 /**
  * 截图台架边界上的 pb 替身（`disk/plan.ts`）：真后端照常找 pb 插件、起 `python3 <入口> <动词>`，碰到的是它。
- * 它只把工作区里那一份 dump（pb 0.5 · 形状 6）原样吐出来、照几条命令改那一份，演 pb 的几种退出码；成品（数 · 排 · 短词）全由真后端算。
+ * 它只把工作区里那一份 dump（pb 0.7.2 · 形状 8）原样吐出来、照几条命令改那一份，演 pb 的几种退出码；成品（数 · 排 · 短词）全由真后端算。
  *
  * 买不到：真 pb 读 `图.md` 那一段不在这里；dump 的形状对不对由真后端读它（截图台架）判。
  */
@@ -18,8 +18,8 @@ afterEach(() => {
 });
 
 const DOC = {
-  pb: "0.5.2",
-  shape: 6,
+  pb: "0.7.2",
+  shape: 8,
   workspace: "/w",
   current_repo: "alpha",
   auto_continue: false,
@@ -106,11 +106,11 @@ describe.skipIf(process.platform === "win32")("pb 替身", () => {
     const plugin = [{ name: "软件", source: "plugin" }];
     const { root, ws } = home({ domains: plugin });
     const inWs = JSON.parse(pb(root, root, "dump", "--domains", path.join(ws, "sub", "deeper")).out) as Record<string, unknown>;
-    expect([inWs.shape, inWs.workspace, inWs.domains]).toEqual([6, DOC.workspace, DOC.domains]);
+    expect([inWs.shape, inWs.workspace, inWs.domains]).toEqual([8, DOC.workspace, DOC.domains]);
     const off = pb(root, root, "dump", "--domains", path.join(root, "nowhere", "new"));
     expect(off.rc).toBe(0);
     const offDoc = JSON.parse(off.out) as Record<string, unknown>;
-    expect([offDoc.shape, offDoc.workspace, offDoc.domains]).toEqual([6, null, plugin]);
+    expect([offDoc.shape, offDoc.workspace, offDoc.domains]).toEqual([8, null, plugin]);
   });
 
   it("render 说写了哪一页", () => {
@@ -120,7 +120,7 @@ describe.skipIf(process.platform === "win32")("pb 替身", () => {
     expect(v.out).toMatch(/^写了 \/tmp\/\S+\.html\n/);
   });
 
-  it("0.5 没有的动词（take · view · record）退 4", () => {
+  it("替身不认的动词（take · view · record）退 4", () => {
     const { root, ws } = home();
     for (const v of ["take", "view", "record", "nope"]) expect(pb(root, ws, v).rc, v).toBe(4);
   });
@@ -139,9 +139,9 @@ describe.skipIf(process.platform === "win32")("pb 替身", () => {
   });
 });
 
-// pb 0.5：整份 dump 不带 agent 视角，点到一个节点再 `dump --node <仓库> <编号>` 取。
+// pb 0.7：整份 dump 不带 agent 视角，点到一个节点再 `dump --node <仓库> <编号>` 取。
 describe.skipIf(process.platform === "win32")("pb 替身 · dump --node", () => {
-  const nodes = dumpNodes([{ id: "A1", title: "甲", kind: "能力", view: "── A1 甲" }], "架构", "lead");
+  const nodes = dumpNodes([{ id: "A1", title: "甲", kind: "能力", view: "── A1 甲" }], "架构", "lead", ".planned-build/alpha");
   const VIEWED = { ...DOC, repos: [{ ...DOC.repos[0], nodes }, DOC.repos[1]] };
 
   it("dump 摘掉每个节点的 agent_view；dump --node 回那一个的那一段，图上没有 ⇒ 带 error", () => {
@@ -150,21 +150,27 @@ describe.skipIf(process.platform === "win32")("pb 替身 · dump --node", () => 
     expect(all.repos[0].nodes?.[0].agent_view).toBeUndefined();
     expect(all.repos[0].nodes?.[0].id).toBe("A1");
     const one = JSON.parse(pb(root, ws, "dump", "--node", "alpha", "A1", ws).out) as Record<string, unknown>;
-    expect([one.shape, one.repo, one.id, one.agent_view]).toEqual([6, "alpha", "A1", "── A1 甲"]);
+    expect([one.shape, one.repo, one.id, one.agent_view]).toEqual([8, "alpha", "A1", "── A1 甲"]);
     const gone = JSON.parse(pb(root, ws, "dump", "--node", "alpha", "Z9", ws).out) as Record<string, unknown>;
     expect(gone.agent_view).toBeUndefined();
     expect(gone.error).toBeTruthy();
   });
 
-  it("dumpNodes 照 6 的键写一个节点：状态一值一项带笔数 · 文件带 file_check · 归谁三样", () => {
-    const [n] = dumpNodes(
-      [{ id: "A1", title: "甲", kind: "模块", state: [["已签收", 2]], files: [{ path: "a.txt", check: "empty", note: "0 字" }], sets: [{ target: "A2", value: "已签收" }] }],
+  it("dumpNodes 照 8 的键写一个节点：状态一值一项带笔数 · 文件带 file_check · 归谁三样 · 元数据写在哪一份", () => {
+    const [n, kid, plan] = dumpNodes(
+      [
+        { id: "A1", title: "甲", kind: "模块", state: [["已签收", 2]], files: [{ path: "a.txt", check: "empty", note: "0 字" }], sets: [{ target: "A2", value: "已签收" }], children: ["A1.1"], childrenIn: "A1" },
+        { id: "A1.1", title: "乙", kind: "模块" },
+        { id: "P1", title: "划出", kind: "排期", graph: "排期", covers: ["A1"] },
+      ],
       "架构",
       "lead",
+      ".planned-build/alpha",
     );
     expect(n.state).toEqual([{ value: "已签收", count: 2 }]);
     expect(n.files).toEqual([{ path: "a.txt", file_check: "empty", note: "0 字", chars: null, bytes: null }]);
-    expect([n.children_in, n.assignee, n.signer, n.graph]).toEqual(["project", "lead", "lead", "架构"]);
+    expect([n.children_in, n.assignee, n.signer, n.graph]).toEqual(["A1", "lead", "lead", "架构"]);
+    expect([n.stored_in, kid.stored_in, plan.stored_in]).toEqual([".planned-build/alpha/图.md", ".planned-build/alpha/A1/图.md", ".planned-build/alpha/排期.md"]);
     expect((n.edges as { sets: unknown[] }).sets).toEqual([{ op: "add", target: "A2", value: "已签收" }]);
   });
 });

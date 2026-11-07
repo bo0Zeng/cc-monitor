@@ -44,9 +44,9 @@ fn split_url(url: &str) -> Option<(&str, &str)> {
 }
 
 /// 回包头与体各自的上限（令牌端点的回包很小）；超了整发作错、往上交，不截断。
-const ANSWER_CAP: relay_route_core::Cap = relay_route_core::Cap {
+const ANSWER_CAP: cap_core::Cap = cap_core::Cap {
     bytes: 64 * 1024,
-    over: relay_route_core::Over::HardError,
+    over: cap_core::Over::HardError,
 };
 
 /// 为什么这个号此刻拿不出能用的访问令牌。

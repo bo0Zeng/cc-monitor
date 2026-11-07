@@ -55,7 +55,7 @@ struct CapDecl {
     over: String,
 }
 
-/// 抠出语料里每一个 `Cap` 常量与它的 `over`。类型写 `Cap` 或带路径（`relay_route_core::Cap`）都认。
+/// 抠出语料里每一个 `Cap` 常量与它的 `over`。类型写 `Cap` 或带路径（`cap_core::Cap`）都认。
 fn cap_decls(corpus: &Corpus) -> Vec<CapDecl> {
     let mut out = Vec::new();
     for (file, code) in corpus {
@@ -245,7 +245,7 @@ fn cap_decls_reads_the_over_of_every_cap_const() {
     let c = corpus(&[(
         "a.rs",
         "pub(crate) const A_CAP: Cap = Cap {\n    bytes: 1 << 20,\n    over: Over::HardError,\n};\n\
-         const B: relay_route_core::Cap = relay_route_core::Cap {\n    bytes: 4096,\n    over: relay_route_core::Over::DropAndReport,\n};\n\
+         const B: cap_core::Cap = cap_core::Cap {\n    bytes: 4096,\n    over: cap_core::Over::DropAndReport,\n};\n\
          const N: usize = 4096;\n",
     )]);
     let got: Vec<(String, String)> = cap_decls(&c)

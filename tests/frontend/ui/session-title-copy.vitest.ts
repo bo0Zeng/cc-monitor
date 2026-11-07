@@ -38,8 +38,7 @@ function tab(over: Partial<Tab> = {}): Tab {
     pinned: false,
     group: null,
     origin: LOCAL,
-    forkedFromSessionId: "fedcba9876543210",
-    writersLine: null,
+    forkedLine: "分叉自「父」",
     whereLine: null,
     unread: 0,
     needs: null,
@@ -72,7 +71,7 @@ describe("会话标题：后端写好的一行，界面照抄", () => {
     expect(document.querySelector(".tab-title")?.textContent).toBe(LINE);
     expect(view.hoverCard(t.sessionId)?.firstElementChild?.textContent).toBe(LINE);
 
-    const host = { active: () => t, viewTerminal: vi.fn(), openCwd: vi.fn(), front: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), attach: vi.fn(), planMark: () => null, menuItem: () => null, displayItems: () => [], tabOf: () => null, switchTo: vi.fn(), switching: { active: () => null, facts: () => new Promise<never>(() => {}), send: vi.fn(), unavailable: () => null, reread: vi.fn(), toast: vi.fn() } };
+    const host = { active: () => t, openCwd: vi.fn(), terminal: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), planMark: () => null, menuItem: () => null, displayItems: () => [], tabOf: () => null, switchTo: vi.fn(), switching: { active: () => null, facts: () => new Promise<never>(() => {}), send: vi.fn(), unavailable: () => null, reread: vi.fn(), toast: vi.fn() } };
     const h = new SessionHead(host);
     document.body.appendChild(h.el);
     h.render(NOW);

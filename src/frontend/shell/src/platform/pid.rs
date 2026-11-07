@@ -109,9 +109,9 @@ pub fn start_stamp(pid: u32) -> Option<u64> {
 
 /// `/proc/<pid>/stat` 的读上限：一行 52 格数字加一个至多 15 字节的名字，几百字节。超了跳过（当读不出）、日志说是哪一份。
 #[cfg(target_os = "linux")]
-const STAT_CAP: relay_route_core::Cap = relay_route_core::Cap {
+const STAT_CAP: cap_core::Cap = cap_core::Cap {
     bytes: 4 * 1024,
-    over: relay_route_core::Over::SkipAndSay,
+    over: cap_core::Over::SkipAndSay,
 };
 
 /// 读一个进程的 `/proc/<pid>/stat`；切法只在 `platform_core::proc::parse_stat`（后端同一份）。

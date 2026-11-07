@@ -32,7 +32,7 @@ block: string | null,
 /**
  * 对账码；认不出 ⇒ `null`。
  */
-fileState: "ok" | "missing" | "empty" | "broken" | null, fileNote: string | null, 
+fileState: "ok" | "uncommitted" | "missing" | "empty" | "broken" | null, fileNote: string | null, 
 /**
  * 也声明它的那几格（pb 判据红「两个节点声明同一个文件」）。
  */

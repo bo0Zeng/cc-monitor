@@ -23,7 +23,7 @@ fn face(dot: &str, name: &str) -> serde_json::Value {
     let yes = serde_json::json!({"can": "yes"});
     serde_json::json!({
         "dot": dot, "life": {"is": "ended"}, "settled": false, "name": name, "tip": "T", "line": "L", "tone": "plain", "order": 5,
-        "can": {"close": {"can": "quiet"}, "resume": yes, "term": {"can": "yes", "host": "direct"}, "reattach": yes, "attach": {"can": "no", "why": "W"}, "model": yes, "permission": yes, "stop": {"can": "no", "why": "W"}, "say": {"can": "yes", "hint": "H"}, "end": {"can": "no", "why": "W"}},
+        "can": {"close": {"can": "quiet"}, "resume": yes, "terminal": {"near": {"go": "front", "said": "S"}, "far": {"go": "no", "why": "W"}}, "reattach": yes, "model": yes, "permission": yes, "stop": {"can": "no", "why": "W"}, "say": {"can": "yes", "hint": "H"}, "end": {"can": "no", "why": "W"}},
     })
 }
 

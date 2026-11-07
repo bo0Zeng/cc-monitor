@@ -39,11 +39,11 @@ fn rc4_or_an_unknown_shape_means_this_pb_cannot_dump_for_us() {
     assert!(matches!(classify(Some(0), b"{}", b""), Ran::Unsupported(_)));
 }
 
-/// 只认 pb 0.5 那一形（shape 6）；别的（更早的 1–5 · 更新的 7）不硬读、照实说对不上，话里带它给的形状版本。
+/// 只认 pb 0.7.2 那一形（shape 8）；别的（更早的 1–7 · 更新的 9）不硬读、照实说对不上，话里带它给的形状版本。
 #[test]
-fn only_shape_six_is_read_and_others_say_the_pb_version_does_not_match() {
-    assert_eq!(SHAPE, 6);
-    for old in [1, 2, 3, 4, 5, 7] {
+fn only_shape_eight_is_read_and_others_say_the_pb_version_does_not_match() {
+    assert_eq!(SHAPE, 8);
+    for old in [1, 2, 3, 4, 5, 6, 7, 9] {
         let mut doc = fixture_dump("/w");
         doc["shape"] = serde_json::json!(old);
         match classify(Some(0), doc.to_string().as_bytes(), b"") {

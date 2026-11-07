@@ -1,241 +1,71 @@
-//! 「复制诊断信息」那一段：一个命令出整段可复制的诊断文本（日志页的主按钮）—— 只读。
-//!
-//! 一段里有：这一版的版本号与构建标识 · 各台的系统 · 状态码与原因码（与机器列表同一份成品）· 读不懂的数据
-//!（每台那本记录账的条数；读不到的那台照实说读不到）· config.json 里认不出的项 · 日志位置。不含会话内容与 key。
-//! 记录账与认不出的键由界面交来（记录账界面经通道问本机后端一条 `drift-merge`，本机后端问到各台、原样交来，壳不另开发送点；
-//! 键表住界面），条数在这里数。
-//! 日志页那一行「未识别数据 · …」读同一份答复里的数（不另起一个数）。
+//! 「复制诊断信息」那一段（日志页的主按钮）—— 只读。整段由本机后端出（`diagnostics-report`，`faces/diagnostics_face.rs`）：
+//! 各台状态与原因码 · 构建标识 · 每台记录账的条数 · config.json 里认不出的项都在那边并、数、判。
+//! 壳只交它自己的三样事实（[`req_of`]：monitor 这一版的版本号 · 今天的日志文件 · config.json 原文的顶层键），回包原样交界面。
+//! 本机后端答不了 ⇒ 照实说（这件事就不发生，壳不另拼一份）。日志页那一行「未识别数据 · …」读同一份答复里的数。
 
 use crate::detail::Shell as _;
+use cmd_wire::diagnostics::{DiagnosticsReport, DiagnosticsReportReq};
+use cmd_wire::Call as _;
 use copy_core::copy_text;
 use copy_core::said::Said;
-use serde::{Deserialize, Serialize};
 
-/// 界面交来的一台的记录账（`drift-merge` 回包里那一行原样：那台 `drift-report` 的应答；读不到 ⇒ `null`）。
-#[derive(Debug, Clone, Deserialize)]
-pub struct DriftIn {
-    pub origin: String,
-    pub report: Option<serde_json::Value>,
-}
+/// 一趟的上限：本机后端要经各台常驻流各问一次记录账（同时问），给足余量同时防卡死。
+const BUDGET: std::time::Duration = std::time::Duration::from_secs(15);
 
-/// 一台的未识别数据：`records` ＝ 那台记录账里认不出的条数；`None` ＝ 读不到（断开 / 那台答不了）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-#[serde(rename_all = "camelCase")]
-pub struct UnknownOnMachine {
-    /// 那台的名字（本机 ⇒ 文案表里那个词）。
-    pub machine: String,
-    #[cfg_attr(test, ts(type = "number | null"))]
-    pub records: Option<u64>,
-}
-
-/// 整份答复。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-#[serde(rename_all = "camelCase")]
-pub struct DiagnosticsReport {
-    /// 整段可复制的诊断文本。
-    pub text: String,
-    /// 每台一行（本机在前，其余照机器表的顺序）。
-    pub unknown: Vec<UnknownOnMachine>,
-    /// config.json 里认不出的项数。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub config_unknown: u64,
-}
-
-/// 一台的事实（拼文本用）。
-pub(crate) struct MachineLine {
-    pub name: String,
-    pub os: Option<String>,
-    pub state: String,
-    pub reason: Option<String>,
-    pub version: Option<String>,
-    pub build: Option<String>,
-    pub records: Option<u64>,
-}
-
-/// 拼整段（纯函数：判据拿事实喂）。
-pub(crate) fn render(
+/// 壳自己的事实 ⇒ 入参（纯函数）。`config` 是盘上那份 config.json（读不到 ⇒ `None`）；不是对象 ⇒ 没有顶层键可交。
+pub(crate) fn req_of(
     version: &str,
-    build: Option<&str>,
-    machines: &[MachineLine],
-    config_unknown: &[String],
-    log_file: Option<&str>,
-) -> DiagnosticsReport {
-    let none = copy_text("acct.val.none", &[]);
-    let mut out = vec![
-        copy_text("rsDiagReport.text.head", &[]),
-        copy_text(
-            "rsDiagReport.text.version",
-            &[("version", version), ("build", build.unwrap_or(&none))],
-        ),
-        copy_text("rsDiagReport.text.machines", &[]),
-    ];
-    for m in machines {
-        let reason = m
-            .reason
-            .as_deref()
-            .map(|r| copy_text("rsDiagReport.text.reason", &[("reason", r)]))
-            .unwrap_or_default();
-        out.push(copy_text(
-            "rsDiagReport.text.machine",
-            &[
-                ("machine", &m.name),
-                ("os", m.os.as_deref().unwrap_or(&none)),
-                ("state", &m.state),
-                ("reason", &reason),
-                ("version", m.version.as_deref().unwrap_or(&none)),
-                ("build", m.build.as_deref().unwrap_or(&none)),
-            ],
-        ));
-    }
-    out.push(copy_text("rsDiagReport.text.unknown", &[]));
-    for m in machines {
-        out.push(match m.records {
-            Some(n) => copy_text(
-                "rsDiagReport.text.records",
-                &[("machine", &m.name), ("n", &n.to_string())],
-            ),
-            None => copy_text("rsDiagReport.text.unread", &[("machine", &m.name)]),
-        });
-    }
-    out.push(copy_text(
-        "rsDiagReport.text.config",
-        &[
-            ("n", &config_unknown.len().to_string()),
-            (
-                "keys",
-                &if config_unknown.is_empty() {
-                    none.clone()
-                } else {
-                    config_unknown.join(&copy_text("plan.page.listSep", &[]))
-                },
-            ),
-        ],
-    ));
-    out.push(match log_file {
-        Some(p) => copy_text("rsDiagReport.text.log", &[("path", p)]),
-        None => copy_text("rsDiagReport.text.noLog", &[]),
-    });
-    DiagnosticsReport {
-        text: out.join("\n"),
-        unknown: machines
-            .iter()
-            .map(|m| UnknownOnMachine {
-                machine: m.name.clone(),
-                records: m.records,
-            })
-            .collect(),
-        config_unknown: config_unknown.len() as u64,
+    log_file: Option<String>,
+    config: Option<&serde_json::Value>,
+) -> DiagnosticsReportReq {
+    DiagnosticsReportReq {
+        version: version.to_string(),
+        log_file,
+        config_keys: config
+            .and_then(serde_json::Value::as_object)
+            .map(|m| m.keys().cloned().collect())
+            .unwrap_or_default(),
     }
 }
 
-/// 那台记录账（`drift-report`）里认不出的条数：各面各条的 `count` 相加。形状不对 ⇒ `None`（不猜成 0）。
-pub(crate) fn records_in(v: &serde_json::Value) -> Option<u64> {
-    let faces = v.get("faces")?.as_array()?;
-    let mut n = 0u64;
-    for f in faces {
-        for e in f.get("entries")?.as_array()? {
-            n = n.saturating_add(e.get("count")?.as_u64()?);
-        }
-    }
-    Some(n)
-}
-
-/// 一个码按 serde 的名字写进文本（状态 · 原因码与机器列表同一份成品）。
-fn wire_word(v: impl serde::Serialize) -> Option<String> {
-    serde_json::to_value(v)
-        .ok()
-        .and_then(|v| v.as_str().map(str::to_string))
-}
-
-/// 各台（含本机）此刻的成品（本机后端 `machine-read`）；问不到 ⇒ 空表（那几台照「说不出」写）。
-async fn remote_machines() -> std::collections::BTreeMap<String, cmd_wire::machine::MachineState> {
-    let Some(c) = crate::inbound_client::local_client() else {
-        return Default::default();
-    };
-    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
-    match c
-        .ask(None, &cmd_wire::machine::MachineReadReq {}, None, deadline)
-        .await
-    {
-        Ok(Ok(r)) => r.machines,
-        Ok(Err(_)) => Default::default(),
-        Err(e) => {
-            tracing::warn!("[diag] 问不到远端各台的状态：{e:?}");
-            Default::default()
-        }
-    }
-}
-
-/// 日志页「复制诊断信息」：整段文本 ＋ 那一行用的数。`config_unknown` 是界面那份键表认不出的顶层键；
-/// `drift` 是界面经通道问回来的各台记录账（没交的那台 ⇒ 读不到）。
+/// 日志页「复制诊断信息」：整段文本 ＋ 那一行用的数（本机后端出的成品，原样交界面）。
 #[tauri::command]
 pub async fn diagnostics_report(
-    config_unknown: Vec<String>,
-    drift: Vec<DriftIn>,
     app: tauri::AppHandle,
 ) -> Result<DiagnosticsReport, cmd_wire::failed::Failed> {
+    use crate::backend_route::{route_call_error, Routed};
+    const NAME: &str = DiagnosticsReportReq::NAME;
     // 状态经 `AppHandle` 取、不收 `tauri::State<'_, …>` 参数：理由见 `lib.rs::bring_terminal_to_front` 那一句。
     let state = tauri::Manager::state::<std::sync::Arc<crate::logging::LoggingState>>(&app)
         .inner()
         .clone();
-    let r: Result<DiagnosticsReport, Said> = async move {
-        let log_file = state.log_file_info().current_file;
-        let local = cmd_wire::LOCAL;
-        let mut origins: Vec<(String, String)> =
-            vec![(local.to_string(), copy_text("detail.label.local", &[]))];
-        for row in crate::machine_table::rows_now() {
-            origins.push((row.name.clone(), row.name));
-        }
-        let mine = crate::byte_table::my_backend_id();
-        let remote = remote_machines().await;
-        let machines: Vec<MachineLine> = origins
-            .into_iter()
-            .map(|(origin, name)| {
-                let m = remote.get(&origin).cloned();
-                let build = if origin == local {
-                    mine.map(str::to_string)
-                } else {
-                    crate::inbound_client::build_of(&cmd_wire::Machine::named(origin.clone()))
-                };
-                // 本机后端没答（没起来 · 正在起 · 口上占着别的）⇒ 本机那一行的状态照壳那一格说。
-                let unanswered = (origin == local && m.is_none())
-                    .then(crate::local_backend_host::local_backend_now)
-                    .and_then(|l| serde_json::to_value(l).ok())
-                    .and_then(|v| v["state"].as_str().map(str::to_string));
-                let records = drift
-                    .iter()
-                    .find(|d| d.origin == origin)
-                    .and_then(|d| d.report.as_ref())
-                    .and_then(records_in);
-                MachineLine {
-                    name,
-                    os: m.as_ref().and_then(|m| m.os.clone()),
-                    state: m
-                        .as_ref()
-                        .and_then(|m| wire_word(m.state))
-                        .or(unanswered)
-                        .unwrap_or_default(),
-                    reason: m.as_ref().and_then(|m| m.reason).and_then(wire_word),
-                    version: m.as_ref().and_then(|m| m.version.clone()),
-                    build,
-                    records,
-                }
-            })
-            .collect();
-        Ok(render(
-            crate::PRODUCT_VERSION,
-            mine,
-            &machines,
-            &config_unknown,
-            log_file.as_deref(),
-        ))
-    }
-    .await;
-    r.map_err(|s| s.named("diagnostics_report"))
+    let own = |s: Said| {
+        s.retold(copy_text("rsDiagReport.call.failed", &[]))
+            .named("diagnostics_report")
+    };
+    let config = crate::config::load_config().ok();
+    let req = req_of(
+        crate::PRODUCT_VERSION,
+        state.log_file_info().current_file,
+        config.as_ref(),
+    );
+    let client = crate::inbound_client::local_backend_accepting(NAME)
+        .await
+        .map_err(|said| own(Said::from(said)))?;
+    let deadline = tokio::time::Instant::now() + BUDGET;
+    let got = client.ask(None, &req, None, deadline).await.map_err(|e| {
+        let said = match route_call_error(&e, &copy_core::local_machine(), |_code, message| {
+            message.to_string()
+        }) {
+            Routed::NoChannel(s) | Routed::Refused(s) => s,
+        };
+        crate::detail::of_call(said, NAME, &e)
+    })?;
+    got.map_err(|_| {
+        own(Said::from(copy_core::reply_unreadable(
+            &copy_core::local_machine(),
+        )))
+    })
 }
 
 #[cfg(test)]

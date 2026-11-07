@@ -148,7 +148,7 @@ pub struct ApikeyKeySet;
 impl crate::wire::typed::Command for ApikeyKeySet {
     const NAME: &'static str = "apikey-key-set";
     type Req = file_face::KeySetReq;
-    type Reply = file_face::KeySet;
+    type Reply = ();
     type Err = KeySetErr;
 }
 
@@ -157,8 +157,9 @@ impl crate::wire::typed::Handle for ApikeyKeySet {
     async fn run(
         req: file_face::KeySetReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> Result<file_face::KeySet, KeySetErr> {
+    ) -> Result<(), KeySetErr> {
         file_face::answer_set(&req, &cx.needs)
+            .map(|_| ())
             .map_err(|f| crate::wire::typed::of_fail(f, KeySetErr::IoFailed))
     }
 }

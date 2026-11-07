@@ -526,7 +526,6 @@ fn live_turn_says_what_runs_now_or_what_waits_for_you() {
         tone: crate::common::cells::Tone::Need,
         rank: 1,
         waited_ms: Some(1),
-        waited_text: Some(crate::common::cells::Words(copy_core::short_duration(1))),
         ask: None,
         manual_text: None,
     };
@@ -715,7 +714,6 @@ fn a_reply_written_after_the_pidfile_says_waiting_stays_outside() {
         tone: crate::common::cells::Tone::Need,
         rank: 1,
         waited_ms: Some(1),
-        waited_text: Some(crate::common::cells::Words(copy_core::short_duration(1))),
         ask: None,
         manual_text: None,
     };

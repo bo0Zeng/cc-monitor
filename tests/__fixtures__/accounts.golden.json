@@ -87,14 +87,12 @@
       }
     ],
     "meta": {
-      "acctsDir": "<root>/accts",
       "count": 3,
       "effectiveDefault": "a",
       "enabled": true,
       "error": null,
       "manifestPath": "<root>/accts/accounts.json",
       "nextDefault": "b",
-      "sharedStore": "<root>/shared",
       "unsupported": null,
       "updatedAt": "t0"
     },

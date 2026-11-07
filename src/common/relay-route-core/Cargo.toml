@@ -5,11 +5,12 @@ edition = "2021"
 workspace = "../../frontend/shell"
 description = "后端的门牌与家的契约：落点 · 监听口与中转口 · 钥匙 · 路由路径的语法 · ~/.cc-monitor/ 下每一样的相对路径。monitor 与后端共用（目标）。"
 
-# **零依赖**。同 acct-core / shell-quote-core 的约束：backend 是 Linux-only 的静态 musl 二进制、
+# 只依赖仓内零依赖的 `cap-core`（声明表每一行的读上限 `Cap`）。同 acct-core / shell-quote-core 的约束：backend 是 Linux-only 的静态 musl 二进制、
 # 且刻意不在 monitor 的 workspace 里；一旦引入平台相关的东西，共享就破了。
 # ⚠ 它**不是业务 crate**：里面没有账号 / 凭据 / 上游，只有「这台机器的中转门在哪、路由路径长什么样」——
 # 中转 crate `comms-outward` 因此可以依赖它（边界判据 `C2` 的依赖名单里有它）。
 [dependencies]
+cap-core = { path = "../cap-core" }
 
 [dev-dependencies]
 # 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。

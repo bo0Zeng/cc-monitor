@@ -80,11 +80,8 @@ pub struct KeySetReq {
     pub base_url: Option<String>,
 }
 
-/// `apikey-key-set` 的回包：盘上的事实（写完再读一遍）。只回掩码：账号 id · 文件路径 · 端点两端零读者（界面写完重读那台）。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-#[serde(rename_all = "camelCase")]
+/// 写 key 读回的盘上事实（写完再读一遍）：只有掩码，后端建号那一趟在进程内取它。不上线：帧面 `apikey-key-set` 回空回执（界面写完重读那台）。
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeySet {
     /// 这一行 key 的掩码（只留末四位）。
     pub masked: String,

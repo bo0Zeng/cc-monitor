@@ -36,7 +36,7 @@ class TurnFoldsTest {
     private fun turn(
         u: String,
         vararg folds: FoldSegment,
-    ) = TurnRow(0, 0, u, "", "", "", "q", 0, 0, 0, 0, 0, 0, emptyList(), "", true, TurnPhase.IDLE, folds.toList())
+    ) = TurnRow(0, 0, u, "", "", "", "q", 0, 0, 0, 0, 0, emptyList(), "", true, TurnPhase.IDLE, folds.toList())
 
     private fun shape(items: List<StreamItem>) =
         items.map {

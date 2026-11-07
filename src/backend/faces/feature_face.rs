@@ -260,11 +260,10 @@ pub struct McpReadEntry {
         ts(type = "\"needsLogin\" | \"disabled\" | \"unknown\"")
     )]
     pub status: crate::agents::McpStatus,
-    /// `needsLogin` 时：在哪几个号里要登录；别的状态恒空。
+    /// `needsLogin` 时：在哪几个号里要登录；别的状态恒空。待办那一处读它，不上线。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub login_in: Vec<String>,
-    /// `needsLogin` 时：最近一次看到是何时（epoch ms）；别的状态 `null`。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]
-    pub seen_at: Option<u64>,
     /// 小标画哪一种：断开压过需登录；都没有 ⇒ `null`（只说装了，不说连上了）。
     pub mark: Option<McpMark>,
     pub login: Option<McpLoginMark>,
@@ -374,7 +373,6 @@ pub fn mcp_reply(r: &crate::agents::McpRead, say: &McpSay) -> McpReadReply {
                 source_path: e.source.clone(),
                 status: e.status,
                 login_in: e.login_in.clone(),
-                seen_at: e.seen_ms,
                 mark,
                 login,
                 failed,

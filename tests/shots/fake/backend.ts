@@ -28,6 +28,8 @@ export const REAL_OPS = new Set([
   // 一条会话的号那一份成品（状态栏按钮 · 号徽章照它画）：真后端照台架盘上的账本 · 额度账 · 账号库答。
   "session-account",
   "rotation-strategies",
+  // 「开始用」那一份（每步的字与去处）：真后端照台架盘上的启动文件答，机器表台数随问带上。
+  "first-run",
   // 轮换那几条写（改设置的意图 · 载入一份 · 都载入新版 · 会话侧的临时动作）：真后端写台架盘上那几份文件，场景照它回的重画。
   "rotation-settings",
   "rotation-use",
@@ -267,6 +269,15 @@ export class FakeBackend {
     return f.body;
   }
 
+  /** 壳的 `diagnostics_report`：壳交的事实照场景（`load_config` · `get_log_file_info` 那两条的答）组，成品原样是本机真后端的。 */
+  private async diagnostics(): Promise<unknown> {
+    const cmds = this.world.commands;
+    const cfg = (cmds.load_config?.({}, this.world) ?? this.world.config) as Record<string, unknown>;
+    const log = cmds.get_log_file_info?.({}, this.world) as { current_file?: string | null } | undefined;
+    const req = { version: "4.1.1", logFile: log?.current_file ?? undefined, configKeys: Object.keys(cfg) };
+    return JSON.parse(dec.decode(await this.real(LOCAL, "diagnostics-report", req, null))) as unknown;
+  }
+
   /** 那台真后端此刻在等人的会话（`sessions-needs`）；那台看不见 ⇒ 空。 */
   private async realNeeds(origin: string): Promise<{ sid: string; needs: { ask: unknown; manualText: unknown } }[]> {
     if (this.world.unseenMachines.includes(origin)) return [];
@@ -445,6 +456,9 @@ export class FakeBackend {
       case "front_missed":
         // ↗ 出口那一跳没成的那一张：交无头壳照 `face_core::front` 写（同壳那一条命令），台架不写字。
         return this.face(args);
+      case "diagnostics_report":
+        // 「复制诊断信息」：同壳那一条，只交壳自己的三样事实（版本号 · 日志文件 · config 顶层键），整段由本机真后端 `diagnostics-report` 出。
+        return this.diagnostics();
     }
     const own = this.world.commands[cmd];
     if (own) return own(args, this.world);

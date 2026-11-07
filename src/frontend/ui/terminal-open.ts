@@ -17,7 +17,7 @@ import type { SshCommand } from "./generated/SshCommand";
 import { isLocalOrigin, LOCAL, type Machine } from "./ipc/origin";
 import { toast, type ToastAction } from "./kit/toast";
 import { writeClipboard } from "./clipboard";
-import { detailOf, failSaid, saidOf } from "./kit/detail";
+import { detailOf, failSaid } from "./kit/detail";
 import { openSettingsWindow } from "./open-settings";
 
 /** 期限：`terminal-ssh` 是本机后端里的纯计算（不拨号），给足本机那条流的往返即可。 */
@@ -25,11 +25,7 @@ const RENDER_BUDGET_MS = 10_000;
 
 /** 本机后端那一问（`terminal-ssh`）⇒ 前奏 · 那一行（开窗跑两段接起来的；开不了窗复制的只有那一行）。问不到 ⇒ 抛一句人话。 */
 async function lineOf(req: TerminalSshReq): Promise<SshCommand> {
-  try {
-    return await callTyped(LOCAL, "terminal-ssh", req, budgetWithin(RENDER_BUDGET_MS));
-  } catch (e) {
-    throw new Error(saidOf(e));
-  }
+  return await callTyped(LOCAL, "terminal-ssh", req, budgetWithin(RENDER_BUDGET_MS));
 }
 
 /** 壳回「开不了窗」时带的那几句（壳写好：一句 · 标题 · 说明）。 */

@@ -1,0 +1,11 @@
+{
+  "theme": "src/frontend/ui/theme.ts",
+  "keybindings": "src/frontend/ui/keybindings/store.ts",
+  "tabBar": "src/frontend/ui/tab-bar-state.ts",
+  "sessionHead": "src/frontend/ui/session-head.ts",
+  "autoFollowUserActive": "src/frontend/ui/behavior.ts",
+  "bringMonitorToFrontOnUserActive": "src/frontend/ui/behavior.ts",
+  "resumeCommandPresets": "src/frontend/ui/behavior.ts",
+  "terminal": "src/frontend/ui/settings/terminal-row.ts",
+  "diagnostics": "src/frontend/shell/src/logging.rs"
+}

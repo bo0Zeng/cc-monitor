@@ -442,7 +442,7 @@ fn session_runs_frames_have_exactly_these_bytes() {
     });
     assert_eq!(
         to_line(&f).unwrap(),
-        "{\"kind\":\"session_runs\",\"sid\":\"s1\",\"runs\":[{\"run\":\"a1\",\"label\":\"scan\",\"kind\":\"Explore\",\"tool\":\"t1\",\"parent\":\"a0\",\"state\":\"running\",\"status_text\":\"核心·在跑\",\"label_text\":\"scan\",\"last\":{\"t\":\"tool\",\"name\":\"Bash\"},\"last_text\":\"调用 Bash\",\"waiting\":\"Bash\",\"started_ms\":1000,\"active_ms\":2000,\"calls\":3,\"background\":true},{\"run\":\"a2\",\"state\":\"failed\",\"status_text\":\"\",\"label_text\":\"\",\"last\":{\"t\":\"say\"},\"started_ms\":1000,\"active_ms\":2000,\"ended_ms\":3000,\"why\":\"reported\",\"error\":\"boom\"},{\"run\":\"a3\",\"state\":\"unknown\",\"status_text\":\"\",\"label_text\":\"\",\"why\":\"quiet\"}],\"ended\":[{\"run\":\"a0\",\"tool\":\"t0\",\"state\":\"failed\",\"status_text\":\"核心·失败\"}],\"groups\":{\"running\":[\"a1\"],\"recent\":[\"a2\"],\"older\":[\"a3\"]},\"summary\":\"核心·agent 3\"}\n"
+        "{\"kind\":\"session_runs\",\"sid\":\"s1\",\"runs\":[{\"run\":\"a1\",\"label\":\"scan\",\"kind\":\"Explore\",\"tool\":\"t1\",\"parent\":\"a0\",\"state\":\"running\",\"status_text\":\"核心·在跑\",\"label_text\":\"scan\",\"last\":{\"t\":\"tool\",\"name\":\"Bash\"},\"last_text\":\"调用 Bash\",\"waiting\":\"Bash\",\"started_ms\":1000,\"active_ms\":2000,\"background\":true},{\"run\":\"a2\",\"state\":\"failed\",\"status_text\":\"\",\"label_text\":\"\",\"last\":{\"t\":\"say\"},\"started_ms\":1000,\"active_ms\":2000,\"why\":\"reported\",\"error\":\"boom\"},{\"run\":\"a3\",\"state\":\"unknown\",\"status_text\":\"\",\"label_text\":\"\",\"why\":\"quiet\"}],\"ended\":[{\"run\":\"a0\",\"tool\":\"t0\",\"state\":\"failed\",\"status_text\":\"核心·失败\"}],\"groups\":{\"running\":[\"a1\"],\"recent\":[\"a2\"],\"older\":[\"a3\"]},\"summary\":\"核心·agent 3\"}\n"
     );
     assert!(
         !f.loss_is_recoverable(),
@@ -1350,7 +1350,7 @@ fn the_fates_sort_after_every_live_session_on_one_ruler() {
 /// 悬停那一句 · 状态一句就是那台的离线那一句（与机器成品的 `offline_said` 同一处取字），短名照旧「状态不明」、不说已结束。
 #[test]
 fn the_unseen_face_is_unknown_closes_from_the_menu_and_says_that_machines_offline_line() {
-    use cmd_wire::frame::{Allow, CanClose, CanTerm, SessionDot};
+    use cmd_wire::frame::{Allow, CanClose, SessionDot, TermWay};
     let said = comms_inward::chan::said::offline("gpu-01");
     let f = face_core::book::unseen(crate::common::cells::Words(said.clone()));
     assert_eq!(f.dot, SessionDot::Unknown);
@@ -1358,7 +1358,10 @@ fn the_unseen_face_is_unknown_closes_from_the_menu_and_says_that_machines_offlin
     assert!(!f.settled, "看不见不是定局：重连后那台的帧把脸带回来");
     assert_eq!(f.can.close, CanClose::Menu);
     assert!(matches!(f.can.resume, Allow::No { .. }));
-    assert!(matches!(f.can.term, CanTerm::No { .. }));
+    assert!(
+        matches!(f.can.terminal.near, TermWay::No { .. })
+            && matches!(f.can.terminal.far, TermWay::No { .. })
+    );
     for a in [
         &f.can.reattach,
         &f.can.model,

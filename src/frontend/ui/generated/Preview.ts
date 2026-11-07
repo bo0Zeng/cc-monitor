@@ -35,10 +35,6 @@ scrollback_lines: number,
  */
 capped: boolean, 
 /**
- * 抓屏时刻（秒）。
- */
-captured_at: number, 
-/**
  * 抓屏时刻在看的那一台钟上的（请求的 `tz`）`HH:MM:SS`（界面照抄、不换算）。
  */
 captured_at_text: string, };

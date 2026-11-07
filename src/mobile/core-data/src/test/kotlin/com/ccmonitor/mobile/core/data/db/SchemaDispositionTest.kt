@@ -9,8 +9,8 @@ import java.io.File
  * Room schema 只许走迁移：纯 JVM，零设备。
  *
  * 库里有 ssh 身份（私钥）与机器表：破坏性重建（`fallbackToDestructiveMigration…`）等于每次升级把用户的钥匙和机器清空，
- * 所以生产 builder 只接 `.addMigrations(*allMigrations(crypto))`、一处破坏性回退都不许有；迁移链完整到 `version`，
- * 设备上的 `MigrationTest` 全链条也指到 `version`、最后那一跳有逐步测（旧行还在）。
+ * 所以生产 builder 只接 `.addMigrations(*allMigrations(…))`、一处破坏性回退都不许有；迁移链从 [OLDEST_STATE_DB] 起完整到 `version`
+ * （更老的库不迁、照「太老」拒开，`StateDbAge`），设备上的 `MigrationTest` 全链条也指到 `version`、最后那一跳有逐步测（旧行还在）。
  *
  * 迁移真跑一次的是设备上的 `MigrationTest`；没有模拟器时那条不会被跑到，这里只保证「schema 被动过」不会悄悄发生，
  * 迁移 SQL 写得对不对这里看不见。
@@ -56,26 +56,26 @@ class SchemaDispositionTest {
         )
     }
 
-    /** `1..version` 每一版都有导出的 json，不多不少。 */
+    /** [OLDEST_STATE_DB]`..version` 每一版都有导出的 json，不多不少（更老的不迁，它们的 json 也不留）。 */
     @Test
-    fun everySchemaVersionUpToTheDeclaredOneHasAnExportedJson() {
+    fun everySchemaVersionFromTheOldestKeptUpToTheDeclaredOneHasAnExportedJson() {
         val v = declaredVersion()
         assertEquals(
             "导出的 schema json 与声明的版本不对齐。\n" +
                 "   缺一版时 `MigrationTestHelper.runMigrationsAndValidate` 拿不到那一版的基线。\n" +
                 "   导出目录：`$SCHEMA_DIR`（ksp `room.schemaLocation`，见 core-data/build.gradle.kts）。",
-            (1..v).toList(),
+            (OLDEST_STATE_DB..v).toList(),
             exportedSchemaVersions(),
         )
     }
 
-    /** 迁移链完整：每一跳（`MIGRATION_i_(i+1)` 或 `class Migration{i}To{i+1}`）逐版声明齐，`allMigrations` 不漏不多。 */
+    /** 迁移链完整：从 [OLDEST_STATE_DB] 起每一跳（`MIGRATION_i_(i+1)` 或 `class Migration{i}To{i+1}`）逐版声明齐，`allMigrations` 不漏不多。 */
     @Test
-    fun theMigrationChainIsCompleteAndMatchesTheDeclaredVersion() {
+    fun theMigrationChainIsCompleteFromTheOldestKeptAndMatchesTheDeclaredVersion() {
         val v = declaredVersion()
-        val expected = (1 until v).toList()
+        val expected = (OLDEST_STATE_DB until v).toList()
         assertEquals(
-            "迁移的声明没覆盖到 $v。少一条，升级到那一版就崩（或被清库）。",
+            "迁移的声明不是从 $OLDEST_STATE_DB 逐跳到 $v。少一条，升级到那一版就崩；多出更老的那几跳，是该删没删的旧兼容。",
             expected,
             declaredMigrationSteps(),
         )
@@ -98,7 +98,7 @@ class SchemaDispositionTest {
 
         val fullChain = FULL_CHAIN_TARGET.findAll(src).map { it.groupValues[1].toInt() }.toList()
         assertEquals(
-            "`$MIGRATION_TEST` 的全链条（`runMigrationsAndValidate(dbName, N, true, *allMigrations(crypto))`）\n" +
+            "`$MIGRATION_TEST` 的全链条（`runMigrationsAndValidate(dbName, N, true, *allMigrations(…))`）\n" +
                 "   应当恰好一条且指到 $v，实读 $fullChain。\n" +
                 "   它要模拟器才跑得起来；本条只保证它指对了版本，不保证它跑过。",
             listOf(v),
@@ -184,7 +184,7 @@ class SchemaDispositionTest {
 
     private companion object {
         /** 改 schema 版本时同时改这里。 */
-        const val PINNED_VERSION = 27
+        const val PINNED_VERSION = 28
 
         const val APP_DATABASE = "core-data/src/main/kotlin/com/ccmonitor/mobile/core/data/db/AppDatabase.kt"
         const val CACHE_DATABASE = "core-data/src/main/kotlin/com/ccmonitor/mobile/core/data/db/CacheDatabase.kt"
@@ -206,6 +206,6 @@ class SchemaDispositionTest {
         val MIGRATION_REF = Regex("^\\s*(?:MIGRATION_(\\d+)_\\d+|Migration(\\d+)To\\d+\\(crypto\\)),", RegexOption.MULTILINE)
         val MIGRATE_CALL = Regex("^\\s*\\.addMigrations\\(", RegexOption.MULTILINE)
         val DESTRUCTIVE_CALL = Regex("fallbackToDestructiveMigration")
-        val FULL_CHAIN_TARGET = Regex("runMigrationsAndValidate\\(dbName, (\\d+), true, \\*allMigrations\\(\\w+\\)\\)")
+        val FULL_CHAIN_TARGET = Regex("runMigrationsAndValidate\\(dbName, (\\d+), true, \\*allMigrations\\(\\w*\\)\\)")
     }
 }

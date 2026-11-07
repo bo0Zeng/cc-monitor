@@ -4,12 +4,10 @@
 use crate::agents::ModeSwitch;
 use crate::common::contract::malformed;
 use crate::common::said::Said;
-use crate::control::terminals::{self, no_said, On, Refused};
-use crate::control::terminals_wire::{Sent, SentResult, TerminalInputReq, TerminalPreviewReq};
+use crate::control::screen_drive::{settle, Drive, REDRAWS_PER_PRESS};
+use crate::control::terminals::{self, no_said, Refused};
+use crate::control::terminals_wire::{Sent, SentResult};
 use crate::wire::typed::{self, Command};
-
-/// 按一下之后最多等几次重画（每次至多 `terminal_follow::REDRAW_WAIT`）：重画了、读到的档却还没变 ⇒ 再等一次。
-const REDRAWS_PER_PRESS: usize = 4;
 
 /// `session-permission` 的入参：线上形住 `cmd-wire::session`（名字与回包挂在 `cmd_wire::Call` 上）。
 pub use cmd_wire::session::SessionPermissionReq;
@@ -147,16 +145,13 @@ fn walk(
                 return Ok(reply(SwitchResult::Refused, Some(m), sent.why, sent.said))
             }
         }
-        let mut next = Some(m);
-        for _ in 0..REDRAWS_PER_PRESS {
-            if !io.redrawn() {
-                break;
-            }
-            next = io.read()?;
-            if next != Some(m) {
-                break;
-            }
-        }
+        // 重画了、读到的档却还没变 ⇒ 再等一次。
+        let next = settle(
+            Some(m),
+            REDRAWS_PER_PRESS,
+            |n| *n != Some(m),
+            || io.redrawn().then(|| io.read()).transpose(),
+        )?;
         if next == Some(m) {
             return Ok(unsure(
                 Some(m),
@@ -167,49 +162,24 @@ fn walk(
     }
 }
 
-/// 生产那一份：抓屏走 `terminal-preview` 那一条（不带色），按键与看屏前那一道门同 `session-say`（只剩 shell 的窗格不收），等重画用实时预览那个只读客户端。
+/// 生产那一份：读屏驱动（抓屏不带色 · 按键与看屏前那一道门同 `session-say`：只剩 shell 的窗格不收 · 等重画用实时预览那个只读客户端）。
 struct Live<'a> {
-    sid: &'a str,
-    client: Option<String>,
+    drive: Drive<'a>,
     sw: ModeSwitch,
-    watch: Option<crate::control::terminal_follow::Watch>,
 }
 
 impl ModeIo for Live<'_> {
     fn open(&mut self) -> Result<Option<Refused>, Said> {
-        let t = match terminals::say_target_on(On::default(), self.sid, self.client.as_deref())? {
-            Ok(t) => t,
-            Err(why) => return Ok(Some(why)),
-        };
-        self.watch = Some(crate::control::terminal_follow::Watch::open(None, &t)?);
-        Ok(None)
+        self.drive.open()
     }
     fn read(&mut self) -> Result<Option<&'static str>, Said> {
-        let shot = terminals::preview_on(
-            On::default(),
-            &TerminalPreviewReq {
-                sid: Some(self.sid.to_string()),
-                color: Some(false),
-                ..TerminalPreviewReq::default()
-            },
-            &crate::common::time::Tz::default(),
-        )?;
-        let lines: Vec<String> = shot.lines.into_iter().map(|l| l.text).collect();
-        Ok((self.sw.read)(&lines))
+        Ok((self.sw.read)(&self.drive.screen()?))
     }
     fn press(&mut self) -> Result<Sent, Said> {
-        if let Some(w) = self.watch.as_mut() {
-            w.forget();
-        }
-        crate::control::terminals_wire::say(&TerminalInputReq {
-            sid: Some(self.sid.to_string()),
-            key: Some(self.sw.key.to_string()),
-            client: self.client.clone(),
-            ..TerminalInputReq::default()
-        })
+        self.drive.press(self.sw.key)
     }
     fn redrawn(&mut self) -> bool {
-        self.watch.as_mut().is_some_and(|w| w.changed())
+        self.drive.redrawn()
     }
 }
 
@@ -268,10 +238,8 @@ fn answer(req: &SessionPermissionReq, own: &crate::platform::Own) -> Result<Mode
     offered(&perm, &req.mode)?;
     let waiting = crate::history::live_table::now(&home).waiting(&req.sid);
     let mut io = Live {
-        sid: &req.sid,
-        client: req.client.clone(),
+        drive: Drive::new(&req.sid, req.client.clone()),
         sw,
-        watch: None,
     };
     let keep = || match &record {
         Some(r) => crate::history::history_annotations::keep_for_resume(

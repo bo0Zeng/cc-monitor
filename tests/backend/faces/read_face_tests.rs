@@ -67,14 +67,7 @@ fn the_registry_hands_exactly_the_eight_to_this_host() {
                 }
                 let ty = &rest[..rest.find('>').expect("typed 那一行没收尾")];
                 // 这几条与本族同住一个模块、不读会话也不读账号（诊断那三条 · 各台需手动清单的纯计算合并），不在本族里。
-                if [
-                    "BackendLog",
-                    "DriftReportCmd",
-                    "DriftMergeCmd",
-                    "NeedsMergeCmd",
-                ]
-                .contains(&ty)
-                {
+                if ["BackendLog", "DriftReportCmd", "NeedsMergeCmd"].contains(&ty) {
                     continue;
                 }
                 // 名字照那一块读（字面量 `const NAME` 或 `by_call!` 那一形，`guard_core::typed_command_name` 一处读）。
@@ -653,7 +646,7 @@ fn facts_say_what_the_session_is_waiting_for() {
     let (waited, rest) = split_waited(&waiting);
     assert_eq!(
         rest,
-        serde_json::json!({"kind": "approve", "tool": "Bash", "call": "b1", "what": "rm -rf build/", "sinceMs": 1_700_000_000_000u64, "text": copy_core::copy_text("beSession.needs.approve", &[]), "head": copy_core::copy_text("needs.bar.approve", &[("tool", "Bash")]), "headCode": "rm -rf build/", "tone": "need", "ask": null, "manualText": copy_core::copy_text("beAsk.manual.offElsewhere", &[])})
+        serde_json::json!({"kind": "approve", "tool": "Bash", "call": "b1", "what": "rm -rf build/", "text": copy_core::copy_text("beSession.needs.approve", &[]), "head": copy_core::copy_text("needs.bar.approve", &[("tool", "Bash")]), "headCode": "rm -rf build/", "tone": "need", "ask": null, "manualText": copy_core::copy_text("beAsk.manual.offElsewhere", &[])})
     );
     // 已等多久在这台算（这台读 pidfile 那一刻减那份 pidfile 里的起点），字由时长那一处写。
     let ms = waited.expect("有起点就有已等多久");
@@ -663,11 +656,6 @@ fn facts_say_what_the_session_is_waiting_for() {
         .as_millis() as u64;
     let span = now - 1_700_000_000_000;
     assert!(ms <= span && ms + 60_000 > span, "{ms}");
-    assert_eq!(
-        waiting["waitedText"],
-        copy_core::short_duration(ms),
-        "与过程行耗时同一种短写法"
-    );
     assert_eq!(busy, serde_json::Value::Null, "不在等却报了需手动");
     assert_eq!(dead, serde_json::Value::Null, "在等的进程死了还算需手动");
 }
@@ -681,8 +669,8 @@ fn history_facts_applies_the_limits_this_machine_keeps() {
         |args: serde_json::Value| answer_at(&home, "history-facts", &args, &Default::default());
     let v = ask(serde_json::json!({ "path": path })).unwrap();
     assert_ne!(
-        v["usage"]["limitFrom"],
-        serde_json::json!("setting"),
+        v["usage"]["limitFromText"],
+        serde_json::json!(copy_core::copy_text("mobDrawer.settings.aria", &[])),
         "没设就用上了设置"
     );
     let own = crate::platform::fs::Own::issue_at(&home);
@@ -694,8 +682,14 @@ fn history_facts_applies_the_limits_this_machine_keeps() {
     .unwrap();
     let v = ask(serde_json::json!({ "path": path })).unwrap();
     assert_eq!(
-        (v["usage"]["limit"].clone(), v["usage"]["limitFrom"].clone()),
-        (serde_json::json!(100), serde_json::json!("setting"))
+        (
+            v["usage"]["limit"].clone(),
+            v["usage"]["limitFromText"].clone()
+        ),
+        (
+            serde_json::json!(100),
+            serde_json::json!(copy_core::copy_text("mobDrawer.settings.aria", &[]))
+        )
     );
     assert_eq!(
         ask(serde_json::json!({ "path": path, "limits": {"m": 1} }))
@@ -740,16 +734,20 @@ fn history_facts_takes_the_context_window_from_what_the_relay_saw() {
         .iter()
         .map(|p| {
             let v = ask(p);
-            (v["usage"]["limit"].clone(), v["usage"]["limitFrom"].clone())
+            (
+                v["usage"]["limit"].clone(),
+                v["usage"]["limitFromText"].clone(),
+            )
         })
         .collect();
     let _ = std::fs::remove_dir_all(&home);
+    let relay = serde_json::json!(copy_core::copy_text("beUsage.from.relay", &[]));
     assert_eq!(
         got,
         vec![
-            (serde_json::json!(1_000_000), serde_json::json!("relay")),
-            (serde_json::json!(200_000), serde_json::json!("relay")),
-            (serde_json::json!(1_000_000), serde_json::json!("assumed")),
+            (serde_json::json!(1_000_000), relay.clone()),
+            (serde_json::json!(200_000), relay),
+            (serde_json::json!(1_000_000), serde_json::Value::Null),
         ]
     );
 }
@@ -1898,7 +1896,7 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
     }
     assert_eq!(
         row_bytes,
-        r#"{"ended":[{"end":{"said":"w","stays":true},"sid":"s-2"}],"items":[{"clock":{"head":"等批准 · 协作请求 · {dur}","text":"等批准 · {dur}"},"kind":"session","rank":3298534883325,"session":{"face":{"can":{"attach":{"can":"yes","from":"elsewhere"},"close":{"can":"no","why":"运行中"},"end":{"can":"yes"},"model":{"can":"no","why":"先答完需手动"},"permission":{"can":"no","why":"先答完需手动"},"reattach":{"can":"no","why":"运行中"},"resume":{"can":"no","why":"运行中"},"say":{"can":"yes","hint":"发消息…"},"stop":{"can":"no","why":"需手动"},"term":{"can":"yes","host":"direct"}},"dot":"needs-you","life":{"activity":"needs_you","is":"live"},"line":"需手动","name":"需手动","order":0,"settled":false,"tip":"需手动","tone":"need"},"hidden":null,"label":"t","needs":{"ask":null,"call":null,"head":"等批准 · 协作请求","headCode":null,"kind":"worker","manualText":null,"rank":3298534883325,"sinceMs":1,"text":"等批准","tone":"need","tool":null,"waitedMs":1,"waitedText":"<1s","what":null},"sid":"s-1"}}]}"#
+        r#"{"ended":[{"end":{"said":"w","stays":true},"sid":"s-2"}],"items":[{"clock":{"head":"等批准 · 协作请求 · {dur}","text":"等批准 · {dur}"},"kind":"session","rank":3298534883325,"session":{"face":{"can":{"close":{"can":"no","why":"运行中"},"end":{"can":"yes"},"model":{"can":"no","why":"先答完需手动"},"permission":{"can":"no","why":"先答完需手动"},"reattach":{"can":"no","why":"运行中"},"resume":{"can":"no","why":"运行中"},"say":{"can":"yes","hint":"发消息…"},"stop":{"can":"no","why":"需手动"},"terminal":{"far":{"go":"here","open":{"kind":"attach"},"said":"在 cc-monitor 里打开它的终端"},"near":{"go":"front","said":"切到它的终端窗口"}}},"dot":"needs-you","life":{"activity":"needs_you","is":"live"},"line":"需手动","name":"需手动","order":0,"settled":false,"tip":"需手动","tone":"need"},"hidden":null,"label":"t","needs":{"ask":null,"call":null,"head":"等批准 · 协作请求","headCode":null,"kind":"worker","manualText":null,"rank":3298534883325,"text":"等批准","tone":"need","tool":null,"waitedMs":1,"what":null},"sid":"s-1"}}]}"#
     );
 }
 

@@ -329,17 +329,29 @@ fn probe_listen_socket(sock_path: &std::path::Path, want_env: &[(String, String)
             Probe::Ours(sock, line)
         }
         HelloVerdict::Stranger(why) => {
-            // 在听的是另一份构建（终端里先起的那一份）⇒ 本机后端那一格按两边构建的序说（[`local_backend`]）。
-            if let Some(cmd_wire::frame::HelloHead { build_id, .. }) =
-                cmd_wire::frame::HelloHead::of(&line)
-            {
-                if mine.is_some_and(|m| m != build_id) {
-                    note_local_foreign(Some(&build_id));
-                }
-            }
+            // 在听的是另一份构建（多半是上一版 app 脱离起、退出没停的那一份）⇒ 本机后端那一格按两边构建的序说（[`local_backend`]）。
+            // 同一版、只是家不同 ⇒ 不是别的构建，清掉。
+            note_local_foreign(foreign_of(&line, mine, want_env));
             Probe::Stranger(Said::from(why))
         }
     }
+}
+
+/// 口上那一份别的构建：它的构建标识，和它是不是住我们这个家（家与中转口那几格对得上 ⇒ 是这个 app 的上一版，换得）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Foreign {
+    pub(crate) build: String,
+    pub(crate) same_home: bool,
+}
+
+/// 一行 hello ⇒ 口上那一份别的构建；是我们这一版 · 不是后端那一行 · 手上没带这一版（没有对照物）⇒ `None`。**纯函数**。
+fn foreign_of(line: &str, mine: Option<&str>, want_env: &[(String, String)]) -> Option<Foreign> {
+    let cmd_wire::frame::HelloHead { build_id, .. } = cmd_wire::frame::HelloHead::of(line)?;
+    mine.filter(|m| *m != build_id)?;
+    Some(Foreign {
+        build: build_id.to_string(),
+        same_home: host_env_mismatch(line, want_env).is_none(),
+    })
 }
 
 /// 从一条 socket 上读**一行**，字节数有上限。
@@ -1114,7 +1126,7 @@ fn resolve_backend_bin(
 /// `None` = 没有常驻那个；`Some(Ok)` = 结局（`graceful` / `killed` / `not_running`）；`Some(Err)` = 没停掉（句柄放回去，它还算在跑）。
 ///
 /// **本机远端同一条**：在这台机器上起一次 `<后端> --resident-stop`（同机监督者：请它收尾 → 宽限期内等 → 到点强杀，
-/// 住后端 `control/resident.rs::stop_pid`），这里只拿回结局。monitor 这一侧不再自己发信号、自己等、自己强杀（HX1 那套 `stop_grace` 删了）。
+/// 住后端 `control/resident.rs::stop_listener`），这里只拿回结局。monitor 这一侧不再自己发信号、自己等、自己强杀（HX1 那套 `stop_grace` 删了）。
 /// 句柄**先取出来、出锁再等**：那一趟可能几十秒，句柄表的锁不跨这段等（查状态不被挡住）；停不掉再放回去。
 /// 自己起的那个随后在这里 `wait` 收尸（`process_group` 不改父子关系，`INVARIANTS §48.2`）。
 fn stop_detached() -> Option<Result<crate::remote_resident::StopAnswer, Said>> {
@@ -1380,6 +1392,29 @@ impl Drop for Starting {
     }
 }
 
+/// 从那一张表里挑出的这一格 ⇒ 手上这一版的后端字节；取不到 ⇒ 那句拒绝的话。起与停（[`this_version_bin`]）同一处读。
+fn this_version_bytes(
+    picked: Result<crate::byte_table::Picked, crate::byte_table::Refusal>,
+) -> Result<(&'static str, &'static [u8]), String> {
+    picked
+        .map_err(|r| r.say(&copy_text("detail.label.local", &[])))
+        .and_then(|p| {
+            p.build_id
+                .map(|id| (id, p.bytes))
+                .ok_or_else(|| copy_text("rsLocalBackendHost.local.noStamp", &[]))
+        })
+}
+
+/// 这一版的落点（`~/.cc-monitor/bin` 里带构建标识的那一份，没放过就当场放）：停口上那一份别的构建时拿它跑 `--resident-stop`。
+fn this_version_bin() -> Result<std::path::PathBuf, Said> {
+    // 落点与起的那一趟同一个出处（`OwnBin::issue`）；家目录问不到 ⇒ 与起的那一趟同一句。
+    let bin = crate::platform::own_fs::OwnBin::issue()
+        .ok_or_else(|| Said::of("rsFilewinProc.bin.noHome", &[]))?;
+    let this_machine = crate::byte_table::Key::this_machine();
+    let embedded = this_version_bytes(crate::byte_table::choose(this_machine));
+    resolve_backend_bin(&bin, embedded).map_err(|(said, _)| said)
+}
+
 pub fn start_local_backend() -> StartOutcome {
     // ★★ **锁全程持有**〔D 阶段补审 08-11 修，原版是阻塞级缺陷〕。
     //
@@ -1443,13 +1478,7 @@ pub fn start_local_backend() -> StartOutcome {
     //  今天 `byte_table::choose` 按这台机器的键查表：Windows 那一格就是这一份产物
     //  按 `TARGET` 内嵌的那份，Linux 那一格是 musl（开发树只有原生那份时给原生那份），不承诺 / 没带 ⇒ 那句拒绝的话。
     let this_machine = crate::byte_table::Key::this_machine();
-    let embedded: Result<(&str, &[u8]), String> = crate::byte_table::choose(this_machine)
-        .map_err(|r| r.say(&copy_text("detail.label.local", &[])))
-        .and_then(|p| {
-            p.build_id
-                .map(|id| (id, p.bytes))
-                .ok_or_else(|| copy_text("rsLocalBackendHost.local.noStamp", &[]))
-        });
+    let embedded = this_version_bytes(crate::byte_table::choose(this_machine));
     // ★★ **先走常驻那条路** —— 认得出已有实例就接上它，没有就起一个脱离的。
     //
     // 这就是「怎么起」那个注入点：`start_detached` 是**这一层**（宿主知识层）的东西，
@@ -1641,11 +1670,40 @@ pub fn stop_local_backend() -> Result<crate::remote_resident::StopAnswer, Said> 
                 pid,
             })
         }
-        None => Ok(StopAnswer {
+        // 两样句柄都没有：口上仍可能有人在听（上一版 app 留下的、起的时候被拒没接上的那一份）⇒ 照样停它，不谎报「没在跑」。
+        None => match crate::config::resolve_monitor_data_dir() {
+            Some(home) => stop_listener_on(
+                &relay_route_core::listen_socket_for(&home),
+                &this_version_bin,
+                RESIDENT_STOP_DEADLINE,
+            ),
+            None => Ok(StopAnswer {
+                stopped: StopWord::NotRunning,
+                pid: None,
+            }),
+        },
+    }
+}
+
+/// 停这个家的口上那一位（我们手上没有它的句柄）：没人在听 ⇒ 没在跑（落点都不要）；有 ⇒ 拿这一版的落点跑一次 `--resident-stop`
+/// （它在同一个家里按套接字的对端认人，跟口上那一份是哪一版无关），照它的结局说。停成了 ⇒ 口上那一份别的构建与被拒那一句一起清掉。
+/// [`stop_local_backend`] 的「停」「重启」与本机［更新］都走这一段。**调用方攥着 [`LIFECYCLE`]**。
+fn stop_listener_on(
+    sock: &std::path::Path,
+    bin: &dyn Fn() -> Result<std::path::PathBuf, Said>,
+    deadline: std::time::Duration,
+) -> Result<crate::remote_resident::StopAnswer, Said> {
+    use crate::remote_resident::{StopAnswer, StopWord};
+    if own_chan::connect_blocking(sock).is_err() {
+        return Ok(StopAnswer {
             stopped: StopWord::NotRunning,
             pid: None,
-        }),
+        });
     }
+    let answer = run_resident_stop_within(&bin()?, deadline)?;
+    note_local_foreign(None);
+    note_local_refused(None);
+    Ok(answer)
 }
 
 // ══ 取 shim 那个唯一入口的**跨文件出口** ════
@@ -1660,9 +1718,9 @@ pub fn stop_local_backend() -> Result<crate::remote_resident::StopAnswer, Said> 
 
 use crate::ui_contract::LocalBackend;
 
-/// 本机那个口上占着的、构建与这一版不同的后端（终端里先敲 `ccm` 起的旧 / 新那一份）：它的构建标识。
-/// 起本机后端那一趟探口时记（[`probe_listen_socket`]）；是我们这一版 / 没人 ⇒ 清掉。
-static LOCAL_FOREIGN: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+/// 本机那个口上占着的、构建与这一版不同的后端（多半是上一版 app 脱离起、退出没停的那一份；也可能是终端里先敲 `ccm` 起的）：
+/// 它的构建标识与住不住我们这个家。起本机后端那一趟探口时记（[`probe_listen_socket`]）；是我们这一版 / 没人 / 停掉了 ⇒ 清掉。
+static LOCAL_FOREIGN: std::sync::Mutex<Option<Foreign>> = std::sync::Mutex::new(None);
 
 /// 本机后端起没起来变了之后往外推一帧的出口（壳起来时装上：发 `local-backend` 事件）。没装 ⇒ 不推。
 type LocalOut = Box<dyn Fn(LocalBackend) + Send + Sync>;
@@ -1683,8 +1741,8 @@ pub(crate) fn local_backend_changed() {
 }
 
 /// 记下（或清掉）本机口上那一份别的构建。
-fn note_local_foreign(build: Option<&str>) {
-    *LOCAL_FOREIGN.lock().unwrap_or_else(|e| e.into_inner()) = build.map(str::to_string);
+fn note_local_foreign(foreign: Option<Foreign>) {
+    *LOCAL_FOREIGN.lock().unwrap_or_else(|e| e.into_inner()) = foreign;
     local_backend_changed();
 }
 
@@ -1751,15 +1809,26 @@ pub(crate) fn local_backend(channel: bool, mine: Option<&str>) -> LocalBackend {
         };
     }
     let next = lock(&LOCAL_REFUSED);
-    let relation = match (mine, lock(&LOCAL_FOREIGN)) {
-        (Some(m), Some(theirs)) => deploy_contract::build_relation(&theirs, m),
+    let foreign = LOCAL_FOREIGN
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    let relation = match (mine, &foreign) {
+        (Some(m), Some(theirs)) => deploy_contract::build_relation(&theirs.build, m),
         _ => Relation::Incomparable,
     };
-    // 起不来那几样只有一颗：［重试］＝ 再起一次本机后端。
-    let fixes = vec![cmd_wire::machine::FixButton {
-        fix: cmd_wire::machine::MachineFix::Retry,
-        label: copy_text("front.act.retry", &[]),
-    }];
+    // 住我们这个家的上一版 ⇒ 只有［更新］＝ 用这一版的落点停掉它（[`stop_local_backend`]）再起这一版，不叫人去结束进程；
+    // 别的起不来那几样只有一颗：［重试］＝ 再起一次本机后端。
+    let ours_older = matches!(relation, Relation::Older) && foreign.is_some_and(|f| f.same_home);
+    let (fixes, next) = if ours_older {
+        let label = copy_text("front.act.update", &[]);
+        let fix = cmd_wire::machine::MachineFix::Update;
+        (vec![cmd_wire::machine::FixButton { fix, label }], None)
+    } else {
+        let label = copy_text("front.act.retry", &[]);
+        let fix = cmd_wire::machine::MachineFix::Retry;
+        (vec![cmd_wire::machine::FixButton { fix, label }], next)
+    };
     match relation {
         Relation::Older => LocalBackend::Older {
             dot: MachineDot::Warn,

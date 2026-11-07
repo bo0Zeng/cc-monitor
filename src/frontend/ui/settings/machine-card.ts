@@ -26,7 +26,7 @@ import { fold, setFoldSummary } from "../kit/fold";
 import { button, setButtonLabel } from "../kit/button";
 import { icon } from "../kit/icon";
 import { toggleSwitch } from "../kit/switch";
-import { detailOf, failSaid, sayWithDetail } from "../kit/detail";
+import { detailOf, failSaid, saidOf, sayWithDetail } from "../kit/detail";
 
 /**
  * 连接设置的一格：标签（上）· 框（中，右侧可挂一颗按钮）· 下面一行说明（出错时错误句换在同一行）。
@@ -795,7 +795,7 @@ export class MachineCard {
       out.replaceChildren(resultLine("remote-test-ok", msg));
       return true;
     } catch (e) {
-      out.replaceChildren(resultLine("remote-test-err", String(e)));
+      out.replaceChildren(resultLine("remote-test-err", saidOf(e)));
       return false;
     } finally {
       btn.disabled = false;

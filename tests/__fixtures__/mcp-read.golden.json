@@ -17,8 +17,6 @@
         },
         "sourcePath": "<CJ>",
         "status": "unknown",
-        "loginIn": [],
-        "seenAt": null,
         "mark": null,
         "login": null,
         "failed": null
@@ -32,8 +30,6 @@
         },
         "sourcePath": "<CJ>",
         "status": "unknown",
-        "loginIn": [],
-        "seenAt": null,
         "mark": null,
         "login": null,
         "failed": null
@@ -49,8 +45,6 @@
         },
         "sourcePath": "<DIR>/.mcp.json",
         "status": "disabled",
-        "loginIn": [],
-        "seenAt": null,
         "mark": null,
         "login": null,
         "failed": null
@@ -77,11 +71,6 @@
         },
         "sourcePath": "<CJ>",
         "status": "needsLogin",
-        "loginIn": [
-          "acct-a",
-          "acct-b"
-        ],
-        "seenAt": 1791542520000,
         "mark": "needsLogin",
         "login": {
           "said": "需登录 · acct-a、acct-b · 10:42 记下",
@@ -126,8 +115,6 @@
         },
         "sourcePath": "<CJ>",
         "status": "needsLogin",
-        "loginIn": [],
-        "seenAt": 1791542520000,
         "mark": "failed",
         "login": {
           "said": "需登录 · 10:42 记下",
@@ -162,8 +149,6 @@
         },
         "sourcePath": "<CJ>",
         "status": "unknown",
-        "loginIn": [],
-        "seenAt": null,
         "mark": "failed",
         "login": null,
         "failed": {
@@ -181,8 +166,6 @@
         },
         "sourcePath": "<CJ>",
         "status": "disabled",
-        "loginIn": [],
-        "seenAt": null,
         "mark": null,
         "login": null,
         "failed": null
@@ -195,8 +178,6 @@
         },
         "sourcePath": "<CJ>",
         "status": "unknown",
-        "loginIn": [],
-        "seenAt": null,
         "mark": null,
         "login": null,
         "failed": null

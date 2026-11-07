@@ -32,13 +32,18 @@
     font-weight: 600;
   }
 
+  /* 页头那一排仓库：放不下就横着滚（细滚动条贴着页头底边），不裁掉。 */
   .pvSlices {
     display: flex;
     flex: 0 1 auto;
     align-items: center;
+    align-self: stretch;
     gap: var(--space-2);
     min-width: 0;
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
   }
 
   .pvSlice {

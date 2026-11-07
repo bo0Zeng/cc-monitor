@@ -1,4 +1,4 @@
-/* 消息流底下输入框上方那一排输入队：那台离线时头上一行；每条一行（那一句 · 谁发的 · 那一句开头 ·［撤回］），最多露三行、多的框里滚。 */
+/* 消息流底下输入框上方那一排输入队：那台离线时排头一行；每条一行（那一句此刻的样子 · 那一句开头 ·［撤回］），最多露三行、多的框里滚。 */
 @layer components {
   .queueRow {
     display: flex;
@@ -46,8 +46,9 @@
     color: var(--error-text);
   }
 
-  .queueFrom {
-    flex: none;
+  /* 交了没回执（那台离线 · 连上后补交）：那一行淡着。 */
+  .queueLine[data-state="held"] {
+    opacity: 0.62;
   }
 
   .queueText {

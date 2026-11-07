@@ -138,7 +138,7 @@ const INSERTED_CHILDREN: readonly AppChild[] = [
     modes: ["default"],
     why: "bootstrapMain 经 `mountTabBarResizer()` 建；viewer 路不建（CSS 另有一条兜底隐藏）",
   },
-  // 顶栏那四个入口（设置 · 历史 · 会话总览 · 文件）搬进了标签页栏顶（`TabBarView.mountHeadActions`），不再是 `#app` 的孩子。
+  // 顶栏那几个入口（新建 · 历史 · 设置 · ⋯）搬进了标签页栏顶（`TabBarView.mountHeadActions`），不再是 `#app` 的孩子。
   {
     // 〔三入口拆分〕`bootstrapViewer` 从 `main.ts` 搬到了 viewer 窗自己的入口模块。
     file: "src/frontend/ui/entry-viewer.ts",

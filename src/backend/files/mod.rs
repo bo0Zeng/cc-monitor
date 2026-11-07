@@ -711,16 +711,16 @@ pub fn browse(conn: u64, req: wire::BrowseReq) -> Answer<wire::BrowseReply> {
 /// `files.read.text` 一趟最多肯交多少字节：一帧应答整个进内存、整个过线的天花板（JSON 转义最坏 ×6 = 48 MiB，
 /// 仍在 monitor 读后端一行 · 通道一帧 64 MiB 之内）。编辑上限就是它（[`class::gates_of`]）；
 /// 调用方要的 `max_bytes` 超过它 ⇒ `bad_args`，不偷偷夹小。
-pub const READ_TEXT_MAX_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+pub const READ_TEXT_MAX_BYTES: cap_core::Cap = cap_core::Cap {
     bytes: 8 * 1024 * 1024,
-    over: relay_route_core::Over::Reject,
+    over: cap_core::Over::Reject,
 };
 
 /// `files-read-chunk` 一块最多多少原始字节（b16 翻倍后一帧应答仍远小于 monitor 读一行的上限）。
 /// 调用方给的 `len` 越界 ⇒ `bad_args`、不夹小（同 [`READ_TEXT_MAX_BYTES`] 那一条理由）。
-pub const READ_CHUNK_MAX_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+pub const READ_CHUNK_MAX_BYTES: cap_core::Cap = cap_core::Cap {
     bytes: 256 * 1024,
-    over: relay_route_core::Over::Reject,
+    over: cap_core::Over::Reject,
 };
 
 // 摘要算法（流式那一形 ＋ 十六进制长度）住 `common/digest.rs`：传输台（原生那一块）上传时也边传边算，两块各引各的。
@@ -804,7 +804,7 @@ fn read_chunk(req: wire::ReadChunkReq) -> Answer<wire::ReadChunkReply> {
         )
     })?;
     f.seek(std::io::SeekFrom::Start(offset)).map_err(broke)?;
-    let buf = relay_route_core::read_window(&mut f, len).map_err(broke)?;
+    let buf = cap_core::read_window(&mut f, len).map_err(broke)?;
     let size = md.len();
     Ok(wire::ReadChunkReply {
         path: wire_path(raw::path_bytes(&path)),
@@ -876,11 +876,11 @@ fn read_text(req: wire::ReadTextReq) -> Answer<wire::ReadTextReply> {
         )
     })?;
     // 这一趟的上限是调用方给的 `max_bytes`（已核过在 `READ_TEXT_MAX_BYTES` 以内）：超了整趟拒。
-    let cap = relay_route_core::Cap {
+    let cap = cap_core::Cap {
         bytes: max,
-        over: relay_route_core::Over::Reject,
+        over: cap_core::Over::Reject,
     };
-    let read = relay_route_core::read_capped_from(f, cap).map_err(|e| {
+    let read = cap_core::read_capped_from(f, cap).map_err(|e| {
         refused(
             "unreadable",
             copy_core::copy_text(
@@ -890,7 +890,7 @@ fn read_text(req: wire::ReadTextReq) -> Answer<wire::ReadTextReply> {
             &e,
         )
     })?;
-    let relay_route_core::CappedAll::All(buf) = read else {
+    let cap_core::CappedAll::All(buf) = read else {
         return Err(Said::new(
             "too_large",
             copy_core::copy_text("beFilesRead.text.grew", &[("max", &max.to_string())]),

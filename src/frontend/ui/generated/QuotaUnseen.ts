@@ -14,7 +14,7 @@ export type QuotaUnseen = { rows: Array<Array<QuotaCell>>,
 /**
  * 没出过数 ⇒ 恒 `null`（这一格只给出过数的订阅号）。
  */
-fiveHour: Words | null, warm: QuotaWarm, agent: AgentKind, account: string, kind: QuotaKind, login: LoginState, subId?: string, 
+fiveHour: Words | null, warm: QuotaWarm, agent: AgentKind, account: string, kind: QuotaKind, login: LoginState, 
 /**
  * 用量那一格（没出过数 ⇒ `5h —` / `按量`；同出过数的号那一格一个写法，只是没有重置那一格）。
  */

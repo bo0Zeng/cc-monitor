@@ -311,7 +311,8 @@ pub enum LocalBackend {
         fixes: Vec<cmd_wire::machine::FixButton>,
         next: Option<String>,
     },
-    /// 口上占着的那一份比这一版旧（终端里先起的旧版）。
+    /// 口上占着的那一份比这一版旧：多半是上一版 app 脱离起、退出没停的那一份（升级之后每次都撞上），也可能是终端里先起的旧版。
+    /// 住我们这个家的 ⇒ 修法是［更新］（停掉它、起这一版），不带下一步那一句；另一个家里的 ⇒［重试］＋ 下一步那一句。
     Older {
         dot: cmd_wire::machine::MachineDot,
         tone: cmd_wire::cells::Tone,

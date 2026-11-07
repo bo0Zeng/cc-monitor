@@ -4,9 +4,8 @@ import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.ui.nav.Screen
 
-/** 行尾那个数从哪数（手机自己的机器表 · 保险箱）。 */
+/** 行尾那个数从哪数（手机自己的保险箱；机器表只从抽屉底行「机器」进，不在这里）。 */
 enum class EntryCount {
-    MACHINES,
     KEYS,
 }
 
@@ -30,7 +29,6 @@ data class SettingsEntry(
  */
 fun settingsEntries(): List<SettingsEntry> =
     listOf(
-        SettingsEntry(Ph.HardDrives, copyText("detail.label.machine"), Screen.Hosts.route, readsMachine = false, count = EntryCount.MACHINES),
         SettingsEntry(Ph.UserCircle, copyText("beProfile.slot.account"), Screen.Accounts.route, readsMachine = true),
         // 轮换看的是当前那台新会话用的那份。
         SettingsEntry(Ph.ArrowCounterClockwise, copyText("machinePage.tab.rot"), Screen.RotationHere.route, readsMachine = true),

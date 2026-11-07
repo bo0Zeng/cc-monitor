@@ -17,8 +17,7 @@ describe("命令面板项名", () => {
     expect([...seen.values()].filter((ks) => ks.length > 1)).toEqual([]);
   });
 
-  it("两个「终端」：一条同右键「看它的终端」、一条「终端名单」", () => {
-    expect(copyText("sessionHead.act.terminal")).toBe(copyText("sessionHead.act.terminal"));
-    expect(copyText("main.cmd.openTerminals")).not.toBe(copyText("sessionHead.act.terminal"));
+  it("两个「终端」：一条同会话头那一颗「终端」、一条「终端名单」", () => {
+    expect(copyText("main.cmd.openTerminals")).not.toBe(copyText("mobDrawer.item.terminal"));
   });
 });

@@ -13,9 +13,9 @@
   ],
   "product": {
     "tasks": [
-      { "id": "1", "subject": "占位甲", "status": "completed", "statusText": "完成", "blocks": ["2"], "blockedBy": [], "description": "说明" },
-      { "id": "2", "subject": "占位乙", "status": "in_progress", "statusText": "进行中", "blocks": [], "blockedBy": ["1"], "activeForm": "占位乙中" },
-      { "id": "3", "subject": "占位丙", "status": "pending", "statusText": "未开始", "blocks": [], "blockedBy": [] }
+      { "id": "1", "subject": "占位甲", "status": "completed", "statusText": "完成", "blocks": ["2"], "description": "说明" },
+      { "id": "2", "subject": "占位乙", "status": "in_progress", "statusText": "进行中", "blocks": [], "activeForm": "占位乙中" },
+      { "id": "3", "subject": "占位丙", "status": "pending", "statusText": "未开始", "blocks": [] }
     ],
     "chip": "任务 1/3",
     "hint": "完成 1 · 进行 1 · 未开始 1"

@@ -3,7 +3,7 @@
  * 说一句 ＝ 先进待发（这一端铸编号）再交（`session-queue-put`）：回执到了 ⇒ 摘掉；那台拒了（不是离线）⇒ 摘掉、回那台那一句；
  * 没回执（断线 · 期限到了 · 那台离线）⇒ 留着，**那台接上那一下**（[machineUp]）照原编号把它名下各会话的待发都重交一次 ——
  * 不挂在打开哪条会话 · 哪一页上（同手机 A2-18-8），那台按编号去重、只收一条。在飞的那一句不重交。
- * 草稿与待发是这一端手上正在改的（R1），其余各站（排第 n · 未送达 · 已送）照那台的队列名单。
+ * 草稿与待发是这一端手上正在改的（R1），其余各态（排着 · 等需手动 · 未送达 · 已送）照那台的队列名单。
  */
 import type { Rewind } from "./generated/Rewind";
 import type { Machine } from "./ipc/origin";
@@ -23,7 +23,7 @@ export class Outbox {
     return this.waiting.get(pendingKey(origin, sid)) ?? [];
   }
 
-  /** 待发变了叫一声（进 · 摘 · 撤）；回的函数退订。 */
+  /** 待发变了叫一声（进 · 摘 · 撤 · 一句起飞 · 落地）；回的函数退订。 */
   onChange(fn: () => void): () => void {
     this.subs.add(fn);
     return () => this.subs.delete(fn);
@@ -65,13 +65,20 @@ export class Outbox {
     for (const [k, list] of this.waiting) if (k.startsWith(`${origin}\u0000`)) for (const o of list) if (!this.flying.has(o.id)) void this.deliver(origin, k, o);
   }
 
+  /** 那一句此刻在飞（交出去、还没回来）：那一行说「发送中 · 等确认」；不在飞（交了没回执）⇒ 照那台的 `heldSaid`。 */
+  inFlight(id: string): boolean {
+    return this.flying.has(id);
+  }
+
   private async deliver(origin: Machine, key: string, o: Outgoing): Promise<PutEnd> {
     this.flying.add(o.id);
+    this.ring();
     let end: PutEnd;
     try {
       end = await putOnce(this.put, origin, o);
     } finally {
       this.flying.delete(o.id);
+      this.ring();
     }
     if (end.at !== "none") {
       this.remove(key, o);
@@ -90,6 +97,11 @@ export class Outbox {
 
   private changed(): void {
     savePending(this.waiting);
+    this.ring();
+  }
+
+  /** 叫订的那几处（待发变了 · 一句起飞 · 落地）。 */
+  private ring(): void {
     for (const f of this.subs) f();
   }
 }

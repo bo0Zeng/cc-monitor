@@ -22,8 +22,12 @@
 //!
 //! # 事件，不是定时（`no_timer_guard`）
 //!
-//! 触发只有两种：monitor 在远端那条流握手成功那一刻交一次 `assets-sync {origin, dial}`；界面看机器页前交一次 `assets-sync {}`
-//! （对机器表里「连这台」的每一台各一趟）。一趟的期限归调用方。
+//! 触发只有两种，都在本机常驻后端里：
+//! - 那台的常驻流接上那一刻（[`on_relayed`]：`control::feeds` 转给 watcher 的第一行是那台的 hello，入口 `stream/entry.rs`
+//!   接上的那只转出口先过这里）：那台认得 `assets-catalog-merge` ⇒ 后台对它做一趟；不认 ⇒ 不碰。不经壳 ⇒ 桌面 app 没开也同步。
+//! - 界面看机器页前交一次 `assets-sync {}`（对机器表里「连这台」的每一台各一趟）。
+//!
+//! 一趟没有本端的期限：每一条 capture 的上限归问远端那一跳（`remote_ask`）。
 //! 「问远端」那一跳（`DialRemote`）与「那几台」（[`Table`]）住 `crate::dial::remote_ask`；本模块只管资产目录拉什么、并什么、推什么、扇不扇出。
 
 use crate::assets::asset_catalog::{
@@ -42,9 +46,9 @@ use crate::dial::remote_ask::{Remote, Table, REACH};
 /// 一块推的载荷（JSON 本身）的上限。
 /// 原理由是「`sh -c` 那一个参数 128 KiB，留出引号转义的余量」—— 载荷改走 stdin 之后那条上限不在了，
 /// 今天管它的是远端 CLI 面 stdin 的上限（1 MiB，判据钉「本值不超过它」）。值**没动**。
-pub const PUSH_MAX_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+pub const PUSH_MAX_BYTES: cap_core::Cap = cap_core::Cap {
     bytes: 96 * 1024,
-    over: relay_route_core::Over::SkipAndSay,
+    over: cap_core::Over::SkipAndSay,
 };
 
 /// 远端后端的两条一次性子命令（子命令闸门 `stream::cli::is_subcommand` 认的同名那两条，判据钉）。
@@ -316,6 +320,72 @@ pub(crate) async fn answer_with(
         synced,
         reach: crate::dial::remote_ask::reach_rows(table),
     })
+}
+
+/// 本机常驻后端转出的一行（`control::feeds` 交 watcher 的那一形）是不是「那台这一条连接刚接上」：
+/// 是那台的 hello ⇒ `(那台, 它认不认资产目录)`；流上别的帧 · `gap` · `ended` ⇒ `None`。**纯函数**。
+pub fn attached_to_sync(frame: &cmd_wire::frame::Relayed) -> Option<(&str, bool)> {
+    use cmd_wire::Call as _;
+    let cmd_wire::frame::Relayed::Line { machine, line } = frame else {
+        return None;
+    };
+    if cmd_wire::frame::kind_of(line).ok()? != "hello" {
+        return None;
+    }
+    let takes = serde_json::from_str::<cmd_wire::frame::Hello>(line)
+        .is_ok_and(|h| h.commands.iter().any(|c| c == AssetsCatalogMergeReq::NAME));
+    Some((machine.as_str(), takes))
+}
+
+/// 那台的常驻流接上那一刻（入口接上的转出口每一行先过这里）：那台认得资产目录 ⇒ 后台对它做一趟
+/// （写口照帧面那一形：`asset_catalog::answer_merge` ＋ 入口那一份写句柄）。
+pub fn on_relayed(frame: &cmd_wire::frame::Relayed, own: &crate::platform::fs::Own) {
+    if attached_to_sync(frame).is_none() {
+        return;
+    }
+    let own = own.clone();
+    let fold: Fold =
+        std::sync::Arc::new(move |m| crate::assets::asset_catalog::answer_merge(m, &own));
+    let _ = on_relayed_with(
+        frame,
+        fold,
+        std::sync::Arc::new(crate::dial::remote_ask::DialRemote),
+        &REACH,
+    );
+}
+
+/// [`on_relayed`] 的可喂夹具那一半：起了 ⇒ 那一趟的句柄（判据等它跑完）；不起 ⇒ `None`。
+pub(crate) fn on_relayed_with(
+    frame: &cmd_wire::frame::Relayed,
+    fold: Fold,
+    remote: std::sync::Arc<dyn Remote>,
+    table: &'static Table,
+) -> Option<tokio::task::JoinHandle<Result<AssetsSynced, Said>>> {
+    use cmd_wire::Call as _;
+    let (machine, takes) = attached_to_sync(frame)?;
+    let label = machine.to_string();
+    if !takes {
+        tracing::info!(
+            "资产目录：[{label}] 的后端不认 `{}`，这次不同步",
+            AssetsCatalogMergeReq::NAME
+        );
+        return None;
+    }
+    let Ok(rt) = tokio::runtime::Handle::try_current() else {
+        tracing::warn!("资产目录：[{label}] 接上了，但这一处不在运行时里，这次不同步");
+        return None;
+    };
+    Some(rt.spawn(async move {
+        let req = AssetsSyncReq {
+            origin: Some(cmd_wire::Machine::named(label.clone())),
+        };
+        let got = answer_with(&req, fold, remote.as_ref(), table).await;
+        match &got {
+            Ok(r) => tracing::info!("资产目录：[{label}] 接上即同步 {:?}", r.synced),
+            Err(e) => tracing::warn!("资产目录：[{label}] 接上即同步没办成：{}", e.said),
+        }
+        got
+    }))
 }
 
 #[cfg(test)]

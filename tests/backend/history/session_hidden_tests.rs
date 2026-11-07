@@ -247,3 +247,25 @@ fn the_name_here_takes_the_monitor_rename_and_never_the_agent_rename() {
     assert_eq!(of(&p, Some(" ".into())), "起的");
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// 启动台账 · 会话血缘读不懂 ⇒ 照旧当没有，但各出一声、带原因（不悄悄让隐藏的会话又显示出来）。
+#[test]
+fn an_unreadable_ledger_or_lineage_is_said_not_silently_empty() {
+    let d = test_home::scratch("hidden-unreadable");
+    std::fs::write(d.join(super::super::launch_book::FILE_NAME), b"{ not json").unwrap();
+    std::fs::write(d.join(crate::lineage::FILE_NAME), b"{ not json").unwrap();
+    let mut here = None;
+    let lines = test_meters::heard(|| here = Some(Here::read_in(Some(&d), Rules::default())));
+    let here = here.unwrap();
+    assert!(
+        here.ledger.tabs.is_empty() && here.lineage.parents.is_empty(),
+        "读不懂的当没有"
+    );
+    let warned = |what: &str| {
+        lines
+            .iter()
+            .any(|l| l.contains("WARN") && l.contains(what) && l.contains("reason"))
+    };
+    assert!(warned("launch ledger"), "启动台账读不懂没出声：{lines:?}");
+    assert!(warned("lineage"), "会话血缘读不懂没出声：{lines:?}");
+}

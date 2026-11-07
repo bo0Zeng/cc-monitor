@@ -7,9 +7,6 @@ import com.ccmonitor.mobile.core.wire.gen.Held
 import com.ccmonitor.mobile.core.wire.gen.Hide
 import com.ccmonitor.mobile.core.wire.gen.HlCode
 import com.ccmonitor.mobile.core.wire.gen.LoginStartReq
-import com.ccmonitor.mobile.core.wire.gen.ProfileForm
-import com.ccmonitor.mobile.core.wire.gen.ProfileTmuxMode
-import com.ccmonitor.mobile.core.wire.gen.ProfileTmuxPick
 import com.ccmonitor.mobile.core.wire.gen.Rewind
 import com.ccmonitor.mobile.core.wire.gen.RewindHow
 import com.ccmonitor.mobile.core.wire.gen.RewindWhen
@@ -102,8 +99,6 @@ class SentRequestsTest {
             PlanList.COMMAND to listOf(PlanList.args()),
             PlanRead.COMMAND to listOf(PlanRead.args("/w")),
             Profiles.READ to listOf(emptyMap()),
-            Profiles.FROM_LINE to listOf(Profiles.fromLineArgs("cct", "claude --resume", "~/w", "cc"), Profiles.fromLineArgs("cct", "claude", null, null)),
-            Profiles.WRITE to listOf(Profiles.createArgs("f", FORM), Profiles.createArgs(null, FORM)),
             ProseHl.COMMAND to listOf(ProseHl.args(listOf(HlCode(lang = "rust", x = "fn f() {}"), HlCode(lang = null, x = "a")))),
             QuotaRead.COMMAND to listOf(null),
             MachinePrefs.READ to listOf(null),
@@ -235,24 +230,5 @@ class SentRequestsTest {
         val SHA = "ab".repeat(32)
 
         val LINK = File(Fixtures.repoRoot, "src/mobile/core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link")
-
-        /** 别名页表单那一形（「建这条」交的那几格；没交的那台按缺省）。 */
-        val FORM =
-            ProfileForm(
-                name = "cct",
-                from = null,
-                account = null,
-                tmux = ProfileTmuxPick(ProfileTmuxMode.FIXED, "cc"),
-                cwdIf = null,
-                cwd = "~/w",
-                agent = null,
-                args = "--resume",
-                launcher = null,
-                tmuxSize = null,
-                detach = false,
-                tab = null,
-                tabGroup = null,
-                say = null,
-            )
     }
 }

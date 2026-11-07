@@ -103,7 +103,7 @@
 
 1. 改后端那一份渲染（缺的选项先在 `ccm` 里加：`host/ccm_line/argv.rs` 那张表）；
 2. 改那一行的字节表（手写期望）：`tests/backend/control/launch_render/ccm_invocation_support.rs::cells` —— `every_launch_renders_byte_for_byte` 逐字节比，`every_rendered_ccm_line_is_accepted_by_the_ccm_argv` 断每一行都是 `ccm` 自己认的一行；
-3. 回归：后端 `cargo test -p backend-control --lib launch_render ccm`（在 `src/backend`）＋ 改了 `ccm` 的行为就跑 `tests/e2e/restart-suite.sh` · `resume-suite.sh` · `tmux-target-acceptance.sh`（单跑前缀 `bash tests/scripts/session-scrub.sh`，见 [DEVELOPMENT.md](DEVELOPMENT.md) §Rust；这几套用真后端二进制当 `ccm`，先 `cargo build`）。
+3. 回归：后端 `cargo test -p backend-control --lib launch_render ccm`（在 `src/backend`）＋ 改了 `ccm` 的行为就跑 `tests/e2e/resume-suite.sh` · `tmux-target-acceptance.sh`（单跑前缀 `bash tests/scripts/session-scrub.sh`，见 [DEVELOPMENT.md](DEVELOPMENT.md) §Rust；这几套用真后端二进制当 `ccm`，先 `cargo build`）。
 
 ### 2.8 界面文字
 

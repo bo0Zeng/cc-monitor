@@ -134,6 +134,7 @@ fn args_parse_into_a_spec() {
         "name=n1",
         "size=120x40",
         "cwd=/tmp",
+        "account=b",
         "--",
         "claude",
         "--resume",
@@ -145,6 +146,7 @@ fn args_parse_into_a_spec() {
     let s = parse(&a).expect("解得开");
     assert_eq!(s.id, "h1");
     assert_eq!(s.name, "n1");
+    assert_eq!(s.account, "b");
     assert_eq!(
         s.size,
         Size {

@@ -27,6 +27,8 @@ copy-core = { path = "../../common/copy-core" }
 # 身份戳的两个界标（`id::build_stamp` 拼的头尾；monitor 扫字节用的是同一份）。
 deploy-contract = { path = "../../common/deploy-contract" }
 relay-route-core = { path = "../../common/relay-route-core" }
+# 有上限读（读上限 `Cap` · 同步整读）的唯一一份；零依赖。
+cap-core = { path = "../../common/cap-core" }
 shell-quote-core = { path = "../../common/shell-quote-core" }
 win-path-core = { path = "../../common/win-path-core" }
 ssh-dial = { path = "../../comms/ssh-dial" }

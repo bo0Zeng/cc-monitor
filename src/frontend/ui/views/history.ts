@@ -930,7 +930,6 @@ export class HistoryView {
       displayTitle: labelOf(r),
       head: this.headOf(r),
       origin: r.origin,
-      agent: r.agent,
       cwd: r.projectPath,
       ...(jumpTo !== undefined ? { scrollTo: { uuid: jumpTo.uuid, line: jumpTo.line } } : {}),
       ...(jumpTo?.tool !== undefined ? { scrollToTool: jumpTo.tool } : {}),

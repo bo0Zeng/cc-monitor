@@ -13,19 +13,19 @@
  */
 // `LOCAL`：本机那台的线上名，只住 `cmd-wire`（`cmd_wire::LOCAL`），界面经 `ipc/origin` 从生成物拿。
 import { hiddenPushed } from "./session-hidden";
-import { LOCAL, isLocalOrigin, type Machine } from "./ipc/origin";
+import { LOCAL, isLocalOrigin, isRemoteOrigin, type Machine } from "./ipc/origin";
 import { emit } from "@tauri-apps/api/event";
 import { commands } from "./ipc/commands";
 import { icon } from "./kit/icon";
+import { GLOBAL_DESTS, destLabel, type GlobalDest, type GlobalDestItem } from "./global-dests";
 import { LS_KEYS, safeGet, safeSet } from "./local-storage";
 import { StartupActive } from "./startup-active";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { bindEvents } from "./events";
-import { activityOf } from "./face-can";
+import { activityOf, terminalWhy } from "./face-can";
 import { TabManager } from "./tabs";
 import { livePainter } from "./live-card-view";
 import { mountTabBarResizer } from "./tab-bar-width";
-import { terminalFrontCommand } from "./terminal-front-command";
 import { loadTheme } from "./theme";
 import { SETTINGS_APPLIED_EVENT } from "./settings";
 import { RESYNC_DONE_EVENT } from "./settings/events";
@@ -56,7 +56,7 @@ import { readMonitorBoard } from "./monitor-board-reads";
 import { CommandBarView, type Command } from "./views/command-bar";
 import { UsageHud } from "./usage-hud";
 import { recordFileWiring } from "./record-file-notice";
-import { toast, undoLatest } from "./kit/toast";
+import { failToast, toast, undoLatest } from "./kit/toast";
 import { askFacts } from "./new-session-reads";
 import { switchModel, switchPermission } from "./session-writes";
 import { unavailableSaid } from "./control-said";
@@ -64,15 +64,15 @@ import { KeysOverview } from "./views/keys-overview";
 import { StatusMessages } from "./status-messages";
 import { StatusChores } from "./status-chores";
 import { readChores } from "./settings/data-reads";
-import { readReadiness, type Readiness } from "./settings/readiness-reads";
+import { readReadiness, skipStart } from "./settings/readiness-reads";
 import { MainEmpty } from "./main-empty";
-import { StatusStart } from "./status-start";
 import { restoreZoom, stepZoom } from "./zoom";
 import { mountTabBarFold, tabBarManuallyFolded, toggleTabBarFold } from "./tab-bar-fold";
 import { attachTooltip } from "./kit/tooltip";
 import { bindErrorToast } from "./backend-errors";
 // 顶栏远端文件入口：按远端主机数 0 / 1 / N 分支（`sftp-host-picker.ts`）。
-import { openSftpFromTopbar, toggleSftpFromTopbar } from "./sftp-host-picker";
+import { openSftpFromTopbar } from "./sftp-host-picker";
+import { openMenu, type MenuItem } from "./kit/menu";
 import { createUnknownKeysBar } from "./settings/unknown-keys-notice";
 import { openSettingsWindow } from "./open-settings"; // 点「设置」有反馈（不 import 设置面板）
 import * as dest from "./settings-dest";
@@ -93,7 +93,6 @@ import { onAccountsChanged as reaskSessionAccounts, onQuotaChanged, syncSessions
 import { planMoves, pushedProducts } from "./changed-stream";
 import { followActive, toggleAccountPanel, type AcctPanelHost } from "./acct-panel";
 import { acctSessionWiring } from "./acct-session";
-import { buildAccountCommands } from "./account-commands";
 import { sessionCommands } from "./session-commands";
 import type { FrontendReadyPayload } from "./generated/FrontendReadyPayload";
 import { FRONTEND_READY } from "./generated/shell-names";
@@ -106,7 +105,7 @@ import { copyText } from "./copy-table";
 import { renameTab } from "./tab-rename";
 import { appStore } from "./app-store";
 import { OverlayRouter } from "./overlay-router";
-import { SessionHead, terminalActsOf } from "./session-head";
+import { SessionHead, canTerminal } from "./session-head";
 import { NeedsTitle } from "./needs-bar";
 import { AnswerBlock } from "./answer-block";
 import { answerNeeds } from "./answer-reads";
@@ -188,25 +187,21 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
   status.appendChild(chores.el);
   void chores.refreshAll();
-  // 「开始用 · 剩 N 步」（有才出，紧跟「待办」）：本机后端 `first-run` 的 `left`，与设置窗机器页「开始用」同一个数。
-  // 一个会话都没有时正文区中央那一块；同一份「开始用」也告诉它本机终端接上没有。
-  const empty = new MainEmpty(() => void openSettingsWindow(undefined, dest.connectTerminalOf(LOCAL)));
+  // 一个会话都没有时正文区中央那一块：首屏那一句 ＋「开始用」卡（本机后端 `first-run`，只在这一处）。
+  const empty = new MainEmpty({
+    open: (go) => void openSettingsWindow(undefined, dest.firstRunGoOf(go)),
+    skip: () => void skipStart().then(readStart, (e: unknown) => failToast(copyText("firstRun.head.skipFailed"), e, { level: "error" })),
+  });
   streamRoot.appendChild(empty.el);
-  const readStart = async (): Promise<Readiness | null> => {
-    const r = await readReadiness();
-    empty.readiness(r);
-    return r;
-  };
-  const start = new StatusStart({ read: readStart, open: () => void openSettingsWindow(undefined, dest.START) });
-  status.appendChild(start.el);
-  void start.refresh();
+  const readStart = async (): Promise<void> => empty.readiness(await readReadiness());
+  void readStart();
   // 关主窗口 ＝ 退出 cc-monitor 时先问会打断什么（与「现在重启」同一问、同一种框）。
   installQuitGuard();
   void getCurrentWindow()
     .onFocusChanged(({ payload: focused }) => {
       if (focused) {
         void chores.refreshAll();
-        void start.refresh();
+        void readStart();
       }
     })
     .catch((e: unknown) => console.warn("[status-chores] 挂焦点监听失败：", e));
@@ -229,7 +224,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   let boardMachines: Machine[] = [LOCAL];
   const terminalPage = new TerminalPage({
     active: () => watched(),
-    front: (sid) => tabs.frontFor(sid),
     focusStream: () => {
       const el = activeTab()?.streamEl;
       if (!el) return;
@@ -248,7 +242,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
   // 顶层「终端」视图：各台的终端名单（本机后端合好的成品）＋ 同一个终端面部件，看名单里选中的那个终端。
   let boardWatched: Watched | null = null;
-  const boardFace = new TerminalPage({ active: () => boardWatched, front: (sid) => tabs.frontFor(sid), focusStream: () => {} });
+  const boardFace = new TerminalPage({ active: () => boardWatched, focusStream: () => {} });
   const terminalsView: TerminalsView = new TerminalsView({
     machines: () => boardMachines,
     read: readBoard,
@@ -326,7 +320,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     boardFace.machineUp(origin);
     pokeBoard();
     void chores.refreshAll();
-    if (isLocalOrigin(origin)) void start.refresh();
+    if (isLocalOrigin(origin)) void readStart();
   });
   // 窗口标题的 N 同侧栏入口（后端合好的总数）。
   const paintNeedsTitle = (): void => needsTitle.observe(needsBook.total());
@@ -334,9 +328,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 会话头（主区顶上 40px）与「需手动」钉条（消息流底部）：只读当前 tab，做事经 `tabs` 那几条。
   const sessionHead = new SessionHead({
       active: () => tabs.activeTab(),
-      viewTerminal: () => mainDrawer.dock.show("terminal"),
       openCwd: (sid) => tabs.openCwdOf(sid),
-      front: (sid) => tabs.frontFor(sid),
+      terminal: (sid) => tabs.terminalFor(sid),
       find: () => tabs.openFind(),
       more: (anchor, sid, extra) => tabs.openMenuFor(anchor, sid, extra),
       menuItem: (sid, id) => tabs.menuItemFor(sid, id),
@@ -344,7 +337,6 @@ window.addEventListener("DOMContentLoaded", async () => {
       tabOf: (sid) => tabs.tabOf(sid),
       switchTo: (sid) => tabs.switchTo(sid),
       resume: (anchor, sid) => tabs.openResumeFor(anchor, sid),
-      attach: (sid) => tabs.attachInTerminal(sid),
       switching: {
         active: () => tabs.activeTab(),
         facts: (origin) => askFacts(origin, null),
@@ -389,7 +381,6 @@ window.addEventListener("DOMContentLoaded", async () => {
       const origin = tabs.originOf(sid);
       return origin === null ? Promise.resolve(false) : openSession(origin, { what: { kind: "resume", sid }, local: isLocalOrigin(origin) });
     },
-    front: (sid) => tabs.frontFor(sid),
     focusStream: () => activeTab()?.streamEl.focus({ preventScroll: true }),
     room: (px) => streamRoot.style.setProperty("--composer-room", `${px}px`),
   });
@@ -449,12 +440,12 @@ window.addEventListener("DOMContentLoaded", async () => {
   const panelHost: AcctPanelHost = {
     sessionTitle: (sid) => tabs.snapshotSessions().find((x) => x.sessionId === sid)?.title ?? sid.slice(0, 8),
     openSettings: (origin) => void openSettingsWindow(undefined, dest.accountsOf(origin)),
-    openDefaultMenu: (anchor, origin) => void accountChip.openDefaultMenu(anchor, origin),
-    defaultOf: (origin) => accountChip.defaultOf(origin),
   };
-  const openAcctPanel = (sid: string | null, origin: string): void => toggleAccountPanel(sid, origin, panelHost);
+  // 没有当前会话 ⇒ 那台的账号设置（「新会话默认」只在那里）。
+  const openAcctPanel = (sid: string | null, origin: string): void =>
+    sid === null ? void openSettingsWindow(undefined, dest.accountsOf(origin)) : toggleAccountPanel(sid, origin, panelHost);
   tabs.onOpenAccountPanel = openAcctPanel;
-  // ↗ 浮层的［接上终端］直达设置那一节（［更新］就地做，住 `tabs.ts`）。
+  // 拉窗没成那一条（底部条）的［接上终端］直达设置那一节。
   tabs.onConnectTerminal = () => void openSettingsWindow(undefined, dest.connectTerminalOf(LOCAL));
   tabs.onOpenHere = (sid) => {
     tabs.switchTo(sid);
@@ -480,17 +471,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     terminalPage.sessionChanged();
     mainDrawer.dock.show("terminal");
   };
-  const activeOrigin = (): Machine | null => {
-    const sid = tabs.activeSessionId();
-    return sid === null ? null : tabs.originOf(sid);
-  };
-  const accountChipDeps = {
-    openSettings: () => void openSettingsWindow(undefined, dest.accountsOf(activeOrigin() ?? LOCAL)),
-    togglePanel: openAcctPanel,
-    // 切号后立刻重问那一台有 tab 的会话的号（与默认号比在那一份里），不等那台推 `changed/accounts`。
-    onDefaultChanged: (origin: Machine) => reaskSessionAccounts(origin),
-  };
-  const accountChip = new AccountChip(accountChipDeps);
+  const accountChip = new AccountChip({ togglePanel: openAcctPanel });
   status.append(statusDivider, accountChip.element); // 还没有当前会话：账号排在竖线后（有会话时挪到前面那一组）
   void accountChip.refresh();
 
@@ -511,16 +492,13 @@ window.addEventListener("DOMContentLoaded", async () => {
   function paintTerminalActs(): void {
     const t = tabs.activeTab();
     if (!t) return;
-    const acts = terminalActsOf(t);
-    t.streamEl.dataset.canFront = acts.front ? "1" : "0";
-    t.streamEl.dataset.canAttach = acts.attach ? "1" : "0";
+    t.streamEl.dataset.canTerminal = canTerminal(t) ? "1" : "0";
   }
   streamRoot.addEventListener("click", (e) => {
     const b = (e.target as HTMLElement | null)?.closest?.<HTMLElement>(".api-error-acts [data-act]");
     const sid = tabs.activeSessionId();
     if (!b || sid === null) return;
-    if (b.dataset.act === "front") tabs.frontFor(sid);
-    else if (b.dataset.act === "attach") tabs.attachInTerminal(sid);
+    if (b.dataset.act === "terminal") tabs.terminalFor(sid);
   });
   tabs.active.subscribe((a) => {
     // 切了 tab ⇒ 会话头 · 「需手动」钉条 · 抽屉的终端页换成这一个。
@@ -537,7 +515,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     accountChip.setActive(cur);
     if (cur !== null) statusDivider.before(accountChip.element);
     else statusDivider.after(accountChip.element);
-    followActive(cur, panelHost, LOCAL);
+    followActive(cur, panelHost);
     if (a.sid !== null) noticeRepaint(a.sid); // 「还有多久」只在画的那一刻算：切到这个 tab 那一刻重算
   });
 
@@ -643,17 +621,32 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
   needsBook.subscribe(() => {
     paintNeedsTitle();
-    planTrigger.dataset.needs = String(needsBook.plans().length > 0);
+    moreTrigger.dataset.needs = String(needsBook.plans().length > 0);
   });
-  const planTrigger = headButton("plan-trigger", "plan", copyText("plan.page.title"), hintWithKey(copyText("main.topbar.planHint"), "app.toggle-plan"), () => overlays.toggle("plan"));
   planNeeds.subscribe(() => sessionHead.render());
 
-  // 多 agent 并排监控入口（视图在上面建）。
+  // 多 agent 并排监控（视图在上面建）。
   overlays.register("grid", gridMonitorView);
-  const gridTrigger = headButton("grid-monitor-trigger", "grid", copyText("main.cmd.openGrid"), hintWithKey(copyText("main.topbar.gridHint"), null), () => overlays.toggle("grid"));
 
-  // 远端文件入口：按远端主机数分支 —— 0 台提示 / 1 台直开 / 多台选单（openSftpFromTopbar）；终点是原生文件窗口（`file-window.ts`）。
-  const sftpTrigger = headButton("sftp-trigger", "files", copyText("main.cmd.openFiles"), hintWithKey(copyText("main.topbar.filesHint"), null), () => void toggleSftpFromTopbar(sftpTrigger));
+  // 栏顶右端「更多去处 ⋯」：全局去处那一张清单（`global-dests.ts`；手机抽屉里同一件事引同一个文案键）。
+  // 计划那一侧有需手动的 ⇒ 这一颗挂琥珀点（`data-needs`）。文件：按远端主机数分支 —— 0 台提示 / 1 台直开 / 多台选单（`openSftpFromTopbar`）。
+  const moreItem = (d: GlobalDestItem, run: () => void): MenuItem => {
+    const chord = d.action === null ? null : dispatcher.effectiveChord(d.action);
+    return { id: d.id, icon: d.icon, label: d.label(), detail: chord ? KeybindingDispatcher.prettyChord(chord) : undefined, onClick: run };
+  };
+  const goDest: Record<GlobalDest, () => void> = {
+    plan: () => overlays.toggle("plan"),
+    files: () => void openSftpFromTopbar(moreTrigger),
+    grid: () => overlays.toggle("grid"),
+    terminals: () => overlays.open("terminals"),
+    "cc-bus": () => overlays.open("cc-bus"),
+  };
+  const moreTrigger = headButton("head-more-trigger", "more", copyText("history.row.more"), () => copyText("history.row.more"), () => {
+    openMenu(
+      { el: moreTrigger, align: "end" },
+      GLOBAL_DESTS.map((d) => moreItem(d, goDest[d.id])),
+    );
+  });
   // 栏顶最前一颗拆分按钮「＋ ⌄」：新建会话（框起在此刻那个标签页的那台、那个目录）· 那台存好的几组（`set-menu.ts`）。
   const hereNow = (): { origin: Machine; cwd?: string } => {
     const t = tabs.activeTab();
@@ -664,7 +657,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     editSets: (name) => void openNewSession({ origin: hereNow().origin, set: name }),
   };
   const newSplit = newSessionSplit(() => hereNow().origin, setHost);
-  tabs.mountHeadActions([newSplit, gridTrigger, sftpTrigger, planTrigger, historyTrigger, settingsTrigger]);
+  tabs.mountHeadActions([newSplit, historyTrigger, settingsTrigger], [moreTrigger]);
 
   // cc-bus 驾驶舱是顶层运营视图，入口在命令面板里、不另占顶栏图标（低频视图；理由见 `views/cc-bus-view.ts` 头注）。
   const ccBusView = new CcBusView();
@@ -691,6 +684,14 @@ window.addEventListener("DOMContentLoaded", async () => {
     return out;
   };
 
+  // 命令面板里「终端」那一项：照当前标签页脸上那一格灰不灰（本机标签页挑 near、远端挑 far），点了与会话头那一颗同一条路。
+  const terminalCommand = (hint: string | undefined): Command => {
+    const t = tabs.activeTab();
+    const why = t ? terminalWhy(t.face, isRemoteOrigin(t.origin)) : "";
+    const item: Command = { id: "terminal", group: "current", icon: "terminal", title: copyText("mobDrawer.item.terminal"), keywords: copyText("main.cmd.terminalKeywords"), hint, run: () => tabs.terminalActive() };
+    return why === null ? item : { ...item, disabled: why };
+  };
+
   // 命令面板（Ctrl+K）：打开那一刻现拼一份（分组 · 键位 · 可不可用由这里给，面板只排版）。
   const buildCommands = (): Command[] => {
     const chordHint = (id: Parameters<typeof dispatcher.effectiveChord>[0]): string | undefined => {
@@ -701,18 +702,17 @@ window.addEventListener("DOMContentLoaded", async () => {
     const curOrigin = cur === null ? null : tabs.originOf(cur);
     const cmds: Command[] = [];
     // 会话（空输入时只列在等你的那几行，在「需手动」一组）。
-    cmds.push(...sessionCommands(tabs.tabsInOrder(), (sid) => tabs.switchTo(sid), (n) => chordHint(`tab.jump-${n}` as Parameters<typeof chordHint>[0]), (sid) => tabs.attachInTerminal(sid)));
+    cmds.push(...sessionCommands(tabs.tabsInOrder(), (sid) => tabs.switchTo(sid), (n) => chordHint(`tab.jump-${n}` as Parameters<typeof chordHint>[0]), (sid) => tabs.terminalFor(sid)));
     if (cur !== null && curOrigin !== null) {
       cmds.push(
         { id: "find", group: "current", icon: "search", title: copyText("sessionHead.act.find"), keywords: copyText("main.cmd.findKeywords"), hint: chordHint("session.find"), run: () => tabs.openFind() },
         { id: "head-buttons", group: "current", icon: "sliders", title: copyText("sessionHead.edit.open"), hint: chordHint("sessionHead.edit"), run: () => sessionHead.openEditor() },
         { id: "toggle-tasks", group: "current", icon: "tasks", title: copyText("tasksPanel.page.title"), keywords: copyText("main.cmd.tasksKeywords"), hint: chordHint("panel.toggle-tasks"), run: () => mainDrawer.toggle("tasks") },
         { id: "toggle-agents", group: "current", icon: "agent", title: copyText("beProfile.slot.agent"), keywords: copyText("main.cmd.agentsKeywords"), hint: chordHint("panel.toggle-agents"), run: () => mainDrawer.toggle("agents") },
-        { id: "toggle-terminal", group: "current", icon: "terminal", title: copyText("sessionHead.act.terminal"), keywords: copyText("main.cmd.terminalKeywords"), hint: chordHint("panel.toggle-terminal"), run: () => mainDrawer.toggle("terminal") },
         { id: "pop-out", group: "current", icon: "popOut", title: copyText("history.menu.openWindow"), keywords: copyText("main.cmd.popOutKeywords"), hint: chordHint("tab.pop-out"), run: () => tabs.openActiveInNewWindow() },
         { id: "open-cwd", group: "current", icon: "folder", title: copyText("tabBarView.tab.cwdHint"), keywords: copyText("main.cmd.openCwdKeywords"), hint: chordHint("tab.open-cwd"), run: () => tabs.openActiveTabCwd() },
-        // ↗：一直列着，做不了灰着写那一句（与 tab 上那颗按钮是同一道，见 `terminal-front-command.ts`）。
-        ...terminalFrontCommand({ id: "term-front", group: "current" as const, icon: "front" as const, title: copyText("terminal.head.front"), keywords: copyText("main.cmd.terminalFrontKeywords"), hint: chordHint("terminal.bring-front"), run: () => tabs.bringActiveTerminalToFront() }, tabs.activeTab()?.face ?? null),
+        // 「终端」：一直列着，做不了灰着写那台写好的那一句（与会话头那一颗是同一道，`face-can.ts::terminalWhy`）。
+        terminalCommand(chordHint("session.terminal")),
         tabs.isPinned(cur)
           ? { id: "unpin", group: "current", icon: "pin", title: copyText("tabMenu.pin.unpin"), keywords: copyText("main.cmd.pinKeywords"), run: () => tabs.togglePin(cur) }
           : { id: "pin", group: "current", icon: "pin", title: copyText("tabMenu.pin.pin"), keywords: copyText("main.cmd.pinKeywords"), run: () => tabs.togglePin(cur) },
@@ -723,7 +723,6 @@ window.addEventListener("DOMContentLoaded", async () => {
         } },
         ...groupCommands(),
         { id: "proc-expand", group: "current", icon: "expand", title: copyText("stream.proc.toggle"), keywords: copyText("main.cmd.procExpandKeywords"), hint: chordHint("session.toggle-process"), run: () => tabs.toggleProcessDefault() },
-        { id: "acct-panel", group: "current", icon: "account", title: copyText("acct.menu.open"), keywords: copyText("acct.menu.open"), run: () => openAcctPanel(cur, curOrigin) },
       );
     }
     cmds.push(
@@ -738,12 +737,12 @@ window.addEventListener("DOMContentLoaded", async () => {
       },
       startSetCommand(() => newSplit, () => hereNow().origin, setHost),
       { id: "open-history", group: "open", icon: "history", title: copyText("main.cmd.openHistory"), keywords: copyText("main.cmd.historyKeywords"), hint: chordHint("app.toggle-history"), run: () => overlays.open("history") },
-      { id: "open-terminals", group: "open", icon: "terminal", title: copyText("main.cmd.openTerminals"), keywords: copyText("main.cmd.terminalsKeywords"), run: () => overlays.open("terminals") },
-      { id: "open-plan", group: "open", icon: "plan", title: copyText("plan.page.title"), keywords: copyText("main.cmd.planKeywords"), hint: chordHint("app.toggle-plan"), run: () => overlays.open("plan") },
-      { id: "open-grid", group: "open", icon: "grid", title: copyText("main.cmd.openGrid"), keywords: copyText("main.cmd.gridKeywords"), run: () => overlays.open("grid") },
-      { id: "open-cc-bus", group: "open", icon: "bus", title: copyText("main.cmd.openCcBus"), keywords: copyText("main.cmd.ccBusKeywords"), hint: chordHint("app.open-cc-bus"), run: () => overlays.open("cc-bus") },
+      { id: "open-terminals", group: "open", icon: "terminal", title: destLabel("terminals"), keywords: copyText("main.cmd.terminalsKeywords"), run: () => overlays.open("terminals") },
+      { id: "open-plan", group: "open", icon: "plan", title: destLabel("plan"), keywords: copyText("main.cmd.planKeywords"), hint: chordHint("app.toggle-plan"), run: () => overlays.open("plan") },
+      { id: "open-grid", group: "open", icon: "grid", title: destLabel("grid"), keywords: copyText("main.cmd.gridKeywords"), run: () => overlays.open("grid") },
+      { id: "open-cc-bus", group: "open", icon: "bus", title: destLabel("cc-bus"), keywords: copyText("main.cmd.ccBusKeywords"), hint: chordHint("app.open-cc-bus"), run: () => overlays.open("cc-bus") },
       { id: "open-settings", group: "open", icon: "settings", title: copyText("mobDrawer.settings.aria"), keywords: copyText("main.cmd.settingsKeywords"), hint: chordHint("app.open-settings"), run: () => void openSettingsWindow() },
-      { id: "open-sftp", group: "open", icon: "files", title: copyText("main.cmd.openFiles"), keywords: copyText("main.cmd.filesKeywords"), run: () => void openSftpFromTopbar(sftpTrigger) },
+      { id: "open-sftp", group: "open", icon: "files", title: destLabel("files"), keywords: copyText("main.cmd.filesKeywords"), run: () => void openSftpFromTopbar(moreTrigger) },
       { id: "keys", group: "open", icon: "keyboard", title: copyText("main.cmd.keys"), keywords: copyText("main.cmd.keysKeywords"), hint: chordHint("app.keys"), run: () => keysOverview.open() },
       { id: "refresh", group: "open", icon: "refresh", title: copyText("main.cmd.refresh"), keywords: copyText("main.cmd.refreshKeywords"), run: () => tabs.refreshAll() },
       { id: "win-fullscreen", group: "window", icon: "fullscreen", title: copyText("main.cmd.fullscreen"), keywords: copyText("main.cmd.fullscreenKeywords"), hint: chordHint("app.toggle-fullscreen"), run: toggleFullscreen },
@@ -755,23 +754,8 @@ window.addEventListener("DOMContentLoaded", async () => {
       { id: "zoom-out", group: "window", icon: "zoomOut", title: copyText("main.cmd.zoomOut"), keywords: copyText("main.cmd.zoomKeywords"), hint: chordHint("app.zoom-out"), run: () => stepZoom(-1) },
       { id: "zoom-reset", group: "window", icon: "reset", title: copyText("main.cmd.zoomReset"), keywords: copyText("main.cmd.zoomKeywords"), hint: chordHint("app.zoom-reset"), run: () => stepZoom(0) },
     );
-    // 账号：每个号一条「设 X 为默认账号」· 管理账号…（构造在 account-commands.ts，纯函数）· 新会话默认…（同状态栏无会话时那个下拉）。
-    cmds.push(
-      ...buildAccountCommands({
-        snapshot: accountChip.snapshotReady(),
-        chordHint: (id) => chordHint(id as Parameters<typeof chordHint>[0]),
-        setCurrent: (name) => void accountChip.applyDefaultByName(name),
-        openSettings: () => void openSettingsWindow(undefined, dest.accountsOf(curOrigin ?? LOCAL)),
-      }).map((c) => ({ ...c, group: "account" as const, icon: "account" as const })),
-      {
-        id: "acct-default-menu",
-        group: "account",
-        icon: "account",
-        title: copyText("acct.cmd.default"),
-        keywords: copyText("acct.cmd.default"),
-        run: () => void accountChip.openDefaultMenu(accountChip.element, curOrigin ?? LOCAL),
-      },
-    );
+    // 账号：只「账号…」一条（有当前会话 ⇒ 这条会话的账号面板；没有 ⇒ 那台的账号设置）。
+    cmds.push({ id: "acct-panel", group: "account", icon: "account", title: copyText("acct.menu.open"), keywords: copyText("acct.menu.open"), run: () => openAcctPanel(cur, curOrigin ?? LOCAL) });
     return cmds;
   };
   const commandBar = new CommandBarView(buildCommands);
@@ -846,7 +830,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   onSession("session.toggle-process", () => tabs.toggleProcessDefault());
   onSession("session.prev-turn", () => tabs.stepTurn(-1));
   onSession("session.next-turn", () => tabs.stepTurn(1));
-  onSession("terminal.bring-front", () => tabs.bringActiveTerminalToFront());
+  onSession("session.terminal", () => tabs.terminalActive());
   dispatcher.bind("app.open-settings", () => void openSettingsWindow()); // 开独立设置窗口
   dispatcher.bind("app.toggle-history", () => overlays.toggle("history"));
   dispatcher.bind("app.toggle-plan", () => overlays.toggle("plan"));
@@ -872,15 +856,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   onSession("session.to-bottom", () => tabs.toBottom());
   dispatcher.bind("panel.toggle-tasks", () => mainDrawer.toggle("tasks"));
   dispatcher.bind("panel.toggle-agents", () => mainDrawer.toggle("agents"));
-  dispatcher.bind("panel.toggle-terminal", () => mainDrawer.toggle("terminal"));
   // 翻完说一句、并告诉设置窗（`behavior-toggle.ts`）。
   dispatcher.bind("behavior.toggle-auto-follow", () => void flipBehavior("autoFollowUserActive", (b) => tabs.applyBehavior(b)));
   dispatcher.bind("behavior.toggle-bring-monitor", () => void flipBehavior("bringMonitorToFrontOnUserActive", (b) => tabs.applyBehavior(b)));
-
-  // 账号相关快捷键（ACTIONS 里 default:null —— 默认不绑，用户想要自己去绑）。
-  dispatcher.bind("account.switch-default", () => {
-    void accountChip.openMenu(); // 显式入口（chip 隐藏时不开菜单），别用合成 click
-  });
 
   // 先加载用户覆盖，再 start —— 避免 start 后 1-2ms 内按键走 default 而非用户值
   dispatcher.applyOverrides(await getKeybindings());

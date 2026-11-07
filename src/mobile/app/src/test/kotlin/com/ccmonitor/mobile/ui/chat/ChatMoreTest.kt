@@ -65,6 +65,31 @@ class ChatMoreTest {
     private fun hit(line: Long) = mapOf("uuid" to "u$line", "line" to line, "kind" to "user", "before" to "", "matched" to "问", "after" to " $line", "turn" to 1L, "tsMs" to 0L, "tsText" to "", "tool" to null)
 
     @Test
+    fun `⋯ 的清单：收到脸 · 有运行表 · 知道目录 ⇒ 七项照这个顺序；缺哪样少哪一项`() =
+        runTest {
+            val o = opened()
+            val all =
+                listOf(
+                    ChatMoreItem.Agents,
+                    ChatMoreItem.Rename,
+                    ChatMoreItem.Rotation,
+                    ChatMoreItem.OpenDir,
+                    ChatMoreItem.FindOutline,
+                    ChatMoreItem.AutoAnswer,
+                    ChatMoreItem.End,
+                )
+            assertEquals(all, chatMoreItems(agents = true, openDir = true, more = o.more))
+            assertEquals("没运行表 ⇒ 没有 agent", all - ChatMoreItem.Agents, chatMoreItems(agents = false, openDir = true, more = o.more))
+            assertEquals("不知道目录 ⇒ 没有打开工作目录", all - ChatMoreItem.OpenDir, chatMoreItems(agents = true, openDir = false, more = o.more))
+            val faceless = ChatMore(o.link, "box", backgroundScope, { "no-face" }, o.session::jump)
+            assertEquals(
+                "没收到脸 ⇒ 没有自动答与结束会话",
+                all - ChatMoreItem.AutoAnswer - ChatMoreItem.End,
+                chatMoreItems(agents = true, openDir = true, more = faceless),
+            )
+        }
+
+    @Test
     fun `找：交那条记录的路径与查询串；命中照那台的先后摆，总数照那台`() =
         runTest {
             val o = opened(extra = { cmd, _ -> if (cmd == "history-find") found(9L, listOf(hit(100), hit(120)), "前 2 · 共 9") else null })

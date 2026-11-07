@@ -885,61 +885,35 @@ fn has_pair(argv: &[String], a: &str, b: &str) -> bool {
     argv.windows(2).any(|w| w[0] == a && w[1] == b)
 }
 
-/// ★ 起的那一项带上那一句（`--` 之后）· `--model`（记录里那一个）· 权限档 —— 本机与远端两形都带；
+/// ★ 恢复再送起的那一项带上那一句（`--` 之后）· `--model`（记录里那一个）· 权限档；
 /// 越过批准的档 · 那一家不认的档 · 不是模型名的都不给（跟随），那一句照带。
 #[test]
 fn a_resumed_item_carries_the_line_the_model_and_the_mode_and_drops_what_it_must() {
-    for local in [true, false] {
-        let rig = Rig::new(Some(vec![]));
-        rig.run(|d| {
-            relaunch_in(
-                &saying(Some("opus"), Some("acceptEdits")),
-                "claude",
-                &Settled::Unsaid,
-                "p-cc",
-                local,
-                d,
-            )
-        })
+    let rig = Rig::new(Some(vec![]));
+    rig.run(|d| resume_saying(&saying(Some("opus"), Some("acceptEdits")), "claude", d))
         .unwrap();
+    let argv = rig.ccm.borrow()[0].clone();
+    assert!(has_pair(&argv, "--", "-接着做\n第二行"), "{argv:?}");
+    assert!(has_pair(&argv, "--model", "opus"), "{argv:?}");
+    assert!(
+        has_pair(&argv, "--permission-mode", "acceptEdits"),
+        "{argv:?}"
+    );
+    for (model, mode) in [
+        (Some("bad model;"), Some("bypassPermissions")),
+        (None, Some("dontAsk")),
+    ] {
+        let rig = Rig::new(Some(vec![]));
+        rig.run(|d| resume_saying(&saying(model, mode), "claude", d))
+            .unwrap();
         let argv = rig.ccm.borrow()[0].clone();
         assert!(
-            has_pair(&argv, "--", "-接着做\n第二行"),
-            "local={local}: {argv:?}"
+            !argv
+                .iter()
+                .any(|a| a == "--permission-mode" || a == "--model"),
+            "{argv:?}"
         );
-        assert!(
-            has_pair(&argv, "--model", "opus"),
-            "local={local}: {argv:?}"
-        );
-        assert!(
-            has_pair(&argv, "--permission-mode", "acceptEdits"),
-            "local={local}: {argv:?}"
-        );
-        for (model, mode) in [
-            (Some("bad model;"), Some("bypassPermissions")),
-            (None, Some("dontAsk")),
-        ] {
-            let rig = Rig::new(Some(vec![]));
-            rig.run(|d| {
-                relaunch_in(
-                    &saying(model, mode),
-                    "claude",
-                    &Settled::Unsaid,
-                    "p-cc",
-                    local,
-                    d,
-                )
-            })
-            .unwrap();
-            let argv = rig.ccm.borrow()[0].clone();
-            assert!(
-                !argv
-                    .iter()
-                    .any(|a| a == "--permission-mode" || a == "--model"),
-                "{argv:?}"
-            );
-            assert!(has_pair(&argv, "--", "-接着做\n第二行"), "{argv:?}");
-        }
+        assert!(has_pair(&argv, "--", "-接着做\n第二行"), "{argv:?}");
     }
 }
 

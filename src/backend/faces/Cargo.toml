@@ -43,6 +43,8 @@ face-core = { path = "../../common/face-core" }
 md-core = { path = "../../common/md-core" }
 # 后端的门牌与家的契约（`~/.cc-monitor/` 下每一样的相对路径）。
 relay-route-core = { path = "../../common/relay-route-core" }
+# 有上限读（读上限 `Cap` · 同步整读）的唯一一份；零依赖。
+cap-core = { path = "../../common/cap-core" }
 shell-quote-core = { path = "../../common/shell-quote-core" }
 serde.workspace = true
 serde_json.workspace = true

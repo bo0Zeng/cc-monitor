@@ -159,13 +159,10 @@ export const commands = {
   get_log_file_info: () => invoke<LogFileInfo>("get_log_file_info"),
 
   /**
-   * 日志页「复制诊断信息」：整段诊断文本 ＋ 那一行「未识别数据」用的数（同一份）。`configUnknown` 是界面那份键表认不出的顶层键；
-   * `drift` 是界面经通道问回来的各台记录账（`drift-report` 的应答，问不到 ⇒ `null`）。
+   * 日志页「复制诊断信息」：整段诊断文本 ＋ 那一行「未识别数据」用的数（同一份；本机后端 `diagnostics-report` 出的成品，壳只交它自己的事实）。
+   * 本机后端答不了 ⇒ 拒（那一句照实说）。
    */
-  diagnostics_report: (args: {
-    configUnknown: string[];
-    drift: { origin: string; report: unknown }[];
-  }) => invoke<DiagnosticsReport>("diagnostics_report", args),
+  diagnostics_report: () => invoke<DiagnosticsReport>("diagnostics_report"),
 
   /** 设置窗「现在重启」：重起 cc-monitor 自己（会打断什么由调用方先问后端）。 */
   restart_app: () => invoke<void>("restart_app"),

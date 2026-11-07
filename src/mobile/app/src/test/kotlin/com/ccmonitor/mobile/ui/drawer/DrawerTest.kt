@@ -1,6 +1,7 @@
 package com.ccmonitor.mobile.ui.drawer
 
 import com.ccmonitor.mobile.core.claude.link.Toned
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.wire.gen.SessionDot
 import com.ccmonitor.mobile.core.wire.gen.Tone
@@ -30,13 +31,14 @@ class DrawerTest {
     fun theItemsAndTheirOrderFollowTheDesign() {
         val entries = drawerEntries()
         assertEquals(
-            "抽屉的项与顺序：⊕ 新建会话 · 会话 · 文件 · 终端（目录并进会话屏的按目录看法）",
-            listOf(DrawerItem.NewConversation, DrawerItem.Conversations, DrawerItem.Files, DrawerItem.Terminal),
+            "抽屉的项与顺序：⊕ 新建会话 · 会话 · 文件 · 终端名单 · 计划（后三项与桌面栏顶 ⋯ 那一组全局去处同键同字，两端对字在 global-dests.vitest.ts；计划不在聊天 ⋯ 里）",
+            listOf(DrawerItem.NewConversation, DrawerItem.Conversations, DrawerItem.Files, DrawerItem.Terminal, DrawerItem.Plan),
             entries.map { it.item },
         )
-        assertEquals(listOf("新建会话", "会话", "文件", "终端"), entries.map { it.label })
-        assertEquals("行首图标", listOf(Ph.PlusCircle, Ph.Chats, Ph.FolderSimple, Ph.TerminalWindow), entries.map { it.icon })
-        assertEquals("顶上的名字", "cc-monitor", DRAWER_TITLE)
+        assertEquals(listOf("新建会话", "会话", "文件", "终端名单", "计划"), entries.map { it.label })
+        assertEquals("全局那一页不与会话那一颗「终端」同字", false, entries.any { it.label == copyText("mobDrawer.item.terminal") })
+        assertEquals("行首图标", listOf(Ph.PlusCircle, Ph.Chats, Ph.FolderSimple, Ph.TerminalWindow, Ph.CheckSquare), entries.map { it.icon })
+        assertEquals("顶上的名字（经文案表，同窗口的基础标题）", copyText("needs.windowTitle.base"), drawerTitle())
         assertEquals("「最近」小标题", "最近", RECENT_HEADER)
         assertEquals("底行", "机器 · devbox", serverRowLabel("devbox"))
     }
@@ -59,12 +61,13 @@ class DrawerTest {
                 hostId = "h1",
                 newConversationId = newId,
                 openFiles = { "session/files-$it" },
-                openTerminal = { "session/term-$it" },
             )
         assertEquals(DrawerNav(Screen.Chat.of("h1", newId(), isNew = true), replacesChat = true), go(DrawerAction.NewConversation))
         assertEquals(DrawerNav(Screen.Conversations.of("h1"), replacesChat = false), go(DrawerAction.Conversations))
         assertEquals(DrawerNav("session/files-h1", replacesChat = false), go(DrawerAction.Files))
-        assertEquals(DrawerNav("session/term-h1", replacesChat = false), go(DrawerAction.Terminal))
+        // 「终端名单」直开名单（同桌面），不先开一个终端标签页：附着了才开。
+        assertEquals(DrawerNav(Screen.Terminals.of("h1"), replacesChat = false), go(DrawerAction.Terminal))
+        assertEquals(DrawerNav(Screen.Plan.of("h1", null), replacesChat = false), go(DrawerAction.Plan))
         assertEquals(DrawerNav(Screen.Chat.of("h1", "s7"), replacesChat = true), go(DrawerAction.OpenRecent("s7")))
         assertEquals(DrawerNav(Screen.Hosts.route, replacesChat = false), go(DrawerAction.Servers))
         assertEquals(DrawerNav(Screen.Settings.route, replacesChat = false), go(DrawerAction.Settings))
@@ -79,7 +82,7 @@ class DrawerTest {
     @Test
     fun everyItemMapsToItsOwnAction() {
         assertEquals(
-            listOf(DrawerAction.NewConversation, DrawerAction.Conversations, DrawerAction.Files, DrawerAction.Terminal),
+            listOf(DrawerAction.NewConversation, DrawerAction.Conversations, DrawerAction.Files, DrawerAction.Terminal, DrawerAction.Plan),
             drawerEntries().map { it.item.action() },
         )
     }
@@ -94,6 +97,18 @@ class DrawerTest {
         assertTrue("从左边缘右滑也能拉出", drawer.contains("gesturesEnabled = true"))
         val nav = codeOnly(source("AppNavHost.kt"))
         assertTrue("导航层按 drawerDestination 走", nav.contains("drawerDestination("))
+    }
+
+    @Test
+    fun theTerminalListPageAndTheDialogShareOneRoster() {
+        val src = codeOnly(source("TerminalManager.kt"))
+        assertEquals("名单只在一处读（rememberTerminalRoster）", 1, Regex("""terminals\.list\(\)""").findAll(src).count())
+        for (host in listOf("fun TerminalManagerDialog(", "fun TerminalsPage(")) {
+            val body = src.substringAfter(host).substringBefore("\n}\n")
+            assertTrue("$host 经 rememberTerminalRoster 取名单", body.contains("rememberTerminalRoster("))
+        }
+        val nav = codeOnly(source("AppNavHost.kt"))
+        assertTrue("Terminals 路由画的是名单页", nav.contains("TerminalsPage("))
     }
 
     // ---- 「最近」 -----------------------------------------------------------------
@@ -149,7 +164,11 @@ class DrawerTest {
                 .findAll(route)
                 .map { it.groupValues[1].ifEmpty { "agents" } }
                 .toList()
-        assertEquals("聊天屏 ⋯ 菜单只放对这条会话本身做的事：在终端里打开 · agent · 改标题 · 轮换 · 计划 · 打开工作目录", listOf("sessionHead.act.openTerm", "agents", "history.menu.rename", "machinePage.tab.rot", "plan.page.title", "tabBarView.tab.cwdHint"), items)
+        assertEquals(
+            "聊天屏 ⋯ 菜单只放对这条会话本身做的事：agent · 改标题 · 轮换 · 打开工作目录（终端是顶栏常驻那一颗，计划是抽屉里的全局去处）",
+            listOf("agents", "history.menu.rename", "machinePage.tab.rot", "tabBarView.tab.cwdHint"),
+            items,
+        )
         assertEquals(items.size, Regex("DropdownMenuItem\\(").findAll(route).count())
         for (gone in listOf("onOpenConversations", "onNewConversation", "onSwitchHost", "onOpenSettings")) {
             assertFalse("聊天屏不再有 $gone 这个入口", route.contains(gone))

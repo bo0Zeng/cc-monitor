@@ -42,7 +42,7 @@ const ROW_TAB_GROUP: &str = "tab-group";
 pub const ROW_MAX: u8 = 9;
 pub const SET_MAX: u32 = 12;
 
-/// 能写进配置的 ccm 词。不收的（`new` · `--attach` · `--ccm-*` 诊断口 · `--ccm-sid` · `--account-dir` · `--no-rotation`）每次取值都不同或是一次性的动作
+/// 能写进配置的 ccm 词。不收的（`new` · `--attach` · `--hosts` · `--ccm-*` 诊断口 · `--ccm-sid` · `--account-dir` · `--no-rotation`）每次取值都不同或是一次性的动作
 /// （`--no-rotation` 是给程序起的那一发用的；常用的会话不轮换在轮换设置里定），写成固定配置没意义；它们照样能在命令行 `--` 右边当场给。
 pub const PROFILE_FLAGS: &[&str] = &[
     flag::CWD,
@@ -53,6 +53,7 @@ pub const PROFILE_FLAGS: &[&str] = &[
     flag::TMUX_BASE,
     flag::TMUX_SIZE,
     flag::DETACH,
+    flag::HOSTED,
     flag::AGENT,
     flag::LAUNCHER,
     flag::TAB,
@@ -517,9 +518,9 @@ pub fn read_at(home: &str) -> Result<Book, String> {
 }
 
 /// 读配置文件的上限（手写的几段 TOML，远不到这个量级）：超了这一趟整个失败、那一句照实交上去。
-const PROFILES_CAP: relay_route_core::Cap = relay_route_core::Cap {
+const PROFILES_CAP: cap_core::Cap = cap_core::Cap {
     bytes: 1024 * 1024,
-    over: relay_route_core::Over::HardError,
+    over: cap_core::Over::HardError,
 };
 
 /// 合并的成品：落好的意图 ＋ 每一项来自哪一层 ＋ 继承链（父 → 子）。

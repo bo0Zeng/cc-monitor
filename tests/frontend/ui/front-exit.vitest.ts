@@ -11,8 +11,8 @@ import { describe, expect, it } from "vitest";
 
 const ROOT = resolve(__dirname, "../../..");
 
-/** ↗ 的出口：排版 · 问的那一条 · 浮层 · 两个入口（主窗口 tab · 记录窗口顶栏）。 */
-const EXITS = ["front-result.ts", "tab-session-actions.ts", "front-pop.ts", "tabs.ts", "entry-viewer.ts"].map((f) => `src/frontend/ui/${f}`);
+/** 拉窗的出口：排版（底部一条） · 问的那一条 · 两个入口（主窗口 tab · 记录窗口顶栏）。 */
+const EXITS = ["front-result.ts", "tab-session-actions.ts", "tabs.ts", "entry-viewer.ts"].map((f) => `src/frontend/ui/${f}`);
 
 function hits(files: readonly string[], needles: readonly string[]): string[] {
   return files.flatMap((f) => {

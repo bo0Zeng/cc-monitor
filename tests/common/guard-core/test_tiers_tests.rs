@@ -169,7 +169,6 @@ const E2E: &[&str] = &[
     "tests/e2e/inbound-backend-frames.sh",
     "tests/e2e/local-backend-supervise.sh",
     "tests/e2e/p3t-local-tmux.sh", // 接回执行链（`package.json` ＋ 门禁 `run_e2e`）
-    "tests/e2e/restart-suite.sh",
     "tests/e2e/resume-backend-frames.sh",
     "tests/e2e/resume-suite.sh",
     "tests/e2e/tmux-target-acceptance.sh",
@@ -228,6 +227,16 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         "tests/backend/platform/child_tests.rs",
         "default_path_helper_inner",
         Trigger::Filter { by: "tests/backend/platform/child_tests.rs", needle: "child::tests::default_path_helper_inner" },
+    ),
+    (
+        "tests/backend/platform/shell_tests.rs",
+        "off_terminal_helper_inner",
+        Trigger::Filter { by: "tests/backend/platform/shell_tests.rs", needle: "shell::tests::off_terminal_helper_inner" },
+    ),
+    (
+        "tests/backend/platform/shell_tests.rs",
+        "probe_helper_inner",
+        Trigger::Filter { by: "tests/backend/platform/shell_tests.rs", needle: "shell::tests::probe_helper_inner" },
     ),
     (
         "tests/backend/control/tmux_hook_tests.rs",

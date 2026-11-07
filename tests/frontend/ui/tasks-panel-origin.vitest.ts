@@ -31,7 +31,7 @@ import type { TaskEntry } from "../../../src/frontend/ui/tasks-panel";
 import type { TasksList } from "../../../src/frontend/ui/generated/TasksList";
 
 function task(id: string, status = "pending"): TaskEntry {
-  return { id, subject: `s${id}`, status, statusText: status, blocks: [], blockedBy: [] };
+  return { id, subject: `s${id}`, status, statusText: status, blocks: [] };
 }
 
 /** 后端那一份成品的替身：chip 只造一句带总数的占位（下面按「/总数」认是哪一次的快照）。 */

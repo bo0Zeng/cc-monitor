@@ -555,13 +555,7 @@ fn the_local_backend_only_takes_a_binary_this_platform_can_run() {
     let prod = guard_core::production_code(include_str!(
         "../../../src/frontend/shell/src/local_backend_host.rs"
     ));
-    let at = guard_core::find_pinned(&prod, "pub fn start_local_backend(").expect("入口不在了");
-    let body: String = prod[at..]
-        .lines()
-        .skip(1)
-        .take_while(|l| *l != "\u{7d}")
-        .collect::<Vec<_>>()
-        .join("\n");
+    let body = body_of(&prod, "pub fn start_local_backend() -> StartOutcome {");
     let take = guard_core::find_pinned(&body, "byte_table::choose(").unwrap_or_else(|e| {
         panic!(
             "`start_local_backend` 里没有恰好一处 `byte_table::choose(`（{e}）—— 取用点变了就来改本条"
@@ -2130,7 +2124,7 @@ fn a_foreign_build_on_the_port_reads_by_its_order() {
     use crate::ui_contract::LocalBackend as L;
     let _g = crate::inbound_client::local_origin_test_lock();
     let at = |foreign: Option<&str>, mine: Option<&str>| {
-        super::note_local_foreign(foreign);
+        super::note_local_foreign(foreign.and_then(|b| foreign_in(b, true)));
         let got = super::local_backend(false, mine);
         super::note_local_foreign(None);
         got
@@ -2177,8 +2171,8 @@ fn the_user_actionable_start_failures_all_reach_the_user() {
     );
     assert_eq!(
         prod.matches("note_local_refused(").count() - prod.matches("fn note_local_refused(").count(),
-        2,
-        "`note_local_refused` 在这里不是 2 处（被拒那一臂交一句 · 起之前清一次）——\n\
+        3,
+        "`note_local_refused` 在这里不是 3 处（被拒那一臂交一句 · 起之前清一次 · 停掉口上那一份之后清一次）——\n\
              少了 = 某一条动得了手的路退回了只写日志；多了 = 又有一条路分进这一档，回来把本条一起改。"
     );
 }
@@ -3981,13 +3975,13 @@ fn the_local_backend_says_its_dot_and_tone() {
         face(&local_backend(false, Some("p8c-mine"))),
         Some((D::Failed, Tone::Fail))
     );
-    note_local_foreign(Some("p7a-old"));
+    note_local_foreign(foreign_in("p7a-old", true));
     assert_eq!(
         face(&local_backend(false, Some("p8c-mine"))),
         Some((D::Warn, Tone::Warn))
     );
     // 口上占着更新的构建：没连着、出错 ⇒ 画成没连着（比这一版新而连着的那台是绿点，与出错那一句对不上）。
-    note_local_foreign(Some("p9a-new"));
+    note_local_foreign(foreign_in("p9a-new", true));
     let newer = local_backend(false, Some("p8c-mine"));
     assert!(matches!(newer, L::Newer { .. }), "{newer:?}");
     assert_eq!(face(&newer), Some((D::Failed, Tone::Fail)));
@@ -4010,11 +4004,11 @@ fn a_refused_local_start_carries_the_next_step() {
         next(local_backend(false, Some("p8c-mine"))).as_deref(),
         Some("停掉那个进程再重开")
     );
-    note_local_foreign(Some("p7a-old"));
+    note_local_foreign(foreign_in("p7a-old", false));
     assert_eq!(
         next(local_backend(false, Some("p8c-mine"))).as_deref(),
         Some("停掉那个进程再重开"),
-        "口上是旧版那一形也带着"
+        "口上是另一个家里的旧版那一形也带着（自家的上一版给［更新］、不带这一句：`an_older_backend_in_our_home_offers_update_not_retry`）"
     );
     note_local_foreign(None);
     assert_eq!(local_backend(true, Some("p8c-mine")), L::Up, "接上了就不说");
@@ -4119,4 +4113,169 @@ fn a_failed_local_start_says_why_on_the_local_row() {
         feed.contains("note_local_failed("),
         "起不来那一句没在 `note_never_started` 记下 ⇒ 本机那一行只说「未运行」，用户不知道为什么"
     );
+}
+
+/// 口上那一份别的构建（判据造它的那一处）。
+fn foreign_in(build: &str, same_home: bool) -> Option<Foreign> {
+    Some(Foreign {
+        build: build.into(),
+        same_home,
+    })
+}
+
+/// 口上是**同一个家里**的上一版（家与中转口那几格对得上；本机后端脱离起、退出不停 ⇒ 每次升级 app 都撞上它）⇒ 修法是［更新］，
+/// 不再写「结束进程 … 再重试」那一句；另一个家里的旧版 · 比这一版新的照旧只有［重试］＋ 下一步那一句（不拿旧 app 顶掉新后端）。
+#[test]
+fn an_older_backend_in_our_home_offers_update_not_retry() {
+    use crate::ui_contract::LocalBackend as L;
+    use cmd_wire::machine::MachineFix as F;
+    let _g = crate::inbound_client::local_origin_test_lock();
+    let at = |build: &str, same_home: bool| {
+        note_local_refused(Some("结束进程 1 再重试"));
+        note_local_foreign(foreign_in(build, same_home));
+        let got = local_backend(false, Some("p8c-mine"));
+        note_local_foreign(None);
+        note_local_refused(None);
+        got
+    };
+    let fixes_next = |l: &L| match l {
+        L::Down { fixes, next, .. }
+        | L::Older { fixes, next, .. }
+        | L::Newer { fixes, next, .. } => (
+            fixes
+                .iter()
+                .map(|f| (f.fix, f.label.clone()))
+                .collect::<Vec<_>>(),
+            next.clone(),
+        ),
+        L::Up | L::Starting { .. } => panic!("{l:?}"),
+    };
+    let ours = at("p7a-old", true);
+    assert!(matches!(ours, L::Older { .. }), "{ours:?}");
+    assert_eq!(
+        fixes_next(&ours),
+        (vec![(F::Update, copy_text("front.act.update", &[]))], None),
+        "同一个家里的上一版：只给［更新］，不叫人去结束进程"
+    );
+    let other = at("p7a-old", false);
+    assert_eq!(
+        fixes_next(&other),
+        (
+            vec![(F::Retry, copy_text("front.act.retry", &[]))],
+            Some("结束进程 1 再重试".into())
+        ),
+        "另一个家里的旧版不是这个 app 的上一版：不替它换"
+    );
+    let newer = at("p9a-new", true);
+    assert!(matches!(newer, L::Newer { .. }), "{newer:?}");
+    assert_eq!(
+        fixes_next(&newer).0,
+        vec![(F::Retry, copy_text("front.act.retry", &[]))]
+    );
+}
+
+/// 探口读到的 hello ⇒ 记下的那一份别的构建：构建与这一版不同才记；家与中转口那几格对不对得上一起记（[`foreign_of`]）。
+#[test]
+fn the_foreign_build_remembers_whether_it_lives_in_our_home() {
+    let hello = |build: &str, port: &str| {
+        serde_json::json!({
+            "kind": "hello", "v": 1, "build_id": build, "host_arch": "x86_64",
+            "claude_dir": "/h/.claude", "capabilities": [], "emits": [], "commands": [],
+            "host_env": { "CCM_RELAY_PORT": port },
+        })
+        .to_string()
+    };
+    let env = vec![("CCM_RELAY_PORT".to_string(), "7000".to_string())];
+    let mine = Some("p8c-mine");
+    assert_eq!(
+        foreign_of(&hello("p7a-old", "7000"), mine, &env),
+        foreign_in("p7a-old", true)
+    );
+    assert_eq!(
+        foreign_of(&hello("p7a-old", "7001"), mine, &env),
+        foreign_in("p7a-old", false)
+    );
+    assert_eq!(foreign_of(&hello("p8c-mine", "7001"), mine, &env), None);
+    assert_eq!(foreign_of(&hello("p7a-old", "7000"), None, &env), None);
+    assert_eq!(foreign_of("HTTP/1.1 200 OK", mine, &env), None);
+    let me = guard_core::production_code(include_str!(
+        "../../../src/frontend/shell/src/local_backend_host.rs"
+    ));
+    let probe = body_of(&me, "fn probe_listen_socket(");
+    assert!(
+        probe.contains("note_local_foreign(foreign_of(&line, mine, want_env))"),
+        "探口那一趟没经 `foreign_of` 记 ⇒ 本机那一行分不出是不是自家的上一版：{probe}"
+    );
+}
+
+/// 停（也是［更新］与「重启」的前一半）：手上没有句柄、而这个家的口上有人在听（升级后上一版留下的那一份）⇒
+/// 照样拿这一版的落点跑一次 `-- --resident-stop`，按它的结局回话；没人在听 ⇒ 照实说没在跑，不起那一趟。
+/// 替身落点记下它被怎么调、答一句「收尾停了」；在听的那一位是本测试里的一个套接字（替身不真停它）。
+#[cfg(unix)]
+#[test]
+fn stopping_with_no_handle_still_stops_whoever_listens_in_our_home() {
+    use crate::remote_resident::StopWord;
+    // 停成之后清本机那一格的记录（进程里一份）⇒ 与读那一格的几条串行。
+    let _g = crate::inbound_client::local_origin_test_lock();
+    let dir = std::env::temp_dir().join(format!("lbh-stop-foreign-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("建临时目录");
+    let sock = dir.join("listen.sock");
+    let args = dir.join("args");
+    let fake = dir.join("ccm");
+    let script = format!(
+        "#!/bin/sh\nprintf '%s ' \"$@\" > '{}'\necho '{{\"stopped\":\"graceful\",\"pid\":4242}}'\n",
+        args.display()
+    );
+    std::fs::write(&fake, script).expect("写替身");
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    }
+    let asked = std::sync::atomic::AtomicU32::new(0);
+    let bin = || {
+        asked.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(fake.clone())
+    };
+    let deadline = guard_core::wall::CEILING;
+    // ① 没人在听 ⇒ 没在跑，落点都不去要。
+    let none = stop_listener_on(&sock, &bin, deadline).expect("没人在听");
+    assert_eq!(none.stopped, StopWord::NotRunning);
+    assert_eq!(
+        asked.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "没人在听也去要落点、起那一趟"
+    );
+    // ② 口上有人在听（我们没有它的句柄）⇒ 跑一次这一版的 `--resident-stop`，照它的结局说。
+    let listener = std::os::unix::net::UnixListener::bind(&sock).expect("占口");
+    let got = stop_listener_on(&sock, &bin, deadline).expect("停那一趟");
+    drop(listener);
+    let argv = std::fs::read_to_string(&args).unwrap_or_default();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(
+        (got.stopped, got.pid),
+        (StopWord::Graceful, Some(4242)),
+        "口上占着上一版时「停」谎报了「没在跑」"
+    );
+    assert_eq!(asked.load(std::sync::atomic::Ordering::SeqCst), 1);
+    assert_eq!(
+        argv.trim(),
+        format!("{} --resident-stop", local_backend::BACKEND_SEP)
+    );
+    // 接线：停口两样句柄都没有时走这一段；停成之后清掉口上那一份的记录。
+    let me = guard_core::production_code(include_str!(
+        "../../../src/frontend/shell/src/local_backend_host.rs"
+    ));
+    let stop = body_of(&me, "pub fn stop_local_backend(");
+    assert!(
+        stop.contains("stop_listener_on("),
+        "`stop_local_backend` 两样句柄都没有时不去问口上 ⇒ 又回「没在跑」：{stop}"
+    );
+    let on = body_of(&me, "fn stop_listener_on(");
+    for needle in ["run_resident_stop_within(", "note_local_foreign(None)"] {
+        assert!(
+            on.contains(needle),
+            "`stop_listener_on` 里没有 `{needle}`：{on}"
+        );
+    }
 }

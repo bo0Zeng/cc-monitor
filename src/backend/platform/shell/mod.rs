@@ -69,6 +69,13 @@ pub fn session_shell_path() -> Option<String> {
     }
 }
 
+/// 「这台有没有某程序」照的那一份 `PATH`：hello 的 tmux 在不在 · 判 agent 版本 · MCP 判命令在不在 · 找插件都只经这一处问，
+/// 与起子进程用的是同一份（[`crate::platform::child::Child`] 缺省交的）：起会话那个 shell 的（[`session_shell_path`]），
+/// 问不出 ⇒ 本进程的（子进程那时也继承本进程的）。两样都没有 ⇒ `None`（调用方不许当成「没有」）。
+pub fn probe_path() -> Option<String> {
+    session_shell_path().or_else(|| std::env::var("PATH").ok())
+}
+
 /// 起本进程的那一方交下来的 `PATH` 就是起会话那个 shell 的那一份（[`SESSION_PATH_GIVEN`] 是 `1`）⇒ 照它，不再问：
 /// 常驻后端 → ccm → 托管进程 → 里面那一跳一条链只问一次登录 shell。
 pub const SESSION_PATH_GIVEN: &str = "CCM_SESSION_PATH";
@@ -83,8 +90,8 @@ fn given_session_path() -> Option<String> {
 
 /// 现问一次「新开一个终端时的 `PATH`」，不缓存（`ccm-probe` 每问一次都要此刻的样子）。
 ///
-/// unix：用 `$SHELL` 起一次 `-l -i -c` 打出 `PATH`。交互 rc 里的东西会被触发 ⇒ stdin 接空、`TERM=dumb`、自成一个进程组、
-/// 期限到了整组杀（后端没有控制终端 ⇒ 自动接 tmux 那一类接不上就退，卡住的到期限收手）。
+/// unix：用 `$SHELL` 起一次 `-l -i -c` 打出 `PATH`。交互 rc 里的东西会被触发 ⇒ stdin 接空、`TERM=dumb`、离开本进程的终端（[`Child::off_terminal`]）、
+/// 期限到了整组杀（没有控制终端 ⇒ 自动接 tmux 那一类接不上就退，卡住的到期限收手）。
 /// Windows：新开的终端读注册表里机器级 ＋ 用户级（本进程继承的是起它那一刻的那一份）。
 /// 没有 `$SHELL` / 起不来 / 超时 / 没打出来 ⇒ `None`。
 pub fn fresh_terminal_path() -> Option<String> {
@@ -317,7 +324,9 @@ pub(crate) fn login_shell_asking_path(shell: &str) -> Child {
                 m = shell_quote_core::posix_quote(SESSION_PATH_MARK)
             ),
         ])
-        .env("TERM", "dumb");
+        .env("TERM", "dumb")
+        // 离开本进程的控制终端：挂着终端时交互 shell 落在后台组，一碰终端就被 SIGTTIN 停住、等满期限被杀。
+        .off_terminal();
     // 子进程缺省拿的就是这一趟问出来的那一份（`Child` 的 `PATH` 那一格）⇒ 这一趟自己显式给本进程的，不递归。
     match std::env::var_os("PATH") {
         Some(p) => ask.env("PATH", p),
@@ -325,7 +334,7 @@ pub(crate) fn login_shell_asking_path(shell: &str) -> Child {
     }
 }
 
-/// 起它（stdin 接空 · 自成一组 · 到期限整组杀，都是 [`Child::run`] 的）、从输出里认那一段。
+/// 起它（stdin 接空 · 到期限整组杀，都是 [`Child::run`] 的；离开终端是 [`login_shell_asking_path`] 交的）、从输出里认那一段。
 pub(crate) fn ask_session_path(
     cmd: Child,
     within: crate::platform::child::Deadline,

@@ -37,20 +37,11 @@ const HOME_DIR_NAME: &str = ".cc-monitor";
 pub struct OwnPath(PathBuf);
 
 /// 持着的那个目录的跨进程锁。原子写要它，而且要的是**那份文件所在目录**的这一把。
-/// 两种拿法：等到拿到为止（[`Own::lock`]，`platform::lock`）· 拿不到就算（[`Own::try_lock`]，常驻后端抢门牌那一把，随进程活着）。
+/// 同一把锁的两种拿法：等到拿到为止（[`Own::lock`]，`platform::lock`）· 拿不到就算（[`Own::try_lock`]，常驻后端抢门牌那一把，随进程活着）。
 pub struct OwnLock {
     dir: PathBuf,
-    _held: Held,
-}
-
-/// 锁本体（落地即放：只为它的 `Drop` 拿着，不读）。
-enum Held {
-    Waited {
-        _lock: crate::platform::lock::DirLock,
-    },
-    Tried {
-        _lock: own_chan::Held,
-    },
+    /// 锁本体（落地即放：只为它的 `Drop` 拿着，不读）。
+    _held: crate::platform::lock::DirLock,
 }
 
 /// 相对名：至少一段、每段都是普通名字（没有 `..` · `.` · 根 · 盘符）。
@@ -140,18 +131,15 @@ impl Own {
     pub fn lock(&self, dir: &OwnPath) -> Result<OwnLock, Said> {
         Ok(OwnLock {
             dir: dir.0.clone(),
-            _held: Held::Waited {
-                _lock: hold(dir.as_path())?,
-            },
+            _held: hold(dir.as_path())?,
         })
     }
 
     /// 试拿 `dir` 的独占锁、不等：别人持着 ⇒ `Ok(None)`。常驻后端抢门牌用（拿到的那一把随进程活着）。
-    /// 本平台没有这一形 ⇒ `Err`（`Unsupported`）。
     pub fn try_lock(&self, dir: &OwnPath) -> std::io::Result<Option<OwnLock>> {
         Ok(own_chan::try_hold(dir.as_path())?.map(|h| OwnLock {
             dir: dir.0.clone(),
-            _held: Held::Tried { _lock: h },
+            _held: h,
         }))
     }
 

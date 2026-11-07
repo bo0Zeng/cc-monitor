@@ -77,6 +77,15 @@ function emptyWorld(): World {
   return w;
 }
 
+/** 刚装好：只有本机、机器表空、一个会话都没有（「开始用」两步都没做）。 */
+function startWorld(): World {
+  const w = defaultWorld();
+  w.machines = ["<local>"];
+  w.sessions = [];
+  w.hosts = [];
+  return w;
+}
+
 function longWorld(): World {
   const w = defaultWorld();
   const sid = "5e55aaaa-0000-4000-8000-00000000aaaa";
@@ -435,6 +444,9 @@ export const MAIN_SCENES: Scene[] = [
   main("main-empty", "主窗口 · 一个会话都没有", "四台机器都连着、没有在跑的会话（空状态）", async () => {
     await sleep(2500);
   }, emptyWorld),
+  main("main-start", "主窗口 · 刚装好", "只有本机、一个会话都没有：首屏那一句下面是「开始用」卡（字照后端）", async () => {
+    await until(() => document.querySelector<HTMLElement>('[data-role="start-card"]'), 10_000);
+  }, startWorld),
   main("main-watch-fill", "主窗口 · 切过去之后补段", "devbox 上「网关限流」没在看的时候又写了一轮（主窗口只报在看当前那个 ⇒ 它的行不上流）；切过去 ⇒ 那台报这一份从第几行起上流，前面那段按骨架补、接上实时，新的那一轮只出一次", async (ctx) => {
     await mainReady(ALL_TABS);
     const s = ctx.backend.world.sessions[4];

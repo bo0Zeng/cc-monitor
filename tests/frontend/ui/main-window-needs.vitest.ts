@@ -32,7 +32,7 @@ import { abbrOf, dotOf, needsOf, nextNeedsStep, peekLine, stateLine, stateWord }
 import { NeedsBook } from "../../../src/frontend/ui/needs-book";
 import { fakeNeedsBook, listOf, sessionItem } from "../../test-support/needs-fake";
 import { NeedsTitle } from "../../../src/frontend/ui/needs-bar";
-import { SessionHead, terminalActsOf } from "../../../src/frontend/ui/session-head";
+import { SessionHead, canTerminal } from "../../../src/frontend/ui/session-head";
 import { buildApiErrorCard } from "../../../src/frontend/ui/cards/api-error";
 import { TerminalPage, type TerminalReads } from "../../../src/frontend/ui/terminal-page";
 import type { TerminalSend, TerminalSent, TerminalShot } from "../../../src/frontend/ui/terminal-reads";
@@ -40,8 +40,6 @@ import type { FollowEvents } from "../../../src/frontend/ui/terminal-follow";
 import { fmtDur } from "../../../src/frontend/ui/duration-format";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
-vi.mock("../../../src/frontend/ui/terminal-front", () => ({ terminalFrontAvailable: vi.fn(() => false) }));
-import { terminalFrontAvailable } from "../../../src/frontend/ui/terminal-front";
 
 const NOW = Date.parse("2026-10-05T12:00:00Z");
 /** 会话头那两颗（换模型 · 切权限档）要的宿主：这里不换，清单问不到。 */
@@ -60,7 +58,7 @@ function tab(sid: string, over: Partial<Tab> = {}): Tab {
     pinned: false,
     group: null,
     origin: LOCAL,
-    forkedFromSessionId: null,
+    forkedLine: null,
     writers: [],
     unread: 0,
     needs: null,
@@ -81,7 +79,7 @@ const waiting = { face: liveFace("needs_you"), line: lineFor("needs_you") };
 /** 那台在 `NOW` 答出、本机同一刻收到（两台钟一样快）；已等多久由那台算好。 */
 const approve = (sinceMs: number | null = NOW - 120_000): Needs => {
   const waitedMs = sinceMs === null ? null : NOW - sinceMs;
-  return { kind: "approve", tool: "Bash", call: "toolu_b", what: "rm -rf build/", sinceMs, text: copyText("beSession.needs.approve"), head: "核心·等批准 · Bash", headCode: "rm -rf build/", tone: "need", rank: 1, waitedMs, waitedText: waitedMs === null ? null : fmtDur(waitedMs / 1000), ask: null, manualText: null, receivedAt: NOW };
+  return { kind: "approve", tool: "Bash", call: "toolu_b", what: "rm -rf build/", text: copyText("beSession.needs.approve"), head: "核心·等批准 · Bash", headCode: "rm -rf build/", tone: "need", rank: 1, waitedMs, ask: null, manualText: null, receivedAt: NOW };
 };
 
 /** 本机那台的成品（`machine-read` 那一份里的名字）：界面上「这台叫什么」照它。 */
@@ -92,7 +90,6 @@ const DELIVERED = "S-那台写的整句 · 送到了";
 beforeEach(() => {
   document.body.innerHTML = "";
   noteMachine(LOCAL, { name: LOCAL_NAME, offlineSaid: "" });
-  vi.mocked(terminalFrontAvailable).mockReturnValue(false);
 });
 
 describe("一个会话读成什么（session-face）：点 · 字照抄那台的脸，会话事实那一句与脸同一刻才用", () => {
@@ -189,8 +186,6 @@ async function bar(tabs: Tab[], ranked?: string[]) {
   const host = {
     refreshTabBar: vi.fn(),
     closeEndedIn: vi.fn(),
-    openTabCwd: vi.fn().mockResolvedValue(undefined),
-    bringTerminalToFront: vi.fn().mockResolvedValue(undefined),
     closeTab: vi.fn(),
     switchTo: vi.fn(),
     answerAt: vi.fn(),
@@ -203,7 +198,6 @@ async function bar(tabs: Tab[], ranked?: string[]) {
     openMenu: vi.fn(),
     toggleSelect: vi.fn(),
     openMenuAt: vi.fn(),
-    rereadAll: vi.fn().mockResolvedValue(undefined),
     fixMachine: vi.fn(),
   } satisfies TabBarViewHost;
   const el = document.createElement("div");
@@ -338,7 +332,7 @@ describe("「需手动」· 窗口标题（消息流底部那一块见 answer-bl
 
 describe("会话头", () => {
   const head = (t: Tab | null) => {
-    const host = { active: () => t, viewTerminal: vi.fn(), openCwd: vi.fn(), front: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), attach: vi.fn(), reconnect: vi.fn(), planMark: () => null, menuItem: () => null, displayItems: () => [], tabOf: () => null, switchTo: vi.fn(), switching: NO_SWITCHING };
+    const host = { active: () => t, openCwd: vi.fn(), terminal: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), reconnect: vi.fn(), planMark: () => null, menuItem: () => null, displayItems: () => [], tabOf: () => null, switchTo: vi.fn(), switching: NO_SWITCHING };
     const h = new SessionHead(host);
     document.body.appendChild(h.el);
     h.render(NOW);
@@ -347,33 +341,32 @@ describe("会话头", () => {
   // 右边那一排（换模型 · 切权限档那两颗另有判据：`session-switch.vitest.ts`）。
   const labels = (el: HTMLElement): string[] => [...el.querySelectorAll("button:not([data-switch])")].map((b) => b.getAttribute("aria-label") ?? b.textContent ?? "");
 
-  it("★ 标题全名 · 机器（那台成品里的名字）· 目录 · 状态一句；在等你时状态那一句琥珀；右边：目录（本机）· 切到终端（这台认不出终端窗口 ⇒ 灰着）· 看它的终端 · 显示 · 查找 · 更多", () => {
-    const { h, host } = head(tab("a", { label: "加重试", title: "orders 加重试", projectDir: "/w/orders", ...waiting, needs: approve() }));
+  it("★ 标题全名 · 机器（那台成品里的名字）· 目录 · 状态一句；在等你时状态那一句琥珀；右边：终端 · 查找 · 更多", () => {
+    const { h, host } = head(tab("a", { label: "加重试", title: "orders 加重试", projectDir: "/w/orders", cwdShown: "~/orders", ...waiting, needs: approve() }));
     expect(h.el.textContent).toContain("orders 加重试");
     expect(h.el.textContent).toContain(LOCAL_NAME);
-    expect(h.el.textContent).toContain("/w/orders");
+    expect(h.el.textContent, "目录照那台写好的显示形").toContain("~/orders");
     // 默认那一排（ui3 · `session-head-buttons.vitest.ts`）；这台宿主不给「⋯」里的项 ⇒ 借那份菜单的几颗（在新窗口打开 · 账号）不出。
-    expect(labels(h.el)).toEqual([copyText("tabBarView.tab.cwdHint"), copyText("terminal.head.front"), copyText("sessionHead.act.terminal"), copyText("sessionHead.act.display"), copyText("sessionHead.act.find"), copyText("history.row.more")]);
+    expect(labels(h.el)).toEqual([copyText("mobDrawer.item.terminal"), copyText("sessionHead.act.find"), copyText("history.row.more")]);
     const btns = h.el.querySelectorAll<HTMLButtonElement>("button:not([data-switch])");
-    expect(btns[1].getAttribute("aria-disabled")).toBe("true");
+    btns[0].click();
+    expect(host.terminal).toHaveBeenCalledWith("a");
     btns[1].click();
-    expect(host.front, "灰着的 ↗ 点了不做事").not.toHaveBeenCalled();
-    btns[2].click();
-    expect(host.viewTerminal).toHaveBeenCalled();
-    btns[4].click();
     expect(host.find).toHaveBeenCalled();
   });
 
-  it("★ 按状态多一颗：已结束［恢复］· Claude 已退出（远端）［在终端里打开］；状态不明不多（那台由栏底机器条说、在那一行修）；活着不多", () => {
+  it("★ 按状态多一颗只剩已结束［恢复］：可重连（远端本机都一样）· 状态不明 · 活着都不多；去终端只有「终端」那一颗，一直在", () => {
     expect(labels(head(tab("a", { face: goldenFace("ended") })).h.el)).toContain(copyText("history.row.resume"));
-    const exited = head(tab("b", { origin: "devbox" as never, face: goldenFace("reconnectable") }));
-    expect(labels(exited.h.el)).toContain(copyText("sessionHead.act.openTerm"));
-    expect(labels(head(tab("b2", { face: goldenFace("reconnectable") })).h.el), "本机：没有接回终端的那条路，不画点了没反应的按钮").not.toContain(copyText("sessionHead.act.openTerm"));
-    const unseen = labels(head(tab("c", { origin: "gpu-01" as never, face: goldenFace("unseen") })).h.el);
-    for (const x of ["history.row.resume", "sessionHead.act.openTerm"] as const) expect(unseen).not.toContain(copyText(x));
-    expect(labels(head(tab("e", { face: goldenFace("ended") })).h.el), "已结束：没有终端可去，不出「看它的终端」").not.toContain(copyText("sessionHead.act.terminal"));
-    const live = labels(head(tab("d")).h.el);
-    for (const x of ["history.row.resume", "sessionHead.act.openTerm"] as const) expect(live).not.toContain(copyText(x));
+    for (const [what, t] of [
+      ["远端可重连", tab("b", { origin: "devbox" as never, face: goldenFace("reconnectable") })],
+      ["本机可重连", tab("b2", { face: goldenFace("reconnectable") })],
+      ["那台看不见", tab("c", { origin: "gpu-01" as never, face: goldenFace("unseen") })],
+      ["活着", tab("d")],
+    ] as const) {
+      const got = labels(head(t).h.el);
+      expect(got, what).not.toContain(copyText("history.row.resume"));
+      expect(got.filter((l) => l === copyText("mobDrawer.item.terminal")), what).toHaveLength(1);
+    }
   });
 
   it("没有当前会话 ⇒ 不显示", () => {
@@ -457,31 +450,17 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     expect(c.page.el.textContent).toContain(copyText("terminal.empty.ended", { state: copyText("sessionState.ended.name") }));
   });
 
-  it("★ 活着、不在任何终端里 · 在终端里却认不出 ⇒ 同一种空态「非 cc-monitor 起的」（页里不出现 tmux，A3-3-32-8）；↗ 真能用时给［切到终端］", async () => {
-    vi.mocked(terminalFrontAvailable).mockReturnValue(true);
-    try {
-      const d = rig([], { t: tab("d", { face: liveFace("working", false) }) });
-      d.page.setVisible(true);
-      await flush();
-      expect(d.page.el.textContent).toContain(copyText("terminal.empty.notOurs"));
-      expect(d.page.el.textContent).toContain(copyText("terminal.empty.notOursHint"));
-      expect(d.page.el.textContent).not.toContain("tmux");
-      const front = [...d.page.el.querySelectorAll("button")].find((x) => x.textContent?.includes(copyText("terminal.head.front")));
-      expect(front, "Windows 上不在 tmux 里的会话还能切到它的终端窗口").toBeDefined();
-      front!.click();
-      expect(d.host.front).toHaveBeenCalledWith("d");
-      vi.mocked(terminalFrontAvailable).mockReturnValue(false);
-      const e = rig([], { t: tab("e", { face: liveFace("working", false) }) });
-      e.page.setVisible(true);
-      await flush();
-      expect([...e.page.el.querySelectorAll("button")].some((x) => x.textContent?.includes(copyText("terminal.head.front")))).toBe(false);
-      const f = rig([], { t: tab("f", { face: liveFace("working", true) }) });
-      f.page.setVisible(true);
-      await flush();
-      expect(f.page.el.textContent, "在终端里、名单却认不出的同一句").toContain(copyText("terminal.empty.notOurs"));
-    } finally {
-      vi.mocked(terminalFrontAvailable).mockReturnValue(false);
-    }
+  it("★ 活着、不在任何终端里 · 在终端里却认不出 ⇒ 同一种空态「非 cc-monitor 起的」（页里不出现 tmux，A3-3-32-8）；页里不另放去终端的按钮", async () => {
+    const d = rig([], { t: tab("d", { face: liveFace("working", false) }) });
+    d.page.setVisible(true);
+    await flush();
+    expect(d.page.el.textContent).toContain(copyText("terminal.empty.notOurs"));
+    expect(d.page.el.textContent).toContain(copyText("terminal.empty.notOursHint"));
+    expect(d.page.el.textContent).not.toContain("tmux");
+    const f = rig([], { t: tab("f", { face: liveFace("working", true) }) });
+    f.page.setVisible(true);
+    await flush();
+    expect(f.page.el.textContent, "在终端里、名单却认不出的同一句").toContain(copyText("terminal.empty.notOurs"));
   });
 
   it("★ 输入行只敲进终端（说一句在消息流底下）：回车连字带回车送、送到了清框、0.5 · 1.5 · 3 秒各再抓一次；Ctrl+回车只送字、带上看到的那一屏的指纹、送到了写「已送达」；Shift+回车与组字不送", async () => {
@@ -767,41 +746,28 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     }
   });
 
-  it("输入框里 Esc 只把焦点还给消息流；「切到终端」只在 ↗ 真能用时出", async () => {
-    vi.mocked(terminalFrontAvailable).mockReturnValue(true);
+  it("输入框里 Esc 只把焦点还给消息流；页头不另放「切到终端」", async () => {
     const r = rig([row("a")], { t: tab("a") });
     r.page.setVisible(true);
     await flush();
     box(r.page).focus();
     expect(r.page.escFromInput()).toBe(true);
     expect(r.host.focusStream).toHaveBeenCalled();
-    const front = [...r.page.el.querySelectorAll("button")].find((x) => x.textContent?.includes(copyText("terminal.head.front")))!;
-    expect(front.style.display).toBe("");
-    front.click();
-    expect(r.host.front).toHaveBeenCalledWith("a");
-    vi.mocked(terminalFrontAvailable).mockReturnValue(false);
-    r.page.sessionChanged();
-    expect(front.style.display).toBe("none");
   });
 });
 
-describe("报错卡上去它的终端那两颗（与会话头同一道）", () => {
-  it("★ 切到终端：↗ 真能用且还有终端可去；在终端里打开：远端、Claude 已退出；别的都不出", () => {
-    vi.mocked(terminalFrontAvailable).mockReturnValue(true);
-    expect(terminalActsOf(tab("a"))).toEqual({ front: true, attach: false });
-    expect(terminalActsOf(tab("b", { face: goldenFace("ended") })).front).toBe(false);
-    vi.mocked(terminalFrontAvailable).mockReturnValue(false);
-    expect(terminalActsOf(tab("a"))).toEqual({ front: false, attach: false });
-    expect(terminalActsOf(tab("c", { origin: "devbox" as never, face: goldenFace("reconnectable") }))).toEqual({ front: false, attach: true });
-    expect(terminalActsOf(tab("d", { face: goldenFace("reconnectable") })).attach, "本机：没有接回终端的那条路").toBe(false);
+describe("报错卡上去它的终端那一颗（与会话头「终端」同一道）", () => {
+  it("★ 点得了照脸上那一格：本机挑 near、远端挑 far；做不了 · 没有脸 ⇒ 不出", () => {
+    expect(canTerminal(tab("a", { face: liveFace("working", true) }))).toBe(true);
+    expect(canTerminal(tab("b", { origin: "devbox" as never, face: liveFace("working", false) })), "远端、不在任何宿主里：别处没有终端可接").toBe(false);
+    expect(canTerminal(tab("c", { origin: "devbox" as never, face: goldenFace("reconnectable") }))).toBe(true);
+    expect(canTerminal(tab("d", { face: goldenFace("gone") }))).toBe(false);
+    expect(canTerminal(tab("e", { face: null }))).toBe(false);
   });
 
-  it("报错卡摆出两颗（看不看得见由消息流根上的标记管），点了的那颗带着它是哪条路", () => {
+  it("报错卡摆出一颗「终端」（看不看得见由消息流根上的标记管）", () => {
     const card = buildApiErrorCard({ timeLabel: "02:10", title: "CARD-HEAD", text: "overloaded" });
-    expect([...card.querySelectorAll<HTMLElement>(".api-error-acts [data-act]")].map((b) => [b.dataset.act, b.textContent])).toEqual([
-      ["front", copyText("terminal.head.front")],
-      ["attach", copyText("sessionHead.act.openTerm")],
-    ]);
+    expect([...card.querySelectorAll<HTMLElement>(".api-error-acts [data-act]")].map((b) => [b.dataset.act, b.textContent])).toEqual([["terminal", copyText("mobDrawer.item.terminal")]]);
   });
 });
 

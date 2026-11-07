@@ -33,7 +33,6 @@ const turn = (uuid: string, at: number, over: Partial<TurnRow> = {}): TurnRow =>
   agents: 0,
   background: 0,
   retries: 0,
-  fails: 0,
   shown: [],
   reply: "",
   done: true,

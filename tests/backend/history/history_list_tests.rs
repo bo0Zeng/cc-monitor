@@ -1031,19 +1031,11 @@ fn a_forked_row_names_its_parent_and_groups_say_when() {
     );
     let all = answer(json!({"hidden": true}));
     for g in all["groups"].as_array().unwrap() {
-        let want = if g["failed"].is_null() {
-            json!(
-                crate::common::time::history_at_text(
-                    g["lastActivity"].as_i64().unwrap(),
-                    1_000,
-                    &tz
-                )
-                .0
-            )
-        } else {
-            Value::Null
-        };
-        assert_eq!(g["atText"], want, "{g}");
+        assert!(
+            g.get("lastActivity").is_none(),
+            "最近动静只给后端排先后，不上线：{g}"
+        );
+        assert_eq!(g["atText"].is_string(), g["failed"].is_null(), "{g}");
     }
 }
 

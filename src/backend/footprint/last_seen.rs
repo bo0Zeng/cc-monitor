@@ -158,9 +158,29 @@ pub(crate) fn read_at(
     let all = store::load(path);
     let mine = all.get(&origin);
     Ok(LastSeen {
-        accounts: seen_of(mine, SeenKind::Accounts, clock),
+        accounts: seen_of(mine, SeenKind::Accounts, clock).map(stale_quota),
         data: seen_of(mine, SeenKind::Data, clock),
     })
+}
+
+/// 读回的账号清单是缓存 ⇒ 每号那一格余量写成「… · 上次所知」（`beQuota.cell.stale`），出口照摆。
+fn stale_quota(
+    s: Seen<cmd_wire::accounts::AccountsList>,
+) -> Seen<cmd_wire::accounts::AccountsList> {
+    match s {
+        Seen::Kept { seen, mut value } => {
+            for r in &mut value.accounts {
+                if let Some(q) = r.quota.take() {
+                    r.quota = Some(crate::common::cells::Words(copy_text(
+                        "beQuota.cell.stale",
+                        &[("cell", &q.0)],
+                    )));
+                }
+            }
+            Seen::Kept { seen, value }
+        }
+        u @ Seen::Unreadable { .. } => u,
+    }
 }
 
 /// 盘上那一项 ⇒ 是这一版（指纹对得上、解得回回包类型）就原样，否则读不懂。

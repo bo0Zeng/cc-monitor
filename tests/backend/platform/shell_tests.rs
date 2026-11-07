@@ -472,3 +472,152 @@ fn an_agent_program_is_found_on_the_session_shell_path_not_the_backend_one() {
         .expect("Windows 上 .cmd 那一形");
     assert_eq!(l.program, cmd.into_os_string());
 }
+
+/// 下一条判据的帮手（只被它当子进程叫）：「这台有没有某程序」那一份 `PATH`（[`super::probe_path`]）与一个缺省起的子进程拿到的 `PATH` 一字不差。
+#[cfg(unix)]
+#[test]
+#[ignore = "只被「探针与起进程同一份 PATH」那条判据当子进程叫"]
+fn probe_helper_inner() {
+    let Some(want) = std::env::var_os("CCM_T_PROBE") else {
+        return;
+    };
+    let out = crate::platform::child::Child::new("sh")
+        .args(["-c", "printf '%s' \"$PATH\""])
+        .run(crate::platform::child::Deadline::secs(20))
+        .expect("缺省起的子进程");
+    let child_sees = String::from_utf8_lossy(&out.stdout).to_string();
+    let probe = super::probe_path();
+    assert_eq!(
+        probe.as_deref(),
+        Some(child_sees.as_str()),
+        "探针与起进程两份 PATH"
+    );
+    assert_eq!(child_sees, want.to_string_lossy(), "该是哪一份");
+    println!("probe ok");
+}
+
+/// 「这台有没有某程序」（hello 的 tmux 在不在 · sideload 判 claude 版本 · MCP 判命令在不在 · 找插件）只照一份 `PATH`，
+/// 就是起进程用的那一份：本进程的 `PATH` 与起会话那个 shell 的喂不同值 ⇒ 探针答的是起会话那个 shell 的、与子进程拿到的一样；
+/// 问不出（登录 shell 不答）⇒ 两边都是本进程的。
+#[cfg(unix)]
+#[test]
+fn the_probe_path_is_the_one_children_are_started_with() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let d = std::env::temp_dir().join(format!("ccm-probe-path-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).unwrap();
+    let session = format!("{}/user-bin:/usr/bin:/bin", d.display());
+    let own = "/usr/bin:/bin";
+    let mk = |name: &str, body: &str| {
+        let p = d.join(name);
+        std::fs::write(&p, body).unwrap();
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        p
+    };
+    let answers = mk(
+        "answers",
+        &format!(
+            "#!/bin/sh\n[ \"$1\" = -l ] || exit 9\nprintf '%s%s%s' '{m}' '{session}' '{m}'\n",
+            m = super::SESSION_PATH_MARK
+        ),
+    );
+    let silent = mk("silent", "#!/bin/sh\nexit 9\n");
+    for (shell, want) in [(&answers, session.as_str()), (&silent, own)] {
+        let r = crate::platform::child::Child::new(std::env::current_exe().expect("本测试程序"))
+            .args([
+                "shell::tests::probe_helper_inner",
+                "--exact",
+                "--ignored",
+                "--test-threads=1",
+                "--nocapture",
+            ])
+            .env("CCM_T_PROBE", want)
+            .env("SHELL", shell)
+            .env("PATH", own)
+            .env_remove(super::SESSION_PATH_GIVEN)
+            .run(crate::platform::child::Deadline::secs(60))
+            .expect("帮手跑完");
+        let said = format!(
+            "{}{}",
+            String::from_utf8_lossy(&r.stdout),
+            String::from_utf8_lossy(&r.stderr)
+        );
+        assert!(r.status.success(), "{}：{said}", shell.display());
+        assert!(said.contains("probe ok"), "帮手没跑到那条判据：{said}");
+    }
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// 下一条判据的帮手（只被它当子进程叫，起在伪终端里：那个终端是它的控制终端、它在前台组）。
+/// 假登录 shell 先碰一下 `/dev/tty`（交互 bash 起来那一下就这样）再打出 `PATH`：问的那一趟挂在这个终端上 ⇒ 落在后台组、
+/// 被 SIGTTIN 停住，到期限算问不出；离开了终端 ⇒ 打不开 `/dev/tty`、接着往下答。
+#[cfg(unix)]
+#[test]
+#[ignore = "只被「挂着终端问 PATH 不被终端停住」那条判据当子进程叫"]
+fn off_terminal_helper_inner() {
+    let Some(shell) = std::env::var_os("CCM_T_OFF_TERMINAL") else {
+        return;
+    };
+    let t0 = std::time::Instant::now();
+    let got = super::ask_session_path(
+        super::login_shell_asking_path(&shell.to_string_lossy()),
+        crate::platform::child::Deadline::secs(5),
+    );
+    assert_eq!(
+        got.as_deref(),
+        Some("/asked/bin:/usr/bin"),
+        "挂着终端问 PATH 没问成"
+    );
+    println!("off-terminal ok {}ms", t0.elapsed().as_millis());
+}
+
+/// 缺陷（11-06）：后端挂在用户的终端上（ssh 会话里敲 `ccm` 起托管进程）时，问登录 shell 要 `PATH` 的 `bash -l -i` 只自成一组、
+/// 仍在那个终端的会话里、落在后台组，一碰终端就被 SIGTTIN 停住、等满 10 秒被杀；问不出 ⇒ 不往下交 `CCM_SESSION_PATH`，
+/// 托管进程与里面那一跳再问再停，带号的 `cc` 一条链三段各 10 秒。问的那一趟离开终端：帮手起在伪终端里，期限内问得出。
+#[cfg(unix)]
+#[test]
+fn asking_the_path_from_a_terminal_is_not_stopped_by_it() {
+    use crate::platform::child::{Child, Heard};
+    use std::os::unix::fs::PermissionsExt as _;
+    let d = std::env::temp_dir().join(format!("ccm-off-terminal-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).unwrap();
+    let shell = d.join("login-shell");
+    std::fs::write(
+        &shell,
+        format!(
+            "#!/bin/sh\n[ \"$1\" = -l ] || exit 9\n{{ read -r x </dev/tty; }} 2>/dev/null\nprintf '%s%s%s' '{m}' '/asked/bin:/usr/bin' '{m}'\n",
+            m = super::SESSION_PATH_MARK
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&shell, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let mut conv = Child::new(std::env::current_exe().expect("本测试程序"))
+        .args([
+            "shell::tests::off_terminal_helper_inner",
+            "--exact",
+            "--ignored",
+            "--test-threads=1",
+            "--nocapture",
+        ])
+        .env("CCM_T_OFF_TERMINAL", &shell)
+        .converse_in_terminal()
+        .expect("帮手起在伪终端里");
+    let rx = conv.take_heard().expect("说的话");
+    let deadline = std::time::Instant::now() + guard_core::wall::CEILING;
+    let (mut said, mut code) = (Vec::new(), None);
+    while code.is_none() && std::time::Instant::now() < deadline {
+        match rx.recv_timeout(std::time::Duration::from_millis(200)) {
+            Ok(Heard::Out(l) | Heard::Err(l)) => said.push(l),
+            Ok(Heard::Exited(c)) => code = Some(c),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+    }
+    let _ = std::fs::remove_dir_all(&d);
+    assert_eq!(code, Some(Some(0)), "帮手没过：{said:?}");
+    assert!(
+        said.iter().any(|l| l.contains("off-terminal ok")),
+        "帮手没跑到那条判据（名字对不上 · 被筛掉）：{said:?}"
+    );
+}

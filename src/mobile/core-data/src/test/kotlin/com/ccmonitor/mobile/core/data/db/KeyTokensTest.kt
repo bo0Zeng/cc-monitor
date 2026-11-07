@@ -8,7 +8,7 @@ import java.io.File
 
 /**
  * 手机这一侧对拍 xterm 键码的金样（`tests/__fixtures__/xterm-keys.tsv`，cmd-wire 的判据读同一份）：
- * 编码经 [keyBytes]、解码经旧按钮迁移那一口（[legacyEscapePresses]，字节写成 `\xNN`），两条都走 JNI 进核心那一张表。
+ * 编码经 [keyBytes] 走 JNI 进核心那一张表（解码那一向由 cmd-wire 的判据读同一份守）。
  */
 class KeyTokensTest {
     private data class Row(
@@ -37,16 +37,6 @@ class KeyTokensTest {
         for (r in enc) {
             val p = checkNotNull(keyPressOf(r.token)) { "第 ${r.line} 行记号读不出：${r.token}" }
             assertArrayEquals("第 ${r.line} 行 ${r.token}", r.bytes, keyBytes(listOf(p)))
-        }
-    }
-
-    @Test
-    fun everyGoldenByteRunDecodesToItsPress() {
-        val dec = rows.filter { it.dir != ">" }
-        assertTrue("金样里解码那几行太少", dec.size > 30)
-        for (r in dec) {
-            val seq = r.bytes.joinToString("") { "\\x%02x".format(it.toInt() and 0xFF) }
-            assertEquals("第 ${r.line} 行 $seq", listOf(keyPressOf(r.token)), legacyEscapePresses(seq))
         }
     }
 

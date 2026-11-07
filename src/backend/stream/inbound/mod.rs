@@ -97,9 +97,9 @@ use spec::{BlockingHandler, CommandSpec, DataHandler, Outcome};
 ///
 /// 现在是 `fill_buf`/`consume` 手搓：超限之后**只找换行、不再往 buf 里塞字节**，
 /// 整行的内存占用与行长无关。
-pub const MAX_LINE_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+pub const MAX_LINE_BYTES: cap_core::Cap = cap_core::Cap {
     bytes: 1 << 20,
-    over: relay_route_core::Over::Reject,
+    over: cap_core::Over::Reject,
 };
 
 /// 应答通道容量。**刻意与出方向那条（按字节封顶，`CHANNEL_MAX_BYTES`）分开**。
@@ -183,12 +183,14 @@ pub(crate) fn unavailable_from(tmux: Option<bool>) -> Vec<crate::wire::Unavailab
 /// 🔴 **这一趟探测的结果会被用很久。**
 /// `build_hello` 在分档**之前**只调一次，那一帧随后交给两条载体；常驻那条（`listen.rs`）
 /// 服务**不限次**的「只读 hello 就走」⇒ **同一帧被这个进程后续的所有连接共用**。
-/// ⇒ 探测本身必须**便宜且挂不住**（所以 `tmux_in` 是纯 `stat` 扫 `PATH`，不是真 exec 一次），
+/// ⇒ 探测本身必须**便宜且挂不住**（所以 `tmux_in` 是纯 `stat` 扫 `PATH`，不是真 exec 一次；扫的是起会话用的那一份
+/// [`crate::platform::shell::probe_path`]：按进程只问一次登录 shell、有期限），
 /// 而消费侧必须把它当**提示**（`wire.rs` 那个字段头注的口径③）。
 pub(crate) fn unavailable_here() -> Vec<crate::wire::Unavailable> {
+    let path = crate::platform::shell::probe_path();
     let mut out = unavailable_from(crate::platform::tmux::tmux_present(
         crate::platform::tmux::TMUX_PLATFORM,
-        std::env::var_os("PATH").as_deref(),
+        path.as_deref().map(std::ffi::OsStr::new),
     ));
     out.extend(unix_mode_unavailable(cfg!(unix)));
     out

@@ -24,8 +24,8 @@
 //! 2. 一个定时器都没有：`accept` 与读一行都阻塞在内核事件上（`src/backend/clippy.toml` 的 `disallowed-methods`）。
 //! 3. 别的 uid 连进来（root 例外不了：内核报的就是它的 uid）⇒ 关掉、出声，hello 都不给。
 
+use cap_core::{Cap, Over};
 use cmd_wire::attach::{AttachLine, AttachReply};
-use relay_route_core::{Cap, Over};
 
 /// 宿主告诉后端「你是常驻的那一个」的 env 名（值 `1`）。听哪个套接字不交：按家算，宿主与后端同一个函数。
 pub const ENV_RESIDENT: &str = crate::platform::child_env::RESIDENT;

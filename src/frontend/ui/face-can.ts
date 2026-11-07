@@ -2,13 +2,12 @@
  * **一条会话此刻能做什么 —— 只读后端那份整份脸的 `can`。**
  *
  * 点 · 字 · 能不能关 / 恢复 / 拉前都是后端判好的（`SessionFace`，会话三帧带来；那台看不见时那一张由本机后端造、随「说不清」那一格交来）。
- * 这里只有读 `can` 的几个短名（各处不各写一遍 `can.term.can === "yes"`）。一张脸都还没收到（恢复的标签页、重放还没到）⇒ `null`：
+ * 这里只有读 `can` 的几个短名（各处不各写一遍 `can.end.can === "yes"`）。一张脸都还没收到（恢复的标签页、重放还没到）⇒ `null`：
  * 不画点，几个短名一律答「不能」。界面不自己拼脸。
  */
 import type { SessionFace } from "./generated/SessionFace";
 import type { SessionActivity } from "./generated/SessionActivity";
-import { copyText } from "./copy-table";
-import { terminalFrontAvailable } from "./terminal-front";
+import type { TermWay } from "./generated/TermWay";
 
 /** 一张脸（还没收到 ⇒ `null`）。 */
 type Face = SessionFace | null;
@@ -19,17 +18,18 @@ export const isLive = (f: Face): boolean => f?.life.is === "live";
 export const isUnclear = (f: Face): boolean => f?.life.is === "unclear";
 /** 进程在 ⇒ 那台判出的在干什么（判不出 ⇒ 没有）；进程不在 ⇒ 没有。 */
 export const activityOf = (f: Face): SessionActivity | undefined => (f?.life.is === "live" ? f.life.activity : undefined);
-/** 还有终端可去（拉前 · 停 · 终端页 · 自动跟随 · 后台物化）。 */
-export const hasTerminal = (f: Face): boolean => f?.can.term.can === "yes";
+/** 进程或它住的那个终端还在（自动跟随 · 「已隐藏」那一行留不留）：读那台写好的 `life`，不另判。 */
+export const terminalAlive = (f: Face): boolean => f?.life.is === "live" || f?.life.is === "reconnectable";
 /**
- * ↗ 切到终端此刻点不点得了（菜单 · 会话头 · 栏行尾 · 命令面板 · 快捷键同一道，A2-17-12-1）：点得了 ⇒ `null`；
- * 点不了 ⇒ 那一句 —— 壳说这台上 ↗ 不是真的（`terminal-front.ts`）⇒ 那一句；会话脸 `can.term` 说不能 ⇒ 那台写好的那一句；
- * 还没收到脸 ⇒ 空串（灰着、不说为什么）。各处一律画、灰着写这一句，不藏。
+ * 「终端」那一颗此刻做什么（会话头 · 右键 · 命令面板 · 快捷键同一道）：那台把两种看法都写好了，这里只挑 ——
+ * 看的这一端就在会话住的那台上（本机标签页，`remote` 为假）⇒ `near`，别处 ⇒ `far`。还没收到脸 ⇒ `null`（灰着、不说为什么）。
  */
-export function frontWhy(f: Face): string | null {
-  if (!terminalFrontAvailable()) return copyText("terminalFront.unavailable.short");
-  if (!f) return "";
-  return f.can.term.can === "yes" ? null : f.can.term.why;
+export const terminalWay = (f: Face, remote: boolean): TermWay | null => (f ? (remote ? f.can.terminal.far : f.can.terminal.near) : null);
+/** 「终端」灰着的那一句：做得了 ⇒ `null`；做不了 ⇒ 那台写好的那一句；还没收到脸 ⇒ 空串。 */
+export function terminalWhy(f: Face, remote: boolean): string | null {
+  const w = terminalWay(f, remote);
+  if (w === null) return "";
+  return w.go === "no" ? w.why : null;
 }
 /** 结束得了（右键 · 多选同一个确认框，交 `sessions-stop`）。 */
 export const canEnd = (f: Face): boolean => f?.can.end.can === "yes";
@@ -37,11 +37,6 @@ export const canEnd = (f: Face): boolean => f?.can.end.can === "yes";
 export const canStop = (f: Face): boolean => f?.can.stop.can === "yes";
 /** 能恢复（Resume / 在 tmux 里起）。 */
 export const canResume = (f: Face): boolean => f?.can.resume.can === "yes";
-/**
- * 「在终端里打开」点得了（会话头 · 报错卡 · 右键菜单同一道）：那台说接得进（`can.attach`），且在这里看给得了 ——
- * `everywhere` 哪台看都给（托管终端）· `elsewhere` 只在别的机器上看才给（`elsewhere` 参数 ＝ 这个会话住在别的机器上；本机那个 tmux 会话走 ↗）。
- */
-export const canAttach = (f: Face, elsewhere: boolean): boolean => f?.can.attach.can === "yes" && (elsewhere || f.can.attach.from === "everywhere");
 /** 程序退了、tmux 会话还在（标签页的可重连钩子）。 */
 export const canReattach = (f: Face): boolean => f?.can.reattach.can === "yes";
 /** × · 中键 · W · 批量都关得掉。 */

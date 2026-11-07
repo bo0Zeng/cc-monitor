@@ -1,6 +1,5 @@
 package com.ccmonitor.mobile.ui.session
 
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,7 +34,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalClipboard
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
@@ -65,9 +63,17 @@ import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.core.wire.gen.AgentPick
+import com.ccmonitor.mobile.core.wire.gen.MachineFix
+import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
+import com.ccmonitor.mobile.core.wire.gen.Tone
+import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.service.AppForeground
+import com.ccmonitor.mobile.ui.common.BarLook
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
 import com.ccmonitor.mobile.ui.common.EditHostButton
+import com.ccmonitor.mobile.ui.common.MachineBar
+import com.ccmonitor.mobile.ui.common.MachineBarView
+import com.ccmonitor.mobile.ui.common.barOf
 import com.ccmonitor.mobile.ui.copyPlainText
 import com.ccmonitor.mobile.ui.pastePlainText
 import com.ccmonitor.mobile.ui.theme.AppTerminalPalette
@@ -127,11 +133,11 @@ private fun SessionContent(
             parametersOf(hostId, cd ?: "", tmuxSession ?: "", resume ?: "", run ?: "")
         }
     val state by vm.uiState.collectAsState()
-    val context = LocalContext.current
+    val snackbar = LocalAppSnackbar.current
 
-    // 一次性提示弹 Toast。
+    // 一次性提示走底部条（反馈只两种：一次性结局在底部条，持续状态就地）。
     LaunchedEffect(vm) {
-        vm.notices.collect { Toast.makeText(context, it, Toast.LENGTH_LONG).show() }
+        vm.notices.collect { snackbar.show(it) }
     }
 
     // 终端自动重挂：只在本 tab 是活动 tab（只有活动 tab 被组合）且 app 在前台时，若 shell 因连接在后台重建而死
@@ -327,9 +333,6 @@ private fun ConnectedContent(
         onCaptured = { captureText = it },
         onShowTabs = onShowTabs,
     )
-    // 迁移说明：手机原来存的启动配置，这一台的列一次。
-    val moved by vm.moved.collectAsState()
-    if (moved.isNotEmpty()) MovedLaunchDialog(moved, vm::makeAlias, vm::ackMoved)
     ConnectedDialogs(
         vm = vm,
         showTmux = showTmux,
@@ -363,33 +366,19 @@ private fun ConnectedScaffold(
     val aliases by vm.aliases.collectAsState()
     val aliasPicked by vm.aliasPicked.collectAsState()
     val offline by vm.offline.collectAsState()
+    val link by koinInject<HostBackends>().of(vm.hostId).state.collectAsState()
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
-        if (dropped) DroppedBanner(status, offline, onReconnect)
+        // 机器条只一种：那台有事 ⇒ 核心那一条；那台没事、只是这一条终端的 shell 断了（手机这一侧的事实）⇒ 同一个组件画那一句 ＋［重试］。
+        if (barOf(link) != null) {
+            MachineBar(vm.hostId)
+        } else if (dropped) {
+            val text = if (status == SessionStatus.RECONNECTING) copyText("mobSession.bar.reconnecting") else offline
+            MachineBarView(BarLook(text, Tone.OFFLINE, MachineFixButton(MachineFix.RETRY, copyText("history.list.reconnect"))), onReconnect)
+        }
         if (!aliasPicked) LaunchAliasRow(aliases, vm::startAlias)
         Box(Modifier.fillMaxWidth().weight(1f)) {
             ConnectedTerminal(s, vm, onShowTmux, onPushKey, onCaptured, onShowTabs)
         }
-    }
-}
-
-/** 掉线条幅与重连按钮。[offline] 是链上交的离线那一句（核心恒给）。 */
-@Composable
-private fun DroppedBanner(
-    status: SessionStatus?,
-    offline: String,
-    onReconnect: () -> Unit,
-) {
-    // 错误条：`--card` 底（errorContainer）＋ 左 3 dp `--error` 条，字用正文色。
-    Row(
-        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.errorContainer).padding(end = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        ErrorLine(
-            if (status == SessionStatus.RECONNECTING) copyText("mobSession.bar.reconnecting") else offline,
-            modifier = Modifier.weight(1f).padding(vertical = 12.dp),
-        )
-        SecondaryButton(onClick = onReconnect) { Text(copyText("history.list.reconnect")) }
     }
 }
 
@@ -434,7 +423,6 @@ private fun rememberModelSwitchAction(
     terminals: TerminalOps,
     currentTmux: () -> String?,
 ): (String) -> Unit {
-    val context = LocalContext.current
     val snackbar = LocalAppSnackbar.current
     val scope = rememberCoroutineScope()
     return { model ->
@@ -442,7 +430,7 @@ private fun rememberModelSwitchAction(
             scope.launch {
                 terminals
                     .switchModel(ts, model)
-                    .onSuccess { said -> Toast.makeText(context, said, Toast.LENGTH_SHORT).show() }
+                    .onSuccess { said -> snackbar.show(said) }
                     .onFailure { snackbar.show(Notice(copyText("mobTerm.model.sendFailed"), it.message.orEmpty())) }
             }
         }
@@ -456,7 +444,6 @@ private fun rememberCaptureAction(
     currentTmux: () -> String?,
     onCaptured: (String) -> Unit,
 ): () -> Unit {
-    val context = LocalContext.current
     val snackbar = LocalAppSnackbar.current
     val scope = rememberCoroutineScope()
     return {
@@ -469,7 +456,7 @@ private fun rememberCaptureAction(
                     .onFailure { snackbar.show(Notice(copyText("mobTerm.capture.failed"), it.message)) }
             }
         } else {
-            Toast.makeText(context, copyText("mobTerm.capture.noTmux"), Toast.LENGTH_SHORT).show()
+            snackbar.show(copyText("mobTerm.capture.noTmux"))
         }
     }
 }
@@ -503,14 +490,14 @@ private fun ConnectedDialogs(
     PushKeyControl(showKeyPush, identities, vm.terminals, onDismissKeyPush)
 }
 
-/** 抓屏结果弹窗的宿主，自己持有 context / clipboard / scope 做复制与 Toast。 */
+/** 抓屏结果弹窗的宿主，自己持有 clipboard / scope 做复制与底部条。 */
 @Composable
 private fun CaptureControl(
     text: String?,
     onDismiss: () -> Unit,
 ) {
     // 作用域在框外取：点了复制先关框，复制那一下照样做完。
-    val context = LocalContext.current
+    val snackbar = LocalAppSnackbar.current
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
     if (text == null) return
@@ -518,7 +505,7 @@ private fun CaptureControl(
         text = text,
         onCopy = {
             scope.launch { clipboard.copyPlainText(text) }
-            Toast.makeText(context, copyText("mobTerm.capture.copied", "n" to text.length), Toast.LENGTH_SHORT).show()
+            snackbar.show(copyText("mobTerm.capture.copied", "n" to text.length))
             onDismiss()
         },
         onDismiss = onDismiss,
@@ -534,7 +521,6 @@ private fun PushKeyControl(
     onDismiss: () -> Unit,
 ) {
     // 作用域在框外取：选了那把先关框，推送照样做完、照结局说一句。
-    val context = LocalContext.current
     val snackbar = LocalAppSnackbar.current
     val scope = rememberCoroutineScope()
     if (!show) return
@@ -544,12 +530,12 @@ private fun PushKeyControl(
         onPick = { id ->
             onDismiss()
             if (id.publicKeyOpenSsh.isBlank()) {
-                Toast.makeText(context, copyText("mobKeyPush.result.noPublic"), Toast.LENGTH_LONG).show()
+                snackbar.show(copyText("mobKeyPush.result.noPublic"))
             } else {
                 scope.launch {
                     terminals
                         .pushKey(id.publicKeyOpenSsh)
-                        .onSuccess { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }
+                        .onSuccess { snackbar.show(it) }
                         .onFailure { snackbar.show(Notice(copyText("mobKeyPush.result.failed"), it.message)) }
                 }
             }

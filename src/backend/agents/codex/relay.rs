@@ -10,7 +10,7 @@
 
 use crate::agents::{SettingsBaseUrl, SettingsEnvFace, SettingsUnreadable};
 use crate::platform::fs::Ro;
-use relay_route_core::{Cap, Over};
+use cap_core::{Cap, Over};
 use std::path::{Path, PathBuf};
 
 /// 这一家的默认上游那一格（注册表 `Adapter.upstream`）。

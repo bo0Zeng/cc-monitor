@@ -58,8 +58,8 @@ export async function askOpen(origin: Machine, req: SessionOpenReq): Promise<Ope
 }
 
 /**
- * 照 `landed` 开不开那一行：接回（［在终端里打开］）一律开（`started` · `in_place` 开了是接进去；`running` · `idle` 本来就在、开了当场说接上）。
- * 新起 · 恢复 · 批量落后台，只开 `window`（不跑就没起）：恢复不另弹一个抢输入的终端窗口，要在终端里看走［在终端里打开］（A3-3-32-15）。
+ * 照 `landed` 开不开那一行：接回（［终端］）一律开（`started` · `in_place` 开了是接进去；`running` · `idle` 本来就在、开了当场说接上）。
+ * 新起 · 恢复 · 批量落后台，只开 `window`（不跑就没起）：恢复不另弹一个抢输入的终端窗口，要在终端里看走［终端］。
  */
 export const BACKGROUND_OPENS: ReadonlySet<Landed> = new Set<Landed>(["window"]);
 

@@ -68,7 +68,7 @@ pub fn send_sigusr1(pid: u32) -> bool {
     }
 }
 
-/// **一个要被停的进程的把手** —— 「请它收尾 → 宽限期内等 → 强杀」三步都经它（`control/resident.rs::stop_pid`）。
+/// **一个要被停的进程的把手** —— 「请它收尾 → 宽限期内等 → 强杀」三步都经它（`control/resident.rs::stop_listener` → `finish`）。
 /// Linux 是 pidfd：信号经它发、退出经它等，拿到把手之后 pid 被复用也打不到别人；Windows 是进程句柄（没有「请它收尾」那一格）。
 /// 只给一次性子命令用：带期限的等待登记在 `clippy.toml` 的 `disallowed-methods`，调用处就地放行。
 pub struct Stoppable {

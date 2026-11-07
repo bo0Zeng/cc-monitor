@@ -61,10 +61,6 @@ cwd?: string,
  */
 attachments?: Array<Attachment>, } | { "t": "reply", blocks: Array<Block>, 
 /**
- * 型号名原样。
- */
-model?: string, 
-/**
  * 代理那一侧自动写的应答（不是模型说的，不建卡）。
  */
 autoReply: boolean, 

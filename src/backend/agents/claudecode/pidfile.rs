@@ -47,7 +47,7 @@ pub(crate) fn background_of(v: &Value) -> bool {
         None | Some(INTERACTIVE) => false,
         Some(BACKGROUND) => true,
         Some(other) => {
-            record(DriftFace::UnknownSessionKind, other, None);
+            record(DriftFace::UnknownSessionKind, other);
             true
         }
     }
@@ -63,7 +63,7 @@ pub(crate) fn activity_of(v: &Value) -> Option<SessionActivity> {
         "idle" => Some(SessionActivity::Idle),
         "shell" => Some(SessionActivity::BackgroundWork),
         other => {
-            record(DriftFace::UnknownSessionStatus, other, None);
+            record(DriftFace::UnknownSessionStatus, other);
             None
         }
     }
@@ -80,7 +80,7 @@ pub(crate) fn wait_of(v: &Value) -> Option<WaitOn> {
         "input needed" => Some(WaitOn::Input),
         "dialog open" => Some(WaitOn::Dialog),
         other => {
-            record(DriftFace::UnknownWaitingFor, other, None);
+            record(DriftFace::UnknownWaitingFor, other);
             None
         }
     }

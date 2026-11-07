@@ -92,7 +92,6 @@ class ChatsViewTest {
         count = 1,
         hasLive = false,
         starred = false,
-        lastActivity = 0,
         atText = "09:00",
         order = order,
         failed = null,

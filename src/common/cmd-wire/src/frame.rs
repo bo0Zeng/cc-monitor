@@ -139,10 +139,6 @@ impl HelloHead {
     }
 }
 
-fn is_zero(n: &u32) -> bool {
-    *n == 0
-}
-
 /// 握手：连上之后那台发的第一帧。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -241,8 +237,8 @@ pub struct SessionAdded {
     #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
     pub background: bool,
     /// **E73（additive）：attach 进去对人有没有意义。** `false` = 别给 attach / ↗ / 「杀死空 tmux」这几个动作；**省略 = `true`**。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub attachable: Option<bool>,
     /// pidfile 记的 `cwd`：进程起在哪个目录（客户端认「我刚起的那条起来了」用）。
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1017,12 +1013,10 @@ pub struct SessionCan {
     pub close: CanClose,
     /// 恢复（起一个新进程接着那份记录）。
     pub resume: Allow,
-    /// 还有终端可去（拉前 · 停 · 杀 · 终端页）。
-    pub term: CanTerm,
+    /// 「终端」那一颗（拉它的外部窗口 · 在这一端开它的终端 · 做不了，见 [`CanTerminal`]）。
+    pub terminal: CanTerminal,
     /// 程序退了、tmux 会话还在 ⇒ 接回。
     pub reattach: Allow,
-    /// 「在终端里打开」（另开一个终端窗口接进它住的那个终端）：会话头 · 报错卡 · 右键菜单都只读它。
-    pub attach: CanAttach,
     /// 换模型（`session-model`）。
     pub model: Allow,
     /// 切权限档（`session-permission`）。
@@ -1068,36 +1062,42 @@ pub enum CanClose {
     No { why: Words },
 }
 
-/// 还有没有终端可去：`yes` 带它住在哪种宿主里（`tmux` · `managed`；不在任何宿主里 ⇒ `direct`）。
-/// 在 tmux 里的，终端窗口关了也能「在终端里打开」。
+/// **「终端」那一颗**（两端只这一颗；会话头 · 右键 · 命令面板 · 快捷键 · 手机顶栏都读它）：会话住的那台把两种看法都写好，
+/// 两端只按「看的这一端在不在那台上」挑一格 —— 在那台上（桌面看本机会话）挑 `near`，别处（桌面看远端会话 · 手机）挑 `far`。
+/// 拉不拉得了外部窗口只跟那台自己的系统有关：看的人若就在那台上，壳就是那台的壳，所以由那台判、不由看的那一端判。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-#[serde(tag = "can", rename_all = "snake_case")]
-pub enum CanTerm {
-    Yes { host: crate::session::Launch },
-    No { why: Words },
+pub struct CanTerminal {
+    pub near: TermWay,
+    pub far: TermWay,
 }
 
-/// 接不接得进：`{can: "yes", from}` · `{can: "no", why: 写好的那一句}`。
-/// `from`：`everywhere` 哪台看都给（托管终端：瘦客户端接进去）· `elsewhere` 只在别的机器上看才给（tmux 会话：那台自己有 ccm 开的窗口，走 ↗）。
+/// 点「终端」做什么：`front` 拉它住的那个外部终端窗口到前面（只在 `near`）· `here` 在看的这一端开它的终端（`open` 开哪个）·
+/// `no` 做不了（`why` 是那台写好的那一句：灰着、悬停 / 长按出它）。`said` 是悬停那一句。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-#[serde(tag = "can", rename_all = "snake_case")]
-pub enum CanAttach {
-    Yes { from: AttachFrom },
+#[serde(tag = "go", rename_all = "snake_case")]
+pub enum TermWay {
+    Front { said: Words },
+    Here { said: Words, open: TermOpen },
     No { why: Words },
 }
 
-/// [`CanAttach::Yes`] 在哪台看才给。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// 在这一端开哪个终端：`attach` 接进它住的那个终端（`terminal` ＝ `terminals-list` 里那一行的句柄；判不出 ⇒ 缺，交了由那台认）·
+/// `resume` 它的终端已经不在：先恢复再开。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-#[serde(rename_all = "snake_case")]
-pub enum AttachFrom {
-    Everywhere,
-    Elsewhere,
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum TermOpen {
+    Attach {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        terminal: Option<String>,
+    },
+    Resume,
 }
 
 /// **这条会话叫什么那两格**（`session_added` · `session_status` 都带它，平铺在帧上；一轮结束的通知标题也读它）：
@@ -1370,9 +1370,9 @@ pub struct RunInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
     pub active_ms: Option<u64>,
-    /// 收场：说它收场的那一条（还没收场 / 状态不明 ⇒ 不上线）。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
+    /// 收场：说它收场的那一条（后端算时长用，不上线）。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub ended_ms: Option<u64>,
     /// 为什么是这个结局（在跑 ⇒ 不上线）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1382,9 +1382,9 @@ pub struct RunInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub error: Option<String>,
-    /// 它调了几次工具（它自己的记录里数的；零 ⇒ 不上线）。
-    #[serde(default, skip_serializing_if = "is_zero")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<u32>"))]
+    /// 它调了几次工具（它自己的记录里数的；后端写字用，不上线）。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub calls: u32,
     /// 派出那一方没等它、接着做自己的事（后台派出；否则不上线）。
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]

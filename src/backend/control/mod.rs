@@ -96,6 +96,7 @@ pub mod place_self;
 pub mod resident;
 // 编辑已发的一句：调出那一家的回退菜单 · 每按一键前读屏核对 · 送改好的那句 · 读回主线（按法认法住适配层 `RewindFace`）。
 pub mod rewind;
+pub mod screen_drive; // 读屏驱动：会话开着时替人按键那几处共用（认目标 · 取屏 · 按键送字 · 等重画 · 等到认得的样子）
 pub mod session_arrive; // 帧命令 `session-arrive`：等起好的会话报到（认法住观测层，抓屏住 terminals）
 pub mod session_batch;
 pub mod session_open;
@@ -103,8 +104,6 @@ pub mod session_set; // 帧命令 `set-plan`：补足一组会话的判定（每
 pub mod ship_text; // CLI `--text`：回包里写好的格（顶上 `text` · 每一处 `rows`）拼成字，所有命令通用
                    // 起新会话那一趟的票（期限到了再问一次 ⇒ 认出同一趟，不起第二个）。
 pub(crate) mod session_new_ticket;
-// 换号重启：查号 → 先压缩（可选）→ 停旧 → 同一终端名用新号起 → 等报出（帧面宿主 `faces/session_restart_face.rs`）。
-pub mod session_restart;
 // 终端管理 L1：名单 · 抓一屏 · 送字送键（两个前端共用，形状与宿主无关；这一版宿主是 tmux）。
 pub mod terminals;
 pub mod terminals_board; // 「终端」视图那张名单的成品：每台写行 · 各台合成（宿主 `faces/terminals_board_face.rs`）

@@ -103,6 +103,29 @@ fn a_bad_batch_is_refused_whole_and_writes_nothing() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
+/// 补丁对不上那一行：一行都没有 · 不止一行（不猜是哪台）⇒ 同一个码 `element_gone`，错误不带 `data`。
+#[test]
+fn a_patch_matching_none_or_several_is_gone_without_data() {
+    use crate::wire::typed::Codes;
+    let home = scratch("gone");
+    set(
+        &home,
+        json!([insert("gpu", "g.lan"), insert("pi", "p.lan")]),
+    )
+    .unwrap();
+    let by_user = json!([{ "fields": ["user"], "equals": "pi" }]);
+    for e in [
+        json!([{ "op": "removein", "where": by_name("nope") }]),
+        json!([{ "op": "removein", "where": by_user }]),
+        json!([{ "op": "setin", "where": by_user, "field": "jump", "value": "gpu" }]),
+    ] {
+        let s = set(&home, e.clone()).unwrap_err().into_said();
+        assert_eq!(s.code.as_deref(), Some("element_gone"), "{e}");
+        assert!(s.data.is_none(), "{e} 带了 data：{:?}", s.data);
+    }
+    let _ = std::fs::remove_dir_all(&home);
+}
+
 /// 试算口与写口同一份判准、盘上一个字节不动；同名那一形说成 `name_taken`。
 #[test]
 fn trying_says_the_same_fault_and_never_writes() {

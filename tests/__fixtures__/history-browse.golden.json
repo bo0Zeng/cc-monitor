@@ -14,7 +14,6 @@
       "count": 4,
       "hasLive": false,
       "starred": false,
-      "lastActivity": 900,
       "atText": "12:00",
       "order": 900,
       "failed": null,
@@ -29,7 +28,6 @@
       "count": 2,
       "hasLive": false,
       "starred": false,
-      "lastActivity": 500,
       "atText": "12:00",
       "order": 500,
       "failed": null,
@@ -80,16 +78,24 @@
         "can": "no",
         "why": "会话已结束"
        },
-       "attach": {
-        "can": "no",
-        "why": "会话已结束"
-       },
        "resume": {
         "can": "yes"
        },
-       "term": {
-        "can": "no",
-        "why": "会话已结束"
+       "terminal": {
+        "near": {
+         "go": "here",
+         "said": "恢复后在 cc-monitor 里打开终端",
+         "open": {
+          "kind": "resume"
+         }
+        },
+        "far": {
+         "go": "here",
+         "said": "恢复后在 cc-monitor 里打开终端",
+         "open": {
+          "kind": "resume"
+         }
+        }
        },
        "stop": {
         "can": "no",
@@ -165,16 +171,24 @@
         "can": "no",
         "why": "会话已结束"
        },
-       "attach": {
-        "can": "no",
-        "why": "会话已结束"
-       },
        "resume": {
         "can": "yes"
        },
-       "term": {
-        "can": "no",
-        "why": "会话已结束"
+       "terminal": {
+        "near": {
+         "go": "here",
+         "said": "恢复后在 cc-monitor 里打开终端",
+         "open": {
+          "kind": "resume"
+         }
+        },
+        "far": {
+         "go": "here",
+         "said": "恢复后在 cc-monitor 里打开终端",
+         "open": {
+          "kind": "resume"
+         }
+        }
        },
        "stop": {
         "can": "no",
@@ -208,8 +222,7 @@
      },
      "reveal": true,
      "deleteAsk": "删除：会话记录 · 不可恢复",
-     "forkedFromSessionId": "a1",
-     "forkedFromMessageUuid": "m"
+     "forkedFromSessionId": "a1"
     },
     {
      "agent": "claude",
@@ -252,16 +265,24 @@
         "can": "no",
         "why": "会话已结束"
        },
-       "attach": {
-        "can": "no",
-        "why": "会话已结束"
-       },
        "resume": {
         "can": "yes"
        },
-       "term": {
-        "can": "no",
-        "why": "会话已结束"
+       "terminal": {
+        "near": {
+         "go": "here",
+         "said": "恢复后在 cc-monitor 里打开终端",
+         "open": {
+          "kind": "resume"
+         }
+        },
+        "far": {
+         "go": "here",
+         "said": "恢复后在 cc-monitor 里打开终端",
+         "open": {
+          "kind": "resume"
+         }
+        }
        },
        "stop": {
         "can": "no",
@@ -295,8 +316,7 @@
      },
      "reveal": true,
      "deleteAsk": "删除：会话记录 · 不可恢复",
-     "forkedFromSessionId": "k1",
-     "forkedFromMessageUuid": "m"
+     "forkedFromSessionId": "k1"
     },
     {
      "agent": "claude",
@@ -339,16 +359,24 @@
         "can": "no",
         "why": "会话已结束"
        },
-       "attach": {
-        "can": "no",
-        "why": "会话已结束"
-       },
        "resume": {
         "can": "yes"
        },
-       "term": {
-        "can": "no",
-        "why": "会话已结束"
+       "terminal": {
+        "near": {
+         "go": "here",
+         "said": "恢复后在 cc-monitor 里打开终端",
+         "open": {
+          "kind": "resume"
+         }
+        },
+        "far": {
+         "go": "here",
+         "said": "恢复后在 cc-monitor 里打开终端",
+         "open": {
+          "kind": "resume"
+         }
+        }
        },
        "stop": {
         "can": "no",
@@ -424,16 +452,24 @@
         "can": "no",
         "why": "会话已结束"
        },
-       "attach": {
-        "can": "no",
-        "why": "会话已结束"
-       },
        "resume": {
         "can": "yes"
        },
-       "term": {
-        "can": "no",
-        "why": "会话已结束"
+       "terminal": {
+        "near": {
+         "go": "here",
+         "said": "恢复后在 cc-monitor 里打开终端",
+         "open": {
+          "kind": "resume"
+         }
+        },
+        "far": {
+         "go": "here",
+         "said": "恢复后在 cc-monitor 里打开终端",
+         "open": {
+          "kind": "resume"
+         }
+        }
        },
        "stop": {
         "can": "no",
@@ -467,8 +503,7 @@
      },
      "reveal": true,
      "deleteAsk": "删除：会话记录 · 不可恢复",
-     "forkedFromSessionId": "nowhere",
-     "forkedFromMessageUuid": "m"
+     "forkedFromSessionId": "nowhere"
     },
     {
      "agent": "claude",
@@ -511,16 +546,24 @@
         "can": "no",
         "why": "会话已结束"
        },
-       "attach": {
-        "can": "no",
-        "why": "会话已结束"
-       },
        "resume": {
         "can": "yes"
        },
-       "term": {
-        "can": "no",
-        "why": "会话已结束"
+       "terminal": {
+        "near": {
+         "go": "here",
+         "said": "恢复后在 cc-monitor 里打开终端",
+         "open": {
+          "kind": "resume"
+         }
+        },
+        "far": {
+         "go": "here",
+         "said": "恢复后在 cc-monitor 里打开终端",
+         "open": {
+          "kind": "resume"
+         }
+        }
        },
        "stop": {
         "can": "no",
@@ -554,8 +597,7 @@
      },
      "reveal": true,
      "deleteAsk": "删除：会话记录 · 不可恢复",
-     "forkedFromSessionId": "d1",
-     "forkedFromMessageUuid": "m"
+     "forkedFromSessionId": "d1"
     },
     {
      "agent": "claude",
@@ -598,16 +640,24 @@
         "can": "no",
         "why": "会话已结束"
        },
-       "attach": {
-        "can": "no",
-        "why": "会话已结束"
-       },
        "resume": {
         "can": "yes"
        },
-       "term": {
-        "can": "no",
-        "why": "会话已结束"
+       "terminal": {
+        "near": {
+         "go": "here",
+         "said": "恢复后在 cc-monitor 里打开终端",
+         "open": {
+          "kind": "resume"
+         }
+        },
+        "far": {
+         "go": "here",
+         "said": "恢复后在 cc-monitor 里打开终端",
+         "open": {
+          "kind": "resume"
+         }
+        }
        },
        "stop": {
         "can": "no",
@@ -683,16 +733,24 @@
         "can": "no",
         "why": "会话已结束"
        },
-       "attach": {
-        "can": "no",
-        "why": "会话已结束"
-       },
        "resume": {
         "can": "yes"
        },
-       "term": {
-        "can": "no",
-        "why": "会话已结束"
+       "terminal": {
+        "near": {
+         "go": "here",
+         "said": "恢复后在 cc-monitor 里打开终端",
+         "open": {
+          "kind": "resume"
+         }
+        },
+        "far": {
+         "go": "here",
+         "said": "恢复后在 cc-monitor 里打开终端",
+         "open": {
+          "kind": "resume"
+         }
+        }
        },
        "stop": {
         "can": "no",
@@ -769,16 +827,24 @@
         "can": "no",
         "why": "会话已结束"
        },
-       "attach": {
-        "can": "no",
-        "why": "会话已结束"
-       },
        "resume": {
         "can": "yes"
        },
-       "term": {
-        "can": "no",
-        "why": "会话已结束"
+       "terminal": {
+        "near": {
+         "go": "here",
+         "said": "恢复后在 cc-monitor 里打开终端",
+         "open": {
+          "kind": "resume"
+         }
+        },
+        "far": {
+         "go": "here",
+         "said": "恢复后在 cc-monitor 里打开终端",
+         "open": {
+          "kind": "resume"
+         }
+        }
        },
        "stop": {
         "can": "no",
@@ -812,8 +878,7 @@
      },
      "reveal": true,
      "deleteAsk": "删除：会话记录 · 不可恢复",
-     "forkedFromSessionId": "cx",
-     "forkedFromMessageUuid": "m"
+     "forkedFromSessionId": "cx"
     }
    ]
   },
@@ -830,7 +895,6 @@
       "count": 2,
       "hasLive": false,
       "starred": false,
-      "lastActivity": 900,
       "atText": "12:00",
       "order": 900,
       "failed": null,
@@ -845,7 +909,6 @@
       "count": 1,
       "hasLive": false,
       "starred": false,
-      "lastActivity": 400,
       "atText": "12:00",
       "order": 400,
       "failed": null,
@@ -895,16 +958,24 @@
         "can": "no",
         "why": "会话已结束"
        },
-       "attach": {
-        "can": "no",
-        "why": "会话已结束"
-       },
        "resume": {
         "can": "yes"
        },
-       "term": {
-        "can": "no",
-        "why": "会话已结束"
+       "terminal": {
+        "near": {
+         "go": "here",
+         "said": "恢复后在 cc-monitor 里打开终端",
+         "open": {
+          "kind": "resume"
+         }
+        },
+        "far": {
+         "go": "here",
+         "said": "恢复后在 cc-monitor 里打开终端",
+         "open": {
+          "kind": "resume"
+         }
+        }
        },
        "stop": {
         "can": "no",
@@ -980,16 +1051,24 @@
         "can": "no",
         "why": "会话已结束"
        },
-       "attach": {
-        "can": "no",
-        "why": "会话已结束"
-       },
        "resume": {
         "can": "yes"
        },
-       "term": {
-        "can": "no",
-        "why": "会话已结束"
+       "terminal": {
+        "near": {
+         "go": "here",
+         "said": "恢复后在 cc-monitor 里打开终端",
+         "open": {
+          "kind": "resume"
+         }
+        },
+        "far": {
+         "go": "here",
+         "said": "恢复后在 cc-monitor 里打开终端",
+         "open": {
+          "kind": "resume"
+         }
+        }
        },
        "stop": {
         "can": "no",
@@ -1065,16 +1144,24 @@
         "can": "no",
         "why": "会话已结束"
        },
-       "attach": {
-        "can": "no",
-        "why": "会话已结束"
-       },
        "resume": {
         "can": "yes"
        },
-       "term": {
-        "can": "no",
-        "why": "会话已结束"
+       "terminal": {
+        "near": {
+         "go": "here",
+         "said": "恢复后在 cc-monitor 里打开终端",
+         "open": {
+          "kind": "resume"
+         }
+        },
+        "far": {
+         "go": "here",
+         "said": "恢复后在 cc-monitor 里打开终端",
+         "open": {
+          "kind": "resume"
+         }
+        }
        },
        "stop": {
         "can": "no",
@@ -1125,7 +1212,6 @@
       "count": 0,
       "hasLive": null,
       "starred": false,
-      "lastActivity": 0,
       "atText": null,
       "order": 0,
       "failed": "读不了",
@@ -1140,7 +1226,6 @@
       "count": 1,
       "hasLive": false,
       "starred": false,
-      "lastActivity": 900,
       "atText": "12:00",
       "order": 900,
       "failed": null,
@@ -1190,16 +1275,24 @@
         "can": "no",
         "why": "会话已结束"
        },
-       "attach": {
-        "can": "no",
-        "why": "会话已结束"
-       },
        "resume": {
         "can": "yes"
        },
-       "term": {
-        "can": "no",
-        "why": "会话已结束"
+       "terminal": {
+        "near": {
+         "go": "here",
+         "said": "恢复后在 cc-monitor 里打开终端",
+         "open": {
+          "kind": "resume"
+         }
+        },
+        "far": {
+         "go": "here",
+         "said": "恢复后在 cc-monitor 里打开终端",
+         "open": {
+          "kind": "resume"
+         }
+        }
        },
        "stop": {
         "can": "no",

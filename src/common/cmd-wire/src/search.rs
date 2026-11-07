@@ -53,7 +53,9 @@ pub struct SessionHits {
 pub struct SearchHit {
     /// 消息 uuid：打开查看器后据此滚动定位、高亮。
     pub uuid: String,
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    /// 那条记录的时刻（毫秒；后端写 `tsText` 用，不上线）。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub ts_ms: i64,
     /// `user` · `assistant` · `tool` · `report`。
     pub kind: String,

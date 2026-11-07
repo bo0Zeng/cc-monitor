@@ -495,7 +495,7 @@ async fn a_resident_that_is_not_running_is_ensured_then_attached() {
     {
         let mut a = f.attaches.lock().unwrap();
         a.push_back(Peer::Absent);
-        a.push_back(Peer::Absent); // ensure 之后头一回还没绑上口
+        a.push_back(Peer::Absent); // ensure 之后那一回还说没人在听 ⇒ 这一轮没成、照退避再来
         a.push_back(upp(MINE));
     }
     let (feed, _) = start(&f);
@@ -1330,10 +1330,10 @@ fn an_ensure_hop_that_drops_by_itself_is_a_connection_failure() {
     );
 }
 
-/// 中继一直说「没人在听」（ensure 说起了、却一直没绑上口）：至多试 [`RELAY_TRIES`] 回（隔 [`RELAY_WAIT`]），然后说「后端没在运行」、照退避再来；
-/// 中继说别的理由 ⇒ 不再等，当场说那一句。
+/// ensure 说起好了（那台等口绑好才回）、中继却还说「没人在听」：ensure 之后只再接一回，断在「后端没在运行」、不要人动手；
+/// 下一轮照退避下界再来 —— ensure 之后不另轮询。
 #[tokio::test(start_paused = true)]
-async fn a_relay_that_stays_absent_is_tried_a_capped_number_of_times() {
+async fn a_relay_still_absent_after_ensure_is_one_transient_failure() {
     let f = Arc::new(Fake::default());
     let (feed, _) = start(&f);
     until("断在「后端没在运行」", || {
@@ -1343,10 +1343,19 @@ async fn a_relay_that_stays_absent_is_tried_a_capped_number_of_times() {
     .await;
     assert_eq!(
         f.attach_at.lock().unwrap().len(),
-        1 + RELAY_TRIES as usize,
-        "先直接接一回，ensure 之后至多再接 RELAY_TRIES 回"
+        2,
+        "先直接接一回，ensure 之后只再接一回"
     );
     assert_eq!(f.ensured.load(Ordering::SeqCst), 1);
+    until("退避之后下一轮", || {
+        f.attach_at.lock().unwrap().len() >= 3
+    })
+    .await;
+    assert_eq!(
+        gaps_of(&f)[..2],
+        [0, RECONNECT_MIN.as_secs()],
+        "ensure 之后当场接那一回；没接上 ⇒ 隔退避下界再来"
+    );
 }
 
 /// 隔一段一段的时刻（秒，虚拟时钟）。

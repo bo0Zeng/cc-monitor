@@ -19,9 +19,9 @@ pub(crate) const SAY_SINCE: u32 = 2;
 /// 托管进程从这一版起认 `interrupt`（回 `interrupted`）：低于它 ⇒ 不说、照实报旧版。
 pub(crate) const INTERRUPT_SINCE: u32 = 3;
 /// 一帧最长（种 ＋ 载荷）。整屏一帧最大也就几百 KB；超过它 ⇒ 不是我们的对端，断线。
-pub(crate) const MAX_FRAME: relay_route_core::Cap = relay_route_core::Cap {
+pub(crate) const MAX_FRAME: cap_core::Cap = cap_core::Cap {
     bytes: 16 * 1024 * 1024,
-    over: relay_route_core::Over::Reject,
+    over: cap_core::Over::Reject,
 };
 
 pub(crate) const KIND_CTL: u8 = 0;
@@ -138,8 +138,7 @@ pub enum Ctl {
     End,
     /// 这一端要走了（断开，会话照跑）。
     Bye,
-    /// 往会话说一句（只后端发：会话输入队投递那一下）：不必持有输入，照写进伪终端、不换持有者；
-    /// 持有者那一端自上次回车以来敲了字 ⇒ 不写（回 `said {pending: true}`），不把这一句和人打到一半的字搅在一起。
+    /// 往会话说一句（只后端发：会话输入队投递那一下）：不必持有输入，照写进伪终端、不换持有者。回 `said`。
     Say { text: String },
     /// 中断这一轮（只后端发：会话 ■）：往伪终端写一个 ESC；不看持有者、不看半句、不换持有者。回 `interrupted`。
     Interrupt,
@@ -179,8 +178,8 @@ pub enum Ctl {
     },
     /// 回 `clients`。
     ClientsAre { clients: Vec<ClientRow> },
-    /// 回 `say`：`pending` ＝ 持有者输入行里有没交的字、这一句没写；否则写进去了。
-    Said { pending: bool },
+    /// 回 `say`：写进去了。
+    Said,
     /// 回 `interrupt`：ESC 写进去了。
     Interrupted,
     /// 子进程退了（之后托管进程收尾退出）。

@@ -72,7 +72,7 @@ private fun hopHost(
     target: Host,
 ): Host {
     val hop = h ?: throw JumpBroken(copyText("mobConnect.jump.missing"), target.id)
-    if (hop.id != target.id && hop.authRef == null && hop.passwordEnc == null) {
+    if (hop.id != target.id && hop.login() == null) {
         throw JumpBroken(copyText("mobConnect.jump.noAuth", "label" to hop.label), hop.id)
     }
     return hop
@@ -94,9 +94,22 @@ suspend fun resolveAuthMethod(
     }
 }
 
+/** 一台登哪一种（[login]）。 */
+enum class HostLogin { Key, Password }
+
 /**
- * 主机认证分派的唯一来源，终端和文件屏都走它：有密码（`passwordEnc`）先用密码，
- * 否则按身份（`authRef`，或本次连接临时选的 [pendingIdentityId]）走 [resolveAuthMethod]。
+ * 一台登哪一种只判这一处：记着钥匙（`authRef`）先用钥匙；没有才用存的密码（`passwordEnc`）；都没有 ⇒ `null`（连接时临时选）。
+ * 编辑页存时两者互斥；只有机器条上［换成密钥］那一下两者并存（密码留着给撤销）。认证分派与编辑页起手都照它。
+ */
+fun Host.login(): HostLogin? =
+    when {
+        authRef != null -> HostLogin.Key
+        passwordEnc != null -> HostLogin.Password
+        else -> null
+    }
+
+/**
+ * 主机认证分派的唯一来源，终端和文件屏都走它：照 [login]；说不出 ⇒ 本次连接临时选的 [pendingIdentityId]。
  */
 suspend fun resolveHostAuth(
     host: Host,
@@ -104,7 +117,11 @@ suspend fun resolveHostAuth(
     identityRepo: IdentityRepository,
     hostRepo: HostRepository,
 ): AuthMethod {
-    hostRepo.password(host)?.let { return AuthMethod.Password(it) }
-    val ref = host.authRef ?: pendingIdentityId ?: error(copyText("mobConnect.host.noAuth"))
+    when (host.login()) {
+        HostLogin.Key -> return resolveAuthMethod(requireNotNull(host.authRef), identityRepo)
+        HostLogin.Password -> hostRepo.password(host)?.let { return AuthMethod.Password(it) }
+        null -> Unit
+    }
+    val ref = pendingIdentityId ?: error(copyText("mobConnect.host.noAuth"))
     return resolveAuthMethod(ref, identityRepo)
 }

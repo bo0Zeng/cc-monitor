@@ -80,8 +80,6 @@ function bucketOf(n: number): string {
 function freshCtx(): RenderContext {
   return {
     parentPath: "/tmp/scale2/session.jsonl",
-    // 语料是 claude 会话：卡头那一家的短名（会话是哪一家由宿主交进来）。
-    speaker: "Claude",
     origin: LOCAL,
     toolUseNames: new Map(),
     toolUseElements: new Map(),

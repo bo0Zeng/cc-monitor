@@ -1,19 +1,13 @@
 // 状态栏「当前账号」：有当前会话时画本会话那个号，没有 ⇒ 本机的默认号；点了一律开账号面板（`acct-panel.ts`）。
 //
 // 有当前会话 ⇒ 照会话那台写好的那一份（`session-account`，`appStore.sessionAccount`）画，这里不判、不比、不合；
-// 没有会话 ⇒ 本机的默认号。
-// 「新会话默认」下拉（面板底栏 · 命令面板 · 快捷键开它）：点选账号只改那台的默认账号（非破坏），已有会话不受影响。
-// 每一行的徽章带上「这个号走不走 apikey 端点改写」的三态。
-import { accountLabel } from "./acct-words";
-import { deriveUi, defaultAccount, accountColorsActive, type AccountsState, type Account } from "./accounts";
+// 没有会话 ⇒ 本机的默认号。按钮上没有下拉：「新会话默认」只在那台的账号设置里改。
+import { deriveUi, defaultAccount, accountColorsActive, type AccountsState } from "./accounts";
 import { fetchAccounts } from "./account-reads";
-import { accountsSetDefault } from "./account-ops";
 import { accountAvatarEl } from "./account-color";
-import { failToast } from "./kit/toast";
 import { LOCAL, type Machine } from "./ipc/origin";
 import { copyText } from "./copy-table";
-import { appStore, quotaReadOf } from "./app-store";
-import { closeMenu, menuAnchoredOn, openMenu, type MenuItem } from "./kit/menu";
+import { appStore } from "./app-store";
 import { attachTooltip } from "./kit/tooltip";
 import { icon } from "./kit/icon";
 import { acctAvatar, hoverTable } from "./acct-dom";
@@ -45,12 +39,8 @@ export function chipLabel(state: AccountsState | null): string {
 // ------------------------------------------------------------ chip 组件
 
 export interface AccountChipDeps {
-  /** 打开设置窗口的账号组。 */
-  openSettings: () => void;
   /** 点按钮：开 / 关「账号」面板（没有当前会话 ⇒ `sid` 为 `null`、那台是本机）。 */
   togglePanel?: (sid: string | null, origin: Machine) => void;
-  /** 切完当前账号后回调：让 main.ts 立刻重问那几台的默认号（徽章「不一致」照它比）。 */
-  onDefaultChanged?: (origin: Machine) => void;
 }
 
 export class AccountChip {
@@ -217,135 +207,5 @@ export class AccountChip {
     const cur = defaultAccount(st);
     this.iconEl.replaceChildren(cur && accountColorsActive(st) ? accountAvatarEl(cur.name, { origin: st.origin }) : icon("account", "compact"));
     this.element.style.display = "";
-  }
-
-  /** 给快捷键用的入口：chip 隐藏时合成 `click()` 照样派发，会开出一个飘到视口外、看不见却吞点击的菜单 ⇒ 这里显式挡住。 */
-  async openMenu(): Promise<void> {
-    if (this.element.style.display === "none") return;
-    await this.toggleMenu();
-  }
-
-  /**
-   * 「新会话默认」那个下拉锚到别处（账号面板底栏）：那台是 chip 绑的这台 ⇒ 同一份；别的台 ⇒ 现取那台的账号清单。
-   */
-  async openDefaultMenu(anchor: HTMLElement, origin: Machine): Promise<void> {
-    if (origin !== this.origin) await fetchAccounts(origin);
-    await this.toggleMenu(anchor, origin);
-  }
-
-  /** 那台的新会话默认是哪个号（面板底栏那颗按钮上的字）；store 里还没有那台 ⇒ 现取一次（取回来面板随 store 重画）、这一次 `null`。 */
-  defaultOf(origin: Machine): string | null {
-    if (!appStore.accounts.get().has(origin)) {
-      void fetchAccounts(origin);
-      return null;
-    }
-    const st = appStore.accounts.get().get(origin) ?? null;
-    return st && deriveUi(st).kind === "ready" ? (defaultAccount(st)?.name ?? null) : null;
-  }
-
-  private async toggleMenu(anchor: HTMLElement = this.element, origin: Machine = this.origin): Promise<void> {
-    if (menuAnchoredOn(anchor)) {
-      closeMenu();
-      return;
-    }
-    // 门问「有没有状态」（本机那一档没有远端但有账号）。与 [`snapshotReady`] 同源（`accountPickerState()`），别再分开写。
-    const st = origin === this.origin ? this.accountPickerState() : (appStore.accounts.get().get(origin) ?? null);
-    if (!st) return;
-    const ui = deriveUi(st);
-    const items: MenuItem[] = [];
-    if (ui.kind !== "ready") {
-      // 未启用 / 需更新：只给一条「去设置 / 管理」。
-      const info =
-        ui.kind === "needs-update"
-          ? ui.reason
-          : ui.kind === "query-failed"
-            ? copyText("accountChip.menu.queryFailed", { reason: ui.reason })
-            : copyText("accountChip.menu.notEnabled");
-      items.push({ label: info, enabled: false }, { label: copyText("accountChip.menu.manageDeploy"), onClick: () => this.deps.openSettings() });
-    } else {
-      const def = defaultAccount(st);
-      items.push({ label: copyText("acct.foot.default"), enabled: false });
-      for (const a of ui.accounts) items.push(this.accountItem(a, def?.name === a.name, origin));
-      items.push(
-        { label: "", divider: true },
-        { label: copyText("acct.menu.manage"), onClick: () => this.deps.openSettings() },
-        {
-          label: copyText("accountChip.menu.refresh"),
-          onClick: () => void this.refresh(),
-        },
-      );
-    }
-    openMenu({ el: anchor, align: "end" }, items, { label: copyText("beProfile.slot.account") });
-  }
-
-  /**
-   * 一个账号那一项：当前的打勾、头像、邮箱 ＋ 徽章（那台后端写好的 `badge`，`accounts_query::badge_of`）；
-   * 每一项带上「走不走 apikey 端点改写」的三态（问不到 routing 时不表态）。
-   */
-  private accountItem(a: Account, isCurrent: boolean, origin: Machine): MenuItem {
-    const selectable = a.selectable;
-    const badge = a.badge;
-    // 用量（`5h 63%` · 用满 `5h ✕ ↻19:00` · 被拒 `5h 58% · 被拒 ↻19:00` · `按量`）：那台额度账上有这个号才写；没有 ⇒ 照旧写登录态。
-    const led = quotaReadOf(origin)?.accounts.find((x) => x.account === a.name);
-    const u = led && badge.warn !== true ? led.usage : null;
-    const usage = u ? u.text : null;
-    return {
-      label: accountLabel(a.name),
-      checked: isCurrent,
-      avatar: accountAvatarEl(a.name, { size: 16, origin }),
-      note: a.email || undefined,
-      detail: usage ?? badge.text,
-      detailTone: (u && u.tone !== "plain") || badge.warn ? "warn" : undefined,
-      title: badge.title,
-      enabled: selectable,
-      onClick: selectable && !isCurrent ? () => void this.selectDefault(a, origin) : undefined,
-    };
-  }
-
-  /**
-   * 「这个 chip 现在有没有一份可以列出来的账号」只许有一份判断：[`toggleMenu`] 与 [`snapshotReady`] 都经这里，
-   * 否则会出现 chip 菜单里能切号、Ctrl+K 命令面板却拿到 `null` 的两个答案。
-   * 不管 ready 不 ready（调用方各自按需判）；回状态而不回 `boolean`，免得调用方再各自判一次 `!this.state`。
-   */
-  private accountPickerState(): AccountsState | null {
-    return this.state;
-  }
-
-  /**
-   * 同步快照当前 ready 账号（供 Ctrl+K 命令同步读）；非 ready ⇒ null。门与 [`toggleMenu`] 同源（[`accountPickerState`]）。
-   * 快照来自本机那一半时 `origin` 是 `LOCAL`（消费方不读它，留着让人看得出是哪一半）。
-   */
-  snapshotReady(): { origin: Machine; accounts: Account[]; defaultName: string | null } | null {
-    const st = this.accountPickerState();
-    if (!st) return null;
-    const ui = deriveUi(st);
-    if (ui.kind !== "ready") return null;
-    return { origin: this.origin, accounts: ui.accounts, defaultName: defaultAccount(st)?.name ?? null };
-  }
-
-  /** 按名字切默认账号（供 Ctrl+K 命令；找不到/不可选则忽略）。 */
-  async applyDefaultByName(name: string): Promise<void> {
-    const snap = this.snapshotReady();
-    const a = snap?.accounts.find((x) => x.name === name);
-    if (a?.selectable) await this.selectDefault(a);
-  }
-
-  private async selectDefault(a: Account, origin: Machine = this.origin): Promise<void> {
-    this.closeMenu();
-    try {
-      await accountsSetDefault(origin, a.name);
-      // 默认账号住那台的账号库清单：重问那一台。
-      if (origin === this.origin) await this.refresh();
-      else await fetchAccounts(origin);
-      // 立刻重问那一台的默认号（否则「对齐」会把会话打回刚被切走的旧账号）。
-      this.deps.onDefaultChanged?.(origin);
-      // 选即生效、不另报：下拉合上、按钮上的字就是结果。
-    } catch (e) {
-      failToast(copyText("accountChip.selectDefault.failed"), e, { level: "error" });
-    }
-  }
-
-  private closeMenu(): void {
-    closeMenu();
   }
 }

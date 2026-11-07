@@ -25,7 +25,6 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -45,7 +44,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.link.Busy
 import com.ccmonitor.mobile.core.claude.link.Deploying
 import com.ccmonitor.mobile.core.claude.link.ListSort
 import com.ccmonitor.mobile.core.claude.link.Toned
@@ -57,24 +55,25 @@ import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
+import com.ccmonitor.mobile.core.wire.gen.MachineFix
+import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
 import com.ccmonitor.mobile.core.wire.gen.SearchHit
 import com.ccmonitor.mobile.core.wire.gen.SessionDot
 import com.ccmonitor.mobile.core.wire.gen.Tone
-import com.ccmonitor.mobile.ui.common.BusyLine
+import com.ccmonitor.mobile.ui.common.BarLook
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
-import com.ccmonitor.mobile.ui.common.DashedBar
 import com.ccmonitor.mobile.ui.common.EditHostButton
+import com.ccmonitor.mobile.ui.common.FixActs
+import com.ccmonitor.mobile.ui.common.MachineBarView
 import com.ccmonitor.mobile.ui.common.STRING_SET_SAVER
 import com.ccmonitor.mobile.ui.common.StatusDot
-import com.ccmonitor.mobile.ui.common.deployLabel
+import com.ccmonitor.mobile.ui.common.fixAction
+import com.ccmonitor.mobile.ui.common.rememberKeySwitch
 
 /** 屏上几处的测试标签。 */
 object ChatsTags {
     const val LIST = "chats-list"
     const val EMPTY = "chats-empty"
-    const val PROBLEM = "chats-problem"
-    const val DOWN = "chats-down"
-    const val DEPLOY = "chats-deploy"
     const val DEPLOYED = "chats-deployed"
     const val HIDDEN = "chats-hidden"
     const val SHOW_HIDDEN = "chats-show-hidden"
@@ -120,7 +119,7 @@ fun ChatsScreen(
     var open by rememberSaveable(stateSaver = STRING_SET_SAVER) { mutableStateOf(emptySet<String>()) }
     LazyColumn(modifier.fillMaxSize().testTag(ChatsTags.LIST), state = listState) {
         item { Chips(ui, act.filters) }
-        items(ui.bars, key = { "bar-${it.hostId}" }) { HostBarView(it, act) }
+        items(ui.bars, key = { "bar-${it.hostId}" }) { HostBarRow(it, act) }
         items(ui.deploying, key = { "deploying-${it.hostId}" }) { p ->
             when (val d = p.deploying) {
                 is Deploying.Done -> Text(d.text, style = monoSmall, modifier = Modifier.padding(16.dp).testTag(ChatsTags.DEPLOYED))
@@ -493,35 +492,27 @@ internal fun MachineTag(name: String) {
     )
 }
 
-/** 一台顶上那一条，样子照语气：忙 ⇒ 那一句（＋ 进度条）；离线 ⇒ 虚线条 ＋［重试］（重接那台）；警示 ⇒ 琥珀那一句；故障 ⇒ 红条；后两样带［安装］/［更新］·［重试］·［复制详情］。 */
+/** 一台顶上那一条：机器条那一个组件画（[MachineBarView]）；跳板坏了（改哪一台能修好）⇒ 条下再给［编辑］。 */
 @Composable
-private fun HostBarView(
+private fun HostBarRow(
     b: HostBar,
     act: ChatsActions,
 ) {
-    if (b.tone == Tone.BUSY) {
-        Column(Modifier.fillMaxWidth().padding(16.dp).testTag(ChatsTags.PROBLEM)) { BusyLine(Busy(b.problem.text, b.progress)) }
-        return
-    }
-    if (b.tone == Tone.OFFLINE) {
-        DashedBar(b.problem.text, copyText("front.act.retry"), { act.retry(b) }, Modifier.padding(horizontal = 16.dp, vertical = 4.dp).testTag(ChatsTags.DOWN))
-        Box(Modifier.padding(horizontal = 16.dp)) { EditHostButton(b.edit, act.editHost) }
-        return
-    }
-    Column(Modifier.fillMaxWidth().padding(16.dp).testTag(ChatsTags.PROBLEM)) {
-        if (b.tone == Tone.WARN || b.tone == Tone.NEED) {
-            Text(b.problem.text, style = MaterialTheme.typography.bodyMedium, color = LocalAppTokens.current.warn)
-        } else {
-            ErrorLine(b.problem.text)
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            b.fix?.let { fix ->
-                Button(onClick = { act.deploy(b.hostId) }, modifier = Modifier.testTag(ChatsTags.DEPLOY)) { Text(deployLabel(fix)) }
-            }
-            SecondaryButton(onClick = { act.retry(b) }) { Text(copyText("front.act.retry")) }
-            CopyDetailButton(b.problem.text, b.problem.detail)
-        }
-    }
+    val look = barLook(b)
+    val useKey = rememberKeySwitch(b.hostId)
+    val acts = FixActs({ act.retry(b) }, { act.deploy(b.hostId) }, { act.editHost(b.hostId) }, useKey)
+    MachineBarView(look, look.fix?.fix?.let { fixAction(it, acts) })
+    if (b.edit != null) Box(Modifier.padding(horizontal = 16.dp)) { EditHostButton(b.edit, act.editHost) }
+}
+
+/**
+ * 顶条 ⇒ 机器条那一份样子（同一个组件画）：按钮是成品点名的那一颗（装一次会好 ⇒ ［安装］/［更新］）；
+ * 没点名、又不在忙 ⇒ ［重试］（手机这一侧那几样——SSH 那层接不上 · 清单读不出——也照它）。
+ */
+internal fun barLook(b: HostBar): BarLook {
+    val retry = MachineFixButton(MachineFix.RETRY, copyText("front.act.retry"))
+    val fix = b.fix ?: retry.takeIf { b.tone != Tone.BUSY }
+    return BarLook(b.problem.text, b.tone, fix, b.progress, b.problem.detail)
 }
 
 @Composable

@@ -60,7 +60,7 @@ const NOW = Date.parse("2026-10-14T12:00:00Z");
 const BG: SessionHidden = { by: "bg", said: "后端那一句·分身" };
 const SELF: SessionHidden = { by: "self", said: "后端那一句·单个" };
 const waiting = { face: liveFace("needs_you"), line: { for: "needs_you" as const, text: "", clock: null, peek: null } };
-const approve = (): Needs => ({ kind: "approve", tool: "Bash", call: "toolu_b", what: "占位命令", sinceMs: NOW - 60_000, text: copyText("beSession.needs.approve"), head: "核心·等批准", headCode: null, tone: "need", rank: 1, waitedMs: 60_000, waitedText: "1m", ask: null, manualText: null, receivedAt: NOW });
+const approve = (): Needs => ({ kind: "approve", tool: "Bash", call: "toolu_b", what: "占位命令", text: copyText("beSession.needs.approve"), head: "核心·等批准", headCode: null, tone: "need", rank: 1, waitedMs: 60_000, ask: null, manualText: null, receivedAt: NOW });
 
 function tab(sid: string, over: Partial<Tab> = {}): Tab {
   return {
@@ -103,8 +103,6 @@ function bar(tabs: Tab[], prefs: Partial<TabBarPrefs> = {}) {
   const host = {
     refreshTabBar: vi.fn(),
     closeEndedIn: vi.fn(),
-    openTabCwd: vi.fn().mockResolvedValue(undefined),
-    bringTerminalToFront: vi.fn().mockResolvedValue(undefined),
     closeTab: vi.fn(),
     switchTo: vi.fn(),
     answerAt: vi.fn(),
@@ -117,7 +115,6 @@ function bar(tabs: Tab[], prefs: Partial<TabBarPrefs> = {}) {
     openMenu: vi.fn(),
     toggleSelect: vi.fn(),
     openMenuAt: vi.fn(),
-    rereadAll: vi.fn().mockResolvedValue(undefined),
     fixMachine: vi.fn(),
   } satisfies TabBarViewHost;
   const el = document.createElement("div");
@@ -379,8 +376,7 @@ describe("菜单：右键两项 · 批量两项", () => {
       hide: vi.fn(),
       unhide: vi.fn(),
       openCwd: vi.fn(),
-      front: vi.fn(),
-      viewTerminal: vi.fn(),
+      terminal: vi.fn(),
     }) as never;
   const labels = (): string[] => [...document.body.querySelectorAll("[role^=menuitem] [data-part=label]")].map((x) => x.textContent ?? "");
   const press = (label: string): void => {
@@ -439,7 +435,7 @@ describe("会话头：「由 X 启动」「子会话 N」读会话事实那两�
     const parent = tab("p");
     const kid = tab("k1");
     const t = tab("a", { hidden: SELF, lineage: { startedBy: { sid: "p", title: "主·名", face: LIVE_FACE, hidden: null }, children: [{ sid: "k1", title: "子·一", face: LIVE_FACE, hidden: BG }, { sid: "gone", title: "子·二", face: ENDED_FACE, hidden: null }], startedByText: "BY-LINE", childrenText: "KIDS-LINE" } });
-    const host = { active: () => t, viewTerminal: vi.fn(), openCwd: vi.fn(), front: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), attach: vi.fn(), reconnect: vi.fn(), planMark: () => null, menuItem: () => null, displayItems: () => [], tabOf: (sid: string) => (sid === "p" ? parent : sid === "k1" ? kid : null), switchTo: vi.fn(), switching: NO_SWITCHING };
+    const host = { active: () => t, openCwd: vi.fn(), terminal: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), reconnect: vi.fn(), planMark: () => null, menuItem: () => null, displayItems: () => [], tabOf: (sid: string) => (sid === "p" ? parent : sid === "k1" ? kid : null), switchTo: vi.fn(), switching: NO_SWITCHING };
     const h = new SessionHead(host);
     document.body.appendChild(h.el);
     h.render(NOW);
@@ -459,7 +455,7 @@ describe("会话头：「由 X 启动」「子会话 N」读会话事实那两�
 
   it("没有血缘、不隐藏 ⇒ 一颗都不出", () => {
     const t = tab("a");
-    const h = new SessionHead({ active: () => t, viewTerminal: vi.fn(), openCwd: vi.fn(), front: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), attach: vi.fn(), planMark: () => null, menuItem: () => null, displayItems: () => [], tabOf: () => null, switchTo: vi.fn(), switching: NO_SWITCHING });
+    const h = new SessionHead({ active: () => t, openCwd: vi.fn(), terminal: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), planMark: () => null, menuItem: () => null, displayItems: () => [], tabOf: () => null, switchTo: vi.fn(), switching: NO_SWITCHING });
     h.render(NOW);
     expect(h.el.querySelectorAll("[data-head=hidden], [data-head=parent], [data-head=children]").length).toBe(0);
   });

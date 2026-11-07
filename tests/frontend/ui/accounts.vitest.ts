@@ -58,10 +58,8 @@ function state(p: Partial<AccountsState>, effectiveDefault: string | null = null
     notice: null,
     meta: {
       enabled: true,
-      acctsDir: "/h/.claude-alt",
       manifestPath: "/h/.claude-alt/accounts.json",
       updatedAt: null,
-      sharedStore: null,
       count: 0,
       error: null,
       effectiveDefault,
@@ -91,7 +89,7 @@ describe("deriveUi 降级矩阵（DESIGN §7）", () => {
   });
   it("未启用（enabled:false）→ not-enabled，带 manifest 路径", () => {
     const ui = deriveUi(
-      state({ meta: { enabled: false, acctsDir: "/h/.claude-alt", manifestPath: "/h/.claude-alt/accounts.json", updatedAt: null, sharedStore: null, count: 0, error: "manifest 不可读", effectiveDefault: null } }),
+      state({ meta: { enabled: false, manifestPath: "/h/.claude-alt/accounts.json", updatedAt: null, count: 0, error: "manifest 不可读", effectiveDefault: null } }),
     );
     expect(ui.kind).toBe("not-enabled");
     if (ui.kind === "not-enabled") {
@@ -193,7 +191,7 @@ describe("fetchAccounts：要用时问后端，界面不存一份", () => {
   });
   it("没问到 ⇒ 此刻的事实照旧是不可用（上次那份只问本机后端，见 `last-seen.vitest.ts`）", async () => {
     loadCfg.mockResolvedValue({});
-    const meta = { enabled: true, acctsDir: "/a", manifestPath: "/a/accounts.json", updatedAt: null, sharedStore: null, count: 1, error: null };
+    const meta = { enabled: true, manifestPath: "/a/accounts.json", updatedAt: null, count: 1, error: null };
     invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => ({ available: true, error: null, meta, accounts: [acct({})] }))));
     expect((await fetchAccounts("devbox")).available).toBe(true);
     invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => Promise.reject(copyText("beServer.words.cantConnect")))));

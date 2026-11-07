@@ -8,9 +8,9 @@ use std::net::{IpAddr, TcpStream, ToSocketAddrs};
 use crate::describe::{Kind, Proxy};
 
 /// 代理那一跳的回包头最长读这么多（超了当代理不对：这一跳报错，连接不建）。
-const HEAD_CAP: relay_route_core::Cap = relay_route_core::Cap {
+const HEAD_CAP: cap_core::Cap = cap_core::Cap {
     bytes: 16 * 1024,
-    over: relay_route_core::Over::Reject,
+    over: cap_core::Over::Reject,
 };
 
 pub(crate) fn handshake(tcp: &mut TcpStream, p: &Proxy, host: &str, port: u16) -> io::Result<()> {

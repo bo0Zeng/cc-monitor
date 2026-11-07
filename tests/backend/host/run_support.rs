@@ -55,6 +55,7 @@ fn spec_argv(id: &str, argv: Vec<String>) -> Spec {
         cwd: String::new(),
         agent: "fake".into(),
         client: "terminal".into(),
+        account: String::new(),
         argv,
     }
 }

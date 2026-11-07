@@ -38,7 +38,7 @@ function rig(opts: { hold?: boolean; put?: () => Promise<QueuePut>; tab?: Tab } 
     drop: async () => {},
     offline: () => false,
   };
-  const say = vi.fn(opts.put ?? (async (): Promise<QueuePut> => ({ outcome: "queued", seq: 1, place: 1, said: "q-1" })));
+  const say = vi.fn(opts.put ?? (async (): Promise<QueuePut> => ({ outcome: "queued", seq: 1, said: "q-1" })));
   const reads: ComposerReads = {
     io: () => io,
     read: async () => ({ items: [], sent: [] }),
@@ -46,7 +46,7 @@ function rig(opts: { hold?: boolean; put?: () => Promise<QueuePut>; tab?: Tab } 
     watch: () => () => {},
   };
   const outbox = new Outbox(say);
-  const page = new Composer({ active: () => opts.tab ?? TAB, resume: async () => true, front: () => {}, focusStream: () => {} }, outbox, reads);
+  const page = new Composer({ active: () => opts.tab ?? TAB, resume: async () => true, focusStream: () => {} }, outbox, reads);
   // 主区：消息流 ＋ 底下的输入框，整块交给输入框当拖放落点（同 main.ts）。
   const zone = document.createElement("div");
   const stream = document.createElement("div");
@@ -178,7 +178,7 @@ describe("输入框的附件", () => {
   });
 
   it("那台拒了（附件已不在）⇒ 不清字、chip 留着，照那台那一句说", async () => {
-    const refused = new ChanError({ layer: "peer", why: "refused", body: new TextEncoder().encode(JSON.stringify({ code: "attachment_gone", message: "gone-said" })) }, "gone-said");
+    const refused = new ChanError({ layer: "peer", why: "refused", body: new TextEncoder().encode(JSON.stringify({ code: "attachment_gone", said: "gone-said" })) }, "gone-said");
     const { page } = await opened({ put: async () => Promise.reject(refused) });
     const picker = q<HTMLInputElement>(page, 'input[type="file"]');
     Object.defineProperty(picker, "files", { value: [file("a.css")], configurable: true });
@@ -194,12 +194,12 @@ describe("输入框的附件", () => {
   });
 });
 
-/** ★ 说一句先成待发、没回执就留着：回执到之前那台断开 ⇒ 字留在框里「发送中」；那台连上 ⇒ 照同一个编号再交，回执到了才清框。 */
+/** ★ 说一句先成待发、没回执就留着：回执到之前那台断开 ⇒ 字留在框里、那一排写无应答；那台连上 ⇒ 照同一个编号再交，回执到了才清框。 */
 describe("说一句：回执到了才算送出", () => {
   it("回执前那台断开 ⇒ 待发里还在；连上后重交同一个编号；回执到了清框", async () => {
     const down = new ChanError({ layer: "hop", at: { idx: 0, tag: "wait" }, reach: "Sent", why: "Overrun" }, "no-answer");
     let up = false;
-    const { page, say, outbox } = await opened({ put: async () => (up ? { outcome: "seen", seq: 1, place: 1, said: "q-1" } : Promise.reject(down)) });
+    const { page, say, outbox } = await opened({ put: async () => (up ? { outcome: "seen", seq: 1, said: "q-1" } : Promise.reject(down)) });
     const picker = q<HTMLInputElement>(page, 'input[type="file"]');
     Object.defineProperty(picker, "files", { value: [file("a.css")], configurable: true });
     picker.dispatchEvent(new Event("change"));
@@ -209,7 +209,7 @@ describe("说一句：回执到了才算送出", () => {
     box.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
     await flush();
     expect(box.value).toBe("接着做");
-    expect(page.el.textContent).toContain("no-answer");
+    expect(page.el.textContent, "没回执 ⇒ 那一排那一行说无应答，框下不另起一行").toContain(copyText("beQueue.said.noAnswer"));
     up = true;
     // 待发那一份的重交挂在「那台接上」（主窗口把机器状态转给它）。
     outbox.machineUp("devbox");

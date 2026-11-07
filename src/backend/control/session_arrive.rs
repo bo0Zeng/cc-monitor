@@ -3,7 +3,8 @@
 //! 那一句照起在哪种宿主里分两套（tmux 会话 · 托管终端），只在 [`missed_in`] 这一处判。
 //! 认「是不是它」住观测层（`observe::arrivals`，认的是界面也收的那一帧 `session_added`），抓屏住 `terminals`，都由入口经 [`Host`] 交进来。
 
-pub(crate) use super::session_restart::MAX_WAIT_MS;
+/// 等报到的期限上界（兜坏输入）。
+pub(crate) const MAX_WAIT_MS: u64 = 3_600_000;
 use cmd_wire::frame::TerminalHost;
 use cmd_wire::session::{ArriveAsk, ArriveBy, ArriveEnd};
 use std::future::Future;

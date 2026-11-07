@@ -9,7 +9,7 @@ export type HistoryGroup = { key: string, agent: AgentKind, projectName: string,
 /**
  * 有在跑的 ⇒ `true`；有答不了的 ⇒ `null`；都没在跑 ⇒ `false`。
  */
-hasLive: boolean | null, starred: boolean, lastActivity: number, 
+hasLive: boolean | null, starred: boolean, 
 /**
  * `last_activity` 写好的字（同行尾那一格的写法）；读不了的那一组 ⇒ `null`。
  */

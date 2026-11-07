@@ -17,9 +17,9 @@ use crate::common::said::Said;
 /// 标题的上界（按字算）。
 pub(crate) const TITLE_MAX_CHARS: usize = 80;
 /// 正文的上界（按字节算）。
-pub(crate) const TEXT_MAX_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+pub(crate) const TEXT_MAX_BYTES: cap_core::Cap = cap_core::Cap {
     bytes: 1200,
-    over: relay_route_core::Over::Reject,
+    over: cap_core::Over::Reject,
 };
 /// `tier` 缺省。
 pub(crate) const TIER_DEFAULT: u8 = 2;

@@ -1,4 +1,4 @@
-//! 足迹那一族的五条小命令（`agent-home-check` · `first-run` · `chores-mark` · `last-seen-read` · `last-seen-write`）是界面读的线上形：
+//! 足迹那一族的四条小命令（`agent-home-check` · `chores-mark` · `last-seen-read` · `last-seen-write`）是界面读的线上形：
 //! 换形之前用旧代码跑出回包字节、钉成字面量；换形之后逐字节比（经 `serde_json::Value` 那一跳，同帧面：键按字典序）。临时目录换成 `<D>`。
 //! 没有重写开关：对不上就是线上形变了。
 
@@ -27,18 +27,6 @@ fn agent_home_check_keeps_its_wire_bytes() {
     std::fs::create_dir_all(crate::agents::records_root(&d).unwrap()).unwrap();
     assert_eq!(check(&d), r#"{"state":"ok"}"#);
     let _ = std::fs::remove_dir_all(&d);
-}
-
-#[test]
-fn first_run_keeps_its_wire_bytes() {
-    assert_eq!(
-        wire(&super::readiness::product(false, true, 2, true)),
-        r#"{"left":1,"skipped":true,"steps":[{"done":false,"id":"terminal","required":true},{"done":true,"id":"named","required":false},{"done":true,"id":"remote","required":false}]}"#
-    );
-    assert_eq!(
-        wire(&super::readiness::product(true, false, 0, false)),
-        r#"{"left":0,"skipped":false,"steps":[{"done":true,"id":"terminal","required":true},{"done":false,"id":"named","required":false},{"done":false,"id":"remote","required":false}]}"#
-    );
 }
 
 #[test]
@@ -87,7 +75,7 @@ fn last_seen_pair_keeps_its_wire_bytes() {
         wire(&super::last_seen::read_at(&file, &take(json!({ "origin": o })), &clock).unwrap())
     };
     assert_eq!(read("devbox"), r#"{"accounts":null,"data":null}"#);
-    let v = json!({"meta": {"enabled": true, "acctsDir": "/a", "manifestPath": "/a/m.json", "updatedAt": null, "sharedStore": null, "count": 0, "error": null, "unsupported": null, "nextDefault": null, "effectiveDefault": null}, "accounts": [], "notice": null});
+    let v = json!({"meta": {"enabled": true, "manifestPath": "/a/m.json", "updatedAt": null, "count": 0, "error": null, "unsupported": null, "nextDefault": null, "effectiveDefault": null}, "accounts": [], "notice": null});
     assert_eq!(
         wire(
             &ls(
@@ -112,7 +100,7 @@ fn last_seen_pair_keeps_its_wire_bytes() {
     );
     assert_eq!(
         read("devbox"),
-        r#"{"accounts":{"seen":{"atMs":1000,"said":"采样于 00:00"},"state":"kept","value":{"accounts":[],"meta":{"acctsDir":"/a","count":0,"effectiveDefault":null,"enabled":true,"error":null,"manifestPath":"/a/m.json","nextDefault":null,"sharedStore":null,"unsupported":null,"updatedAt":null},"notice":null}},"data":{"seen":{"atMs":2000,"said":"采样于 00:00"},"state":"kept","value":{"changedFiles":[],"counts":{"badge":0,"decide":0,"done":0,"install":0,"must":0,"open":0,"optional":0},"home":"/h","own":[],"rank":2,"tmux":null,"todo":[]}}}"#
+        r#"{"accounts":{"seen":{"atMs":1000,"said":"采样于 00:00"},"state":"kept","value":{"accounts":[],"meta":{"count":0,"effectiveDefault":null,"enabled":true,"error":null,"manifestPath":"/a/m.json","nextDefault":null,"unsupported":null,"updatedAt":null},"notice":null}},"data":{"seen":{"atMs":2000,"said":"采样于 00:00"},"state":"kept","value":{"changedFiles":[],"counts":{"badge":0,"decide":0,"done":0,"install":0,"must":0,"open":0,"optional":0},"home":"/h","own":[],"rank":2,"tmux":null,"todo":[]}}}"#
     );
     assert_eq!(
         wire(&ls(&own, &json!({"origin": "devbox", "forget": true}), 3000).unwrap()),

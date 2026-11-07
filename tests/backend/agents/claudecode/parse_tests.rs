@@ -37,12 +37,6 @@ fn parse_line_feeds_the_drift_ledger() {
         .expect("未知 type 没有记进漂移账");
     assert!(a.count >= 1);
     assert!(
-        a.first_sample
-            .as_deref()
-            .is_some_and(|s| s.contains("u-cc1-seam-probe")),
-        "样例没留住原文"
-    );
-    assert!(
         ledger_entry(DriftFace::KnownTypeParseFailed, "user").is_some(),
         "已知类型解析失败没有被记账（应当按 type 分组，好回答「是哪个类型变了」）"
     );

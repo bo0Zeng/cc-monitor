@@ -1,23 +1,21 @@
 //! **`quota-read` 的成品**（有类型的一份）：每个出过数的号一条 ＝ 那一条账的原数 ＋ 显示态 ＋ 写好的几行 · 「5h 那一格」· 开窗那一判；
 //! 没出过数的号一条 ＝ 种类 · 登录 · 写好的几行 · 开窗那一判；顶上 ＝ 读答三态 · 那一句 · 号名 / 位名表。
 //!
-//! 时刻字逐格按一把钟写（[`TextClock`]）：按看的那一台的时区（请求信封的 `tz`，缺了按 UTC），金样按 UTC。账上的原数（`reading` · `windowsSeen`）
-//! 照原样一格不改，时刻旁边的字（`…Text` · 还没到的 `…RelText`）由同一把钟逐格添（[`ReadingShown`] · [`WindowSeenShown`]）。
-//! 每号几行与开窗那一判照「不含这几格的那一截」的线上样子算（`faces/quota_rows.rs`，唯一的行模型）。
+//! 时刻字逐格按一把钟写（[`TextClock`]）：按看的那一台的时区（请求信封的 `tz`，缺了按 UTC），金样按 UTC。
+//! 账上的原数只在后端里用来写行（不上线）；每号几行与开窗那一判照显示态算（`faces/quota_rows.rs`，唯一的行模型）。
 
 use crate::accounts::quota::facts::Kind;
-use crate::accounts::quota::ledger::{ReadState, WindowSeen};
+use crate::accounts::quota::ledger::ReadState;
 use crate::accounts::quota::name_words::{account_text, is_candidate, names};
 use crate::accounts::quota::show::{QuotaShow, Stamp};
-use crate::agents::{kind_of_route, QuotaOverage, QuotaReading, QuotaWindow};
+use crate::agents::{kind_of_route, QuotaReading};
 use crate::common::cells::{Tone, Words};
 use crate::common::time::TextClock;
 use crate::faces::quota_rows;
 pub(crate) use cmd_wire::quota::{
-    AccountHead, Candidate, OverageShown, QuotaAccount, QuotaRead, QuotaUnseen, ReadingShown,
-    ResetsAt, UnseenHead, UnseenUsage, Verdict, WindowReadShown, WindowSeenShown,
+    AccountHead, Candidate, QuotaAccount, QuotaRead, QuotaUnseen, ResetsAt, UnseenHead,
+    UnseenUsage, Verdict,
 };
-use std::collections::BTreeMap;
 
 /// 「几点重置」那一格与旁边写好的字。
 fn resets_at(t: Option<u64>, clock: &TextClock) -> ResetsAt {
@@ -28,49 +26,12 @@ fn resets_at(t: Option<u64>, clock: &TextClock) -> ResetsAt {
     }
 }
 
-/// 账上那一条的额度快照：原数一格不改，时刻旁边按钟添字。
-pub(crate) fn reading_shown(r: &QuotaReading, clock: &TextClock) -> ReadingShown {
-    ReadingShown {
-        status: r.status,
-        refused: r.refused,
-        limiting: r.limiting.clone(),
-        resets_at: resets_at(r.resets_at, clock),
-        windows: r
-            .windows
-            .iter()
-            .map(|w: &QuotaWindow| WindowReadShown {
-                name: w.name.clone(),
-                used: w.used,
-                resets_at: resets_at(w.resets_at, clock),
-                warned_at: w.warned_at,
-            })
-            .collect(),
-        overage: r.overage.as_ref().map(|o: &QuotaOverage| OverageShown {
-            status: o.status,
-            resets_at: resets_at(o.resets_at, clock),
-            disabled: o.disabled.clone(),
-            in_use: o.in_use,
-        }),
-    }
-}
-
-fn window_seen_shown(w: &WindowSeen, clock: &TextClock) -> WindowSeenShown {
-    WindowSeenShown {
-        at: w.at,
-        at_text: clock.text(w.at),
-        at_rel_text: clock.rel(w.at),
-        from: w.from,
-    }
-}
-
 /// 出过数的一个号交进出口的样子（时刻字还没写）。`agent` 是账上记的路由名，出口换成线上的 kind。
 pub struct Seen {
     pub agent: String,
     pub account: String,
     pub seen_at: u64,
     pub reading: QuotaReading,
-    /// 账上没记 ⇒ 空。
-    pub windows_seen: BTreeMap<String, WindowSeen>,
     pub show: QuotaShow,
 }
 
@@ -90,21 +51,12 @@ pub(crate) struct Base {
 pub fn account_of(s: Seen, clock: &TextClock) -> QuotaAccount {
     let mut show = s.show;
     show.stamp(clock);
-    let reading = reading_shown(&s.reading, clock);
-    let windows_seen = (!s.windows_seen.is_empty()).then(|| {
-        s.windows_seen
-            .iter()
-            .map(|(k, w)| (k.clone(), window_seen_shown(w, clock)))
-            .collect()
-    });
     let head = AccountHead {
         agent: kind_of_route(&s.agent),
         account: s.account,
         seen_at: s.seen_at,
         seen_at_text: clock.text(s.seen_at),
-        seen_at_rel_text: clock.rel(s.seen_at),
-        reading,
-        windows_seen,
+        resets_at: resets_at(s.reading.resets_at, clock),
         show,
     };
     let five_hour = (head.show.kind != Kind::Api).then(|| {
@@ -263,7 +215,6 @@ pub(crate) fn specimen() -> QuotaRead {
             window: String::new(),
         }],
         login: LoginState::Ok,
-        sub_id: Some("s".into()),
         windows: vec![WindowShow {
             name: "five_hour".into(),
             key: Some("5h".into()),
@@ -272,8 +223,6 @@ pub(crate) fn specimen() -> QuotaRead {
             resets_at_text: None,
             resets_at_rel_text: None,
             seen_at: 2_000,
-            seen_at_text: None,
-            seen_at_rel_text: None,
             from: Source::Headers,
             tokens_per_pct: Some(25_000),
             per_pct_text: Some(Words("p".into())),
@@ -309,27 +258,19 @@ pub(crate) fn specimen() -> QuotaRead {
                 refused: false,
                 limiting: Some("five_hour".into()),
                 resets_at: Some(2_000),
-                windows: vec![QuotaWindow {
+                windows: vec![crate::agents::QuotaWindow {
                     name: "five_hour".into(),
                     used: Some(0.01),
                     resets_at: Some(2_000),
                     warned_at: Some(0.5),
                 }],
-                overage: Some(QuotaOverage {
+                overage: Some(crate::agents::QuotaOverage {
                     status: Some(QuotaStatus::Rejected),
                     resets_at: Some(2_000),
                     disabled: Some("off".into()),
                     in_use: false,
                 }),
             },
-            windows_seen: [(
-                "five_hour".to_string(),
-                WindowSeen {
-                    at: 2_000,
-                    from: Source::Headers,
-                },
-            )]
-            .into(),
             show,
         }],
         vec![UnseenHead {
@@ -337,7 +278,6 @@ pub(crate) fn specimen() -> QuotaRead {
             account: "b".into(),
             kind: Kind::Sub,
             login: LoginState::NeedsLogin,
-            sub_id: Some("s".into()),
             usage: UnseenUsage {
                 slot: Some("5h".into()),
                 window: Some(Words("5h".into())),

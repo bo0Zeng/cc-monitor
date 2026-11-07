@@ -148,7 +148,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "src/backend/platform/child_env.rs",
         "**跨 crate 字面量对拍**：宿主交给脱离常驻那条载体的 `CCM_BACKEND_STDERR_LOG` 与后端读的那一个，\
          两边各声明一份；漂了**不会报错** —— 后端当作「没交」、stderr 照旧进 `/dev/null`，设置页那一行永远是「还没有」。\
-         ⇒ 只能同时读两侧的源码才验得了（形状同下一行 `CCM_LISTEN_PORT` 那一条）。",
+         ⇒ 只能同时读两侧的源码才验得了（形状同常驻开关那一条）。",
     ),
     (
         "monitor→backend",

@@ -19,7 +19,7 @@ import { refSlots } from "../md-view";
 import type { Machine } from "../ipc/origin";
 import type { NewSessionSpec } from "../new-session";
 import { fetchCellView, PLAN_EDGE_KINDS, type PlanBlock, type PlanCell, type PlanEdgeKind, type PlanRef, type PlanSlice, type PlanWho } from "../plan-reads";
-import { ancestry, blockRoots, cellIndex, kindSlot, labelOf, refSpans } from "./plan-model";
+import { ancestry, blockRoots, cellIndex, fileTone, kindSlot, labelOf, refSpans } from "./plan-model";
 import { phaseBadge, setKindColor, STATUS_ICON } from "./plan-bits";
 import s from "./plan-cell.module.css";
 
@@ -308,7 +308,7 @@ export class CellDetail {
       p.append(icon("file", "compact"), document.createTextNode(f.path));
       const st = tr.insertCell();
       const b = span(f.checkText ?? copyText("acct.val.none"), s.cdFileState);
-      b.dataset.state = f.stateCode === "ok" ? "ok" : f.stateCode === "empty" ? "warn" : "bad";
+      b.dataset.state = fileTone(f.stateCode);
       st.appendChild(b);
       tr.insertCell().textContent = f.note ?? "";
       const also = tr.insertCell();
@@ -349,7 +349,7 @@ export class CellDetail {
       h.appendChild(span(copyText("plan.state.pending"), s.cdCounts));
       const src = p.source;
       if (src) h.appendChild(link(labelOf(slice, src), () => this.host.select(src)));
-      if (p.value) h.appendChild(span(p.op === "remove" ? copyText("plan.state.removeValue", { value: p.value }) : p.value));
+      if (p.said) h.appendChild(span(p.said));
       row.appendChild(h);
       if (p.blockedReason) row.appendChild(span(p.blockedReason, s.cdSetWhy));
       sec.appendChild(row);

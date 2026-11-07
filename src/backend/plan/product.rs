@@ -1,4 +1,4 @@
-//! 一份 `pb dump`（形状 6，pb 0.5）⇒ 界面直接排版的成品（契约 [`cmd_wire::plan`] 里的类型）。纯函数：不读盘、不起进程。
+//! 一份 `pb dump`（形状 8，pb 0.7.2）⇒ 界面直接排版的成品（契约 [`cmd_wire::plan`] 里的类型）。纯函数：不读盘、不起进程。
 //!
 //! 换个方向排、换个名字，再把界面要的数与先后算好（界面照画、不数不排）：
 //! - 每格「指着它的」边：把全片的边倒过来排；每份文件还挂在哪几格：把全片的文件声明倒过来查；
@@ -7,7 +7,10 @@
 //!   顶层进度 · 根节点底下签收了几格 · 没签收的格数 · 行尾原因短词照它数好、写好。本族不写死哪个值算「做完」；
 //! - 状态那一行字（同 `pb render`：值与笔数，` · ` 隔开）后端写好；
 //! - 「编号 标题」：每片一张 `labels`（编号 ⇒「编号 标题」），凡出现编号界面照它写，界面不拼；
-//! - 话里提到的格（`refs`）：pb 的 `start · end` 按 Unicode 码位，换成界面切字用的 UTF-16 下标（[`utf16_at`]）。
+//! - 话里提到的格（`refs`）：pb 的 `start · end` 按 Unicode 码位，换成界面切字用的 UTF-16 下标（[`utf16_at`]）；
+//! - 审图（`audits`）一份一项：agent 按的经 [`super::WhoPort`] 对到会话，审哪 · 人按的 · 结果 · 时刻那几句后端写好。
+//!
+//! 顶层与每一格的子照 pb 给的先后（pb 照 after 排好），这里不重排；阶段照领域表给的那几个。
 //!
 //! 格只收 permanent 那一种图的节点（排期的节点不进大纲、不画圈、不进倒排；它们的「编号 标题」照样进 `labels`）。
 //! 整份 dump 里不带 agent 看到的那一段（点到一格再 `pb dump --node` 取，见帧面 `plan-cell-view`）。
@@ -16,12 +19,12 @@
 use super::{Live, WhoPort, Whose};
 use crate::wire::SessionFaceExt as _;
 use cmd_wire::plan::{
-    PlanArchived, PlanBlock, PlanBlockSaid, PlanCell, PlanCellSaid, PlanCheck, PlanDomain,
-    PlanEdgeWords, PlanEdges, PlanFile, PlanFileState, PlanKids, PlanKind, PlanListSlice,
-    PlanListWorkspace, PlanLook, PlanPendingSet, PlanPhase, PlanProgress, PlanRead, PlanReadError,
-    PlanRed, PlanRef, PlanRefs, PlanSessionBlock, PlanSessionSaid, PlanSetsTo, PlanSlice,
-    PlanSliceSaid, PlanStale, PlanState, PlanStatusCode, PlanTakeover, PlanUnbuilt,
-    PlanUndecidable, PlanUnowned, PlanWho, PlanWhyCode, PlanWhyShort,
+    PlanArchived, PlanAudit, PlanAuditBy, PlanAuditSaid, PlanAuditStatus, PlanBlock, PlanBlockSaid,
+    PlanCell, PlanCellSaid, PlanCheck, PlanDomain, PlanEdgeWords, PlanEdges, PlanFile,
+    PlanFileState, PlanKids, PlanKind, PlanListSlice, PlanListWorkspace, PlanLook, PlanPendingSet,
+    PlanPhase, PlanProgress, PlanRead, PlanReadError, PlanRed, PlanRef, PlanRefs, PlanSessionBlock,
+    PlanSessionSaid, PlanSetsTo, PlanSlice, PlanSliceSaid, PlanStale, PlanState, PlanStatusCode,
+    PlanTakeover, PlanUnbuilt, PlanUndecidable, PlanUnowned, PlanWho, PlanWhyCode, PlanWhyShort,
 };
 use copy_core::copy_text;
 use serde_json::Value;
@@ -53,6 +56,7 @@ pub(crate) fn done_value(repo: &Value) -> Option<String> {
 pub(crate) fn file_code(s: Option<&str>) -> Option<PlanFileState> {
     match s? {
         "present" => Some(PlanFileState::Ok),
+        "uncommitted" => Some(PlanFileState::Uncommitted),
         "missing" => Some(PlanFileState::Missing),
         "empty" => Some(PlanFileState::Empty),
         "invalid" => Some(PlanFileState::Broken),
@@ -64,22 +68,43 @@ pub(crate) fn file_code(s: Option<&str>) -> Option<PlanFileState> {
 pub(crate) fn file_text(c: PlanFileState) -> String {
     match c {
         PlanFileState::Ok => copy_text("plan.fileState.ok", &[]),
+        PlanFileState::Uncommitted => copy_text("plan.fileState.uncommitted", &[]),
         PlanFileState::Missing => copy_text("plan.fileState.missing", &[]),
         PlanFileState::Empty => copy_text("plan.fileState.empty", &[]),
         PlanFileState::Broken => copy_text("plan.fileState.broken", &[]),
     }
 }
 
-/// 状态那一行字：值照给的先后，笔数大于一写在值后面，用文案表的分隔（同 `pb render`）；一个值都没有 ⇒ `None`。
+/// 一个状态值写成的字：pb 的协议值（`decided`）照文案表写；领域表自己登的值本来就是字，照原样。
+pub(crate) fn value_words(v: &str) -> String {
+    if v == DECIDED {
+        copy_text("bePlan.state.decided", &[])
+    } else {
+        v.to_string()
+    }
+}
+
+/// 待执行那一笔写成的字：值的字；去一笔 ⇒ `bePlan.state.removeValue`。没有值 ⇒ `None`。
+fn set_said(value: Option<&str>, op: &str) -> Option<String> {
+    let w = value_words(value?);
+    Some(if op == "remove" {
+        copy_text("bePlan.state.removeValue", &[("value", &w)])
+    } else {
+        w
+    })
+}
+
+/// 状态那一行字：值照给的先后（写成字，[`value_words`]），笔数大于一写在值后面，用文案表的分隔；一个值都没有 ⇒ `None`。
 pub(crate) fn state_line(state: &[PlanState]) -> Option<String> {
     (!state.is_empty()).then(|| {
         state
             .iter()
             .map(|x| {
+                let w = value_words(&x.value);
                 if x.count == 1 {
-                    x.value.clone()
+                    w
                 } else {
-                    format!("{} {}", x.value, x.count)
+                    format!("{w} {}", x.count)
                 }
             })
             .collect::<Vec<_>>()
@@ -264,10 +289,7 @@ fn kinds_of(v: &Value) -> Vec<PlanKind> {
 /// 阶段表（一片的 · 能选的那几档的，同一形）。
 fn phases_of(v: &Value) -> Vec<PlanPhase> {
     arr(v, "phases")
-        .map(|p| PlanPhase {
-            name: s(p, "name"),
-            does: s(p, "description"),
-        })
+        .map(|p| PlanPhase { name: s(p, "name") })
         .collect()
 }
 
@@ -425,6 +447,7 @@ fn empty_slice(sl: &Value, repo: Option<&str>) -> PlanSlice {
         labels: BTreeMap::new(),
         cells: Vec::new(),
         archived: Vec::new(),
+        audits: Vec::new(),
         needs: Vec::new(),
         need_count: 0,
         returned: None,
@@ -470,13 +493,18 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort) -> PlanSlice {
     let is_cell = |id: &str| kept_ids.iter().any(|k| k == id);
 
     out.pending_sets = arr(sl, "pending_sets")
-        .map(|p| PlanPendingSet {
-            source: s(p, "source"),
-            target: s(p, "target"),
-            value: s(p, "value"),
-            op: op_of(p),
-            blocked_reason: s(p, "blocked_reason"),
-            blocked_code: s(p, "blocked_code"),
+        .map(|p| {
+            let value = s(p, "value");
+            let op = op_of(p);
+            PlanPendingSet {
+                source: s(p, "source"),
+                target: s(p, "target"),
+                said: set_said(value.as_deref(), &op),
+                value,
+                op,
+                blocked_reason: s(p, "blocked_reason"),
+                blocked_code: s(p, "blocked_code"),
+            }
         })
         .collect();
 
@@ -745,6 +773,7 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort) -> PlanSlice {
             kind: s(a, "kind"),
         })
         .collect();
+    out.audits = arr(sl, "audits").map(|a| audit(a, who)).collect();
     out.labels = nodes
         .iter()
         .map(|c| (id_of(c), s(c, "title")))
@@ -756,6 +785,68 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort) -> PlanSlice {
         })
         .collect();
     out
+}
+
+/// 一份审图（pb 的 `audits[]`）。给人看的那几句先空着：[`write_said`] 照 `labels` 写，时刻由 [`with_time_texts`] 写。
+fn audit(a: &Value, who: WhoPort) -> PlanAudit {
+    let by = match a.get("by").and_then(Value::as_str) {
+        Some("person") => Some(PlanAuditBy::Person),
+        Some("agent") => Some(PlanAuditBy::Agent),
+        _ => None,
+    };
+    let status = match a.get("status").and_then(Value::as_str) {
+        Some("done") => Some(PlanAuditStatus::Done),
+        Some("failed") => Some(PlanAuditStatus::Failed),
+        Some("unfinished") => Some(PlanAuditStatus::Unfinished),
+        _ => None,
+    };
+    let n = |k: &str| a.get(k).and_then(Value::as_u64).map(n32);
+    PlanAudit {
+        file: s(a, "file").unwrap_or_default(),
+        who: match by {
+            Some(PlanAuditBy::Agent) => who_at(a, "who", who),
+            _ => None,
+        },
+        by,
+        started_at: s(a, "started_at"),
+        tree: s(a, "tree"),
+        due: n("due").unwrap_or(0),
+        nodes: strs(a.get("nodes")),
+        status,
+        failed_reason: s(a, "failed_reason").filter(|r| !r.is_empty()),
+        check: n("check").unwrap_or(0),
+        findings: n("findings"),
+        said: PlanAuditSaid::default(),
+    }
+}
+
+/// 一份审图那几句（时刻那一句不动：它由 [`with_time_texts`] 写）。
+fn audit_said(a: &PlanAudit, labels: &BTreeMap<String, String>) -> PlanAuditSaid {
+    let what = match a.tree.as_deref() {
+        Some(super::needs::TOP_BLOCK) => copy_text("plan.audit.whole", &[]),
+        Some(id) => {
+            let l = labels.get(id).cloned().unwrap_or_else(|| id.to_string());
+            copy_text("plan.audit.tree", &[("cell", &l)])
+        }
+        None => copy_text("plan.audit.changed", &[("n", &a.due.to_string())]),
+    };
+    let result = match a.status {
+        Some(PlanAuditStatus::Done) => copy_text(
+            "plan.audit.done",
+            &[("n", &a.findings.unwrap_or(0).to_string())],
+        ),
+        Some(PlanAuditStatus::Failed) => copy_text(
+            "plan.audit.failed",
+            &[("why", a.failed_reason.as_deref().unwrap_or_default())],
+        ),
+        Some(PlanAuditStatus::Unfinished) | None => copy_text("plan.audit.unfinished", &[]),
+    };
+    PlanAuditSaid {
+        what,
+        by: (a.by == Some(PlanAuditBy::Person)).then(|| copy_text("plan.audit.person", &[])),
+        result,
+        at: a.said.at.clone(),
+    }
 }
 
 /// `plan-list` 里一个工作区那一行（标过认可的成品 ⇒ 去掉格，只留切换与计数要的）。
@@ -809,6 +900,11 @@ pub fn with_time_texts(v: &mut PlanRead, now_ms: i64, tz: &crate::common::time::
         }
         if let Some(r) = &mut sl.returned {
             r.at_text = Some(text(ms(r.at)));
+        }
+        for a in &mut sl.audits {
+            a.said.at = a.started_at.as_deref().map(|iso| {
+                crate::common::time::parse_iso8601_ms(iso).map_or_else(|| iso.to_string(), text)
+            });
         }
         for c in &mut sl.cells {
             if let Some(r) = &mut c.returned {
@@ -901,6 +997,14 @@ fn write_said(v: &mut PlanRead) {
         let said = cell_said(sl, &sep);
         for (c, s) in sl.cells.iter_mut().zip(said) {
             c.said = s;
+        }
+        let audits: Vec<PlanAuditSaid> = sl
+            .audits
+            .iter()
+            .map(|a| audit_said(a, &sl.labels))
+            .collect();
+        for (a, s) in sl.audits.iter_mut().zip(audits) {
+            a.said = s;
         }
     }
     // 会话那一块的名 ＝ 那一块自己的名（同一句只写一处）。

@@ -194,14 +194,12 @@ pub fn reset_text(at: &Words, past: bool) -> Words {
 }
 
 impl Stamp for WindowShow {
-    /// 出口那一下：按钟写 `resets_at` · `seen_at` 旁边那几格。
+    /// 出口那一下：按钟写 `resets_at` 旁边那两格。
     fn stamp(&mut self, clock: &crate::common::time::TextClock) {
         if let Some(t) = self.resets_at {
             self.resets_at_text = Some(clock.text(t));
             self.resets_at_rel_text = clock.rel(t);
         }
-        self.seen_at_text = Some(clock.text(self.seen_at));
-        self.seen_at_rel_text = clock.rel(self.seen_at);
     }
 }
 
@@ -238,8 +236,6 @@ pub fn windows_of(
             WindowShow {
                 resets_at_text: None,
                 resets_at_rel_text: None,
-                seen_at_text: None,
-                seen_at_rel_text: None,
                 name: w.name.clone(),
                 key: key(&w.name),
                 pct: w.used.map(|_| pct.round().max(0.0) as u32),
@@ -296,12 +292,11 @@ fn pct_now(w: &crate::agents::QuotaWindow, now: u64) -> f64 {
     facts::used_now(w, now) * 100.0
 }
 
-/// 一个号除额度账之外的几格（种类 · 登录 · 订阅标识），由宿主读好交进来。
+/// 一个号除额度账之外的几格（种类 · 登录），由宿主读好交进来。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Facts {
     pub kind: Kind,
     pub login: LoginState,
-    pub sub_id: Option<String>,
 }
 
 fn slots_of(
@@ -347,7 +342,6 @@ pub fn show(
             limiting: None,
             slots: Vec::new(),
             login: facts.login,
-            sub_id: facts.sub_id,
             windows: Vec::new(),
             usage: usage_of(facts.kind, QuotaState::Unseen, None, &[], None),
         };
@@ -407,22 +401,8 @@ pub fn show(
         limiting,
         slots,
         login: facts.login,
-        sub_id: facts.sub_id,
         windows: Vec::new(),
     }
-}
-
-/// 同一订阅的稳定标识：账号身份加一个固定前缀做 SHA-256，取前 12 字节的十六进制。不加每台的盐 ⇒ 两台算出来相同；
-/// 账号身份是随机的 128 位 ⇒ 由它反推不出原值。
-pub fn sub_id_of(identity: &str) -> String {
-    let d = ring::digest::digest(
-        &ring::digest::SHA256,
-        format!("cc-monitor/subscription\0{identity}").as_bytes(),
-    );
-    d.as_ref()[..12]
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
 }
 
 #[cfg(test)]

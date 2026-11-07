@@ -28,7 +28,7 @@
 //! 买不到：
 //! - TS 不在这里：测试源里 `setTimeout` / `setInterval` 只许 0，由 eslint 拦（`eslint.config.js`，基线 0 由 `eslint-baseline` 数着）；
 //! - 期限藏进跨文件常量、`format!` 拼出来的，认不出（同文件里 `let` / `const` 绑的认得出）；藏进函数参数的只认 `…_ms` / `…_secs` 形参收整数字面量那一形（rs-ms-arg）；
-//! - 被测系统自己的期限（喂给被测代码的 `deadline: …`、`arrive_within_ms`、`connectTimeoutMs`）不是判据的期限，不在这几形里
+//! - 被测系统自己的期限（喂给被测代码的 `deadline: …`、`connectTimeoutMs`）不是判据的期限，不在这几形里
 //!   （喂给 `set_read_timeout` / `Instant::now() + …` 的算，那几处要么换成兜底的数、要么登记成「被测期限」）；
 //! - e2e 里带秒数参数的自家等待函数（`wait_line … 12`）只认得出函数体里那一圈，调用处的数认不出 —— 今天几份都改成了不收秒数；
 //! - 截图台架（`tests/shots/`）不在门禁里、不扫；只核 `run.mjs` 等页面起好的那个数是同一个（W1）。

@@ -11,10 +11,6 @@ export type QuotaWarm = { act: QuotaWarmAct, at?: number,
  */
 atText?: Words, 
 /**
- * `at` 距今。
- */
-atRelText?: Words, 
-/**
  * 为什么这样办（「5h 83% ↻14:20」「被拒（7d）↻10-12 09:00」「无采样 · 发一句才知道」…）。
  */
 text: Words, };

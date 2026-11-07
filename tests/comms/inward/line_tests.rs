@@ -1,6 +1,6 @@
 //! 带上限的异步读一行 · 读整份：超了回超限、不截断；超限之后内存不涨；超长那一行之后的流照读。
 use super::*;
-use relay_route_core::{Cap, Over};
+use cap_core::{Cap, Over};
 use tokio::io::BufReader;
 
 fn cap(bytes: u64) -> Cap {

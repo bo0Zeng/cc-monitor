@@ -18,9 +18,9 @@ use copy_core::copy_text;
 use copy_core::said::Said;
 
 /// 远端命令长度上限（防 IPC 侧异常输入；正常 resume 命令 <300 字节）。
-const MAX_REMOTE_CMD: relay_route_core::Cap = relay_route_core::Cap {
+const MAX_REMOTE_CMD: cap_core::Cap = cap_core::Cap {
     bytes: 4096,
-    over: relay_route_core::Over::Reject,
+    over: cap_core::Over::Reject,
 };
 
 // 这里原来一个只双写 ASCII `'` 的 PowerShell 引号器（本机数据目录带弯引号时握手前奏会断）：前奏整段搬进本机后端，

@@ -62,12 +62,12 @@
   cursor: pointer;
 }
 
-/* 顶栏「计划」：计划那一侧有需手动的 ⇒ 右上一颗琥珀点（`main.ts` 照 `PlanNeedsBook` 挂 `data-needs`）。 */
-.plan-trigger {
+/* 栏顶「更多去处 ⋯」：计划那一侧有需手动的 ⇒ 右上一颗琥珀点（`main.ts` 照 `PlanNeedsBook` 挂 `data-needs`）。 */
+.head-more-trigger {
   position: relative;
 }
 
-.plan-trigger[data-needs="true"]::after {
+.head-more-trigger[data-needs="true"]::after {
   position: absolute;
   top: 5px;
   right: 5px;
@@ -482,8 +482,6 @@
 }
 
 .tab-close,
-.tab-focus,
-.tab-cwd,
 .tab-more {
   display: inline-grid;
   place-items: center;
@@ -496,28 +494,14 @@
 }
 
 .tab-close:hover,
-.tab-focus:hover,
-.tab-cwd:hover,
 .tab-more:hover {
   background: var(--state-hover);
   color: var(--text);
 }
 
-/* × 只给已结束 / 记录已不在（其余由「更多」占那一格）；目录只给本机且知道目录的。↗ 一直在，做不了灰着（悬停说为什么）。 */
-.tab-focus[aria-disabled="true"] {
-  opacity: 0.4;
-  cursor: default;
-}
-
-.tab-focus[aria-disabled="true"]:hover {
-  background: none;
-  color: var(--text-2);
-}
-
+/* × 只给已结束 / 记录已不在（其余由「更多」占那一格）。 */
 .tab:not(.ended) .tab-close,
-.tab.ended .tab-more,
-.tab.remote .tab-cwd,
-.tab:not(.has-cwd) .tab-cwd {
+.tab.ended .tab-more {
   display: none;
 }
 
@@ -529,28 +513,6 @@
 @keyframes tab-enter {
   from {
     opacity: 0;
-  }
-}
-
-/* ↗ 在飞超过 300ms：图标换成转圈（不确定进度），完了收回。 */
-.tab-focus.in-flight {
-  position: relative;
-  color: transparent;
-}
-.tab-focus.in-flight::after {
-  content: "";
-  position: absolute;
-  inset: 4px;
-  box-sizing: border-box;
-  border: 2px solid var(--border-soft);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  animation: tab-focus-spin var(--dur-spin) linear infinite;
-}
-
-@keyframes tab-focus-spin {
-  to {
-    transform: rotate(360deg);
   }
 }
 
@@ -600,13 +562,6 @@
   background: var(--bg-2);
   color: var(--text);
   overflow-wrap: anywhere;
-}
-
-.tab-hover-foot {
-  margin-top: 8px;
-  padding-top: 6px;
-  border-top: 1px solid var(--border-soft);
-  color: var(--text-2);
 }
 
 /* === Tab 撕离拖拽（tear-off） === */
@@ -887,12 +842,6 @@
 
 .card-header .ts {
   font-family: var(--font-mono);
-}
-
-.card-header .model {
-  margin-left: auto;
-  font-family: var(--font-mono);
-  color: var(--text-faint);
 }
 
 /* 卡片正文：serif、稍大字号、editorial 风格 */
@@ -1279,7 +1228,7 @@
   font-size: var(--font-size-small);
 }
 
-/* 报错卡上去它的终端那两颗：只在所在消息流根上标了能用时出（标记由宿主按会话头那一道设）。 */
+/* 报错卡上去它的终端那一颗：只在所在消息流根上标了能用时出（标记由宿主按会话头那一道设）。 */
 .api-error-acts {
   margin-left: 8px;
 }
@@ -1288,8 +1237,7 @@
   display: none;
 }
 
-[data-can-front="1"] .api-error-acts > [data-act="front"],
-[data-can-attach="1"] .api-error-acts > [data-act="attach"] {
+[data-can-terminal="1"] .api-error-acts > [data-act="terminal"] {
   display: inline-flex;
 }
 

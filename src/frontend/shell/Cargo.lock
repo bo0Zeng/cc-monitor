@@ -748,6 +748,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "cap-core"
+version = "0.1.0"
+dependencies = [
+ "test-home",
+]
+
+[[package]]
 name = "cargo-platform"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -964,11 +971,11 @@ dependencies = [
 name = "comms-inward"
 version = "0.1.0"
 dependencies = [
+ "cap-core",
  "cmd-wire",
  "copy-core",
  "futures",
  "guard-core",
- "relay-route-core",
  "serde",
  "serde_json",
  "test-home",
@@ -980,6 +987,7 @@ dependencies = [
 name = "comms-outward"
 version = "0.1.0"
 dependencies = [
+ "cap-core",
  "copy-core",
  "guard-core",
  "relay-route-core",
@@ -1029,8 +1037,8 @@ dependencies = [
 name = "copy-core"
 version = "0.1.0"
 dependencies = [
+ "cap-core",
  "cmd-wire",
- "relay-route-core",
  "serde_json",
  "test-home",
 ]
@@ -2652,10 +2660,10 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 name = "host-core"
 version = "0.1.0"
 dependencies = [
+ "cap-core",
  "chrono",
  "iana-time-zone",
  "platform-core",
- "relay-route-core",
  "serde",
  "serde_json",
  "test-home",
@@ -3463,10 +3471,11 @@ dependencies = [
 
 [[package]]
 name = "monitor"
-version = "5.1.1"
+version = "5.1.2"
 dependencies = [
  "acct-core",
  "arboard",
+ "cap-core",
  "chunk-core",
  "cmd-wire",
  "comms-inward",
@@ -4175,6 +4184,7 @@ name = "own-chan"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "platform-core",
  "test-home",
  "tokio",
 ]
@@ -4927,6 +4937,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 name = "relay-route-core"
 version = "0.1.0"
 dependencies = [
+ "cap-core",
  "test-home",
 ]
 
@@ -4974,6 +4985,7 @@ dependencies = [
 name = "resident-client"
 version = "0.1.0"
 dependencies = [
+ "cap-core",
  "cmd-wire",
  "comms-inward",
  "copy-core",

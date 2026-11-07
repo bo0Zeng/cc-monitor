@@ -12,7 +12,6 @@
 //! - 问它的是别台的本机后端（`--resident-call`，`faces/session_window_face.rs`）；本机会话那一问在同一进程里走 [`here_by`]（连进程号一起交）。
 
 use crate::common::said::Said;
-use crate::platform::child::Deadline;
 use serde::{Deserialize, Serialize};
 
 use crate::platform::proc::{proc_env_var, EnvRead};
@@ -305,9 +304,6 @@ fn pane_ok(p: &str) -> bool {
         .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
 }
 
-/// `list-clients` 那一发的期限：界面等 `session-terminals` 的预算是 15 s，tmux 一发 5 s（同 watcher 探测 tmux 的期限）。
-const LIST_CLIENTS_WITHIN: Deadline = Deadline::secs(5);
-
 /// 问那个 socket：连着 `pane` 所在会话的客户端（pid, 最近动静）。tmux 起不来 / 报错 ⇒ `failed`。
 pub fn list_clients(socket: &str, pane: &str) -> Result<Vec<(u32, u64)>, Said> {
     #[expect(
@@ -319,7 +315,7 @@ pub fn list_clients(socket: &str, pane: &str) -> Result<Vec<(u32, u64)>, Said> {
         .args(["-S", socket, "list-clients", "-t", pane, "-F"])
         // 控制模式客户端（终端实时预览那个订阅者）整行留空 ⇒ 解析时丢掉：它没有终端窗口可切。
         .arg("#{?client_control_mode,,#{client_pid} #{client_activity}}")
-        .run(LIST_CLIENTS_WITHIN)
+        .run(crate::host::tmux::TMUX_WITHIN)
         .map_err(|e| e.into_cmd_err("failed", |e| format!("tmux: {e}")))?;
     if !out.status.success() {
         return Err(Said::new(

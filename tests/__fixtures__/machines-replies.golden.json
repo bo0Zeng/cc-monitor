@@ -1276,9 +1276,6 @@
       ],
       "refused": {
         "code": "element_gone",
-        "data": {
-          "ambiguous": false
-        },
         "said": "机器已改名或删除 · 未保存 · 关掉设置重开后再改"
       }
     },
@@ -2064,9 +2061,6 @@
       ],
       "refused": {
         "code": "element_gone",
-        "data": {
-          "ambiguous": true
-        },
         "said": "机器已改名或删除 · 未保存 · 关掉设置重开后再改"
       }
     },
@@ -2705,9 +2699,6 @@
       ],
       "refused": {
         "code": "element_gone",
-        "data": {
-          "ambiguous": true
-        },
         "said": "机器已改名或删除 · 未保存 · 关掉设置重开后再改"
       }
     },
@@ -2763,9 +2754,6 @@
       ],
       "refused": {
         "code": "element_gone",
-        "data": {
-          "ambiguous": false
-        },
         "said": "机器已改名或删除 · 未保存 · 关掉设置重开后再改"
       }
     },
@@ -2800,9 +2788,6 @@
       ],
       "refused": {
         "code": "element_gone",
-        "data": {
-          "ambiguous": false
-        },
         "said": "机器已改名或删除 · 未保存 · 关掉设置重开后再改"
       }
     },

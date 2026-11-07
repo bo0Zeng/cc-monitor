@@ -2153,19 +2153,29 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
     }
 
-    /// 假 gh：next 上那一趟是 run 1、main 上那一趟是 run 2，各自的结论由 `FAKE_NEXT` · `FAKE_MAIN` 给；没想到的调用退 9。
+    /// 假 gh：照假远端（`FAKE_ORIGIN`）上分支此刻指哪个提交答 run —— next 指着被问的提交才有 run 1、main 指着才有 run 2
+    /// （推之前问就是空的，同 GitHub：push 那一下才起 run）。结论由 `FAKE_NEXT` · `FAKE_MAIN` 给；
+    /// `FAKE_NEXT_OLD` 非空 = 推之前 next 已经是这个提交、run 1 是上一趟（结论就是它），`run rerun 1 --failed` 之后 run 1 换成第 2 次尝试、
+    /// 结论取 `FAKE_NEXT`（重跑记在 `FAKE_STATE/rerun`）。没想到的调用退 9。
     const FAKE_GH: &str = r#"#!/usr/bin/env bash
 a="$*"
+at() { git -C "$FAKE_ORIGIN" rev-parse -q --verify "refs/heads/$1" 2>/dev/null; }
+sha_of() { local p; for p in "$@"; do [ "$prev" = --commit ] && { echo "$p"; return; }; prev=$p; done; }
 case "$a" in
   "auth status") exit 0 ;;
-  run\ list*--branch\ next*) echo 1 ;;
-  run\ list*--branch\ main*) echo 2 ;;
+  run\ list*--branch\ next*) [ "$(at next)" = "$(sha_of "$@")" ] && echo 1; exit 0 ;;
+  run\ list*--branch\ main*) [ "$(at main)" = "$(sha_of "$@")" ] && echo 2; exit 0 ;;
+  "run rerun 1 --failed") : > "$FAKE_STATE/rerun"; exit 0 ;;
   run\ view\ *--log-failed*) echo "fake log" ;;
   run\ view\ *)
-    id=$3; c=$FAKE_NEXT; [ "$id" = 2 ] && c=$FAKE_MAIN
+    id=$3; c=$FAKE_NEXT; n=1
+    [ "$id" = 1 ] && [ -n "$FAKE_NEXT_OLD" ] && { if [ -e "$FAKE_STATE/rerun" ]; then n=2; else c=$FAKE_NEXT_OLD; fi; }
+    [ "$id" = 2 ] && c=$FAKE_MAIN
     case "$a" in
       *"--json url"*) echo "https://ci.invalid/$id" ;;
+      *"--json attempt"*) echo "$n" ;;
       *"--json status,conclusion,jobs"*) echo "completed $c 1/1" ;;
+      *"--json status,conclusion"*) echo "completed $c" ;;
       *"--json jobs"*) printf '%s\tbuild\thttps://ci.invalid/%s/job\n' "$c" "$id" ;;
       *"--json conclusion"*) echo "$c" ;;
       *) echo "fake gh: 没想到的调用 $a" >&2; exit 9 ;;
@@ -2246,8 +2256,13 @@ esac
 
     /// 在假远端（本地裸仓）上跑一趟 push-candidate：主工作树在 main 上，要推的分支（脚本认的 `w8/<名>`，名取 `x`）比 main 多一个提交；gh 是上面那个假的。
     /// 返回（退出码是否 0 · 输出 · 跑完后 origin 上 main 的提交 · 要推的那个提交）。
+    /// 要推的提交上记着 `trust-ci AFFECTED: OK`（本机门禁那一条记录）。
     fn push_on_fake_remote(next: &str, main: &str) -> (bool, String, String, String) {
-        push_on_fake_remote_with(CLEAN_DEP, next, main)
+        push_on_fake_remote_opts(&Push {
+            next,
+            main,
+            ..Push::default()
+        })
     }
 
     /// 同上，要推的提交里那两份 Cargo.lock 各放一个叫 `dep` 的 registry 包。
@@ -2256,10 +2271,53 @@ esac
         next: &str,
         main: &str,
     ) -> (bool, String, String, String) {
+        push_on_fake_remote_opts(&Push {
+            dep,
+            next,
+            main,
+            ..Push::default()
+        })
+    }
+
+    /// 一趟假推送的设定。
+    struct Push<'a> {
+        /// 锁里放的那个 registry 包。
+        dep: &'a str,
+        /// next 上那一趟（重跑时是重跑那一次）的结论 · main 上那一趟的结论。
+        next: &'a str,
+        main: &'a str,
+        /// 要推的提交上记的本机门禁记录（git notes 的正文）；`None` = 没记。
+        note: Option<&'a str>,
+        /// 非空 = 推之前 next 已经是这个提交，上一趟 CI 的结论是它。
+        next_old: &'a str,
+    }
+    impl Default for Push<'_> {
+        fn default() -> Self {
+            Push {
+                dep: CLEAN_DEP,
+                next: "success",
+                main: "success",
+                note: Some("trust-ci AFFECTED: OK"),
+                next_old: "",
+            }
+        }
+    }
+
+    fn push_on_fake_remote_opts(o: &Push) -> (bool, String, String, String) {
+        let Push {
+            dep,
+            next,
+            main,
+            note,
+            next_old,
+        } = *o;
         const NAME: &str = "x";
         let br = format!("w8/{NAME}");
         use std::os::unix::fs::PermissionsExt;
-        let d = test_home::scratch(&format!("push-{dep}-{next}-{main}"));
+        let d = test_home::scratch(&format!(
+            "push-{dep}-{next}-{main}-{}-{next_old}",
+            note.is_some()
+        ));
         let git = |dir: &Path, args: &[&str]| -> String {
             let out = Command::new("git")
                 .args([
@@ -2318,6 +2376,16 @@ esac
         git(&work, &["commit", "-q", "-m", "b"]);
         git(&work, &["checkout", "-q", "main"]);
         let sha = git(&work, &["rev-parse", &br]);
+        if let Some(note) = note {
+            git(&work, &["notes", "--ref=ccm-gate", "add", "-m", note, &sha]);
+        }
+        if !next_old.is_empty() {
+            git(
+                &work,
+                &["push", "-q", "origin", &format!("{sha}:refs/heads/next")],
+            );
+        }
+        std::fs::create_dir_all(d.join("fake-state")).unwrap();
         let bin = d.join("bin");
         std::fs::create_dir_all(&bin).unwrap();
         for (name, body) in [("gh", FAKE_GH), ("private-scan.sh", "exit 0\n")] {
@@ -2341,6 +2409,9 @@ esac
             .env("OSV_API", fake_osv())
             .env("FAKE_NEXT", next)
             .env("FAKE_MAIN", main)
+            .env("FAKE_NEXT_OLD", next_old)
+            .env("FAKE_ORIGIN", d.join("origin.git"))
+            .env("FAKE_STATE", d.join("fake-state"))
             .env_remove("TMUX")
             .env_remove("TMUX_PANE")
             .output()
@@ -2396,5 +2467,72 @@ esac
             said.contains("origin 上的 next：\"\""),
             "判据红了 next 却推出去了：{said}"
         );
+    }
+
+    /// ★ 推之前核本机门禁：要推的提交上没有 `gate-affected` 绿过的记录（git notes `ccm-gate`）⇒ 拒推，next 与 main 都不动；
+    /// 记录只认 trust-ci · affected · full 三种（`none` 那一趟一格没挑，不算）。正控是上面几条（记着 trust-ci ⇒ 照常推）。
+    #[test]
+    fn push_refuses_a_commit_without_a_local_gate_record() {
+        for note in [None, Some("none AFFECTED: OK")] {
+            let (ok, said, remote_main, sha) = push_on_fake_remote_opts(&Push {
+                note,
+                ..Push::default()
+            });
+            assert!(
+                !ok,
+                "没有本机门禁记录（{note:?}），push-candidate 却退 0：{said}"
+            );
+            assert_ne!(remote_main, sha, "没有本机门禁记录 main 却动了：{said}");
+            assert!(
+                said.contains("本机门禁"),
+                "没说拦它的是本机门禁记录：{said}"
+            );
+            assert!(
+                said.contains("origin 上的 next：\"\""),
+                "没有本机门禁记录 next 却推出去了：{said}"
+            );
+        }
+        let (ok, said, _, _) = push_on_fake_remote_opts(&Push {
+            note: Some("full AFFECTED: OK"),
+            ..Push::default()
+        });
+        assert!(
+            ok && said.contains("PUSH: OK"),
+            "记着 full 却没推成：{said}"
+        );
+    }
+
+    /// ★ next 已经是这个提交（上一趟偶发红、想重跑）：推送是空操作、不起新 run ⇒ 认这一提交在 next 上的那一趟，
+    /// 红的就 `gh run rerun --failed` 再等重跑那一次，不拿上一趟的结论当这一趟的。上一趟已绿 ⇒ 直接认它。
+    #[test]
+    fn push_reruns_the_candidate_ci_when_next_already_has_this_commit() {
+        let (ok, said, remote_main, sha) = push_on_fake_remote_opts(&Push {
+            next_old: "failure",
+            ..Push::default()
+        });
+        assert!(
+            ok && said.contains("PUSH: OK") && said.contains("重跑"),
+            "next 上一趟红、重跑那一次绿，却没重跑或没推成：{said}"
+        );
+        assert_eq!(remote_main, sha, "{said}");
+
+        let (ok, said, remote_main, sha) = push_on_fake_remote_opts(&Push {
+            next_old: "failure",
+            next: "failure",
+            ..Push::default()
+        });
+        assert!(!ok, "重跑那一次还是红，push-candidate 却退 0：{said}");
+        assert_ne!(remote_main, sha, "重跑红了 main 却动了：{said}");
+
+        let (ok, said, remote_main, sha) = push_on_fake_remote_opts(&Push {
+            next_old: "success",
+            next: "failure",
+            ..Push::default()
+        });
+        assert!(
+            ok && said.contains("PUSH: OK") && !said.contains("重跑"),
+            "next 上这一提交的那一趟已绿，却重跑了或没推成：{said}"
+        );
+        assert_eq!(remote_main, sha, "{said}");
     }
 }

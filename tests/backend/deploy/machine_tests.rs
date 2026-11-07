@@ -486,15 +486,9 @@ fn a_host_that_does_not_install_is_offered_install_only_when_the_backend_is_miss
 #[test]
 fn the_version_is_the_product_number_only_for_the_same_bytes() {
     let p = of(vec![up(Relation::Same, &[])], true);
-    assert_eq!(
-        (p.version.as_deref(), p.version_relation),
-        (Some(VER), Some(Relation::Same))
-    );
+    assert_eq!(p.version.as_deref(), Some(VER));
     let p = of(vec![up(Relation::Older, &[])], true);
-    assert_eq!(
-        (p.version, p.version_relation),
-        (None, Some(Relation::Older))
-    );
+    assert_eq!(p.version, None);
 }
 
 #[test]
@@ -1069,4 +1063,74 @@ fn every_state_lands_on_its_dot_and_whether_it_is_linked() {
     let wire = serde_json::to_value(of(vec![up(Relation::Same, &[])], false)).unwrap();
     assert_eq!(wire["dot"], "off", "线上名是小写词");
     assert_eq!(wire["linked"], false);
+}
+
+/// 待发交了没回执时那一行照摆的那一句：哪一态都带、带那台的名字；还不知道那台什么样（没轮过）⇒ 说状态不明，不说离线。
+#[test]
+fn every_state_carries_the_held_line_and_unknown_says_so() {
+    let held = copy_text("beQueue.said.held", &[("machine", M)]);
+    let unknown = copy_text("beQueue.said.heldUnknown", &[("machine", M)]);
+    let cases: Vec<(&str, Vec<Fact>, bool, &String)> = vec![
+        ("连着", vec![up(Relation::Same, &[])], true, &held),
+        ("正在连", vec![round(Round::Connecting)], true, &held),
+        ("拨号超时", vec![down_(Some(Why::Timeout))], true, &held),
+        ("没有后端", vec![blocked(Blocker::NoBackend)], true, &held),
+        ("停用", vec![down_(Some(Why::Auth))], false, &held),
+        ("没轮过", vec![], true, &unknown),
+    ];
+    for (name, facts, enabled, want) in cases {
+        assert_eq!(&of(facts, enabled).held_said, want, "{name}");
+    }
+    assert_ne!(held, unknown, "两句得不一样");
+}
+
+/// 这一条连接是用密码登上的（宿主那一端的事实）：那台连着 ⇒ 条上那一行（语气 plain · 那一句 · ［换成密钥］）；
+/// 别的态（没连上 · 正在连 · 旧了 · 比这一版新）照旧，不叠这一行；不是密码 ⇒ 照旧。
+#[test]
+fn a_password_sign_in_on_a_linked_machine_offers_switching_to_a_key() {
+    let mut up_ = phone(vec![up(Relation::Same, &[])]);
+    signed_in(&mut up_, true);
+    assert_eq!(
+        up_.said,
+        copy_text("beMachine.said.password", &[("machine", M)])
+    );
+    assert_eq!(
+        up_.fixes,
+        vec![FixButton {
+            fix: MachineFix::UseKey,
+            label: copy_text("beMachine.fix.useKey", &[]),
+        }]
+    );
+    assert_eq!(
+        up_.strip,
+        Some(MachineStripLine {
+            tone: Tone::Plain,
+            progress: false
+        })
+    );
+    // 连着、不是密码 ⇒ 不进条。
+    let mut keyed = phone(vec![up(Relation::Same, &[])]);
+    signed_in(&mut keyed, false);
+    assert_eq!(keyed, phone(vec![up(Relation::Same, &[])]));
+    // 别的态照旧：没连上 · 正在连 · 旧了 · 比这一版新。
+    for facts in [
+        vec![down_(Some(Why::Unreachable))],
+        vec![round(Round::Connecting)],
+        vec![up(Relation::Older, &[])],
+        vec![up(Relation::Newer, &[])],
+    ] {
+        let mut m = phone(facts.clone());
+        signed_in(&mut m, true);
+        assert_eq!(m, phone(facts), "只在连着无事时出这一行");
+    }
+}
+
+/// ［推送公钥］（钥匙被拒）与［换成密钥］是同一条路的两个起因：按钮上同一个字。
+#[test]
+fn push_key_and_use_key_say_the_same_button() {
+    assert_eq!(label(MachineFix::PushKey), label(MachineFix::UseKey));
+    assert_eq!(
+        label(MachineFix::UseKey),
+        copy_text("beMachine.fix.useKey", &[])
+    );
 }

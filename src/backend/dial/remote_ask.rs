@@ -34,9 +34,9 @@ use serde_json::{json, Value};
 
 /// 拉回来那一份（远端 stdout）的上限：与资产目录文件的读上限同一个数（目录本身就这么大封顶；那份文件的名字与上限只住声明表）；
 /// 超了整份不收、回错。
-pub(crate) const PULL_MAX_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+pub(crate) const PULL_MAX_BYTES: cap_core::Cap = cap_core::Cap {
     bytes: 16 * 1024 * 1024,
-    over: relay_route_core::Over::Reject,
+    over: cap_core::Over::Reject,
 };
 
 /// 那台不认这条命令 / 子命令：与帧协议里同一个码。

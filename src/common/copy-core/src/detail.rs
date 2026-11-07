@@ -9,9 +9,9 @@
 use crate::copy_text;
 
 /// 原话最多留多少字节（按字符边界往回退）。
-pub const RAW_CAP: relay_route_core::Cap = relay_route_core::Cap {
+pub const RAW_CAP: cap_core::Cap = cap_core::Cap {
     bytes: 4096,
-    over: relay_route_core::Over::TruncateAndSay,
+    over: cap_core::Over::TruncateAndSay,
 };
 
 /// 「项名：值」的项名闭集（文案表 `detail.label.*` 与它两向相等，判据住 `tests/common/copy-core/detail_tests.rs`）。

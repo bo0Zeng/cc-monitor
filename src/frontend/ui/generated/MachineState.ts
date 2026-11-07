@@ -5,7 +5,6 @@ import type { MachineFixButton } from "./MachineFixButton";
 import type { MachineStage } from "./MachineStage";
 import type { MachineStateKind } from "./MachineStateKind";
 import type { MachineStripLine } from "./MachineStripLine";
-import type { VersionRelation } from "./VersionRelation";
 
 /**
  * 一台的状态成品（判定在后端 `deploy::machine`，本机远端同一份）。界面照画：字取 `word` · `said` · `fixes[].label`。
@@ -40,10 +39,6 @@ stage: MachineStage | null,
  */
 version: string | null, 
 /**
- * 与这一版的版本关系（握手过才有）。
- */
-versionRelation: VersionRelation | null, 
-/**
  * 那台的系统（部署问到过才有）。
  */
 os: string | null, 
@@ -58,7 +53,12 @@ said: string,
 /**
  * 那台离线那一句（恒有，连接层写的；哪一态都带着）。出口要说那台离线时照摆这一句，不各自取字。
  */
-offlineSaid: string, fixes: Array<MachineFixButton>, 
+offlineSaid: string, 
+/**
+ * 待发那一句交了、没等到回执、这一问已结束时那一行（恒有，拨号这一端写的：「{name} 离线 · 连上后补交」；还不知道那台什么样 ⇒ 状态不明那一句）。
+ * 两端输入框上方那一排照摆这一句，不拼。
+ */
+heldSaid: string, fixes: Array<MachineFixButton>, 
 /**
  * 指纹不对时那台这一次出示的主机指纹（`host_key_changed` 才有）。
  */

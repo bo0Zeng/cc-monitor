@@ -558,3 +558,96 @@ async fn the_sync_reply_and_the_pushed_line_keep_their_bytes() {
     );
     let _ = std::fs::remove_dir_all(&d);
 }
+
+// ── 常驻流接上那一刻：本机后端自己起这一趟（不经壳）──
+
+/// 那台这一条连接转出来的第一行：它的 hello（`control::feeds` 在 `Event::Attached` 那一刻原样转）。
+fn hello_of(machine: &str, commands: &[&str]) -> cmd_wire::frame::Relayed {
+    let h = cmd_wire::frame::Hello {
+        build_id: "b".into(),
+        host_arch: "x86_64".into(),
+        commands: commands.iter().map(|c| (*c).to_string()).collect(),
+        ..Default::default()
+    };
+    cmd_wire::frame::Relayed::Line {
+        machine: machine.into(),
+        line: serde_json::to_string(&cmd_wire::frame::Frame::<Value>::Hello(h)).unwrap(),
+    }
+}
+
+#[test]
+fn only_a_hello_of_a_machine_that_takes_the_catalog_starts_a_sync() {
+    use cmd_wire::frame::Relayed;
+    use cmd_wire::Call as _;
+    let takes = cat::AssetsCatalogMergeReq::NAME;
+    assert_eq!(
+        attached_to_sync(&hello_of("o-r", &["x", takes])),
+        Some(("o-r", true)),
+        "认得资产目录的那台一接上 ⇒ 对它起一趟"
+    );
+    assert_eq!(
+        attached_to_sync(&hello_of("o-old", &["x"])),
+        Some(("o-old", false)),
+        "那台不认 ⇒ 不碰（照实记一行）"
+    );
+    let frame_line = Relayed::Line {
+        machine: "o-r".into(),
+        line: r#"{"kind":"session_left","sid":"s"}"#.into(),
+    };
+    assert_eq!(attached_to_sync(&frame_line), None, "流上别的帧不起");
+    assert_eq!(
+        attached_to_sync(&Relayed::Gap {
+            machine: "o-r".into()
+        }),
+        None
+    );
+    assert_eq!(
+        attached_to_sync(&Relayed::Ended {
+            machine: "o-r".into()
+        }),
+        None
+    );
+}
+
+#[tokio::test]
+async fn a_relayed_hello_alone_runs_one_sync_against_that_machine() {
+    use cmd_wire::Call as _;
+    let d = test_home::scratch("attach");
+    let local = Machine::new(&d, "local", vec!["a"]);
+    let remote = Machine::new(&d, "remote", vec!["b"]);
+    let fakes = Arc::new(FakeRemotes {
+        by_host: [("r".to_string(), remote.clone())].into(),
+        seen: Mutex::new(vec![]),
+        stdins: Mutex::new(vec![]),
+    });
+    let table: &'static Table = Box::leak(Box::new(table_of(&["r"])));
+    let as_remote: Arc<dyn Remote> = fakes.clone();
+    // 不认的那台：不起
+    assert!(on_relayed_with(
+        &hello_of("o-r", &["x"]),
+        local.fold(),
+        as_remote.clone(),
+        table
+    )
+    .is_none());
+    assert!(fakes.seen.lock().unwrap().is_empty());
+    // 只有一行 hello（没有壳、没有界面）⇒ 那一趟照起，拉 ＋ 推都对那台
+    let run = on_relayed_with(
+        &hello_of("o-r", &[cat::AssetsCatalogMergeReq::NAME]),
+        local.fold(),
+        as_remote,
+        table,
+    )
+    .expect("认得资产目录 ⇒ 起一趟");
+    let out = run.await.expect("那一趟跑完").expect("同步成了");
+    assert_eq!(out.synced.len(), 1, "{out:?}");
+    assert_eq!(out.synced[0].origin.to_string(), "o-r");
+    let seen = fakes.seen.lock().unwrap().clone();
+    assert_eq!(
+        seen.first().map(|s| s.1.clone()),
+        Some(pull_command()),
+        "{seen:?}"
+    );
+    assert!(seen.iter().all(|(h, _)| h == "r"), "{seen:?}");
+    let _ = std::fs::remove_dir_all(&d);
+}

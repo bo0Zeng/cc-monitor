@@ -27,8 +27,8 @@ export interface GridSessionSnapshot {
   title: string;
   /** 哪台机器：本机 = `LOCAL`；其余 = 远端主机 label。不再用 `null` 表示本机。 */
   origin: Machine;
-  /** 会话的项目目录（`Tab.projectDir`，后端给的那一格）；null = 后端没给。 */
-  cwd: string | null;
+  /** 项目目录的显示形（`Tab.cwdShown`，那台按自己家目录写好的 `~/…`），不是原样 `projectDir`；会话事实还没到 ⇒ null，不画。 */
+  cwdShown: string | null;
   /** 此刻画的那张脸（`Tab.face`，与 tab 栏同一份；还没收到 ⇒ `null`）：点 · 字 · 序 · 能做什么都照它。 */
   face: SessionFace;
   /** 在等人时等的是什么（核心写好的字：等批准 · 等回答 …，`needs.text`）；不在等 ⇒ null。 */

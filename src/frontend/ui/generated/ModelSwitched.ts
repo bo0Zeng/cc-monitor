@@ -15,10 +15,6 @@ result: ModeSwitchResult,
  */
 model: string | null, 
 /**
- * 读回时那一家顺带说的思考档（原样）；没说 ⇒ 不出。
- */
-effort?: string, 
-/**
  * `refused` 的原因（同 `terminal-input`）。
  */
 why?: Refused, 

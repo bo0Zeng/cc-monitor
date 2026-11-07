@@ -197,19 +197,24 @@ pub fn reload_hint(path: &str) -> String {
 }
 
 /// 配置文件第一次被建出来时带上的那几条（之后和别的一样可改可删、删了不回补），名字由默认那一家的 wrapper 名派生
-/// （`agents::wrapper_alias`，Claude：`cc`）：`<它>`（当前目录起）· `<它>t`（tmux 里起）。
-/// 没有 tmux 的目标只带第一条；默认那一家没有 wrapper ⇒ 一条都不带。
+/// （`agents::wrapper_alias`，Claude：`cc`）：`<它>`（当前终端里起）· `<它>t`（tmux 里起）· `<它>h`（托管终端里起，也是托管入口）。
+/// 没有 tmux 的目标不带 `<它>t`；默认那一家没有 wrapper ⇒ 一条都不带。
 pub(crate) fn first_aliases(shell: Shell) -> Vec<Alias> {
+    use crate::accounts::manage::aliases::Form;
     let Some(wrapper) = crate::agents::wrapper_alias(crate::agents::default_kind()) else {
         return Vec::new();
     };
     let mut v = vec![Alias::new(wrapper, Vec::new())];
     if Caps::of(shell).tmux {
         v.push(Alias::new(
-            &format!("{wrapper}t"),
+            &format!("{wrapper}{}", Form::Tmux.suffix()),
             vec![flag::END.to_string(), flag::TMUX.to_string()],
         ));
     }
+    v.push(Alias::new(
+        &format!("{wrapper}{}", Form::Hosted.suffix()),
+        vec![flag::END.to_string(), flag::HOSTED.to_string()],
+    ));
     v
 }
 

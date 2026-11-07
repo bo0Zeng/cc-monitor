@@ -182,7 +182,6 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64, tz: &crate::common::time::Tz)
             account: o.account.clone(),
             seen_at: o.seen_at,
             reading: o.reading.clone(),
-            windows_seen: o.windows_seen.clone(),
             show: sh,
         });
     }
@@ -203,7 +202,6 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64, tz: &crate::common::time::Tz)
                 account: id,
                 kind: sh.kind,
                 login: sh.login,
-                sub_id: sh.sub_id,
                 usage: sh.usage.into(),
             }
         })

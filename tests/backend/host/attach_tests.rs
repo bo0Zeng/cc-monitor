@@ -37,6 +37,7 @@ async fn host(
         cwd: String::new(),
         agent: "fake".into(),
         client: "terminal".into(),
+        account: String::new(),
         argv: vec!["sh".into(), "-c".into(), script.into()],
     };
     let (tx, rx) = tokio::sync::oneshot::channel();

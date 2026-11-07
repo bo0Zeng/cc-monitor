@@ -12,9 +12,9 @@ use std::sync::Arc;
 const LOOPBACK: std::net::IpAddr = std::net::IpAddr::V4(Ipv4Addr::LOCALHOST);
 const FULL_KEY: &str = "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e";
 const PASS_KEY: &str = "6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f";
-const BODIES: relay_route_core::Cap = relay_route_core::Cap {
+const BODIES: cap_core::Cap = cap_core::Cap {
     bytes: 1 << 20,
-    over: relay_route_core::Over::Reject,
+    over: cap_core::Over::Reject,
 };
 const ANSWER: &str = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok";
 

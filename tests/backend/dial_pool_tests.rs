@@ -575,8 +575,8 @@ async fn a_finished_wait_takes_nobody_out() {
 fn product_of(detail: Option<&str>) -> cmd_wire::machine::MachineState {
     serde_json::from_value(serde_json::json!({
         "name": "box", "state": "up", "dot": "up", "linked": true, "offline": false, "reason": null, "stage": null,
-        "version": null, "versionRelation": null, "os": null, "word": "", "said": "",
-        "offlineSaid": "box 离线", "fixes": [], "seenHostKey": null, "expectedHostKey": null,
+        "version": null, "os": null, "word": "", "said": "",
+        "offlineSaid": "box 离线", "heldSaid": "box 离线", "fixes": [], "seenHostKey": null, "expectedHostKey": null,
         "detail": detail,
     }))
     .expect("成品读得回")

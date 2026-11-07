@@ -39,16 +39,6 @@ interface IdentityDao {
     suspend fun delete(identity: Identity)
 }
 
-/** 旧表：主机钥匙改住核心那份库，这张表只剩 App 起来迁一次（读全部 · 读回对上才清空）。下一版升库删表。 */
-@Dao
-interface KnownHostDao {
-    @Query("SELECT * FROM known_hosts")
-    suspend fun all(): List<KnownHost>
-
-    @Query("DELETE FROM known_hosts")
-    suspend fun clear()
-}
-
 @Dao
 interface SettingsDao {
     @Query("SELECT `value` FROM settings WHERE `key` = :key")

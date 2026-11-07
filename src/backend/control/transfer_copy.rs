@@ -182,7 +182,6 @@ pub(crate) fn copy_with(
                         size_text: None,
                         mtime_text: None,
                         there: kind(there_dir),
-                        there_size: None,
                         there_size_text: None,
                         there_mtime_text: None,
                         answers: crate::common::batch_book::answers_of(src_dir || there_dir, true),

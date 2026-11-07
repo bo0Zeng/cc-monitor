@@ -12,8 +12,9 @@ use crate::control::rewind::{
     code_after, options_of, runs_after, walk, After, Plan, RewindFace, RewindIo, UserLine, Walked,
     Why,
 };
-use crate::control::terminals::{self, On};
-use crate::control::terminals_wire::{Sent, SentResult, TerminalInputReq, TerminalPreviewReq};
+use crate::control::screen_drive::Drive;
+use crate::control::terminals;
+use crate::control::terminals_wire::{Sent, SentResult};
 use crate::dial::remote_ask::{DialRemote, REACH};
 use crate::observe::lines::Lines;
 use crate::platform::fs::Ro;
@@ -175,66 +176,29 @@ pub(crate) fn walk_here(
     let Ok(Some(face)) = face_here(sid) else {
         return Ok(Walked::No(Why::Unsupported));
     };
-    let mut io = Live {
-        sid,
-        client,
-        watch: None,
-    };
-    let t = match terminals::say_target_on(On::default(), sid, io.client.as_deref())? {
-        Ok(t) => t,
-        Err(why) => {
-            return Ok(Walked::No(Why::Refused(terminals::input_reply(
-                SentResult::Refused,
-                Some(why),
-                None,
-            ))))
-        }
-    };
-    io.watch = Some(crate::control::terminal_follow::Watch::open(None, &t)?);
+    let mut io = Live(Drive::new(sid, client));
+    if let Some(why) = io.0.open()? {
+        return Ok(Walked::No(Why::Refused(terminals::input_reply(
+            SentResult::Refused,
+            Some(why),
+            None,
+        ))));
+    }
     walk(&face, Plan { rewind, text }, &mut io)
 }
 
-/// 这台那一份 io：抓屏走 `terminal-preview`（不带色），按键 · 送字走 `session-say` 那一道（只剩 shell 的窗格不收），等重画用实时预览那个只读客户端。
-struct Live<'a> {
-    sid: &'a str,
-    client: Option<String>,
-    watch: Option<crate::control::terminal_follow::Watch>,
-}
-
-impl Live<'_> {
-    fn input(&mut self, key: Option<&str>, text: Option<&str>) -> Result<Sent, Said> {
-        if let Some(w) = self.watch.as_mut() {
-            w.forget();
-        }
-        crate::control::terminals_wire::say(&TerminalInputReq {
-            sid: Some(self.sid.to_string()),
-            key: key.map(str::to_string),
-            text: text.map(str::to_string),
-            enter: text.map(|_| true),
-            client: self.client.clone(),
-            ..Default::default()
-        })
-    }
-}
+/// 这台那一份 io：读屏驱动（抓屏不带色 · 按键送字走 `session-say` 那一道：只剩 shell 的窗格不收 · 等重画用实时预览那个只读客户端），读回问冷开扫描图。
+struct Live<'a>(Drive<'a>);
 
 impl RewindIo for Live<'_> {
     fn screen(&mut self) -> Result<Vec<String>, Said> {
-        let shot = terminals::preview_on(
-            On::default(),
-            &TerminalPreviewReq {
-                sid: Some(self.sid.to_string()),
-                color: Some(false),
-                ..Default::default()
-            },
-            &crate::common::time::Tz::default(),
-        )?;
-        Ok(shot.lines.into_iter().map(|l| l.text).collect())
+        self.0.screen()
     }
     fn press(&mut self, key: &str) -> Result<Sent, Said> {
-        self.input(Some(key), None)
+        self.0.press(key)
     }
     fn redrawn(&mut self) -> bool {
-        self.watch.as_mut().is_some_and(|w| w.changed())
+        self.0.redrawn()
     }
     #[expect(
         clippy::disallowed_methods,
@@ -244,7 +208,7 @@ impl RewindIo for Live<'_> {
         std::thread::sleep(std::time::Duration::from_millis(ms));
     }
     fn say(&mut self, text: &str) -> Result<Sent, Said> {
-        self.input(None, Some(text))
+        self.0.say(text)
     }
     fn lines(&mut self) -> Result<Vec<UserLine>, Said> {
         let no_record = |raw: &str| {
@@ -255,7 +219,7 @@ impl RewindIo for Live<'_> {
             .and_raw(Some(raw))
         };
         let home = crate::history::listing::agent_home();
-        let path = crate::observe::query::locate::session_record(&home, self.sid)
+        let path = crate::observe::query::locate::session_record(&home, self.0.sid())
             .map_err(|e| no_record(&e))?;
         let map = crate::observe::record_scan::global()
             .get(&path)

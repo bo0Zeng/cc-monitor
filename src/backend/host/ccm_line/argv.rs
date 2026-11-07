@@ -14,7 +14,7 @@ use copy_core::copy_text;
 /// `--ccm-tmux` / `--ccm-agent` 带前缀：claude 自己有 `--tmux` / `--agent`。
 pub mod flag {
     pub const TMUX: &str = "--ccm-tmux";
-    /// `--hosted`：放进 cc-monitor 托管的终端（`host/managed`）。不在 tmux 窗格里敲、这台能托管时缺省就是它（`plan::container_host`）。
+    /// `--hosted`：放进 cc-monitor 托管的终端（`host/managed`）。只有写了它才托管（`plan::container_host`；`cch` 那一段带它）。
     pub const HOSTED: &str = "--hosted";
     pub const TMUX_BASE: &str = "--tmux-base";
     pub const TMUX_SIZE: &str = "--tmux-size";
@@ -27,6 +27,8 @@ pub mod flag {
     pub const AGENT: &str = "--ccm-agent";
     pub const LAUNCHER: &str = "--launcher";
     pub const ATTACH: &str = "--attach";
+    /// `--hosts`：这台的托管终端一行一个（`cch ls` 就是它，[`super::hosted_entry`]）。
+    pub const HOSTS: &str = "--hosts";
     pub const CCM_PRINT: &str = "--ccm-print";
     pub const CCM_HELP: &str = "--ccm-help";
     pub const CCM_VERSION: &str = "--ccm-version";
@@ -157,6 +159,36 @@ pub enum Early {
     Probe,
     Version,
     Help,
+    /// `--hosts`：列这台的托管终端。
+    Hosts,
+}
+
+/// 托管入口（被叫成一段写了 `--hosted` 的配置，如 `cch`）自己认的两个词：`ls` · `attach <名>`。
+pub mod hosted_word {
+    pub const LS: &str = "ls";
+    pub const ATTACH: &str = "attach";
+}
+
+/// 托管入口那一串（名字后面那几个词）的第一个词是它的词 ⇒ 换成 ccm 的那一形（`ls` ⇒ `-- --hosts` ·
+/// `attach <名>` ⇒ `-- --attach <名>`）；缺名 · 多出词 ⇒ 说清。第一个词不是它的 ⇒ `None`（整串照旧交 `ccm @<名> …`）。
+pub fn hosted_entry(rest: &[String]) -> Option<Result<Vec<String>, Die>> {
+    let first = rest.first()?.as_str();
+    let extra = |n: usize| {
+        Die(copy_text(
+            "beArgv.hostedEntry.extra",
+            &[("word", first), ("extra", &rest[n..].join(" "))],
+        ))
+    };
+    match first {
+        hosted_word::LS if rest.len() == 1 => Some(Ok(vec![flag::END.into(), flag::HOSTS.into()])),
+        hosted_word::LS => Some(Err(extra(1))),
+        hosted_word::ATTACH => Some(match need_val(first, rest.get(1)) {
+            Err(e) => Err(e),
+            Ok(_) if rest.len() > 2 => Err(extra(2)),
+            Ok(name) => Ok(vec![flag::END.into(), flag::ATTACH.into(), name]),
+        }),
+        _ => None,
+    }
 }
 
 /// 解析失败 ⇒ 一句人话 + 退出码 2（用法错）。
@@ -237,6 +269,7 @@ pub const RIGHT_WORDS: &[&str] = &[
     flag::AGENT,
     flag::LAUNCHER,
     flag::ATTACH,
+    flag::HOSTS,
     flag::CCM_PRINT,
     flag::CCM_HELP,
     flag::CCM_VERSION,
@@ -366,6 +399,7 @@ pub fn apply_word(o: &mut Opts, w: &Word, at: usize) -> Result<Option<Early>, Di
         flag::CCM_PROBE => return Ok(Some(Early::Probe)),
         flag::CCM_VERSION => return Ok(Some(Early::Version)),
         flag::CCM_HELP => return Ok(Some(Early::Help)),
+        flag::HOSTS => return Ok(Some(Early::Hosts)),
         other => return die(copy_text("beArgv.parse.unknownRight", &[("w", other)])),
     }
     Ok(None)

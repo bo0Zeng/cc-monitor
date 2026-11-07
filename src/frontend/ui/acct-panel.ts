@@ -1,14 +1,12 @@
 /**
  * 「账号」面板（右侧抽屉）：状态栏账号按钮 · 右键「账号…」· 会话头 ⋯ 三处开的同一个。
- * 头下一句（中转没见过这个会话 · 额度账读不出时的那一条）＋ 底栏 `新会话默认 [work ▾] … 管理账号…`。
- * 中间是这个会话的轮换（提示 · 策略一行 · 顺序，`rot-session.ts`；与设置窗「轮换」栏只共用策略一行与提示）。
- * 没有当前会话（`sid` 为 `null`）⇒ 同一个面板只有底栏那半段（状态栏按钮只开这一个，不另给下拉）。
+ * 只管这条会话的号：头下一句（中转没见过这个会话 · 额度账读不出时的那一条）· 这个会话的轮换（提示 · 策略一行 · 顺序，
+ * `rot-session.ts`；与设置窗「轮换」栏只共用策略一行与提示）· 底栏［管理账号…］。「新会话默认」只在设置窗账号页。
  *
  * - 数据只经 `quota-read` · `rotation-view` 与推送（`acct-center.ts` 收进 `appStore`）。界面不判「能不能换 / 该不该换」。
  */
 import { appStore, quotaOf, type QuotaSlot, type SessionRotationEntry } from "./app-store";
 import { refreshQuota, refreshSessions } from "./acct-center";
-import { acctAvatar } from "./acct-dom";
 import { machineLabel } from "./acct-view";
 import { copyText } from "./copy-table";
 import type { Machine } from "./ipc/origin";
@@ -16,10 +14,7 @@ import { el } from "./kit/el";
 import { banner } from "./kit/banner";
 import { button } from "./kit/button";
 import { openDrawer, type DrawerHandle } from "./kit/drawer";
-import { icon } from "./kit/icon";
-import { closeMenu } from "./kit/menu";
 import { mountSessionRotation, type SessionRot } from "./rot-session";
-import { accountLabel } from "./acct-words";
 import s from "./acct.module.css";
 
 /** 主窗口交进来的几样（都是回调，面板不认 tab 栏）。 */
@@ -28,26 +23,21 @@ export interface AcctPanelHost {
   sessionTitle(sid: string): string;
   /** 设置窗那台的账号页（`管理账号…` · `接入…`）。 */
   openSettings(origin: Machine): void;
-  /** 底栏「新会话默认」那一颗：开那台的默认账号下拉（与无会话时状态栏按钮的同一个）。 */
-  openDefaultMenu(anchor: HTMLElement, origin: Machine): void;
-  /** 新会话默认此刻是哪个号（底栏那颗按钮上的字）。 */
-  defaultOf(origin: Machine): string | null;
 }
 
 interface Open {
-  /** `null` ＝ 没有当前会话：只有底栏。 */
-  sid: string | null;
+  sid: string;
   origin: Machine;
   drawer: DrawerHandle;
   body: HTMLElement;
-  rot: SessionRot | null;
+  rot: SessionRot;
   unsub: (() => void)[];
 }
 
 let open: Open | null = null;
 
-/** 开 / 关这个会话的面板（再点同一个入口 ＝ 关）；`sid` 为 `null` ＝ 没有当前会话那一形（`origin` 那台的新会话默认）。 */
-export function toggleAccountPanel(sid: string | null, origin: Machine, host: AcctPanelHost): void {
+/** 开 / 关这个会话的面板（再点同一个入口 ＝ 关）。 */
+export function toggleAccountPanel(sid: string, origin: Machine, host: AcctPanelHost): void {
   if (open !== null && open.sid === sid) {
     void open.drawer.close();
     return;
@@ -55,14 +45,14 @@ export function toggleAccountPanel(sid: string | null, origin: Machine, host: Ac
   openAccountPanel(sid, origin, host);
 }
 
-/** 当前 tab 换了：面板开着就跟着换成那个会话（不关）；没有会话了 ⇒ 换成本机那一形。 */
-export function followActive(a: { sid: string; origin: Machine } | null, host: AcctPanelHost, idle: Machine): void {
-  if (!open || open.sid === (a?.sid ?? null)) return;
-  if (a === null) openAccountPanel(null, idle, host);
+/** 当前 tab 换了：面板开着就跟着换成那个会话（不关）；没有会话了 ⇒ 关。 */
+export function followActive(a: { sid: string; origin: Machine } | null, host: AcctPanelHost): void {
+  if (!open || open.sid === a?.sid) return;
+  if (a === null) void open.drawer.close();
   else openAccountPanel(a.sid, a.origin, host);
 }
 
-export function openAccountPanel(sid: string | null, origin: Machine, host: AcctPanelHost): void {
+export function openAccountPanel(sid: string, origin: Machine, host: AcctPanelHost): void {
   if (open) {
     const was = open;
     open = null;
@@ -74,7 +64,7 @@ export function openAccountPanel(sid: string | null, origin: Machine, host: Acct
   const statusBar = document.getElementById("status-bar");
   const drawer = openDrawer({
     title: copyText("beProfile.slot.account"),
-    sub: sid === null ? machineLabel(origin) : copyText("acct.panel.sub", { session: host.sessionTitle(sid), machine: machineLabel(origin) }),
+    sub: copyText("acct.panel.sub", { session: host.sessionTitle(sid), machine: machineLabel(origin) }),
     body,
     width: 540,
     bottom: statusBar ? Math.round(statusBar.getBoundingClientRect().height) : undefined,
@@ -84,18 +74,12 @@ export function openAccountPanel(sid: string | null, origin: Machine, host: Acct
       open = null;
     },
   });
-  const o: Open = { sid, origin, drawer, body, rot: null, unsub: [] };
+  const rot = mountSessionRotation(origin, sid);
+  const o: Open = { sid, origin, drawer, body, rot, unsub: [] };
   open = o;
   const repaint = (): void => {
     if (open === o) render(o, host);
   };
-  if (sid === null) {
-    o.unsub.push(appStore.accounts.subscribe(repaint));
-    render(o, host);
-    return;
-  }
-  const rot = mountSessionRotation(origin, sid);
-  o.rot = rot;
   // 这个会话的轮换变了（推送 ⇒ `acct-center` 换了它那一格）⇒ 重读（拖着一行时先记下，静止了再读）。
   let lastEntry = appStore.sessionRotation.get().get(sid);
   const onRotation = (): void => {
@@ -119,10 +103,6 @@ export function openAccountPanel(sid: string | null, origin: Machine, host: Acct
 }
 
 function render(o: Open, host: AcctPanelHost): void {
-  if (o.sid === null || o.rot === null) {
-    o.body.replaceChildren(footer(o, host));
-    return;
-  }
   // 上游是自设的（那台在 `session-account` 里写好那一句）⇒ 额度看不到、换号不适用：只出那一条，不画轮换。
   const own = appStore.sessionAccount.get().get(o.sid)?.read.ownUpstream;
   if (own) {
@@ -163,19 +143,7 @@ function stub(o: Open, entry: SessionRotationEntry | undefined, quota: QuotaSlot
 
 function footer(o: Open, host: AcctPanelHost): HTMLElement {
   const f = el("div", s.acctFoot);
-  f.appendChild(el("span", s.acctFootLabel, copyText("acct.foot.default")));
-  const def = host.defaultOf(o.origin);
-  const b = el("button", s.acctPick);
-  b.type = "button";
-  if (def)
-    b.append(acctAvatar(def, 16, o.origin), el("span", s.acctPickName, accountLabel(def)));
-  b.appendChild(icon("caretDown", "compact"));
-  b.addEventListener("click", () => {
-    closeMenu();
-    host.openDefaultMenu(b, o.origin);
-  });
   f.append(
-    b,
     el("span", s.acctSpacer),
     button({
       label: copyText("acct.menu.manage"),

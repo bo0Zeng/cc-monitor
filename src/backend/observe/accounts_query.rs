@@ -93,12 +93,6 @@ pub(crate) fn default_manifest_path() -> PathBuf {
     manifest_path(&resolve_accts_dir())
 }
 
-/// 这台启用了多账号没有（账号库清单读得出 ⇒ 是）：与账号清单那一份的 `meta.enabled` 同一个判法（[`scan_accounts`]）。
-/// 首次运行「给现在登录的号起个名字」那一步读它（`footprint/readiness.rs`）。
-pub fn accounts_enabled_here() -> bool {
-    manifest_or_why(&resolve_accts_dir()).is_ok()
-}
-
 /// 账号库清单在、却读不懂（读不出 · 不是 JSON · 版本不认）⇒ 为什么（同账号清单 `meta.error` 那一句）；读得懂 · 没有清单
 /// （没启用多账号，正常状态）⇒ `None`。需手动清单据此回 `unreadable`，不把读不懂当成「没有需登录的号」。
 pub fn library_unreadable(accts_dir: &Path) -> Option<String> {

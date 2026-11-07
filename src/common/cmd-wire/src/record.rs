@@ -111,10 +111,6 @@ pub enum Body {
     #[serde(rename_all = "camelCase")]
     Reply {
         blocks: Vec<Block>,
-        /// 型号名原样。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-        model: Option<String>,
         /// 代理那一侧自动写的应答（不是模型说的，不建卡）。
         auto_reply: bool,
         /// 工具调用 id ⇒ 卡型（普通工具卡不列）。
@@ -993,7 +989,6 @@ mod lenient_tests {
             },
             Body::Reply {
                 blocks: vec![],
-                model: None,
                 auto_reply: false,
                 cards: BTreeMap::new(),
                 steps: BTreeMap::new(),

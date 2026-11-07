@@ -39,8 +39,4 @@ choices: Array<NeedsChoice>,
 /**
  * 提问那一种的题目；别的种类为空。
  */
-questions: Array<NeedsQuestion>, 
-/**
- * 何时挂上的（epoch ms，这台的钟）。
- */
-sinceMs: number, };
+questions: Array<NeedsQuestion>, };

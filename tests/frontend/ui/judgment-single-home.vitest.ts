@@ -735,7 +735,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     what: "平台原语只一个家：目录锁 · 只给本人的目录 · 自家状态的原子写 · /proc/<pid>/stat 怎么切 · Windows 进程表 · CREATE_NO_WINDOW",
     // 唯一的家是 `platform-core`；后端 `platform/` 与壳 `platform/` 只留造那一句的一层。
     //   全量的「本包之外零份」由 `tests/common/platform-core/single_home_tests.rs` 钉；这里登记并家之后不许长回来的那几个旧名。
-    homes: ["platform-core::hold", "platform-core::private_dir", "platform-core::private_dir_all", "platform-core::write_atomic", "platform-core::parse_stat", "platform-core::processes"],
+    homes: ["platform-core::hold", "platform-core::try_hold", "platform-core::private_dir", "platform-core::private_dir_all", "platform-core::write_atomic", "platform-core::parse_stat", "platform-core::processes"],
     status: "zero",
     defs: [],
     needles: [],
@@ -772,12 +772,12 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     ],
   },
   J45: {
-    what: "「在终端里打开」点不点得了",
-    // 唯一的家是后端造脸那一处（`SessionCan.attach`：接不接得进 · 在哪台看才给），界面只读 `face-can.ts::canAttach`。
-    homes: ["src/backend/wire/mod.rs::attach_yes"],
+    what: "「终端」那一颗点了做什么（拉它的窗 · 在这里开 · 做不了）",
+    // 唯一的家是后端造脸那一处（`SessionCan.terminal`：那台把在它上面看 · 别处看两份都写好），界面只读 `face-can.ts::terminalWay`。
+    homes: ["src/backend/wire/mod.rs::front_or"],
     status: "zero",
     defs: [],
-    gone: ["isAttachable", "resolveRemoteTmuxItems", "resolveLocalTmuxItems"],
+    gone: ["isAttachable", "resolveRemoteTmuxItems", "resolveLocalTmuxItems", "terminalFrontAvailable", "canAttach", "frontWhy"],
     needles: [{ text: 'dot === "exited"', count: 0 }],
   },
   J46: {
@@ -1363,6 +1363,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     private_dir: "J43",
     private_dir_all: "J43",
     hold: "J43",
+    try_hold: "J43",
     CREATE_NO_WINDOW: NONE,
     parse_stat: "J43",
     processes: "J43",
@@ -1382,13 +1383,15 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 判据看自己铺的临时目录里有什么只从这一口列（排好序的名字）；TS 侧没有孪生。
     list: NONE,
   },
-  "relay-route-core": {
+  "cap-core": {
     // 带上限的同步读只经这三样（读到流尽 · 读一个窗口 · 读本机文件前的预检）：后端 · 壳 · 手机核心同一份；TS 侧没有孪生。
     read_capped_from: NONE,
     read_window: NONE,
     read_capped_regular: NONE,
     // 上限的字节数折成 `usize`（给拿 `len()` 比的调用处）：只在 `Cap` 上算这一处；TS 侧没有孪生。
     as_len: NONE,
+  },
+  "relay-route-core": {
     // 落盘文件的声明表：每份一行（落点 · 状态还是缓存 · 格式与版本 · 读上限），后端读写口按它读写；TS 侧没有孪生。
     ACCOUNT_CREDS_FILE: NONE,
     ANSWER_PLUGIN_FILE: NONE,

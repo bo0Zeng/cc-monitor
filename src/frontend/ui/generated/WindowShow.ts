@@ -22,21 +22,9 @@ pct?: number,
  */
 resetsAt?: number, 
 /**
- * `resets_at` 写给人看的样子（出口那一下按钟写，`WindowShow::stamp`；内部与记账一律不填）。
- */
-resetsAtText?: string, 
-/**
  * `resets_at` 距今（同上，只在还没到时有）。
  */
-resetsAtRelText?: string, seenAt: number, 
-/**
- * `seen_at` 写给人看的样子（同上）。
- */
-seenAtText?: string, 
-/**
- * `seen_at` 距今（别台的钟走在前面时才有）。
- */
-seenAtRelText?: string, from: QuotaSource, 
+resetsAtRelText?: string, from: QuotaSource, 
 /**
  * 这个号这个窗口「1% ≈ 多少用量」（折合输入 token：各类 token 按那一家的价比折）：中转数到的每发用量 ÷ 读数涨的点数；
  * 量不到（读数没动 · 样本太少 · 只有一次读数 · 量出来超过 7 天）⇒ 缺。
@@ -46,10 +34,6 @@ tokensPerPct?: number,
  * `tokens_per_pct` 写好的字（`1% ≈ 2.1M`）；量不到 ⇒ 缺。
  */
 perPctText?: string, 
-/**
- * 重置时刻已过、之后没再看到：上次的数不再作数（用量当 0、窗口没开）。
- */
-resetSinceSeen?: boolean, 
 /**
  * 这一窗口的语气（`rows` 里更细窗口那一行的值照它上色）：用满 ⇒ `fail`；快满 ⇒ `warn`；否则 `plain`。
  */

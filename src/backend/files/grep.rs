@@ -26,7 +26,7 @@
 //! 在被 `cancel` 掉时（future 被丢）把这个位置上（`mod.rs::answer_grep_cancellable` 的守卫），阻塞线程上的这一趟随即停。
 
 use crate::platform::fs::Ro;
-use relay_route_core::{Cap, Over};
+use cap_core::{Cap, Over};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -35,14 +35,14 @@ pub const DEFAULT_LIMIT: usize = 200;
 /// 调用方给的 `limit` 最多到这里（再大就压回来）。
 pub const MAX_LIMIT: usize = 1000;
 /// 单份文件超过这个字节数不读（`skipped_large`，`warn!` 说出路径）。
-pub const FILE_MAX_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+pub const FILE_MAX_BYTES: cap_core::Cap = cap_core::Cap {
     bytes: 8 << 20,
-    over: relay_route_core::Over::SkipAndSay,
+    over: cap_core::Over::SkipAndSay,
 };
 /// 一趟累计读进来的字节上限（到了就停，`stopped: "bytes"`）。
-pub const TOTAL_MAX_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+pub const TOTAL_MAX_BYTES: cap_core::Cap = cap_core::Cap {
     bytes: 256 << 20,
-    over: relay_route_core::Over::TruncateAndSay,
+    over: cap_core::Over::TruncateAndSay,
 };
 /// 判二进制看开头这么长（字节数）。⚠ 它不是一道上界（什么都不因它被截掉）：只是「看多远才算看过开头」。
 pub const BINARY_SNIFF_LEN: usize = 8 << 10;

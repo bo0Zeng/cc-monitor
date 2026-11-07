@@ -102,8 +102,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/open-settings.ts", // 栏底机器条那一行的修法（重新连接以外）开那台的机器页
     "src/frontend/ui/settings-dest.ts", // 同上：那台机器页那个目的地
     "src/frontend/ui/launch-slot.ts", // 起新会话之后的占位标签页：栏末那几行与盖在消息流上的那一页（报到了换成真的）
-    "src/frontend/ui/front-pop.ts", // ↗ 的回执：「查找终端…」· 对勾 · 结局浮层
-    "src/frontend/ui/front-result.ts", // ↗ 结局族 ⇒ 浮层的标题 · 正文 · 按钮
+    "src/frontend/ui/front-result.ts", // 拉窗结局 ⇒ 底部一条的标题 · 正文 · 按钮
     "src/frontend/ui/backend-deploy.ts", // ↗ 浮层［更新］就地把这一版换到那台（与机器卡同一处部署）
     "src/frontend/ui/ipc/origin.ts", // 本机 / 远端只经这一处判（线上缺省 = 本机的那一下表示法转换也在这里）
     "src/frontend/ui/live-card.ts", // 中转抄出的流式活卡：tap 格进状态机、同对账键的记录落盘即撤卡；子运行那几行
@@ -167,7 +166,6 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/live-window.ts", // 建 tab 的渲染那一半（`mountTabDom`）与从头重读时新建 `TailWindow` / `SeqSet`
     "src/frontend/ui/tab-cold-reads.ts", // 每个 tab 的第一趟会话事实 ＋ 轮次什么时候问（当前的先、后台空闲时一个一个）
     // 会话事实到了之后在消息流里补画的那几样（`factsLanded`，原在组装根）：
-    "src/frontend/ui/cards/speaker.ts", // 卡头那一格在哪（补名字时按它找）
     "src/frontend/ui/cards/step-line.ts", // 会话事实说在等批准的那一步：那一行照画 / 不等了回到在跑
     "src/frontend/ui/duration-format.ts", // 那一行右侧已等多久（会走的钟，那一个读口 `waitedNow`）
     "src/frontend/ui/cards/api-error.ts", // applyRetries：每串重试的结局 ⇒ 消息流里的重试细条照画
@@ -439,7 +437,7 @@ describe("〔8a ④〕渲染那一半只经流视图（零命中 ＋ 正控）",
 
   it("★ 组装根不再引渲染那一半的零件（尾部窗口账本 · 卡片补画那几样）", () => {
     const deps = runtimeImports("src/frontend/ui/tabs.ts");
-    for (const d of ["live-window", "cards/step-line", "cards/api-error", "cards/speaker-bar", "cards/speaker"]) {
+    for (const d of ["live-window", "cards/step-line", "cards/api-error", "cards/speaker-bar"]) {
       expect(deps, d).not.toContain(`src/frontend/ui/${d}.ts`);
     }
   });

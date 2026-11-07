@@ -7,12 +7,12 @@ import com.ccmonitor.mobile.core.data.crypto.CryptoBox
 import com.ccmonitor.mobile.core.data.crypto.KeystoreCryptoBox
 import com.ccmonitor.mobile.core.data.db.AppDatabase
 import com.ccmonitor.mobile.core.data.db.CacheDatabase
+import com.ccmonitor.mobile.core.data.db.STATE_DB_FILE
 import com.ccmonitor.mobile.core.data.db.allMigrations
 import com.ccmonitor.mobile.core.data.db.cacheDatabase
 import com.ccmonitor.mobile.core.data.db.seedDefaultKeys
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
-import com.ccmonitor.mobile.core.data.repo.MovedLaunchRepository
 import com.ccmonitor.mobile.core.data.repo.SettingsRepository
 import org.koin.android.ext.koin.androidContext
 import org.koin.dsl.module
@@ -22,11 +22,11 @@ import org.koin.dsl.module
  */
 val dataModule =
     module {
-        // 迁移链（升级不丢数据），见 allMigrations；21→22 重加密文用的是下面那一个 CryptoBox。
+        // 迁移链（升级不丢数据，从 OLDEST_STATE_DB 起），见 allMigrations；更老的库 App 起来时就拒开了（StateDbAge），走不到这里。
         single {
             Room
-                .databaseBuilder(androidContext(), AppDatabase::class.java, "ccm.db")
-                .addMigrations(*allMigrations(get()))
+                .databaseBuilder(androidContext(), AppDatabase::class.java, STATE_DB_FILE)
+                .addMigrations(*allMigrations())
                 // 新装也要种默认三组按键：迁移只在升级时跑。
                 .addCallback(
                     object : RoomDatabase.Callback() {
@@ -36,7 +36,6 @@ val dataModule =
         }
         single { get<AppDatabase>().hostDao() }
         single { get<AppDatabase>().identityDao() }
-        single { get<AppDatabase>().knownHostDao() }
         single { get<AppDatabase>().keyDao() }
         single { get<AppDatabase>().settingsDao() }
         single { get<AppDatabase>().handDao() }
@@ -49,6 +48,5 @@ val dataModule =
 
         single { HostRepository(get(), get()) }
         single { IdentityRepository(get(), get()) }
-        single { MovedLaunchRepository(get()) }
         single { SettingsRepository(get()) }
     }

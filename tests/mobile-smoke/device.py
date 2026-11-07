@@ -681,7 +681,7 @@ def item6():
     rig("backend", "off")
     try:
         smoke.to_chat()
-        smoke.drawer(t("mobDrawer.item.terminal"))
+        smoke.drawer(t("main.cmd.openTerminals"))
         time.sleep(4)
         if not any(typed_in_terminal(f"~/work/{D}t6a") for _ in range(5)):
             raise Red("常驻后端起不来时终端一开始就打不进字（SSH 本身是通的）")

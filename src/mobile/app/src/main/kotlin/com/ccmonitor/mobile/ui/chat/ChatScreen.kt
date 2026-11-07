@@ -60,8 +60,6 @@ fun ChatScreen(
     modifier: Modifier = Modifier,
     /** 上滑到顶时请求再载更早的一段。 */
     onLoadOlder: () -> Unit = {},
-    /** 重发一条失败的消息（传本地 key）。 */
-    onRetrySend: (String) -> Unit = {},
     /** 过程行的开合 · 跳到第一处失败。 */
     process: ProcessActions = ProcessActions(),
     /** 回退框的开合（那一段的段首条 id）。 */
@@ -83,7 +81,7 @@ fun ChatScreen(
 ) {
     CompositionLocalProvider(LocalSaidImages provides loadImage, LocalSegHl provides loadHl, LocalMdDoc provides loadDoc) {
         Column(modifier.fillMaxSize()) {
-            ChatTranscript(state = state, modifier = Modifier.weight(1f), onLoadOlder = onLoadOlder, onRetrySend = onRetrySend, process = process, onBranch = onBranch, awaiting = awaiting, said = actions.said, onFollow = onFollow)
+            ChatTranscript(state = state, modifier = Modifier.weight(1f), onLoadOlder = onLoadOlder, process = process, onBranch = onBranch, awaiting = awaiting, said = actions.said, onFollow = onFollow)
             needs()
             // 送没送到贴在那条消息旁边（`UserText.deliveryText`），这里不另起横幅。
             ChatInputArea(state = state, actions = actions, attach = attach)
@@ -101,7 +99,6 @@ fun ChatTranscript(
     state: ChatUiState,
     modifier: Modifier = Modifier,
     onLoadOlder: () -> Unit = {},
-    onRetrySend: (String) -> Unit = {},
     process: ProcessActions = ProcessActions(),
     onBranch: (String) -> Unit = {},
     awaiting: AwaitingStep? = null,
@@ -175,7 +172,6 @@ fun ChatTranscript(
                 matchedKeys = setOfNotNull(state.landing),
                 // 不传的话「复制代码」按钮照样渲染但点了没反应。
                 onCopyCode = { clipboard.setText(AnnotatedString(it)) },
-                onRetrySend = onRetrySend,
                 trailer = { liveCards(state.live) },
                 stepBadge = { id -> awaiting?.takeIf { it.call == id }?.text },
                 stepWait = state::waitOf,

@@ -13,11 +13,8 @@
 //! `show-options` 对未设置的 option 是 `rc=1` + stderr；`display-message -p` 静默展开成空串。
 //! 目标不存在时整条输出为空但 `rc=0` ⇒「目标在不在」看输出为空，不看退出码。
 
-use crate::platform::child::{Child, Deadline};
+use crate::platform::child::Child;
 use copy_core::copy_text;
-
-/// 身份探测 · 列窗格那一发只读 tmux 的期限：界面等 `kill` / 送键的预算是 10 s，tmux 一发 5 s（同 watcher 探测 tmux 的期限）。
-const PROBE_TMUX_WITHIN: Deadline = Deadline::secs(5);
 
 /// 命令级错误：`(code, message)`。与 [`super::launch`] 同型。
 use crate::common::said::Said;
@@ -119,7 +116,7 @@ fn panes_with(tmux: Child, session: &str) -> Vec<PaneTag> {
         "-t",
         session,
     ])
-    .run(PROBE_TMUX_WITHIN)
+    .run(crate::host::tmux::TMUX_WITHIN)
     .map(|o| parse_panes(&String::from_utf8_lossy(&o.stdout)))
     .unwrap_or_default()
 }
@@ -166,7 +163,7 @@ pub(crate) fn probe_with(tmux: Child, target: &str) -> Result<Option<Probed>, Sa
             target,
             PROBE_FMT,
         ])
-        .run(PROBE_TMUX_WITHIN)
+        .run(crate::host::tmux::TMUX_WITHIN)
         .map_err(|e| {
             // 句子只说原因词；系统原话进原话位（复制详情）。
             let (c, s) = e.into_cmd_said("no_tmux", |why| {

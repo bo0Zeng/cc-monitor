@@ -11,7 +11,7 @@ import { describe, it, expect, vi, beforeEach, onTestFinished } from "vitest";
 import { fakeClipboard } from "../../../test-support/clipboard-fake";
 
 const { setDiag, getDiag, logInfo, opened, report, chan } = vi.hoisted(() => ({
-  chan: { asked: [] as [string, string][], drift: null as unknown },
+  chan: { asked: [] as [string, string][] },
   setDiag: { fail: null as Error | null, calls: [] as unknown[] },
   getDiag: { fail: null as Error | null, logEnabled: true },
   logInfo: {
@@ -60,12 +60,11 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
     clipboard_write: async (a: { text: string }) => (await import("../../../test-support/clipboard-fake")).viaFake(a),
   },
 }));
-// 通道那一侧：记下问了谁、问什么；`drift-merge` 照 `chan.drift` 答（`null` ⇒ 问不到）。
+// 通道那一侧：记下问了谁、问什么（这一页不该经通道问任何东西）。
 vi.mock("../../../../src/frontend/ui/ipc/chan-caller", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   callTyped: (origin: string, cmd: string) => {
     chan.asked.push([origin, cmd]);
-    if (cmd === "drift-merge" && chan.drift) return Promise.resolve(chan.drift);
     return Promise.reject(new Error("问不到"));
   },
 }));
@@ -106,7 +105,6 @@ beforeEach(() => {
   report.fail = null;
   report.asked = [];
   chan.asked = [];
-  chan.drift = null;
   logInfo.value.backend_stderr = [];
   logInfo.value.current_file = "/d/logs/monitor.2026-09-25.log";
   logInfo.value.current_file_shown = "壳写的今天那份显示形";
@@ -240,22 +238,10 @@ describe("复制诊断信息 · 未识别数据那一行", () => {
     expect(sec.element.textContent).toContain("壳没答-xyz");
   });
 
-  it("★ 各台的记录账：只问本机后端一条 `drift-merge`（它问到各台），回包那几行原样交壳", async () => {
-    const machines = [
-      { origin: "<local>", report: { faces: [] } },
-      { origin: "devbox", report: { faces: [{ face: "record_type", consequence: "不显示", overflowed: false, entries: [] }] } },
-      { origin: "gpu-01", report: null },
-    ];
-    chan.drift = { machines };
+  it("★ 这一页只问壳一条、什么都不交：记录账 · 认不出的键都由本机后端并，界面不经通道另问", async () => {
     await loaded();
-    expect(chan.asked).toEqual([["<local>", "drift-merge"]]);
-    expect(report.asked).toEqual([expect.objectContaining({ drift: machines })]);
-  });
-
-  it("本机后端问不到 ⇒ 只交本机一行「读不到」（壳照实写）", async () => {
-    await loaded();
-    expect(chan.asked).toEqual([["<local>", "drift-merge"]]);
-    expect(report.asked).toEqual([expect.objectContaining({ drift: [{ origin: "<local>", report: null }] })]);
+    expect(report.asked).toEqual([undefined]);
+    expect(chan.asked, "界面不该自己问各台的记录账").toEqual([]);
   });
 
   it("那一行读同一份答复：有数的那台 · 读不到的那台 · config.json 几项", async () => {

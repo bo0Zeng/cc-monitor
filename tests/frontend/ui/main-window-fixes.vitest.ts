@@ -483,13 +483,9 @@ describe("上下文那一格：状态栏与监控板照抄同一份核心成品"
     autoAnswer: null,
     autoAnswerChoices: [],
     askEnd: null,
-    quietUnread: null,
     usage: {
-      promptTokens: 350_000,
       model: "claude-opus-5-5",
-      peakPromptTokens: 350_000,
       limit,
-      limitFrom,
       percent: limitFrom === "assumed" ? null : 35,
       contextText: limitFrom === "assumed" ? "核心·350k" : "核心·35%",
       contextTone: "plain",

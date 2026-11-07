@@ -54,7 +54,8 @@ fun barOf(line: LinkLine?): BarLook? {
 
 /**
  * 机器条：读一台机器的屏都摆它，放在顶栏下那一格；通着且无事不画、不占位，连上收起不弹提示。
- * 按钮照核心点名的那一颗：［重试］·［连接］⇒ 重接；［安装］·［更新］⇒ 叫核心装（进度就在条里换）；改设置那几种 ⇒ [onEditHost]（不给 ⇒ 不画按钮）。
+ * 按钮照核心点名的那一颗（[fixAction]）：［重试］·［连接］⇒ 重接；［安装］·［更新］⇒ 叫核心装（进度就在条里换）；
+ * ［换成密钥］⇒ [rememberKeySwitch]；改设置那几种 ⇒ [onEditHost]（不给 ⇒ 不画按钮）。
  */
 @Composable
 fun MachineBar(
@@ -67,15 +68,30 @@ fun MachineBar(
     val line by feed.state.collectAsState()
     val look = barOf(line) ?: return
     val deploy = rememberDeployPress(hostId)
-    val act: (() -> Unit)? =
-        when (look.fix?.fix) {
-            null -> null
-            MachineFix.RETRY, MachineFix.CONNECT -> feed::reconnect
-            MachineFix.INSTALL, MachineFix.UPDATE -> deploy.press
-            MachineFix.CONN_SETTINGS, MachineFix.PUSH_KEY, MachineFix.COMPARE_FINGERPRINT -> onEditHost?.let { { it(hostId) } }
-        }
+    val useKey = rememberKeySwitch(hostId)
+    val act = look.fix?.fix?.let { fixAction(it, FixActs(feed::reconnect, deploy.press, onEditHost?.let { e -> { e(hostId) } }, useKey)) }
     MachineBarView(look, act, modifier)
 }
+
+/** 机器条上那几颗修法各做什么（每一屏照同一张表接，不各自分派）：重接 · 装 / 更新 · 进编辑页 · 换成密钥。 */
+data class FixActs(
+    val reconnect: () -> Unit,
+    val deploy: () -> Unit,
+    val editHost: (() -> Unit)?,
+    val useKey: () -> Unit,
+)
+
+/** 核心点名的那一颗 ⇒ 点了做什么；那一屏没给那一样（编辑页）⇒ `null`（不画按钮）。 */
+fun fixAction(
+    fix: MachineFix,
+    acts: FixActs,
+): (() -> Unit)? =
+    when (fix) {
+        MachineFix.RETRY, MachineFix.CONNECT -> acts.reconnect
+        MachineFix.INSTALL, MachineFix.UPDATE -> acts.deploy
+        MachineFix.USE_KEY -> acts.useKey
+        MachineFix.CONN_SETTINGS, MachineFix.PUSH_KEY, MachineFix.COMPARE_FINGERPRINT -> acts.editHost
+    }
 
 /** [MachineBar] 的样子（只画 [look]）。 */
 @Composable

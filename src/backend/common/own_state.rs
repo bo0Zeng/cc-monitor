@@ -13,8 +13,9 @@
 
 use crate::common::said::Said;
 use crate::platform::fs::{Own, OwnLock, OwnPath};
+use cap_core::Cap;
 use copy_core::copy_text;
-use relay_route_core::{Cap, Class, Decl, Format, Upgradable};
+use relay_route_core::{Class, Decl, Format, Upgradable};
 use std::io::Read as _;
 use std::marker::PhantomData;
 use std::path::Path;

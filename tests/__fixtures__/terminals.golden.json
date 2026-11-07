@@ -21,14 +21,12 @@
           "clients": [
             {
               "kind": "terminal-window",
-              "last_activity": 90,
               "since": 50
             }
           ],
           "cwd": "/p",
           "host": "tmux",
           "input": { "kind": "shared" },
-          "last_activity": 100,
           "program": "claude",
           "session": {
             "agent": "claude",
@@ -58,7 +56,6 @@
           "cwd": "/r",
           "host": "tmux",
           "input": { "kind": "shared" },
-          "last_activity": 300,
           "program": "vim",
           "started_by": {
             "client": "desktop",
@@ -78,7 +75,6 @@
           "cwd": "/q",
           "host": "tmux",
           "input": { "kind": "shared" },
-          "last_activity": 200,
           "program": "bash",
           "session": {
             "agent": "claude",
@@ -115,11 +111,9 @@
       "y": 1,
       "visible": true
     },
-    "captured_at": 1700000000,
     "captured_at_text": "07:13:20",
     "reply": {
       "capped": false,
-      "captured_at": 1700000000,
       "captured_at_text": "07:13:20",
       "cols": 80,
       "cursor": {

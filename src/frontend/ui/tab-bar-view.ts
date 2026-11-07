@@ -1,8 +1,8 @@
 /**
- * 标签页栏视图：栏顶一排（全局入口 · 刷新）· 「需手动 N」· 机器离线条 · 列表（分组 ＋ 每个会话一行）。
+ * 标签页栏视图：栏顶一排（新建 · 历史 · 设置 · ⋯，宿主交进来）· 「需手动 N」· 机器离线条 · 列表（分组 ＋ 每个会话一行）。
  *
  * 一行：状态点 · 窄窗两字母 · 机器徽标（远端）· 项目名 ＋ 标题（后台多一个齿轮）· 行尾（等批准 / 未读数 · 停发 ·
- * 与默认不同的账号头像 · 图钉）· 悬停时盖在行尾的动作（目录 · ↗ · 更多 / 关闭）。悬停卡（kit 悬停提示的卡式）锚在行右侧。
+ * 与默认不同的账号头像 · 图钉）· 悬停时盖在行尾的动作（⋯ · 关闭）。悬停卡（kit 悬停提示的卡式）锚在行右侧。
  * 一句话怎么写全从 `session-face.ts` 取（状态点 · 状态句 · peek · 需手动）；这里只排。
  *
  * 只画、只把用户手势转交出去：点按钮切 tab、按下起拖、右键开菜单、子动作按钮 —— 做事的都经
@@ -19,7 +19,7 @@ import type { GroupCount } from "./generated/GroupCount";
 import { barRows, type BarRow, type RowRect } from "./tab-drop";
 import { lightOf } from "./session-status";
 import { isRemoteOrigin } from "./ipc/origin";
-import { canReattach, closesQuietly, frontWhy, isEnded, isLive } from "./face-can";
+import { canReattach, closesQuietly, isEnded } from "./face-can";
 import type { Tab } from "./tab-model";
 import type { TabStore } from "./tab-store";
 import type { TabBarPrefs } from "./tab-bar-prefs";
@@ -64,9 +64,6 @@ export interface TabButtonRefs {
   acctBadge: HTMLSpanElement;
   /** 停发的会话标题后琥珀字 `停发`（与「等批准」同位）。 */
   holdBadge: HTMLSpanElement;
-  cwdBtn: HTMLSpanElement;
-  /** 行尾 ↗：一直在，做不了 ⇒ 灰着、`data-why` 是那一句（悬停照它说，A2-17-12-1）。 */
-  frontBtn: HTMLSpanElement;
   /**
    * 📌 角标。**纯展示，不可点** —— 与 `.tab-badge`（未读数）同族。
    * 固定是右键菜单那一项的事；这里再放一个能点的东西就是同一个动作两个入口。
@@ -91,10 +88,6 @@ export interface TabBarViewHost {
   refreshTabBar(): void;
   /** 组的菜单「关闭组里已结束的」：一次关掉、给一条可撤的 toast。 */
   closeEndedIn(gid: string): void;
-  /** 📂：打开工作目录。 */
-  openTabCwd(sid: string): Promise<void>;
-  /** ↗：切到这个 tab 的终端窗口（本机 · 远端同一条）。 */
-  bringTerminalToFront(sid: string): Promise<void>;
   /** × / 中键：关（只关得掉已结束的）。 */
   closeTab(sid: string): void;
   /** 点按钮：手动切 tab。 */
@@ -120,8 +113,6 @@ export interface TabBarViewHost {
   openMenu(e: MouseEvent, sid: string): void;
   /** 栏里键盘 Space：选中 / 取消（同 Ctrl 点）。 */
   toggleSelect(sid: string): void;
-  /** 栏顶「刷新」：有打开 tab 的每台对齐 ＋ 补读一次；做完才 resolve。 */
-  rereadAll(): Promise<void>;
   /** 行尾「更多」：开这个 tab 的菜单（锚在那颗按钮上）。 */
   openMenuAt(anchor: HTMLElement, sid: string): void;
   /** 栏底机器条那一行的修法（重新连接 · 连接设置 · 更新 …）。 */
@@ -177,11 +168,10 @@ export class TabBarView {
    */
   private readonly sidOf = new WeakMap<Element, string>();
 
-  /** 栏顶一排：全局入口（宿主经 [`mountHeadActions`] 交进来）· 刷新。 */
+  /** 栏顶一排：常驻那几颗 ＋ 右端「更多去处 ⋯」（宿主经 [`mountHeadActions`] 交进来）。 */
   private readonly headEl: HTMLDivElement;
   private readonly headActs: HTMLSpanElement;
-  /** 栏顶右端「刷新」：点击走下面那个委托的 click；在飞时 `disabled`，不重入。 */
-  private readonly rereadBtn: HTMLButtonElement;
+  private readonly headEnd: HTMLSpanElement;
   /** 「需手动 N」：有人在等你才出。 */
   private readonly needsEl: HTMLButtonElement;
   private readonly needsCount: HTMLSpanElement;
@@ -220,13 +210,9 @@ export class TabBarView {
     this.headActs.className = "tab-bar-head-acts";
     const sp = document.createElement("span");
     sp.className = "tab-bar-head-sp";
-    this.rereadBtn = document.createElement("button");
-    this.rereadBtn.type = "button";
-    this.rereadBtn.className = "tab-bar-reread tab-bar-icon";
-    this.rereadBtn.setAttribute("aria-label", copyText("accountChip.menu.refresh"));
-    this.rereadBtn.appendChild(icon("refresh"));
-    attachTooltip(this.rereadBtn, () => copyText("tabBar.reread.hint"));
-    this.headEl.append(this.headActs, sp, this.rereadBtn);
+    this.headEnd = document.createElement("span");
+    this.headEnd.className = "tab-bar-head-acts";
+    this.headEl.append(this.headActs, sp, this.headEnd);
 
     this.needsEl = document.createElement("button");
     this.needsEl.type = "button";
@@ -258,12 +244,13 @@ export class TabBarView {
       const sid = this.sidOf.get(el);
       return sid === undefined ? null : this.hoverCard(sid);
     }, { placement: "right", hold: true, width: () => (folded() ? 260 : 300) });
-    delegateTooltip(this.listEl, ".tab-cwd, .tab-focus, .tab-more, .tab-close", (el) => actHint(el));
+    delegateTooltip(this.listEl, ".tab-more, .tab-close", (el) => actHint(el));
   }
 
-  /** 栏顶左边那几颗全局入口（会话总览 · 文件 · 历史 · 设置）：宿主建好交进来，这里只摆。 */
-  mountHeadActions(buttons: HTMLElement[]): void {
+  /** 栏顶那几颗全局入口（左：新建 · 历史 · 设置；右端：更多去处 ⋯）：宿主建好交进来，这里只摆。 */
+  mountHeadActions(buttons: HTMLElement[], end: HTMLElement[]): void {
     this.headActs.replaceChildren(...buttons);
+    this.headEnd.replaceChildren(...end);
   }
 
   /** 一台的状态成品来了 ⇒ 栏底机器条照它摆（没连上 ⇒ 那一行；连上了 ⇒ 摘掉）。 */
@@ -399,16 +386,7 @@ export class TabBarView {
     swapPopoverContent(this.needsEl, this.needsPanel(Number.isFinite(at) && at >= 0 ? at : 0));
   }
 
-  private reread(): void {
-    const btn = this.rereadBtn;
-    if (btn.disabled) return;
-    btn.disabled = true;
-    void this.host.rereadAll().finally(() => {
-      btn.disabled = false;
-    });
-  }
-
-  /** 这个事件落在哪颗 tab 按钮上、是不是落在它的某颗子按钮（📂 / ↗ / ×）上。不是 tab 按钮 ⇒ `null`。 */
+  /** 这个事件落在哪颗 tab 按钮上、是不是落在它行尾的子按钮（⋯ / ×）上。不是 tab 按钮 ⇒ `null`。 */
   private hitOf(e: Event): { sid: string; root: HTMLElement; sub: Element | null } | null {
     const t = e.target as Element | null;
     if (!t || typeof t.closest !== "function") return null;
@@ -416,25 +394,11 @@ export class TabBarView {
     if (!root) return null;
     const sid = this.sidOf.get(root);
     if (sid === undefined) return null;
-    const sub = t.closest(".tab-cwd, .tab-focus, .tab-close, .tab-more");
+    const sub = t.closest(".tab-close, .tab-more");
     return { sid, root: root as HTMLElement, sub: sub && root.contains(sub) ? sub : null };
   }
 
-  /** 这颗 tab 行尾的 ↗（结果浮层锚在它上面）；不在条上 / 不是 Windows ⇒ `null`。 */
-  frontButton(sid: string): HTMLElement | null {
-    return this.tabButtons.get(sid)?.root.querySelector<HTMLElement>(".tab-focus") ?? null;
-  }
-
-  /** ↗ 在飞超过一会儿 ⇒ 这颗 tab 的 ↗ 进「进行中」（转圈、不可再点由 `frontOnce` 挡）。 */
-  setFrontPending(sid: string, on: boolean): void {
-    this.tabButtons.get(sid)?.root.querySelector(".tab-focus")?.classList.toggle("in-flight", on);
-  }
-
   private onBarClick(e: MouseEvent): void {
-    if (e.target instanceof Node && this.rereadBtn.contains(e.target)) {
-      this.reread();
-      return;
-    }
     if (e.target instanceof Node && this.needsEl.contains(e.target)) {
       this.toggleNeedsPanel();
       return;
@@ -451,17 +415,8 @@ export class TabBarView {
     const { sid, sub } = hit;
     if (sub) {
       e.stopPropagation();
-      if (sub.classList.contains("tab-cwd")) {
-        // 📂 打开工作目录（cwd）—— 系统默认文件管理器
-        void this.host.openTabCwd(sid);
-      } else if (sub.classList.contains("tab-more")) {
+      if (sub.classList.contains("tab-more")) {
         this.host.openMenuAt(sub as HTMLElement, sid);
-      } else if (sub.classList.contains("tab-focus")) {
-        // ↗ 拉对应终端窗口。灰着的（这台 ↗ 不是真的 · 没有终端可去）点了不做事，悬停说为什么。
-        const t = this.store.tabs.get(sid);
-        if (!t || frontWhy(t.face) !== null) return;
-        // 点那一刻现查此刻显示它的终端（本机 · 远端同一问）。
-        void this.host.bringTerminalToFront(sid);
       } else {
         this.host.closeTab(sid);
       }
@@ -1158,21 +1113,17 @@ export class TabBarView {
       b.appendChild(icon(name, "compact"));
       return b;
     };
-    const cwdBtn = act("tab-cwd", "folder", copyText("tabBarView.tab.cwdHint"));
-    acts.appendChild(cwdBtn);
-    // ↗ 切到终端：一直渲，做不了灰着（`updateTabButton` 照 `frontWhy` 写）。
-    const frontBtn = act("tab-focus", "front", copyText("terminal.head.front"));
-    acts.appendChild(frontBtn);
+    // 只留 ⋯ ×：打开目录 · 终端在会话头与 ⋯ 里都有，点一下就切过去了。
     acts.appendChild(act("tab-more", "more", copyText("history.row.more")));
     acts.appendChild(act("tab-close", "close", copyText("launch.slot.close")));
 
     root.append(dot, abbr, machine, titleEl, trail, acts);
 
-    return { root, dot, abbr, machine, label, needs, badge, acctBadge, holdBadge, cwdBtn, frontBtn, pinBadge, drawn: null, acctDrawn: "" };
+    return { root, dot, abbr, machine, label, needs, badge, acctBadge, holdBadge, pinBadge, drawn: null, acctDrawn: "" };
   }
 
   /**
-   * 悬停卡：标题全名 · 机器 · 目录 · 状态句（点 ＋ 一句，在等你时琥珀）· peek 一句 · 账号 · 分叉自 · 写入进程 · `5 切到这里`。
+   * 悬停卡：标题全名 · 机器 · 目录 · 状态句（点 ＋ 一句，在等你时琥珀）· peek 一句 · 账号 · 分叉自（那台写好的那一句）。
    * 卡里没有能点的东西；peek 拿不到就不出那一行。tab 已经没了 ⇒ 不出。
    */
   hoverCard(sid: string): HTMLElement | null {
@@ -1209,10 +1160,7 @@ export class TabBarView {
     const rot = appStore.sessionRotation.get().get(sid)?.read;
     const held = holdOf(rot);
     if (held !== null) card.appendChild(line("tab-hover-row", held));
-    if (tab.forkedFromSessionId) card.appendChild(line("tab-hover-row", copyText("tabBar.hover.forked", { id: tab.forkedFromSessionId.slice(0, 8) })));
-    if (isLive(tab.face) && tab.writersLine) card.appendChild(line("tab-hover-row", tab.writersLine));
-    const pos = this.visibleOrder().indexOf(sid);
-    if (pos >= 0 && pos < 9) card.appendChild(line("tab-hover-foot", copyText("tabBar.hover.key", { key: String(pos + 1) })));
+    if (tab.forkedLine) card.appendChild(line("tab-hover-row", tab.forkedLine));
     return card;
   }
 
@@ -1226,7 +1174,6 @@ export class TabBarView {
     const ended = isEnded(tab.face);
     const unseen = dot === "unknown";
     const pinned = tab.pinned;
-    const hasCwd = !!tab.projectDir;
     const remote = isRemoteOrigin(tab.origin);
     const lightClass = lightOf(dot);
     const reconnectable = canReattach(tab.face);
@@ -1240,7 +1187,7 @@ export class TabBarView {
     const titleText = tab.title;
     const abbr = abbrOf(tab);
 
-    const flags = [active, selected, ended, unseen, pinned, hasCwd, remote, reconnectable, unreadText !== "", unseenDone, n !== null]
+    const flags = [active, selected, ended, unseen, pinned, remote, reconnectable, unreadText !== "", unseenDone, n !== null]
       .map((b) => (b ? "1" : "0"))
       .join("");
     const held = holdOf(appStore.sessionRotation.get().get(sid)?.read) !== null;
@@ -1253,8 +1200,7 @@ export class TabBarView {
       // 状态不明（那台看不见）：没有自己的样式（点 · 字都照脸画），只给判据与读屏读。
       refs.root.toggleAttribute("data-unseen", unseen);
       refs.root.classList.toggle("pinned", pinned);
-      refs.root.classList.toggle("has-cwd", hasCwd);
-      refs.root.classList.toggle("remote", remote);
+      refs.root.toggleAttribute("data-remote", remote);
       // 状态钩子（没有样式、给判据与读屏读）：灯那一档 · 可重连。
       if (lightClass) refs.root.dataset.light = lightClass;
       else delete refs.root.dataset.light;
@@ -1275,18 +1221,6 @@ export class TabBarView {
       setText(refs.badge, unreadText);
     }
     this.updateAccountBadge(refs, sid, tab); // 账号头像随 tab 更新一并刷新
-    // ↗ 灰不灰 · 那一句：变了才写（脸 · 壳那一份变了都可能变，不进上面那串）。
-    const why = frontWhy(tab.face);
-    const was = refs.frontBtn.dataset.why ?? null;
-    if (was !== why) {
-      if (why === null) {
-        delete refs.frontBtn.dataset.why;
-        refs.frontBtn.removeAttribute("aria-disabled");
-      } else {
-        refs.frontBtn.dataset.why = why;
-        refs.frontBtn.setAttribute("aria-disabled", "true");
-      }
-    }
   }
 }
 
@@ -1303,12 +1237,6 @@ function setShown(el: HTMLElement, on: boolean): void {
 
 /** 行尾那几颗动作的悬停提示（按类认是哪一颗）。 */
 function actHint(el: HTMLElement): string | null {
-  if (el.classList.contains("tab-cwd")) return withKey(copyText("tabBarView.tab.cwdHint"), "tab.open-cwd");
-  if (el.classList.contains("tab-focus")) {
-    const hint = withKey(copyText("terminal.head.front"), "terminal.bring-front");
-    const why = el.dataset.why;
-    return why ? `${copyText("terminal.head.front")} · ${why}` : hint;
-  }
   if (el.classList.contains("tab-close")) return withKey(copyText("launch.slot.close"), "tab.close-archived");
   if (el.classList.contains("tab-more")) return copyText("history.row.more");
   return null;

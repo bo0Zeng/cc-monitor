@@ -1,7 +1,8 @@
 //! # 撞名：`--` 右边只认 ccm 表
 //!
 //! 核原文：「撞名判据改为『右边只认 ccm 表』」。异源：一侧是真解析器 `argv::parse_layered` ＋ 真分流 `route` 的行为，另一侧是 claude 自己的 `--help` ——
-//! 固定快照 `tests/__fixtures__/claude-help.snapshot.txt`（首行记版本）；PATH 上有 `claude` 时再加读真的一份（只许跑 `--help`）。
+//! 固定快照 `tests/__fixtures__/claude-help.snapshot.txt`（首行记版本）。只认快照、不起 PATH 上的 claude：
+//! 判据的输入不随机器变，测试也不碰真 claude；claude 出了新版要跟上它的参数，人手重取快照（首行改版本与日期）。
 //!
 //! 分流问 control（`ccm::route`）与入口（`stream::entry::is_backend_word`）：宿主口是独立的包（`backend-host`）、够不到上层 ⇒ 挂在主 crate（`cross/host.rs`）。
 
@@ -30,19 +31,14 @@ fn flags_of(help: &str) -> BTreeSet<String> {
 /// 要求：「命令格式 `ccm [交给 claude 的…] -- [ccm 自己的…]`：没有 `--` ⇒ 整行原样交 claude；
 /// 有 ⇒ 按最后一个 `--` 切……右边全归 ccm……认不得的词直接报错、不猜」「撞名判据改为『右边只认 ccm 表』」。
 ///
-/// 语料异源：claude `--help` 快照（＋ PATH 上真 claude）∪ 后端的两张表 ∪ ccm 自己的词（问真解析器认不认）。
+/// 语料异源：claude `--help` 快照 ∪ 后端的两张表 ∪ ccm 自己的词（问真解析器认不认）。
 /// ① 没有 `--` ⇒ 零拦截：每个词（单独、与整串混写）都原样进透传，分流也不进后端。
 /// ② 右边只认 ccm 表：claude 的词放右边一律报错；ccm 的词放右边都认得。
 /// ③ 后端词只紧跟打头的 `--`：`ccm -- <后端词>` 进后端，左边有 claude 参数时报错（不猜）。ccm 的词 ∩ 后端词 = ∅。
 #[test]
 fn only_the_right_of_the_last_end_is_ccm_and_nothing_is_intercepted_without_it() {
     let version = SNAPSHOT.lines().next().unwrap_or_default().to_string();
-    let mut claude = flags_of(SNAPSHOT);
-    if let Ok(out) = std::process::Command::new("claude").arg("--help").output() {
-        if out.status.success() {
-            claude.extend(flags_of(&String::from_utf8_lossy(&out.stdout)));
-        }
-    }
+    let claude = flags_of(SNAPSHOT);
     for want in [
         "--resume",
         "-r",

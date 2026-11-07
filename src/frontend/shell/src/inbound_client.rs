@@ -110,7 +110,6 @@ pub(crate) async fn local_backend_accepting(cmd: &str) -> Result<Arc<InboundClie
 /// 一台此刻那一条连接握手时交出的那几样（那台的 hello，本机后端原样转来）。
 struct Reached {
     offer: Offer,
-    build: String,
 }
 
 fn reached_book() -> &'static Mutex<HashMap<cmd_wire::Machine, Reached>> {
@@ -126,7 +125,6 @@ pub(crate) fn reached(machine: &cmd_wire::Machine, hello: &cmd_wire::frame::Hell
         machine.clone(),
         Reached {
             offer: offer.clone(),
-            build: hello.build_id.clone(),
         },
     );
     offer
@@ -144,11 +142,6 @@ pub fn offer_of(origin: &cmd_wire::Machine) -> Option<Offer> {
         return Some(local.offer());
     }
     lock(reached_book()).get(origin).map(|r| r.offer.clone())
-}
-
-/// 那台这一条连接握手时报的构建标识（诊断信息用）；没连着 ⇒ `None`。
-pub fn build_of(machine: &cmd_wire::Machine) -> Option<String> {
-    lock(reached_book()).get(machine).map(|r| r.build.clone())
 }
 
 /// **测试期本机那一格的独占锁**。

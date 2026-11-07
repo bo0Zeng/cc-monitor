@@ -18,7 +18,7 @@ functionLine: string | null,
  */
 said: string, form: ProfileForm, 
 /**
- * 「账号那一形」（自己只写了号、可再加 tmux）⇒ 号与 tmux 按合并下来的算；其余 ⇒ `null`（账号页按它列各号的命令名）。
+ * 「账号那一形」（自己只写了号、可再加 tmux 或托管）⇒ 号与那一形按合并下来的算；其余 ⇒ `null`（账号页按它列各号的命令名）。
  */
 accountShape: ProfileAccountShape | null, 
 /**

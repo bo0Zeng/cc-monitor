@@ -135,6 +135,30 @@ fn 记下再读回_带记下的时刻_没记过的那一样是空() {
     assert_eq!(other, json!({"accounts": null, "data": null}));
 }
 
+/// 账号清单读回的是缓存 ⇒ 每号那一格余量写成「… · 上次所知」（那台写，界面照摆）；没有那一格的号照旧没有。
+#[test]
+fn 读回的账号清单_余量那一格标上次所知() {
+    let d = Dir::new("stale");
+    let mut v = accounts_list();
+    v["accounts"][0]["quota"] = json!("5h 62% ↻18:30");
+    write_at(
+        &d.own(),
+        &json!({"origin": "devbox", "kind": "accounts", "value": v}),
+        1000,
+    )
+    .unwrap();
+    let got = read_at(&d.file(), &json!({"origin": "devbox"})).unwrap();
+    let rows = &got["accounts"]["value"]["accounts"];
+    assert_eq!(
+        rows[0]["quota"],
+        json!(copy_core::copy_text(
+            "beQuota.cell.stale",
+            &[("cell", "5h 62% ↻18:30")]
+        ))
+    );
+    assert_eq!(rows[1]["quota"], json!(null));
+}
+
 #[test]
 fn 文件不在或读不懂_照没记过算_写的时候整份重来() {
     let d = Dir::new("bad");

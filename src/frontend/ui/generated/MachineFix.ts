@@ -2,5 +2,6 @@
 
 /**
  * 那一行上给的修法（闭集）。`install` 只给自己不装后端的宿主（手机）。
+ * `use_key`：连着、这一条连接是用密码登上的 ⇒ 换成这一端的密钥（与 `push_key` 同一条路：请那台把公钥并进 `authorized_keys`）。
  */
-export type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install";
+export type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install" | "use_key";

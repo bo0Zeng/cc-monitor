@@ -4,17 +4,15 @@
 #[path = "../agents/fake_tests.rs"]
 mod fake_tests;
 
-/// 后端那几份线上形里的 agent 格（会话事实 · 换号重启 · 问答 hook）也是 `AgentKind`：哪一格还是串就编不过。
+/// 后端那几份线上形里的 agent 格（会话事实 · 问答 hook）也是 `AgentKind`：哪一格还是串就编不过。
 #[test]
 fn backend_wire_agent_cells_are_agent_kinds() {
     use crate::agents::AgentKind;
     fn maybe(_: &Option<AgentKind>) {}
     fn kind(_: &AgentKind) {}
     let _ = |f: &crate::observe::recognize::facts::SessionFacts,
-             r: &crate::control::session_restart::RestartReq,
              a: &crate::control::asks::AskReq| {
         maybe(&f.agent);
-        kind(&r.agent);
         kind(&a.agent);
     };
 }

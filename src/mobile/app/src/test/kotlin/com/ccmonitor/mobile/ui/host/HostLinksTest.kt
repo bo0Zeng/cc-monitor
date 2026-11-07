@@ -19,7 +19,7 @@ class HostLinksTest {
     private fun up(route: String): LinkLine? =
         Wire.read<LinkLine>(
             """{"state":"up","epoch":1,"machine":{"detail":null,"dot":"up","linked":true,"expectedHostKey":null,"fixes":[],"name":"deep","offline":false,""" +
-                """"offlineSaid":"deep 离线（夹具）","os":null,"reason":null,"said":"","seenHostKey":null,"stage":null,"state":"up",""" +
+                """"offlineSaid":"deep 离线（夹具）","heldSaid":"deep 离线（夹具）","os":null,"reason":null,"said":"","seenHostKey":null,"stage":null,"state":"up",""" +
                 """"version":null,"versionRelation":"same","word":""$route}}""",
         )
 

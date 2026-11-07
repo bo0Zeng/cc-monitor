@@ -44,8 +44,6 @@ class ChatViewModel(
 
     fun send(text: String) = session.send(text)
 
-    fun retry(localId: String) = session.retry(localId)
-
     fun stop() = session.stop()
 
     fun rename(title: String) = session.rename(title)
@@ -79,7 +77,6 @@ class ChatViewModel(
             say = session::say,
             cancel = session::cancel,
             cancelQueued = session::cancelQueued,
-            retry = session::retry,
             editDraft = session::editDraft,
             attach = session.attach?.let { t -> AttachActions(add = t::add, remove = t::remove, retry = t::retry, local = t::local) },
             said = SaidActions(edit = session.edits::text, options = session.edits::options, send = session.edits::send, recall = session::cancelQueued),

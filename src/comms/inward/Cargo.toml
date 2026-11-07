@@ -13,8 +13,8 @@ path = "lib.rs"
 copy-core = { path = "../../common/copy-core" }
 # 机器名（`Origin` ＝ `cmd_wire::Machine`）与 typed 命令的形状指纹表：两端对上的契约，不是业务。
 cmd-wire = { path = "../../common/cmd-wire" }
-# 读上限的类型（`Cap`：多少字节 · 超了怎么办）：带上限读一行 · 读整份（`line`）收它。零依赖的契约包。
-relay-route-core = { path = "../../common/relay-route-core" }
+# 读上限的类型（`Cap`：多少字节 · 超了怎么办）：带上限读一行 · 读整份（`line`）收它；同步那一形也住那里。零依赖。
+cap-core = { path = "../../common/cap-core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }

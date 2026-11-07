@@ -11,7 +11,8 @@ vi.mock("../../../../src/frontend/ui/copy-table", () => ({
 import { PlanView } from "../../../../src/frontend/ui/views/plan.ts";
 import { CellDetail } from "../../../../src/frontend/ui/views/plan-cell.ts";
 import { cellTarget, topTarget } from "../../../../src/frontend/ui/views/plan-review.ts";
-import type { PlanBlock, PlanCell, PlanNeed, PlanSlice, PlanWho } from "../../../../src/frontend/ui/plan-reads.ts";
+import { fileTone } from "../../../../src/frontend/ui/views/plan-model.ts";
+import type { PlanAudit, PlanBlock, PlanCell, PlanNeed, PlanSlice, PlanWho } from "../../../../src/frontend/ui/plan-reads.ts";
 
 const who = (extra: Partial<PlanWho> = {}): PlanWho => ({ id: "a1b2c3d4e5f6a7b8", kind: "unknown", sid: null, needs: null, face: null as unknown as PlanWho["face"], label: "后端·认不出", ...extra });
 
@@ -89,6 +90,7 @@ const slice = (extra: Partial<PlanSlice> = {}): PlanSlice =>
     labels: { A1: "A1 标题A1", A2: "A2 标题A2" },
     cells: [cell("A1"), cell("A2", { said: { trail: null, blockRoot: "后端·块根" } })],
     archived: [],
+    audits: [],
     needs: [],
     needCount: 0,
     returned: null,
@@ -120,6 +122,37 @@ describe("总览照后端写好的那几句摆", () => {
     noKeyText(head?.textContent ?? "");
   });
 
+  it("审图那一块：一份一行，审哪 · 人 · 结果 · 时刻照后端那几句；agent 按的挂负责人那一枚", () => {
+    const audit = (extra: Partial<PlanAudit>): PlanAudit => ({
+      file: "x.md",
+      by: "person",
+      who: null,
+      startedAt: "2026-01-01T08:00:00+00:00",
+      tree: "A1",
+      due: 1,
+      nodes: ["A1"],
+      status: "done",
+      check: 0,
+      said: { what: "后端·审哪", by: "后端·人", result: "后端·结果", at: "后端·时刻" },
+      ...extra,
+    });
+    const el = view().overview(slice({ audits: [audit({}), audit({ by: "agent", who: who(), said: { what: "后端·改过的", by: null, result: "后端·起不了", at: null } })] }));
+    const t = el.textContent ?? "";
+    for (const w of ["plan.audit.head", "后端·审哪", "后端·人", "后端·结果", "后端·时刻", "后端·改过的", "后端·认不出", "后端·起不了"]) expect(t, w).toContain(w);
+    expect(t).not.toContain("2026-01-01");
+    // 比没有审图的那一页多一枚：审图里 agent 按的那一份。
+    expect(el.querySelectorAll(".plan-who").length).toBe(view().overview(slice()).querySelectorAll(".plan-who").length + 1);
+    noKeyText(t);
+  });
+
+  it("没有审图 ⇒ 不出那一块", () => {
+    expect(view().overview(slice()).textContent ?? "").not.toContain("plan.audit.head");
+  });
+
+  it("文件行的档：没提交与空同一档（提醒），在 · 缺 · 坏各归各档", () => {
+    expect([fileTone("ok"), fileTone("uncommitted"), fileTone("empty"), fileTone("missing"), fileTone("broken"), fileTone(null)]).toEqual(["ok", "warn", "warn", "bad", "bad", "bad"]);
+  });
+
   it("认不出的人：写后端给的那一名，不拿 id 现拼", () => {
     const t = view().whoChip(who()).textContent ?? "";
     expect(t).toBe("后端·认不出");
@@ -133,6 +166,17 @@ describe("一格详情的块根那一行", () => {
     const t = d.render(s, s.cells[1]!).textContent ?? "";
     expect(t).toContain("后端·块根");
     expect(t).not.toContain("plan.cell.blockRoot(");
+  });
+});
+
+describe("一格详情的待执行那一条", () => {
+  it("★ 照后端写好的那一笔摆，不按加 · 去挑字，也不露 pb 的原值", () => {
+    const d = new CellDetail({ select: () => {}, who: () => document.createElement("span"), origin: () => "", workspace: () => "/w", switchTo: () => {}, returnCell: () => {}, takeover: () => {}, ask: () => {} });
+    const s = slice({ pendingSets: [{ source: "A1", target: "A2", said: "后端·去掉已定", blockedReason: null }] });
+    const t = d.render(s, s.cells[1]!).textContent ?? "";
+    expect(t).toContain("后端·去掉已定");
+    expect(t).not.toContain("plan.state.removeValue(");
+    expect(t).not.toContain("decided");
   });
 });
 

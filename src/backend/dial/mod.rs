@@ -125,9 +125,9 @@ pub(crate) struct HomeKeyFiles {
 }
 
 /// 钥匙文件的读上限：OpenSSH 私钥几 KiB，超了就不是一把钥匙（拒收，回读不出那一句）。
-const KEY_FILE_CAP: relay_route_core::Cap = relay_route_core::Cap {
+const KEY_FILE_CAP: cap_core::Cap = cap_core::Cap {
     bytes: 64 * 1024,
-    over: relay_route_core::Over::Reject,
+    over: cap_core::Over::Reject,
 };
 
 impl ssh_dial::env::KeySource for HomeKeyFiles {

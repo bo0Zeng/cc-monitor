@@ -53,7 +53,4 @@ object TermKeys {
 
     /** 几下（记号）⇒ 送进终端的字节，一下接一下拼起来；有一个记号核心读不出 ⇒ null。 */
     external fun bytes(tokens: Array<String>): ByteArray?
-
-    /** 旧转义按钮的内容（`\e[A` 这种写法）⇒ 几下（记号）；认不出 ⇒ null。 */
-    external fun legacyPresses(seq: String): Array<String>?
 }

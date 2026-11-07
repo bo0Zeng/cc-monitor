@@ -1,4 +1,4 @@
-//! dump（形状 6，照 pb 0.5 的字段表写的合成那一份）⇒ 成品：倒过来的边与文件 · id 对到会话 · 收的值从领域表来 ·
+//! dump（形状 8，照 pb 0.7.2 的字段表写的合成那一份）⇒ 成品：倒过来的边与文件 · id 对到会话 · 收的值从领域表来 ·
 //! 顶层进度与行尾短词照它数 · 待定 · 权力范围带交接说明 · 校验四样 · 「编号 标题」后端拼 · refs 的下标换成 UTF-16。
 
 use super::*;
@@ -48,9 +48,9 @@ fn the_product_carries_no_agent_view() {
     assert!(!made().doc.to_string().contains("agent_view"));
 }
 
-/// 顶上照 0.5 的键：`current_repo` ⇒ `repo` · `auto_continue` ⇒ `auto`；片从 `repos[]` 来。
+/// 顶上照形状 8 的键：`current_repo` ⇒ `repo` · `auto_continue` ⇒ `auto`；片从 `repos[]` 来。
 #[test]
-fn the_top_keys_come_from_shape_six() {
+fn the_top_keys_come_from_shape_seven() {
     let m = made();
     assert_eq!(m.doc["repo"], "alpha");
     assert_eq!(m.doc["auto"], false);
@@ -98,7 +98,7 @@ fn edges_pointing_at_a_cell_are_indexed_backwards() {
     assert_eq!(cell(&m.doc, "A1-2")["edges"]["after"], json!(["A1-1"]));
 }
 
-/// 文件照 `file_check` 给码（present · missing · empty · invalid ⇒ ok · missing · empty · broken）；同一份文件两格声明 ⇒ 各自写出另一格。
+/// 文件照 `file_check` 给码（present · uncommitted · missing · empty · invalid ⇒ ok · uncommitted · missing · empty · broken）；同一份文件两格声明 ⇒ 各自写出另一格。
 #[test]
 fn files_carry_their_check_code_and_who_else_declares_them() {
     let m = made();
@@ -114,6 +114,19 @@ fn files_carry_their_check_code_and_who_else_declares_them() {
         copy_core::copy_text("plan.fileState.broken", &[])
     );
     assert_eq!(cell(&m.doc, "A1-3")["files"][0]["note"], "是个目录");
+    // 改了没提交 · 没跟踪（pb 0.7 的 uncommitted）：自己一码、自己一句；哪一种 · 多长是 pb 那一句。
+    let uncommitted = m.doc["slices"][0]["cells"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|c| c["files"].as_array().unwrap())
+        .find(|f| f["path"] == "tests/b.txt")
+        .unwrap();
+    assert_eq!(
+        uncommitted,
+        &json!({"path": "tests/b.txt", "stateCode": "uncommitted", "checkText": copy_core::copy_text("plan.fileState.uncommitted", &[]),
+               "note": "没跟踪 · 4 个字符", "alsoBy": []})
+    );
     assert_eq!(cell(&m.doc, "A7")["files"][0]["stateCode"], "missing");
     assert_eq!(
         cell(&m.doc, "A7")["files"][0]["note"],
@@ -126,6 +139,7 @@ fn files_carry_their_check_code_and_who_else_declares_them() {
         ("missing", "missing"),
         ("empty", "empty"),
         ("invalid", "broken"),
+        ("uncommitted", "uncommitted"),
     ] {
         assert_eq!(as_json(&file_code(Some(w))), json!(c));
     }
@@ -223,7 +237,15 @@ fn state_values_come_with_counts_a_text_line_and_evidence_links() {
             }
         ])
         .as_deref(),
-        Some("已签收 · decided 3")
+        Some(
+            format!(
+                "已签收{}{} 3",
+                copy_core::copy_text("kit.text.sep", &[]),
+                copy_core::copy_text("bePlan.state.decided", &[])
+            )
+            .as_str()
+        ),
+        "pb 的协议值写成字；领域表自己登的值照原样"
     );
 }
 
@@ -352,7 +374,8 @@ fn pending_sets_carry_op_reason_and_code() {
     let sl = &m.doc["slices"][0];
     assert_eq!(
         sl["pendingSets"][0],
-        json!({"source": "A1-5", "target": "A1-2", "value": "已签收", "op": "add", "blockedReason": null})
+        json!({"source": "A1-5", "target": "A1-2", "said": "已签收", "blockedReason": null}),
+        "上线的是写好的那一笔；pb 的值与加 · 去只留在后端判 whyCode"
     );
     let read = super::make(&dump("/w"), &who, "r0".into(), 0);
     assert_eq!(
@@ -372,6 +395,18 @@ fn pending_sets_carry_op_reason_and_code() {
     let mut d = dump("/w");
     node_mut(&mut d, "A1-5")["edges"]["sets"][0]["op"] = json!("remove");
     assert_eq!(cell(&make(&d, &who).doc, "A1-5")["sets"][0]["op"], "remove");
+    let mut d = dump("/w");
+    let p = &mut d["repos"][0]["pending_sets"][0];
+    p["op"] = json!("remove");
+    p["value"] = json!("decided");
+    assert_eq!(
+        make(&d, &who).doc["slices"][0]["pendingSets"][0]["said"],
+        json!(copy_core::copy_text(
+            "bePlan.state.removeValue",
+            &[("value", &copy_core::copy_text("bePlan.state.decided", &[]))]
+        )),
+        "去一笔、协议值：都由后端写成字"
+    );
 }
 
 /// 校验四样：读不成的几处（哪一份 · 第几行 · 为什么）· 判不了的节点 · 不通过（该哪个权力范围改）· 判不了的规则。
@@ -409,18 +444,21 @@ fn unowned_files_and_why_they_cannot_be_told() {
     );
 }
 
-/// 领域与类：叫法从 `edge_labels` 取，阶段说明从 `description` 取。
+/// 领域与类：叫法从 `edge_labels` 取；阶段照 pb 给的那几个、照先后（软件是五个）。stored_in · tool · replaced_by 读了就丢。
 #[test]
-fn kinds_and_phases_take_the_shape_six_keys() {
+fn kinds_and_phases_take_the_shape_seven_keys() {
     let m = made();
     let sl = &m.doc["slices"][0];
     assert_eq!(sl["kinds"][1]["name"], "模块");
     assert_eq!(sl["kinds"][1]["edgeWords"]["with"], "实现");
     assert_eq!(sl["kinds"][1]["values"], json!(["已签收", "decided"]));
-    assert_eq!(
-        sl["phases"][3],
-        json!({"name": "回看", "does": "回看整体，决定下一步"})
-    );
+    let phases: Vec<&str> = sl["phases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(phases, ["定架构", "审架构", "开发", "审实现", "回看"]);
     let names: Vec<&str> = m.doc["domains"]
         .as_array()
         .unwrap()
@@ -438,9 +476,87 @@ fn kinds_and_phases_take_the_shape_six_keys() {
         "plan_only",
         "blocked_reason",
         "evidenced_by",
+        "stored_in",
+        "\"tool\"",
+        "in_scopes",
     ] {
         assert!(!text.contains(k), "{k}");
     }
+}
+
+/// 先后是 pb 照 after 排好的：顶层与每一格的子照 pb 给的先后进成品，后端不按编号重排。
+#[test]
+fn top_and_children_keep_pbs_after_order() {
+    let mut d = dump("/w");
+    d["repos"][0]["top_level"] = json!(["A7", "A2", "A1", "A3", "A4", "A5", "A6"]);
+    // 子倒过来给（不是编号的先后）。
+    let kids: Vec<Value> = node_mut(&mut d, "A1")["children"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .rev()
+        .cloned()
+        .collect();
+    node_mut(&mut d, "A1")["children"] = json!(kids);
+    let m = make(&d, &who);
+    assert_eq!(
+        m.doc["slices"][0]["top"],
+        json!(["A7", "A2", "A1", "A3", "A4", "A5", "A6"])
+    );
+    assert_eq!(cell(&m.doc, "A1")["children"], json!(kids));
+    assert_eq!(cell(&m.doc, "A7")["edges"]["after"], json!(["A2"]));
+    assert_eq!(cell(&m.doc, "A2")["pointedBy"]["after"], json!(["A7"]));
+}
+
+/// 审图（pb 的 `repos[].audits`）一份一项、照 pb 的先后：agent 按的对到会话，人按的那一句后端写；
+/// 审哪（带编号 ⇒「编号 标题」那一棵 · 不带 ⇒ 改过的几个）与结果（报了几条 · 起不了为什么）后端写好。没有审图的那一片 ⇒ 空。
+#[test]
+fn audits_come_one_per_report_with_who_and_their_words() {
+    let t = |k: &str, a: &[(&str, &str)]| copy_core::copy_text(k, a);
+    let m = made();
+    let a = &m.doc["slices"][0]["audits"];
+    assert_eq!(a.as_array().unwrap().len(), 2);
+    assert_eq!(
+        a[0]["file"],
+        ".planned-build/.临时/审图/alpha/20260101-080000-人.md"
+    );
+    assert_eq!(a[0]["by"], "person");
+    assert_eq!(a[0]["who"], Value::Null);
+    assert_eq!(a[0]["tree"], "A1");
+    assert_eq!(a[0]["due"], 6);
+    assert_eq!(a[0]["status"], "done");
+    assert_eq!(a[0]["check"], 1);
+    // 报了几条 · 起不了为什么只拼进结果那一句，不上线。
+    for k in ["findings", "failedReason", "inBlocks"] {
+        assert!(a[0].get(k).is_none(), "{k}");
+    }
+    assert_eq!(a[0]["said"]["by"], t("plan.audit.person", &[]));
+    assert_eq!(
+        a[0]["said"]["what"],
+        t("plan.audit.tree", &[("cell", "A1 甲功能")])
+    );
+    assert_eq!(a[0]["said"]["result"], t("plan.audit.done", &[("n", "3")]));
+    assert_eq!(a[1]["by"], "agent");
+    assert_eq!(a[1]["who"]["kind"], "subagent");
+    assert_eq!(a[1]["who"]["sid"], MAIN);
+    assert_eq!(a[1]["said"]["by"], Value::Null);
+    assert_eq!(a[1]["tree"], Value::Null);
+    assert_eq!(a[1]["status"], "failed");
+    assert_eq!(a[1]["said"]["what"], t("plan.audit.changed", &[("n", "2")]));
+    assert_eq!(
+        a[1]["said"]["result"],
+        t("plan.audit.failed", &[("why", "审图 agent 起不来")])
+    );
+    // 还没写完的 · 审整个仓库的。
+    let mut d = dump("/w");
+    d["repos"][0]["audits"][0]["status"] = json!("unfinished");
+    d["repos"][0]["audits"][0]["tree"] = json!("project");
+    d["repos"][0]["audits"][0]["findings"] = Value::Null;
+    let m2 = make(&d, &who);
+    let a2 = &m2.doc["slices"][0]["audits"][0];
+    assert_eq!(a2["said"]["result"], t("plan.audit.unfinished", &[]));
+    assert_eq!(a2["said"]["what"], t("plan.audit.whole", &[]));
+    assert_eq!(m.doc["slices"][1]["audits"], json!([]));
 }
 
 /// 每格带画哪一种（`look`）与右端那一句（`end`：状态那一行 ＋ 原因短词，用分隔连好）：两端照摆，不另判。
@@ -472,7 +588,8 @@ fn every_cell_carries_its_look_and_end_line() {
     assert_eq!(
         cell(&make(&d, &who).doc, "A1")["end"],
         format!(
-            "decided{sep}{}",
+            "{}{sep}{}",
+            short("bePlan.state.decided", &[]),
             short("plan.whyShort.inside", &[("done", "1"), ("of", "2")])
         ),
         "状态那一行与原因都有 ⇒ 用分隔连"
@@ -524,7 +641,7 @@ fn every_slice_has_a_label_per_id_built_by_the_backend() {
     let labels = &m.doc["slices"][0]["labels"];
     assert_eq!(labels["A1"], "A1 甲功能");
     assert_eq!(labels["A2-1"], "A2-1 乙的一半");
-    assert_eq!(labels.as_object().unwrap().len(), 21);
+    assert_eq!(labels.as_object().unwrap().len(), 17);
     let mut d = dump("/w");
     d["repos"][0]["archived"] =
         json!([{"id": "A9", "title": "旧的", "kind": "能力", "replaced_by": "A7"}]);
@@ -641,6 +758,8 @@ fn time_fields_get_their_text_beside_them_and_cell_ids_do_not() {
         "那一刻的字只拼进那一句，不上线"
     );
     assert_eq!(v["slices"][0]["cells"][1]["returned"]["atText"], "02:10");
+    // 审图按的那一刻（pb 原样是带时区的 ISO 8601）照看的那一台写。
+    assert_eq!(v["slices"][0]["audits"][0]["said"]["at"], "01-01 08:00");
     assert!(v["slices"][0]["blocks"][1].get("atText").is_none());
     shanghai.read_at = u64::try_from(now).unwrap();
     with_time_texts(

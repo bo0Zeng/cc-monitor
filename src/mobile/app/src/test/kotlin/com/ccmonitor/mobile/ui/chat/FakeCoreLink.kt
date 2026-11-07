@@ -49,11 +49,11 @@ internal fun machineOf(
     reason = null,
     stage = null,
     version = null,
-    versionRelation = null,
     os = null,
     word = "",
     said = said,
     offlineSaid = FakeCoreLink.OFFLINE,
+    heldSaid = FakeCoreLink.HELD,
     fixes = fixes,
     seenHostKey = null,
     expectedHostKey = null,
@@ -265,6 +265,9 @@ internal class FakeCoreLink :
     companion object {
         /** 假的那台成品里的离线那一句（测试照它比，不取字）。 */
         const val OFFLINE = "成品写的那台离线那一句"
+
+        /** 成品写的那台待发没回执那一句。 */
+        const val HELD = "成品写的那台离线那一句"
 
         fun human(
             id: String,

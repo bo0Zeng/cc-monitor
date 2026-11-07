@@ -125,7 +125,7 @@ internal class SaidEdits(
         val s = sid() ?: return
         val now = all
         shown(now.associate { it.uuid to it.text })
-        scope.launch { cache.saveDraft(EditDrafts.key(s), EditDrafts.encode(now), null, null) }
+        scope.launch { cache.saveDraft(EditDrafts.key(s), EditDrafts.encode(now)) }
     }
 
     /** 开屏读回；确认过、还没回执的那几句照同一个编号带 `rewind` 回到待发（接上那台再交）。 */
@@ -166,7 +166,11 @@ internal class SaidEdits(
         keep()
     }
 
+    /** 待发 · 名单里编号 [localId] 的那一句是不是编辑已发的那一句（撤了它的字留在编辑草稿，不回输入框）。 */
+    fun owns(localId: String): Boolean = all.any { it.sent?.localId == localId }
+
     /** 撤了编辑的那一句：草稿留着字、不再带待发编号（下次开屏不再交）。 */
+
     fun unsent(localId: String) {
         if (all.none { it.sent?.localId == localId }) return
         all = all.map { if (it.sent?.localId == localId) it.copy(sent = null) else it }
@@ -190,7 +194,7 @@ internal class SaidEdits(
         text: String,
         how: RewindHow,
         whn: RewindWhen,
-    ) = Outgoing(localId, text, DeliveryState.SENDING, copyText("mobChat.delivery.sending"), rewind = Rewind(uuid, how, whn))
+    ) = Outgoing(localId, text, DeliveryState.SENDING, null, rewind = Rewind(uuid, how, whn))
 
     private companion object {
         const val INPUT_MS = 20_000L

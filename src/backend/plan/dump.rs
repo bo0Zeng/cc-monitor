@@ -8,7 +8,7 @@ use copy_core::said::Said;
 use std::path::Path;
 
 /// 认得的形状版本（`pb dump` 顶上的 `shape`）。pb 改了形状会把它加一 ⇒ 这里不认 ⇒ 当作「pb 太旧 / 太新」说出来，不硬读。
-pub(crate) const SHAPE: u64 = 6;
+pub(crate) const SHAPE: u64 = 8;
 
 /// pb 的退出码：读不成 · 用法错。
 const RC_UNREADABLE: i32 = 3;

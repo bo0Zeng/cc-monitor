@@ -73,7 +73,7 @@ pub const SLOTS: &[Slot] = &[
     Slot {
         id: SlotId::Tmux,
         label: || copy_text("beProfile.slot.tmux", &[]),
-        flags: &[flag::TMUX, flag::TMUX_BASE],
+        flags: &[flag::TMUX, flag::TMUX_BASE, flag::HOSTED],
     },
     Slot {
         id: SlotId::CwdIf,
@@ -173,27 +173,34 @@ pub(crate) struct TmuxNamingOut {
 /// 撞名那半句只问 `ccm_line::tmux_steps_aside`（起会话取名真照它走），这里不另判退不退让。
 fn tmux_naming_out() -> Vec<TmuxNamingOut> {
     use crate::ccm_line::{tmux_steps_aside, TmuxNaming};
-    [TmuxMode::Auto, TmuxMode::Fixed, TmuxMode::Base]
-        .into_iter()
-        .map(|mode| {
-            let naming = match mode {
-                TmuxMode::Auto => TmuxNaming::Auto,
-                TmuxMode::Fixed => TmuxNaming::Fixed,
-                TmuxMode::Base => TmuxNaming::Base,
-            };
-            let clash = if tmux_steps_aside(naming) {
-                copy_text("beProfile.tmuxNaming.stepAside", &[])
-            } else {
-                copy_text("beProfile.tmuxNaming.keep", &[])
-            };
-            let text = match mode {
-                TmuxMode::Auto => copy_text("beProfile.tmuxNaming.auto", &[("clash", &clash)]),
-                TmuxMode::Fixed => copy_text("beProfile.tmuxNaming.fixed", &[("clash", &clash)]),
-                TmuxMode::Base => copy_text("beProfile.tmuxNaming.base", &[("clash", &clash)]),
-            };
-            TmuxNamingOut { mode, text }
-        })
-        .collect()
+    [
+        TmuxMode::Auto,
+        TmuxMode::Fixed,
+        TmuxMode::Base,
+        TmuxMode::Hosted,
+    ]
+    .into_iter()
+    .map(|mode| {
+        // 托管终端的名字同 tmux 自动取名那一形铸（`plan::build_among`）。
+        let naming = match mode {
+            TmuxMode::Auto | TmuxMode::Hosted => TmuxNaming::Auto,
+            TmuxMode::Fixed => TmuxNaming::Fixed,
+            TmuxMode::Base => TmuxNaming::Base,
+        };
+        let clash = if tmux_steps_aside(naming) {
+            copy_text("beProfile.tmuxNaming.stepAside", &[])
+        } else {
+            copy_text("beProfile.tmuxNaming.keep", &[])
+        };
+        let text = match mode {
+            TmuxMode::Auto => copy_text("beProfile.tmuxNaming.auto", &[("clash", &clash)]),
+            TmuxMode::Fixed => copy_text("beProfile.tmuxNaming.fixed", &[("clash", &clash)]),
+            TmuxMode::Base => copy_text("beProfile.tmuxNaming.base", &[("clash", &clash)]),
+            TmuxMode::Hosted => copy_text("beProfile.tmuxNaming.hosted", &[("clash", &clash)]),
+        };
+        TmuxNamingOut { mode, text }
+    })
+    .collect()
 }
 
 /// 一个 ccm 选项（或 `None` ＝ 交给 agent 的那串）归哪一格。
@@ -216,6 +223,7 @@ pub fn said_of(f: Option<&str>, vals: &[String]) -> String {
         Some(flag::TMUX) if vals.is_empty() => copy_text("beProfile.val.tmuxAuto", &[]),
         Some(flag::TMUX) => copy_text("beProfile.val.tmuxNamed", &[("name", &v(0))]),
         Some(flag::TMUX_BASE) => copy_text("beProfile.val.tmuxBase", &[("name", &v(0))]),
+        Some(flag::HOSTED) => copy_text("newSession.place.managed", &[]),
         Some(flag::CWD_IF) => copy_text("beProfile.val.cwdIf", &[("at", &v(0)), ("to", &v(1))]),
         Some(flag::CWD) => copy_text("beProfile.val.cwd", &[("dir", &v(0))]),
         Some(flag::DETACH) => copy_text("beProfile.val.on", &[]),
@@ -244,7 +252,7 @@ pub enum AccountPick {
     Base,
 }
 
-/// 「在哪起」那一格（子那一段只能写 tmux 的几种：当前终端是没写 tmux，继承来的 tmux 关不掉）。
+/// 「在哪起」那一格（tmux 的几种 · 托管终端；当前终端是两样都没写，子那一段关不掉继承来的）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -263,6 +271,8 @@ pub enum TmuxMode {
     Fixed,
     /// tmux，以这个名为底取名（撞了换一个）。
     Base,
+    /// 托管终端（cc-monitor 持着的那一种），名字自动取。
+    Hosted,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -368,6 +378,7 @@ pub fn edit_of_form(f: &ProfileForm) -> Result<ProfileEdit, String> {
             TmuxMode::Base if !n.is_empty() => {
                 ccm.extend([flag::TMUX_BASE.to_string(), n.to_string()])
             }
+            TmuxMode::Hosted => ccm.push(flag::HOSTED.to_string()),
             _ => return Err(copy_text("beProfile.form.tmuxName", &[])),
         }
     }
@@ -501,6 +512,12 @@ pub(crate) fn form_of(p: &Profile) -> ProfileForm {
                     name: one(),
                 })
             }
+            flag::HOSTED => {
+                f.tmux = Some(TmuxPick {
+                    mode: TmuxMode::Hosted,
+                    name: String::new(),
+                })
+            }
             flag::CWD_IF => f.cwd_if.get_or_insert_with(Vec::new).push(CwdCase {
                 at: one(),
                 to: vals.get(1).cloned().unwrap_or_default(),
@@ -540,10 +557,12 @@ fn phrase_of(f: Option<&'static str>, vals: &[String], child: bool) -> String {
     let slot = slot_of(f);
     let val = said_of(f, vals);
     match f {
-        Some(flag::TMUX | flag::TMUX_BASE) if child => {
+        Some(flag::TMUX | flag::TMUX_BASE | flag::HOSTED) if child => {
             copy_text("beProfile.said.plus", &[("val", &val)])
         }
-        Some(flag::BASE | flag::TMUX | flag::TMUX_BASE | flag::CWD_IF | flag::CWD) => val,
+        Some(
+            flag::BASE | flag::TMUX | flag::TMUX_BASE | flag::HOSTED | flag::CWD_IF | flag::CWD,
+        ) => val,
         Some(flag::DETACH) => slot.label_text(),
         _ => copy_text(
             "beProfile.said.slot",
@@ -652,7 +671,7 @@ pub(crate) enum ProfileKind {
     Function,
 }
 
-/// 「账号那一形」：号与 tmux 按合并下来的算。
+/// 「账号那一形」：号与起在哪种终端里（直路 · tmux · 托管）按合并下来的算。
 #[derive(Debug, Serialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -665,7 +684,11 @@ pub(crate) enum ProfileKind {
 )]
 pub(crate) struct AccountShape {
     account: String,
-    tmux: bool,
+    #[cfg_attr(
+        any(test, feature = "ts"),
+        ts(type = "\"plain\" | \"tmux\" | \"hosted\"")
+    )]
+    form: crate::accounts::manage::aliases::Form,
 }
 
 /// 树里的一段：自己写的几项 · 能不能用 · 链接还是终端函数 · 树里那一行 · 表单回填。
@@ -694,7 +717,7 @@ pub(crate) struct ProfileOut {
     /// 树里那一行（按表单同一套词写好）。
     said: String,
     form: ProfileForm,
-    /// 「账号那一形」（自己只写了号、可再加 tmux）⇒ 号与 tmux 按合并下来的算；其余 ⇒ `null`（账号页按它列各号的命令名）。
+    /// 「账号那一形」（自己只写了号、可再加 tmux 或托管）⇒ 号与那一形按合并下来的算；其余 ⇒ `null`（账号页按它列各号的命令名）。
     account_shape: Option<AccountShape>,
     /// 在这台终端里起它的那一行（[`super::start_line`]）：终端屏照抄、敲进去。
     start: String,
@@ -762,8 +785,8 @@ fn profile_out(book: &Book, p: &Profile, shell: Shell, alias_file: &str, ccm: &s
         }),
         said: summary_of(p, shell),
         form: form_of(p),
-        account_shape: super::accounts::shape_of(book, p)
-            .map(|(account, tmux)| AccountShape { account, tmux }),
+        account_shape: super::accounts::form_of(book, p)
+            .map(|(account, form)| AccountShape { account, form }),
         start: super::start_line(&p.name, shell, ccm),
     }
 }
@@ -960,16 +983,14 @@ pub fn read_with(
     } else {
         Vec::new()
     };
-    let (seed_hint, seed_create) = match seed.len() {
-        0 => (String::new(), String::new()),
-        1 => (
-            copy_text("beProfile.seedHint.one", &[]),
-            copy_text("beProfile.seedCreate.one", &[]),
-        ),
-        _ => (
-            copy_text("beProfile.seedHint.two", &[]),
-            copy_text("beProfile.seedCreate.two", &[]),
-        ),
+    // 随包那几条（`first_aliases`）至少两条（当前终端 · 托管），有 tmux 的再加一条。
+    let (seed_hint, seed_create) = if seed.is_empty() {
+        (String::new(), String::new())
+    } else {
+        (
+            copy_text("beProfile.seedHint.some", &[]),
+            copy_text("beProfile.seedCreate.some", &[]),
+        )
     };
     Ok(ProfilesBook {
         exists: store.text.is_some(),
@@ -1651,12 +1672,11 @@ pub struct ProfilesWriteReq {
     pub(crate) if_rev: Option<String>,
 }
 
-/// `profiles-write` 的应答：配置文件 / 终端函数文件 / 链接动没动 · 写完那一份的版本 · 终端函数那份真改了 ⇒ 「已开的终端要重读」那一句。
+/// `profiles-write` 的应答：写完那一份的版本 · 终端函数那份真改了 ⇒ 「已开的终端要重读」那一句。
 #[derive(Debug, Serialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct ProfilesWriteDone {
-    wrote: bool,
     rev: Option<String>,
     reload: Option<String>,
 }
@@ -1670,7 +1690,6 @@ pub fn answer_write(d: &dyn Door, req: &ProfilesWriteReq) -> Answer<ProfilesWrit
     let path = profile::path_in(&store.home);
     if ops.is_empty() {
         return Ok(ProfilesWriteDone {
-            wrote: false,
             rev: super::rev_of(store.text.as_deref()),
             reload: None,
         });
@@ -1714,18 +1733,17 @@ pub fn answer_write(d: &dyn Door, req: &ProfilesWriteReq) -> Answer<ProfilesWrit
     if !fresh.is_empty() {
         return Err(refused(fresh.join("\n")));
     }
-    let wrote = match super::write_profiles(d, &store.home, store.text.as_deref(), &text) {
-        Ok(w) => w,
+    match super::write_profiles(d, &store.home, store.text.as_deref(), &text) {
+        Ok(_) => {}
         Err(super::WriteErr::Stale(e)) => return Err(Said::new("stale", e)),
         Err(super::WriteErr::Refused(e)) => return Err(refused(e)),
-    };
+    }
     let out = super::sync_outputs(d, &store.home, &profile::parse_book(&text), None);
     if let Some(p) = out.problems.first() {
         return Err(refused(p.clone()));
     }
     let shell_file = super::alias_file_in(&store.home, here_shell());
     Ok(ProfilesWriteDone {
-        wrote: wrote || out.links_changed || !out.rewrote.is_empty(),
         rev: super::rev_of(Some(&text)),
         reload: out
             .rewrote

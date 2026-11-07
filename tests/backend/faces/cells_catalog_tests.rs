@@ -181,6 +181,9 @@ fn corpus(name: &str) -> Vec<Value> {
                 crate::observe::recognize::facts::background_of(&tasks, None, u64::MAX / 2),
             )
             .unwrap();
+            // 金样那份会话不是分叉来的（`forkedLine` 缺）⇒ 同上，用真函数现造那一句。
+            f["forkedLine"] =
+                serde_json::to_value(crate::observe::recognize::facts::forked_line("p")).unwrap();
             // 金样那份会话只有一个写入进程（`writersLine` 缺）⇒ 同上，用真判定现造两个进程的那一句。
             f["writersLine"] =
                 serde_json::to_value(crate::observe::recognize::facts::writers_line(&[1, 2]))
@@ -213,12 +216,16 @@ fn corpus(name: &str) -> Vec<Value> {
             f["startedBy"] = serde_json::to_value(parent).unwrap();
             f["children"] = serde_json::to_value(children).unwrap();
             // 夹具里血缘那两条都不活 ⇒ 脸照活着在跑的那一形现造（活着那几格才露得出来）。
-            let live =
-                serde_json::to_value(crate::wire::SessionFace::of(crate::wire::Life::Live {
+            let live = serde_json::to_value(
+                crate::wire::SessionFace::of(crate::wire::Life::Live {
                     activity: Some(crate::agents::SessionActivity::Working),
                     host: None,
-                }))
-                .unwrap();
+                })
+                .housed_in(Some(&crate::wire::SessionContainer::Tmux {
+                    terminal: Some("t".into()),
+                })),
+            )
+            .unwrap();
             f["startedBy"]["face"] = live.clone();
             f["children"][0]["face"] = live;
             // 金样那份会话不活（`line` 是 null）⇒ 用真判定现造一份（在跑、那一步没收场）。
@@ -291,10 +298,14 @@ fn corpus(name: &str) -> Vec<Value> {
                 serde_json::to_value(crate::observe::accounts_query::NeedsRow {
                     sid: "s".into(),
                     label: crate::common::cells::Words("t".into()),
+                    // 宣告时判出的终端句柄跟着「在这里开」走（真代码 `housed_in`）。
                     face: crate::wire::SessionFace::of(crate::wire::Life::Live {
                         activity: Some(crate::agents::SessionActivity::NeedsYou),
                         host: None,
-                    }),
+                    })
+                    .housed_in(Some(&crate::wire::SessionContainer::Tmux {
+                        terminal: Some("t".into()),
+                    })),
                     needs: needs.clone(),
                     // 隐藏的会话照样在需手动清单里、带着那一格（真判定现造）。
                     hidden: crate::history::session_hidden::judge(
@@ -536,7 +547,6 @@ fn real_quota_read() -> crate::faces::quota_read::QuotaRead {
     let facts = |kind| show::Facts {
         kind,
         login: show::LoginState::Ok,
-        sub_id: Some("s".into()),
     };
     let mut sh = show::show(
         Some((&o.reading, o.seen_at)),
@@ -566,7 +576,6 @@ fn real_quota_read() -> crate::faces::quota_read::QuotaRead {
             account: o.account.clone(),
             seen_at: o.seen_at,
             reading: o.reading.clone(),
-            windows_seen: o.windows_seen.clone(),
             show: sh,
         }],
         vec![UnseenHead {
@@ -574,7 +583,6 @@ fn real_quota_read() -> crate::faces::quota_read::QuotaRead {
             account: "b".into(),
             kind: u.kind,
             login: u.login,
-            sub_id: u.sub_id,
             usage: u.usage.into(),
         }],
         &crate::common::time::TextClock::new(now, &crate::common::time::Tz::default()),
@@ -589,6 +597,18 @@ const NEVER_WRITTEN: &[(&str, &str)] = &[
     ("history_list", "up.*.face.account"),
     // 清单行是冷读出来的：被顶替那一格只有离开那一帧带。
     ("history_list", "up.*.face.life.by"),
+    // 离开那一帧的脸是那台照活会话表现写的、手上没有容器那一格：「在这里开」接哪个终端的句柄恒缺（交了由那台认）。
+    ("session_left", "face.can.terminal.far.open.terminal"),
+    // 清单行 · 组员那张脸是冷读出来的、没有容器那一格：同上，句柄恒缺。
+    ("history_list", "up.*.face.can.terminal.far.open.terminal"),
+    (
+        "groups_read",
+        "groups[].members[].face.can.terminal.far.open.terminal",
+    ),
+    (
+        "groups_read",
+        "pinned[].face.can.terminal.far.open.terminal",
+    ),
     // 组员那张脸是各台照清单那一行冷读出来的，同上。
     ("groups_read", "groups[].members[].face.account"),
     ("groups_read", "pinned[].face.account"),
@@ -696,7 +716,7 @@ fn a_cell_is_text_only_when_its_type_says_so() {
     assert_eq!(kind("record", "{t=said}.blocks[type=text].text"), "value");
     assert_eq!(kind("record", "{t=title}.text"), "value");
     assert_eq!(kind("facts", "lastSay.text"), "value");
-    assert_eq!(catalog_of("facts")["usage.limitFrom"].ty, "enum");
+    assert_eq!(catalog_of("facts")["line.for"].ty, "enum");
 }
 
 /// ★ 格目录的金样 ＝ [`catalog`] 真写出来的那一份（出口不起后端也能读）。改了成品就重打。

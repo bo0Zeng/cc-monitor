@@ -1,6 +1,6 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.SyncHand
+import com.ccmonitor.mobile.core.claude.link.wire.rawPatch
 import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.Hidden
 import com.ccmonitor.mobile.core.wire.gen.HiddenBy
@@ -104,10 +104,10 @@ class ProductsTest {
     fun `history-list：不是整份（带记号那一问的答）⇒ of 不当整份收；窗外还有 ⇒ truncated`() {
         val golden = Fixtures.json("history-list.golden.json") as Map<*, *>
         assertNull(HistoryList.of(golden + ("whole" to false)))
-        val hand = SyncHand().apply(HistoryList.patch(golden)!!)
-        val head = hand.head!!
-        assertEquals(false, HistoryList.page(hand)!!.truncated)
-        assertEquals(true, HistoryList.page(hand.copy(head = head.copy(total = head.total + 1)))!!.truncated)
+        val whole = rawPatch(golden)!!
+        val head = whole.head!!
+        assertEquals(false, HistoryList.page(whole)!!.truncated)
+        assertEquals(true, HistoryList.page(whole.copy(head = head.copy(total = head.total + 1)))!!.truncated)
         assertEquals(mapOf("origin" to LOCAL, "held" to "h1"), HistoryList.args(ListAsk(), "h1"))
     }
 

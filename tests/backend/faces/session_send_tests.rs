@@ -162,19 +162,6 @@ fn other_refusals_are_passed_back_without_resuming() {
     }
 }
 
-/// ★ 送字那一侧说 `waiting`（托管终端的持有者敲了半句没回车）⇒ 照排着等那一行交掉（不标未送达、不恢复）。
-#[test]
-fn a_waiting_refusal_from_the_terminal_keeps_the_line_queued() {
-    let got = say_with(
-        &req(SID, "hi"),
-        &|_| false,
-        &|_| Ok(refused(Refused::Waiting)),
-        &no_resume,
-    )
-    .unwrap();
-    assert_eq!(got, Delivery::HalfTyped);
-}
-
 // ── 带附件的那一句 ────────────────────────────────────────────
 
 /// 一个会话工作目录：`ids` 各落一份（编号目录里一份 `<名>`）。

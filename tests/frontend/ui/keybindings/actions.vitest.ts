@@ -50,19 +50,10 @@ describe("ACTIONS 清单结构性守卫", () => {
   });
 });
 
-describe("account-ux U8：账号快捷键", () => {
-  const acctActions = ACTIONS.filter((a) => a.category === "Acct");
-
-  // F09：account.align-active 随对齐全套一并删除——批量/一键对齐是组合层便利，不做等价替代。
-  it("账号 action 清单里只剩 switch-default 且已上线", () => {
-    expect(acctActions.map((a) => a.id).sort()).toEqual(["account.switch-default"]);
-    for (const a of acctActions) expect(a.available).toBe(true);
-  });
-
-  it("默认不绑键位（键位表已经很满，用户想要自己去「设置 → 快捷键」绑）", () => {
-    for (const a of acctActions) {
-      expect(a.default, `${a.id} 不该有默认 chord`).toBeNull();
-    }
+describe("账号没有快捷键", () => {
+  // 换这条会话的号经状态栏账号按钮开面板；「新会话默认」只在设置窗账号页 ⇒ 键位表里没有账号那一组。
+  it("清单里没有 account.* 的 action", () => {
+    expect(ACTIONS.filter((a) => a.id.startsWith("account."))).toEqual([]);
   });
 });
 

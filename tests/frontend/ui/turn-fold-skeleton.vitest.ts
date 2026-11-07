@@ -74,7 +74,6 @@ const turn = (k: number): TurnRow => ({
   agents: 0,
   background: 0,
   retries: 0,
-  fails: 0,
   shown: [`u${k * PER_TURN + ENDING_AT}`],
   reply: "",
   done: true,

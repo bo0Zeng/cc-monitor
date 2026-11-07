@@ -10,7 +10,6 @@
 import { copyText } from "../copy-table";
 import { budgetWithin, callTyped } from "../ipc/chan-caller";
 import type { Machine } from "../ipc/origin";
-import { saidOf } from "../kit/detail";
 import type { Attachment } from "../generated/Attachment";
 import type { Block } from "../generated/Block";
 import s from "./attach-strip.module.css";
@@ -30,12 +29,8 @@ export interface ImageLoad {
  * 取不到 ⇒ 抛（那一句是后端 / 那一跳写的）。
  */
 export async function fetchImage(origin: Machine, jsonlPath: string, id: string, { at, n }: ImageRef): Promise<string> {
-  try {
-    const got = await callTyped(origin, "history-image", { path: jsonlPath, at, n, id }, budgetWithin(IMAGE_BUDGET_MS));
-    return `data:${got.mediaType};base64,${got.data}`;
-  } catch (e) {
-    throw new Error(saidOf(e));
-  }
+  const got = await callTyped(origin, "history-image", { path: jsonlPath, at, n, id }, budgetWithin(IMAGE_BUDGET_MS));
+  return `data:${got.mediaType};base64,${got.data}`;
 }
 
 /** 取一张图的期限（同记录读面那一段）。 */

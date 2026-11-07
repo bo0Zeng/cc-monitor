@@ -442,9 +442,9 @@ fn special_files_are_rejected_not_read() {
         r.is_err(),
         "指向 /dev/zero 的 symlink 必须被拒，而不是读爆内存"
     );
-    let cap = |bytes| relay_route_core::Cap {
+    let cap = |bytes| cap_core::Cap {
         bytes,
-        over: relay_route_core::Over::Reject,
+        over: cap_core::Over::Reject,
     };
     // 目录也不是常规文件
     assert!(Ro::read_capped(&root, cap(1024)).is_err());

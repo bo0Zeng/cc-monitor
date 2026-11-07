@@ -172,9 +172,14 @@ async fn a_letter_for_another_machine_lands_in_that_machines_inbox_once() {
     let sent = send_from(&here, &letter(Some("far"), "占位标题"), &owner)
         .await
         .unwrap();
-    assert_eq!(owner.inbox(B).len(), 1, "那台收件箱多一封、只一封");
-    assert_eq!(sent.envelope.to, B);
-    assert!(sent.knock, "一档：那台敲了门，交回照实说");
+    let inbox = owner.inbox(B);
+    assert_eq!(inbox.len(), 1, "那台收件箱多一封、只一封");
+    let landed: Value = serde_json::from_str(&inbox[0]).unwrap();
+    assert_eq!(
+        serde_json::to_value(&sent).unwrap(),
+        json!({ "id": landed["id"] }),
+        "回包只有收进去那一封的 id"
+    );
     let asked = owner.asked.lock().unwrap();
     assert_eq!(asked.len(), 1, "只问一次");
     assert!(asked[0].0.contains("--resident-call"), "问的是那台的常驻");

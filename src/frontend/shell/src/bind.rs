@@ -243,9 +243,9 @@ fn drain_await_dir(this: &Arc<BindRegistry>, await_dir: &Path) {
 const TTY_RECORD_EXT: &str = "tty";
 
 /// 那一份的读上限：三格（进程号 · 起始时刻 · 终端设备），实测百来字节。超了当认不出：日志说是哪一份、扔掉，不碰那个终端。
-const TTY_RECORD_CAP: relay_route_core::Cap = relay_route_core::Cap {
+const TTY_RECORD_CAP: cap_core::Cap = cap_core::Cap {
     bytes: 4 * 1024,
-    over: relay_route_core::Over::SkipAndSay,
+    over: cap_core::Over::SkipAndSay,
 };
 
 /// 本机 bash / zsh 接入块（`src/shared/ccm-aliases.sh`）在 `ps-await/<进程号>.tty` 留下的那一份：那个 shell 的进程号 ·

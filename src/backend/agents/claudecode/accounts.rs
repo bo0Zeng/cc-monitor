@@ -5,7 +5,7 @@
 
 use crate::agents::{AccountsFace, IdentityCell, IdentityClass, IdentityRoot, TrustCells};
 use crate::platform::fs::Ro;
-use relay_route_core::{Cap, Over};
+use cap_core::{Cap, Over};
 use std::path::Path;
 
 /// 账号级配置文件的文件名（住在配置根下）。

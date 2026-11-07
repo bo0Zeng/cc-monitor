@@ -46,9 +46,9 @@ pub(crate) const HERE_SAME: &str = "same";
 /// 一个 skill 最多走这么多个文件（超了 `summary.truncated`，摘要按已走到的算）。
 pub(crate) const SKILL_MAX_FILES: usize = 512;
 /// 一个文件最多读这么多字节进摘要（超了只记长度 ＋ `truncated`；装的那一侧那一个 `text = null` ＋ `why`）。
-pub(crate) const SKILL_FILE_CAP: relay_route_core::Cap = relay_route_core::Cap {
+pub(crate) const SKILL_FILE_CAP: cap_core::Cap = cap_core::Cap {
     bytes: 4 * 1024 * 1024,
-    over: relay_route_core::Over::DegradeAndSay,
+    over: cap_core::Over::DegradeAndSay,
 };
 
 /// 资产目录：状态（读不出来不覆盖；版本照声明表、在顶层 `version`，更新的格式整份不认 —— 读写口管）。

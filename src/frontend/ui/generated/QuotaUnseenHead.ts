@@ -7,7 +7,7 @@ import type { QuotaUnseenUsage } from "./QuotaUnseenUsage";
 /**
  * 没出过数的一个号除写好的几行之外的那一截。
  */
-export type QuotaUnseenHead = { agent: AgentKind, account: string, kind: QuotaKind, login: LoginState, subId?: string, 
+export type QuotaUnseenHead = { agent: AgentKind, account: string, kind: QuotaKind, login: LoginState, 
 /**
  * 用量那一格（没出过数 ⇒ `5h —` / `按量`；同出过数的号那一格一个写法，只是没有重置那一格）。
  */

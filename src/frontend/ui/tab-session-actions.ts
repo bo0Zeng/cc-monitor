@@ -1,5 +1,5 @@
 /**
- * 对一个会话做的动作：恢复 · 换号重启 · 杀 tmux 会话 · 打开工作目录 · 在新窗口打开 · 切到终端窗口；
+ * 对一个会话做的动作：恢复 · 换号重启 · 杀 tmux 会话 · 打开工作目录 · 在新窗口打开 · 把终端窗口拉到前面；
  * 外加 tab 层零散的后端调用（忘掉会话 · 把 monitor 拉到前面 · DEV 探针日志）。
  * 只经 `commands.x(…)` 说话（不直呼 `invoke`）；宿主只给四样只读 / 回调（`TabSessionHost`），不碰 tab 栏、不碰流 DOM。
  */
@@ -74,7 +74,7 @@ export class TabSessionActions {
     void this.redial(origin).catch((e: unknown) => noteMessage(saidOf(e), detailOf(e)));
   }
 
-  /** 立刻重拨那台一次；没拨成 ⇒ 抛（↗ 浮层［更新］换上之后要知道拨没拨成）。 */
+  /** 立刻重拨那台一次；没拨成 ⇒ 抛（拉窗那一条上的［更新］点了之后要知道拨没拨成）。 */
   redial(origin: string): Promise<void> {
     return commands.backend_start({ origin }).then(() => undefined);
   }
@@ -175,21 +175,21 @@ export class TabSessionActions {
   }
 }
 
-/** ↗ 在飞的会话：同一个会话在飞时再点不重发。 */
+/** 「终端」拉窗在飞的会话：同一个会话在飞时再点不重发。 */
 const frontInFlight = new Set<string>();
 /** 过了这么久还没结果才进「进行中」（防闪）；一旦进了，至少停这么久。 */
 export const FRONT_PENDING_AFTER_MS = 300;
 export const FRONT_PENDING_MIN_MS = 400;
 
 /**
- * ↗ 的一次点击：同一个会话在飞 ⇒ 不重发；`run` 超过 [`FRONT_PENDING_AFTER_MS`] 还没完 ⇒ `pending(true)`
+ * 「终端」拉窗的一次点击：同一个会话在飞 ⇒ 不重发；`run` 超过 [`FRONT_PENDING_AFTER_MS`] 还没完 ⇒ `pending(true)`
  * （按钮进「进行中」），完了且已停够 [`FRONT_PENDING_MIN_MS`] ⇒ `pending(false)`。
  */
 export async function frontOnce<T>(sid: string, run: () => Promise<T>, pending: (on: boolean) => void): Promise<T | undefined> {
   if (frontInFlight.has(sid)) return undefined;
   frontInFlight.add(sid);
   let shownAt: number | null = null;
-  // 调度：一次性 —— ↗ 在飞超过 300ms 才把按钮换成「进行中」，答到了就清
+  // 调度：一次性 —— 拉窗在飞超过 300ms 才把按钮换成「进行中」，答到了就清
   const show = window.setTimeout(() => {
     shownAt = Date.now();
     pending(true);
@@ -218,7 +218,7 @@ async function shellFront(ask: () => Promise<FrontTold | null>): Promise<FrontTo
     return await Promise.race([
       ask(),
       new Promise<FrontMiss>((r) => {
-        // 调度：一次性 —— ↗ 壳那一跳的期限，到点落成「期限到」
+        // 调度：一次性 —— 拉窗时壳那一跳的期限，到点落成「期限到」
         timer = window.setTimeout(() => r({ kind: "timed-out" }), FRONT_SHELL_MS);
       }),
     ]);
@@ -255,7 +255,7 @@ async function told(r: FrontTold | FrontMiss, origin: Machine): Promise<FrontTol
 }
 
 /**
- * ↗ 拉会话的终端到前台（本机会话与远端会话同一条）：问本机后端一次这条会话在这台电脑上的哪儿（`session-window`：窗口标签 · 进程链 · tmux，或写好的那一张），
+ * 「终端」拉会话的终端窗口到前台（本机会话与远端会话同一条）：问本机后端一次这条会话在这台电脑上的哪儿（`session-window`：窗口标签 · 进程链 · tmux，或写好的那一张），
  * 答话原样交壳一次（先按标签、再沿链找窗口、三重指纹校验、拉前）。后端说了原因、又没有标签可找 ⇒ 不找窗口；壳没对上 ⇒ 摆后端那一张。
  * 回切过去了 · 那一张（出口这一跳没成的也是壳写好的那一张；`front-result.ts` 照摆）。
  */

@@ -18,7 +18,7 @@ const fact = (account: string, u5: number, u7: number, blocked = false): RotAcco
   plate: { color: 5, label: account, text: account.slice(0, 2) },
   full: u5 >= 100 ? ["5h"] : [],
   kind: "sub",
-  w5h: { open: true, used: u5, resets: NOW + 3600, resetsText: "18:30" },
+  w5h: { open: true, used: u5, resets: NOW + 3600 },
   w7d: { open: true, used: u7 },
   login: "ok",
   ...(blocked ? { blocked: { why: "used", text: "5h 用满 · 18:30 重置" } } : {}),
@@ -139,7 +139,7 @@ describe("第一行与说明", () => {
 
   it("★ 提示照后端写好的那一句；停发那一句里的「还有多久」在画的那一刻照 now · until 填", () => {
     const root = draw(
-      view({ hints: [{ hint: { k: "hold", until: NOW + 4 * 3600, untilText: "18:30", account: "team" }, tone: "warn", text: "停发了 · 18:30 team · 还剩 {dur}" }, { hint: { k: "wordsBad" }, tone: "plain", text: "说明写法不合规那一句" }] }),
+      view({ hints: [{ hint: { k: "hold", until: NOW + 4 * 3600, account: "team" }, tone: "warn", text: "停发了 · 18:30 team · 还剩 {dur}" }, { hint: { k: "wordsBad" }, tone: "plain", text: "说明写法不合规那一句" }] }),
       state(),
       acts(),
     );

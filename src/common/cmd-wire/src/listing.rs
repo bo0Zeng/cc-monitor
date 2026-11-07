@@ -64,9 +64,6 @@ pub struct HistoryRow {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub forked_from_session_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub forked_from_message_uuid: Option<String>,
     /// 分叉来的：父会话那一行（显示标题）；不是分叉来的 · 父会话不在这台的清单里 ⇒ 缺（界面写「分叉自其他会话」）。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
@@ -128,7 +125,9 @@ pub struct HistoryGroup {
     /// 有在跑的 ⇒ `true`；有答不了的 ⇒ `null`；都没在跑 ⇒ `false`。
     pub has_live: Option<bool>,
     pub starred: bool,
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    /// 最近动静（后端排先后用，不上线）。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub last_activity: i64,
     /// `last_activity` 写好的字（同行尾那一格的写法）；读不了的那一组 ⇒ `null`。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "string | null"))]
@@ -261,9 +260,6 @@ pub struct RawRow {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub forked_from_session_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub forked_from_message_uuid: Option<String>,
     /// 读它那一组用的键（记录目录名 · 合成历史 `<kind>:<cwd>`）。
     pub project_dir: String,
     /// 分组键：哪一家 ＋ 真实目录。

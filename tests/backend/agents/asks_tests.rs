@@ -228,8 +228,13 @@ fn who_asks_names_the_agent_and_its_kind_with_what_is_known() {
 fn the_product_is_camel_case_and_strict() {
     let s = specimen();
     let v = serde_json::to_value(&s).unwrap();
-    assert!(v.get("sinceMs").is_some() && v.get("since_ms").is_none());
-    assert_eq!(serde_json::from_value::<Ask>(v.clone()).unwrap(), s);
+    assert!(
+        v.get("sinceMs").is_none() && v.get("since_ms").is_none(),
+        "挂上的时刻只给后端排先后，不上线"
+    );
+    let mut back = serde_json::from_value::<Ask>(v.clone()).unwrap();
+    back.since_ms = s.since_ms;
+    assert_eq!(back, s);
     let mut extra = v;
     extra
         .as_object_mut()

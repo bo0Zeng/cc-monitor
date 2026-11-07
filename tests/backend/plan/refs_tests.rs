@@ -44,7 +44,7 @@ impl<F: Fn(&str) -> Value> Fake<F> {
 /// pb 照实回的那一形：`refs` 按码位、`nodes` 只带提到的那几个。
 fn pb_reply(refs: Value) -> Value {
     json!({
-        "pb": "0.5.4", "shape": 6, "workspace": WS, "repo": "alpha",
+        "pb": "0.7.2", "shape": 8, "workspace": WS, "repo": "alpha",
         "refs": refs,
         "nodes": {"A1": {"title": "甲功能"}, "a1-1": {"title": "甲的读入"}, "a1-2": {"title": "甲的写出"}}
     })

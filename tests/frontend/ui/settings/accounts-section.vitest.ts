@@ -167,8 +167,9 @@ beforeEach(() => {
   accountsVerify.mockResolvedValue({ pass: true, fails: 0, checks: [] });
   readProfiles.mockResolvedValue({
     profiles: [
-      { name: "apicc", accountShape: { account: "api", tmux: false } },
-      { name: "apicct", accountShape: { account: "api", tmux: true } },
+      { name: "apicc", accountShape: { account: "api", form: "plain" } },
+      { name: "apicct", accountShape: { account: "api", form: "tmux" } },
+      { name: "apicch", accountShape: { account: "api", form: "hosted" } },
       { name: "x", accountShape: null },
     ],
   });
@@ -231,7 +232,7 @@ describe("账号表", () => {
     (rowOf(el, "api").querySelector(".acct-row") as HTMLElement).click();
     await settle();
     const detail = rowOf(el, "api").querySelector(".acct-detail")!;
-    expect(detail.querySelector(".acct-detail-mono")!.textContent).toBe("apicc · apicct");
+    expect(detail.querySelector(".acct-detail-mono")!.textContent).toBe("apicc · apicct · apicch");
     expect(detail.textContent).toContain(copyText("acctPage.detail.modelScope", { machine: "devbox", name: "api" }));
   });
 
@@ -347,7 +348,7 @@ describe("删号", () => {
     buttonNamed(rowOf(el, "api"), copyText("acctPage.menu.remove", { name: "api" })).click();
     await settle();
     expect(confirmed[0].body).toBeUndefined();
-    expect(confirmed[0].rows?.[0].items).toContain(copyText("acctPage.remove.commands", { names: "apicc apicct" }));
+    expect(confirmed[0].rows?.[0].items).toContain(copyText("acctPage.remove.commands", { names: "apicc apicct apicch" }));
     expect(accountsRemove).not.toHaveBeenCalled();
   });
 });
@@ -526,7 +527,7 @@ describe("动作", () => {
   });
 
   it("API key 号详情［更换…］：地址 ＋ key 交给写 key 那一条（带这个号的目录），写完重读那台、照新那一行摆掩码与主机、框清空", async () => {
-    writeApikeyKey.mockResolvedValue({ masked: "••••••••c3d4" });
+    writeApikeyKey.mockResolvedValue(undefined);
     const el = await mount();
     fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true }), acct({ name: "api", authKind: "api-key", email: "", keyMasked: "••••••••c3d4", endpointHost: "GW-BY-BACKEND" })] }));
     (rowOf(el, "api").querySelector(".acct-row") as HTMLElement).click();

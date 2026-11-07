@@ -3,7 +3,7 @@
 //! 这台自己判：用哪个号（选不了 ⇒ 不起、带替代号）· 放在哪（没说 ⇒ [`default_run`]；说了 tmux 而这台没有 ⇒ 拒，不改道）·
 //! 记录在不在 · 已有进程在写就不起（直路一样）· 在跑不另起 · 空 tmux 就地起 · 都不是就铸名新开。界面与手机只开窗口、等会话出现。
 //!
-//! 起会话的本体只在这一个模块里（[`start_one`] 一族模块外不可见）：换号重启经 [`relaunch_in`]、`session-say` 恢复那一支经 [`resume_saying`]
+//! 起会话的本体只在这一个模块里（[`start_one`] 一族模块外不可见）：`session-say` 恢复那一支经 [`resume_saying`]
 //! 进来，判定与渲那一行都是同一份。
 //! 要动 tmux / 读记录 / 起 ccm 的几样由入口经 [`Deps`] 交进来（control 不引用 observe），判据交替身。
 
@@ -909,25 +909,6 @@ pub fn resume_saying(it: &Item, agent: &str, deps: &Deps) -> Result<Opened, Said
         r => r,
     };
     start_one(it, &b, run, Here::Remote, deps)
-}
-
-/// **换号重启**起新那一步：旧的已停，在让出来的那个名字里用判好的号起。
-pub fn relaunch_in(
-    it: &Item,
-    agent: &str,
-    account: &Settled,
-    name: &str,
-    local: bool,
-    deps: &Deps,
-) -> Result<(), Said> {
-    start_named(
-        it,
-        &Batch::of(agent, deps.prefs),
-        account,
-        name,
-        here_of(local, deps),
-        deps,
-    )
 }
 
 /// 新起：认那一家 · 启动命令 · 目录 · 号 · 放在哪 · 终端名 · 分叉（前面几格全过了才写分支记录）· 起。

@@ -23,16 +23,21 @@ fn own(tag: &str) -> crate::platform::fs::Own {
 }
 
 fn put(o: &crate::platform::fs::Own, id: &str, now: i64) {
+    put_line(o, id, "mobile", &format!("text of {id}"), now);
+}
+
+/// 发自 `end` 的一句（编号 · 正文照给）：人发的 · cc-bus 敲门 · 计划审面退回 · 斜杠命令各照那一家投进来的形状。
+fn put_line(o: &crate::platform::fs::Own, id: &str, end: &str, text: &str, now: i64) {
     q::put(
         o,
         &SessionQueuePutReq {
             machine: Machine::local(),
             sid: SID.parse().unwrap(),
             id: id.to_string(),
-            end: "mobile".to_string(),
+            end: end.to_string(),
             n: None,
             at_ms: now,
-            text: format!("text of {id}"),
+            text: text.to_string(),
             attachments: Vec::new(),
             rewind: None,
         },
@@ -132,34 +137,29 @@ fn states(o: &crate::platform::fs::Own) -> Vec<(String, S)> {
         .collect()
 }
 
+/// ★ 一轮在跑也送（agent 自己处理插进来的话），一次一条：送出后那一态没换过、没过确认期限 ⇒ 下一条先等（免得几句粘成一行）。
 #[test]
-fn two_queued_while_a_turn_runs_go_one_per_turn() {
+fn two_queued_while_a_turn_runs_go_one_at_a_time() {
     let o = own("turns");
     let rig = Rig::new(Some(Some(A::Working)), T0 - 5_000);
     let mut memos = Memos::default();
-    put(&o, "a", T0);
-    put(&o, "b", T0 + 1);
+    put_line(&o, "a", "cc-bus", "text of a", T0);
+    put_line(&o, "b", "monitor", "text of b", T0 + 1);
     rig.pass(&o, &mut memos, T0 + 2);
-    assert!(rig.said().is_empty(), "一轮在跑 ⇒ 一条都不送");
-
-    rig.set(Some(Some(A::Idle)), T0 + 10);
-    rig.pass(&o, &mut memos, T0 + 20);
-    assert_eq!(rig.said(), vec!["text of a"], "那一轮完了先送第一条");
+    assert_eq!(rig.said(), vec!["text of a"], "在跑 ⇒ 照送第一条");
     rig.pass(&o, &mut memos, T0 + 30);
     assert_eq!(
         rig.said(),
         vec!["text of a"],
-        "送出后那一态没换过 ⇒ 那一轮还没起来，不送第二条"
+        "送出后那一态没换过 ⇒ 第二条先等"
     );
 
-    rig.set(Some(Some(A::Working)), T0 + 40);
+    rig.set(Some(Some(A::Idle)), T0 + 40);
     rig.pass(&o, &mut memos, T0 + 50);
-    rig.set(Some(Some(A::Idle)), T0 + 60);
-    rig.pass(&o, &mut memos, T0 + 70);
     assert_eq!(
         rig.said(),
         vec!["text of a", "text of b"],
-        "那一轮又完了才送第二条"
+        "那一态换过 ⇒ 送第二条"
     );
     assert!(states(&o).is_empty(), "送到的都摘掉");
 }
@@ -184,23 +184,74 @@ fn a_line_that_starts_no_turn_lets_the_next_go_after_the_confirm_window() {
     );
 }
 
+/// ★ 屏上正有批准框 · 问答框 ⇒ 压着（送字带回车会被当成对框的回答）；框答完（在跑 · 闲着）就送。
 #[test]
-fn a_session_waiting_on_a_prompt_gets_nothing() {
+fn a_line_is_held_while_a_prompt_is_open_and_goes_when_it_closes() {
     let o = own("waiting");
     let rig = Rig::new(Some(Some(A::NeedsYou)), T0 - 1_000);
     let mut memos = Memos::default();
     put(&o, "a", T0);
+    put(&o, "b", T0);
+    let said = || -> Vec<String> {
+        q::read(&o, SID, T0)
+            .unwrap()
+            .items
+            .iter()
+            .map(|i| i.said.clone())
+            .collect()
+    };
     rig.pass(&o, &mut memos, T0 + 1);
-    rig.set(Some(None), T0 + 2);
+    assert!(rig.said().is_empty(), "框开着 ⇒ 不送");
+    assert_eq!(
+        said(),
+        vec![copy_core::copy_text("beQueue.said.waitBox", &[]); 2],
+        "★ 框开着 ⇒ 名单那一句说等需手动答完，不写第几"
+    );
+    rig.set(Some(Some(A::Working)), T0 + 2);
     rig.pass(&o, &mut memos, T0 + 3);
-    assert!(rig.said().is_empty(), "在等人 · 说不清 ⇒ 不送");
-    assert_eq!(states(&o), vec![("a".to_string(), S::Queued)]);
+    assert_eq!(rig.said(), vec!["text of a"], "框答完、接着跑 ⇒ 送");
+    assert_eq!(
+        said(),
+        vec![copy_core::copy_text("beQueue.said.confirming", &[])],
+        "框答完那一遍 ⇒ 换回「发送中 · 等确认」"
+    );
+}
+
+/// ★ 说不清（冻住 · pidfile 没 `status` · 认不出的词）⇒ 照送，不停在排着。
+#[test]
+fn a_session_whose_state_cannot_be_told_gets_the_line() {
+    let o = own("unclear");
+    let rig = Rig::new(Some(None), T0 - 5_000);
+    let mut memos = Memos::default();
+    put_line(&o, "a", "cc-bus", "敲门", T0);
+    rig.pass(&o, &mut memos, T0 + 1);
+    assert_eq!(rig.said(), vec!["敲门"]);
+    assert!(states(&o).is_empty());
+}
+
+/// ★ 来源不分：人发的 · cc-bus 投的 · 斜杠命令 · 计划审面退回，在跑时都送。
+#[test]
+fn every_source_is_sent_while_a_turn_runs() {
+    for (tag, id, end, text) in [
+        ("human", "monitor-r1", "monitor", "从桌面说的"),
+        ("phone", "local-r2", "mobile", "从手机说的"),
+        ("bus", "cc-bus-e1", "cc-bus", "cc-bus 敲门"),
+        ("slash", "monitor-s1", "monitor", "/compact"),
+        ("plan", "plan-1-sl-c1", "monitor", "计划退回"),
+    ] {
+        let o = own(tag);
+        let rig = Rig::new(Some(Some(A::Working)), T0 - 5_000);
+        let mut memos = Memos::default();
+        put_line(&o, id, end, text, T0);
+        rig.pass(&o, &mut memos, T0 + 1);
+        assert_eq!(rig.said(), vec![text.to_string()], "{tag}：在跑 ⇒ 送");
+    }
 }
 
 #[test]
 fn a_session_that_ends_with_lines_left_marks_them_undelivered() {
     let o = own("ended");
-    let rig = Rig::new(Some(Some(A::Working)), T0 - 1_000);
+    let rig = Rig::new(Some(Some(A::NeedsYou)), T0 - 1_000);
     let mut memos = Memos::default();
     put(&o, "a", T0);
     put(&o, "b", T0);
@@ -305,19 +356,19 @@ fn a_waiting_line_is_tried_again_when_its_retry_deadline_comes_with_no_other_eve
 }
 
 #[test]
-fn a_retry_deadline_that_passes_while_a_turn_runs_does_not_keep_waking() {
+fn a_retry_deadline_that_passes_while_a_prompt_is_open_does_not_keep_waking() {
     let o = own("retry-run");
     let rig = Rig::new(Some(Some(A::Idle)), T0 - 1_000);
     *rig.answer.borrow_mut() = Delivery::Waiting;
     let mut memos = Memos::default();
     put(&o, "a", T0);
     rig.pass(&o, &mut memos, T0 + 1);
-    rig.set(Some(Some(A::Working)), T0 + 2);
+    rig.set(Some(Some(A::NeedsYou)), T0 + 2);
     let at = T0 + 1 + WAITING_RETRY_MS;
     assert_eq!(
         rig.pass(&o, &mut memos, at),
         None,
-        "到点那一遍在跑、不送 ⇒ 期限用掉了，睡到下一次事件（过了点的期限不一遍遍立刻叫醒）"
+        "到点那一遍框开着、不送 ⇒ 期限用掉了，睡到下一次事件（过了点的期限不一遍遍立刻叫醒）"
     );
     assert_eq!(rig.said().len(), 1);
 }
@@ -432,45 +483,4 @@ fn rewind_outcomes_map_to_deliveries() {
         rewound(Walked::Unsure(Why::NotSent)),
         Delivery::No(Undeliverable::NotRewound(_))
     ));
-}
-
-/// ★ 排队那一句说为什么在等（A3-3-32-12）：送那一下托管终端回「半句没交」⇒ 名单那一条与瘦客户端底行都多那半截；
-/// 再试时是别的等（框开着）⇒ 那半截没了；送进了 ⇒ 那一条摘掉。
-#[test]
-fn a_line_waiting_on_a_half_typed_terminal_line_says_why_until_it_goes() {
-    use copy_core::copy_text;
-    let o = own("half");
-    let rig = Rig::new(Some(Some(A::Idle)), T0 - 1_000);
-    *rig.answer.borrow_mut() = Delivery::of(crate::control::terminals::input_reply(
-        SentResult::Refused,
-        Some(crate::control::terminals::Refused::Waiting),
-        None,
-    ));
-    let mut memos = Memos::default();
-    put(&o, "a", T0);
-    rig.pass(&o, &mut memos, T0 + 1);
-    let said = |at: i64| q::read(&o, SID, at).unwrap().items[0].said.clone();
-    assert_eq!(
-        said(T0 + 2),
-        copy_text("beQueue.said.placeHalf", &[("place", "1")])
-    );
-    assert_eq!(
-        q::waiting_said(&o, SID, T0 + 2),
-        Some(copy_text("beQueue.said.waitingHalf", &[("n", "1")]))
-    );
-    // 到点再试：这回是框开着那种等 ⇒ 不再说半句。
-    *rig.answer.borrow_mut() = Delivery::Waiting;
-    let at = T0 + 1 + WAITING_RETRY_MS;
-    rig.pass(&o, &mut memos, at);
-    assert_eq!(
-        said(at + 1),
-        copy_text("beQueue.said.place", &[("place", "1")])
-    );
-    assert_eq!(
-        q::waiting_said(&o, SID, at + 1),
-        Some(copy_text("beQueue.said.waiting", &[("n", "1")]))
-    );
-    *rig.answer.borrow_mut() = sent(SentResult::Delivered);
-    rig.pass(&o, &mut memos, at + 1 + WAITING_RETRY_MS);
-    assert!(states(&o).is_empty(), "送进了 ⇒ 摘掉");
 }

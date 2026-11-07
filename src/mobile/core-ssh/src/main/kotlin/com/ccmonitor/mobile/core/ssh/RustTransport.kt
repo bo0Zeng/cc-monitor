@@ -262,10 +262,13 @@ class RustTransport(
 }
 
 /**
- * 核心装上（记下 Kotlin 这一侧的回调、装上手机那一套）：主机钥匙那份库在 [knownHosts]。只认第一次；App 一起来就装，
- * 之后才迁旧表、才拨号（常驻流交的事经同一个回调回来）。
+ * 核心装上（记下 Kotlin 这一侧的回调、装上手机那一套）：主机钥匙那份库在 [knownHosts]，会话列表副本在 [lists] 那个目录。只认第一次；App 一起来就装，
+ * 之后才拨号（常驻流交的事经同一个回调回来）。
  */
-fun installRustCore(knownHosts: File) = RustCore.install(knownHosts)
+fun installRustCore(
+    knownHosts: File,
+    lists: File,
+) = RustCore.install(knownHosts, lists)
 
 /** 核心装过了（没装就拨 ⇒ 抛：没装的核心一把主机钥匙都不认、也不记）。 */
 fun ensureRustCore() = RustCore.ensure()
@@ -285,10 +288,13 @@ internal object RustCore : Core.Sink {
 
     @Volatile private var ready = false
 
-    fun install(knownHosts: File) {
+    fun install(
+        knownHosts: File,
+        lists: File,
+    ) {
         synchronized(this) {
             if (!ready) {
-                Core.init(this, knownHosts.path)
+                Core.init(this, knownHosts.path, lists.path)
                 ready = true
             }
         }

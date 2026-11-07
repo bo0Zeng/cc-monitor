@@ -5,7 +5,6 @@
  * 刷 tab 栏（立即 / 帧末合批）· 应用 ai-title · 真用户输入上屏时的自动跟随 · 起分叉出来的新会话。
  */
 import { speakerNameOf } from "./agent-profile";
-import { SPEAKER_SELECTOR } from "./cards/speaker";
 import { applyNotices } from "./cards/speaker-bar";
 import type { NoticeRun } from "./generated/NoticeRun";
 import { applyRetries } from "./cards/api-error";
@@ -78,7 +77,6 @@ export interface TabStreamHost {
 export function tabRenderContext(tab: Tab, host: Pick<TabStreamHost, "runLabelOf" | "markNewRunCard">, lazy: boolean): RenderContext {
   return {
     parentPath: tab.parentPath,
-    speaker: speakerNameOf(tab.agent),
     origin: tab.origin,
     toolUseNames: tab.toolUseNames,
     toolUseElements: tab.toolUseElements,
@@ -783,7 +781,7 @@ export class TabStreamView {
 
   /**
    * 后端的一份会话事实落到 tab 上之后（`applyFacts`），消息流里跟着补画的那几样：收场通知照通知组摆（并组 · 交回过的收起 · 组头）·
-   * 重试细条的结局 · 等批准那一轮的刻度 · 过程行的「现在：…」· 还没结果的那几步 · 先画出来的卡头补上那一家的名字。
+   * 重试细条的结局 · 等批准那一轮的刻度 · 过程行的「现在：…」· 还没结果的那几步。
    */
   factsLanded(tab: Tab, f: SessionFacts, ch: FactsChange): void {
     this.notices.set(tab, f.notices);
@@ -791,13 +789,8 @@ export class TabStreamView {
     applyRetries(tab.streamEl, tab.retries); // 按首条的 id
     if (ch.needs) tab.turnRail.render(); // 在等批准的那一轮琥珀
     // 过程行上的「现在：… / 等批准：…」跟着这台此刻的会话事实（后端在 `history-turns` 里拼）。
-    if (ch.needs || ch.writers || ch.peek) void tab.turnFold.refresh();
+    if (ch.needs || ch.peek) void tab.turnFold.refresh();
     this.paintStepWaits(tab);
-    if (ch.agent) {
-      // 是哪一家到了：先画出来的卡头那一格补上那一家的名字（之后建的卡按它直接画）。
-      const who = speakerNameOf(tab.agent) ?? "";
-      for (const el of tab.streamEl.querySelectorAll<HTMLElement>(SPEAKER_SELECTOR)) el.textContent = who;
-    }
   }
 
   /**

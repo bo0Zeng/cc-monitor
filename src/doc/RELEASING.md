@@ -8,7 +8,7 @@
 - [ ] [CHANGELOG.md](../../CHANGELOG.md) 加本版那一段（写法见 § 3）。流水线从这一段生成 Release 正文，没有就红在渲染那一步；最上面那一节与 `Cargo.toml` 的版本号对不上由 `the_changelog_top_section_is_the_version_we_ship` 拦。
 - [ ] README 不写版本号：两份 README 的抬头与「项目当前状态」只写「见 Releases / CHANGELOG」，不用跟（`the_entry_readmes_write_no_version_number` 守着两份 README 里没有 `X.Y.Z` 形的号）。
 - [ ] **README 的「平台」与功能列表**：本版新增了平台或用户看得见的大功能，抬头那行的「平台」与功能段要跟上。
-- [ ] 本地全量门禁：`bash tests/scripts/gate-affected.sh --full`，`GATE: OK` 才往下走。
+- [ ] 本地全量门禁：§ 2 第一步提交之后、推送之前跑 `bash tests/scripts/gate-affected.sh --full`，`AFFECTED: OK` 才往下走（判的是那个提交，绿了它在那个提交上记一条本机门禁记录，推送与打 tag 都核它）。
 - [ ] **若本版动过滚动 / 渲染管线**（stream · tabs · 会话查看器 · 分支折叠 · render-*）：在 Windows 真机按 `tests/e2e/README.md` 的「人工场景」复核 WebView2（WebKitGTK 没有 `overflow-anchor`，两端补批语义不同）。
 - [ ] **若本版加删过依赖**（任一份 `Cargo.lock` 或 `package-lock.json` 变了）：`python3 tests/scripts/third-party-notices.py` 重新生成第三方许可声明并提交（门禁 `release-gate` ⑰ 不一致就红，发版那一趟 `--check` 也拦）。
 - [ ] **若本版改过后端源码**：用 `bash tests/scripts/bump-build-id.sh <新 id>` 打新的 `BUILD_ID`（`src/backend/common/id.rs`；子命令集变了它同时换指纹历史表）。走 tag 发版时 `release.yml` 的 `build-backends` job 从源码重编内嵌字节，官方渠道恒一致；**本地手工打包分发**则必须先重编并换掉 `src/frontend/shell/embedded-backends/` 里的字节（`bash tests/scripts/re-embed.sh`），否则装出去的是旧后端，连上后无限重装。
@@ -26,16 +26,17 @@
 
 ## 2. Git 操作 + CI
 
-在合并工作树里（§ 1 那几样都已提交、`gate-affected.sh --full` 绿了）：
+在合并工作树里：
 
 ```bash
-git commit -m "release: vX.Y.Z"                       # 不加 AI 署名行
-bash tests/scripts/push-candidate.sh <合并工作树名>   # 先推 next，CI 全绿才快进 main，再等 main 上那一趟
-git tag vX.Y.Z main
+git commit -m "release: vX.Y.Z"                       # § 1 的改动一起提交；不加 AI 署名行
+bash tests/scripts/gate-affected.sh --full            # 判这个提交；AFFECTED: OK 时在它上面记下 full 那条本机门禁记录
+bash tests/scripts/push-candidate.sh <合并工作树名>   # 核本机门禁记录 → 先推 next，CI 全绿才快进 main，再等 main 上那一趟
+bash tests/scripts/gate-affected.sh --recorded main | grep -qx full && git tag vX.Y.Z main   # 没有 full 记录就不打
 git push origin vX.Y.Z                                # tag push 触发 release.yml
 ```
 
-`main` 不直接推：它只经 `push-candidate.sh` 收 CI 绿过的提交（头注写着它每一步做什么）。tag 打在 `main` 上那个提交上。
+`main` 不直接推：它只经 `push-candidate.sh` 收本机门禁与 CI 都绿过的提交（头注写着它每一步做什么）。tag 打在 `main` 上那个提交上。本机门禁记录是仓内的 git notes（`refs/notes/ccm-gate`），几棵工作树共用、不推远端；`--full` 绿过之后又提交了东西 ⇒ 新提交上没有 full 记录，重跑 `--full`。
 
 ### 2.1 发版的第一道门：CI 必须绿
 

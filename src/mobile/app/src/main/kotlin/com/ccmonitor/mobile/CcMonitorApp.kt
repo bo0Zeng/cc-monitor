@@ -5,6 +5,10 @@ import android.app.Application
 import android.net.ConnectivityManager
 import android.net.Network
 import android.os.Bundle
+import com.ccmonitor.mobile.core.data.db.STATE_DB_FILE
+import com.ccmonitor.mobile.core.data.db.StateDbAge
+import com.ccmonitor.mobile.core.data.db.stateDbAge
+import com.ccmonitor.mobile.core.data.db.stateDbVersion
 import com.ccmonitor.mobile.core.data.di.dataModule
 import com.ccmonitor.mobile.core.ssh.di.sshModule
 import com.ccmonitor.mobile.core.ssh.installRustCore
@@ -14,29 +18,33 @@ import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.service.AppForeground
 import com.ccmonitor.mobile.service.ForegroundTracker
 import com.ccmonitor.mobile.service.KeepAliveWork
-import com.ccmonitor.mobile.ssh.OldHostKeys
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.context.startKoin
 import java.io.File
 
 class CcMonitorApp : Application() {
+    /** 盘上那份状态库比还收的最老那一版还老 ⇒ 那一版（App 什么都不起，[MainActivity] 整屏说一句）；开得了 ⇒ `null`。 */
+    var refused: StateDbAge.TooOld? = null
+        private set
+
     override fun onCreate() {
         super.onCreate()
+        // 库先看一眼：太老的不开、不迁（开了 Room 就照缺的那几跳抛），什么都不起，库一字不动。
+        refused = stateDbAge(stateDbVersion(getDatabasePath(STATE_DB_FILE))) as? StateDbAge.TooOld
+        if (refused != null) return
         val koin =
             startKoin {
                 androidLogger()
                 androidContext(this@CcMonitorApp)
                 modules(dataModule, sshModule, appModule)
             }.koin
-        // 核心先装（主机钥匙那份库在 App 私有目录），旧表迁完才往下走：之后任何一次拨号都只认那份库。
-        installRustCore(File(filesDir, "known_hosts"))
-        runBlocking(Dispatchers.IO) { koin.get<OldHostKeys>().migrate() }
+        // 核心先装（主机钥匙那份库在 App 私有目录，会话列表副本在缓存目录）：之后任何一次拨号都只认那份库。
+        installRustCore(File(filesDir, "known_hosts"), File(cacheDir, "lists"))
         // 维护前台标志，并在回到前台时交给每台的常驻流（共用那条重连循环）。
         val backends = koin.get<HostBackends>()
         registerForegroundTracking(backends)

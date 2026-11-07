@@ -71,8 +71,8 @@ class HostRemovalTest {
         /** 给 [id] 那一台每张表写一行。 */
         fun fill(id: String) {
             hosts += Host(id = id, label = id, host = "192.0.2.1", username = "u")
-            pendingRows += PendingSend("p-$id", id, "s", "hi", null, 1, PendingOutcome.UNSURE, 1)
-            draftRows += Draft(id, "s", "draft", null, null, null, null, 1)
+            pendingRows += PendingSend("p-$id", id, "s", "hi", 1, PendingOutcome.UNSURE, 1)
+            draftRows += Draft(id, "s", "draft", 1)
             batchRows += PendingBatch(id, "t", "{}")
         }
     }

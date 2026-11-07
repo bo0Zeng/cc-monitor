@@ -46,7 +46,6 @@ A new session file appeared。
 | `sid` | string | 会话 id |
 | `agent_kind` | string | 会话属哪一家（注册表里那一家的 kind：`"claude"` · `"codex"` …） |
 | `background` | bool? | 是不是后台会话（不是人坐在终端里对话的那种） |
-| `attachable` | bool? | attach 进去对人有没有意义 |
 | `cwd` | string? | pidfile 记的 `cwd`：进程起在哪个目录（客户端认「我刚起的那条起来了」用） |
 | `project_dir` | string? | 会话的项目目录：会话起在哪个目录（tab 标题 · 打开工作目录 · 分组都用它） |
 | `name` | string? | pidfile 里的会话名 |
@@ -384,9 +383,8 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 |---|---|---|
 | `close` | CanClose | 关掉它的标签页 |
 | `resume` | Allow | 恢复（起一个新进程接着那份记录） |
-| `term` | CanTerm | 还有终端可去（拉前 · 停 · 杀 · 终端页） |
+| `terminal` | CanTerminal | 「终端」那一颗（拉它的外部窗口 · 在这一端开它的终端 · 做不了，见 `CanTerminal`） |
 | `reattach` | Allow | 程序退了、tmux 会话还在 ⇒ 接回 |
-| `attach` | CanAttach | 「在终端里打开」（另开一个终端窗口接进它住的那个终端）：会话头 · 报错卡 · 右键菜单都只读它 |
 | `model` | Allow | 换模型（`session-model`） |
 | `permission` | Allow | 切权限档（`session-permission`） |
 | `stop` | Allow | 停下这一轮（往那条会话送 Esc）：只在一轮在跑时能 |
@@ -415,26 +413,29 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 - `can: "menu"`
 - `can: "no"`，带 `why` Words
 
-#### `CanTerm`
+#### `CanTerminal`
 
-还有没有终端可去：`yes` 带它住在哪种宿主里（`tmux` · `managed`；不在任何宿主里 ⇒ `direct`）。
+**「终端」那一颗**（两端只这一颗；会话头 · 右键 · 命令面板 · 快捷键 · 手机顶栏都读它）：会话住的那台把两种看法都写好，两端只按「看的这一端在不在那台上」挑一格 —— 在那台上（桌面看本机会话）挑 `near`，别处（桌面看远端会话 · 手机）挑 `far`。
 
-- `can: "yes"`，带 `host` Launch
-- `can: "no"`，带 `why` Words
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `near` | TermWay |  |
+| `far` | TermWay |  |
 
-#### `CanAttach`
+#### `TermWay`
 
-接不接得进：`{can: "yes", from}` · `{can: "no", why: 写好的那一句}`。
+点「终端」做什么：`front` 拉它住的那个外部终端窗口到前面（只在 `near`）· `here` 在看的这一端开它的终端（`open` 开哪个）· `no` 做不了（`why` 是那台写好的那一句：灰着、悬停 / 长按出它）。
 
-- `can: "yes"`，带 `from` AttachFrom
-- `can: "no"`，带 `why` Words
+- `go: "front"`，带 `said` Words
+- `go: "here"`，带 `said` Words · `open` TermOpen
+- `go: "no"`，带 `why` Words
 
-#### `AttachFrom`
+#### `TermOpen`
 
-`CanAttach::Yes` 在哪台看才给。
+在这一端开哪个终端：`attach` 接进它住的那个终端（`terminal` ＝ `terminals-list` 里那一行的句柄；判不出 ⇒ 缺，交了由那台认）· `resume` 它的终端已经不在：先恢复再开。
 
-- `everywhere`
-- `elsewhere`
+- `kind: "attach"`，带 `terminal` string?
+- `kind: "resume"`
 
 #### `NameFace`
 
@@ -546,10 +547,8 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 | `started_ms` | number? | 开始：派出它的那条记录（没见到 ⇒ 它自己最早的一条） |
 | `started_text` | string? | 「几点起」那一句（`started_ms` 在看的那一台钟上的钟面，推出去那一下按这条流的时区写，`Frame::stamp`；界面照抄、不换算）：事实那一行的头一截 |
 | `active_ms` | number? | 最近动静：它自己最近一条记录 |
-| `ended_ms` | number? | 收场：说它收场的那一条（还没收场 / 状态不明 ⇒ 不上线） |
 | `why` | RunWhy? | 为什么是这个结局（在跑 ⇒ 不上线） |
 | `error` | string? | 失败收场时的报错原话（说得出才有；至多 `observe::runs::ERROR_CHARS` 个字） |
-| `calls` | number? | 它调了几次工具（它自己的记录里数的；零 ⇒ 不上线） |
 | `background` | bool? | 派出那一方没等它、接着做自己的事（后台派出；否则不上线） |
 | `facts` | [RunLine]? | 事实那一行的各截（已跑 · 用时 · 最近 · 工具 ×n · agent ×n · 后台派出；「几点起」在 `started_text`）；一截都没有 ⇒ 不上线 |
 | `explain` | RunExplain? | 说明（在跑且没在等 ⇒ 不上线） |
@@ -801,11 +800,7 @@ mtime_text?: string,
  */
 there: FileKind, 
 /**
- * 已在那儿的那一项的大小（文件）。
- */
-there_size?: number, 
-/**
- * `there_size` 写好的字。
+ * 已在那儿的那一项的大小（文件）写好的字。
  */
 there_size_text?: string, 
 /**
@@ -900,11 +895,7 @@ mtime_text?: string,
  */
 there: FileKind, 
 /**
- * 已在那儿的那一项的大小（文件）。
- */
-there_size?: number, 
-/**
- * `there_size` 写好的字。
+ * 已在那儿的那一项的大小（文件）写好的字。
  */
 there_size_text?: string, 
 /**
@@ -1065,11 +1056,7 @@ mtime_text?: string,
  */
 there: FileKind, 
 /**
- * 已在那儿的那一项的大小（文件）。
- */
-there_size?: number, 
-/**
- * `there_size` 写好的字。
+ * 已在那儿的那一项的大小（文件）写好的字。
  */
 there_size_text?: string, 
 /**
@@ -1367,11 +1354,7 @@ mtime_text?: string,
  */
 there: FileKind, 
 /**
- * 已在那儿的那一项的大小（文件）。
- */
-there_size?: number, 
-/**
- * `there_size` 写好的字。
+ * 已在那儿的那一项的大小（文件）写好的字。
  */
 there_size_text?: string, 
 /**
@@ -1538,11 +1521,7 @@ mtime_text?: string,
  */
 there: FileKind, 
 /**
- * 已在那儿的那一项的大小（文件）。
- */
-there_size?: number, 
-/**
- * `there_size` 写好的字。
+ * 已在那儿的那一项的大小（文件）写好的字。
  */
 there_size_text?: string, 
 /**
@@ -2108,35 +2087,15 @@ type QuotaAccount = { rows: Array<Array<QuotaCell>>,
 /**
  * 「5h 那一格」（恢复菜单 · 新会话框每个号后面那一格）；按量号 ⇒ `null`。
  */
-fiveHour: Words | null, warm: QuotaWarm, agent: AgentKind, account: string, seenAt: number, seenAtText: Words, 
-/**
- * 别台的钟走在前面时才有。
- */
-seenAtRelText?: Words, 
-/**
- * 那一条账的额度快照（原数照原样；时刻旁边的字已添）。
- */
-reading: QuotaReadingShown, 
-/**
- * 各窗口几点、从哪看到的（原数照原样；账上没记 ⇒ 缺）。
- */
-windowsSeen?: { [key in string]: QuotaWindowSeen }, kind: QuotaKind, state: QuotaState, 
+fiveHour: Words | null, warm: QuotaWarm, agent: AgentKind, account: string, kind: QuotaKind, state: QuotaState, 
 /**
  * 最后一次看到距今超过 30 分钟（与 `state` 叠着画）。
  */
 stale: boolean, 
 /**
- * 按钮上那个窗口的语义位（卡着的那个；回包没说 ⇒ 用得最多的那个）；没有分窗口的数 ⇒ 缺。
- */
-limiting?: string, 
-/**
  * `5h` · `7d` 各一格（有数的才出）。
  */
 slots: Array<SlotShow>, login: LoginState, 
-/**
- * 同一订阅的稳定标识（账号身份的散列，不含原值）：两台看到的同一订阅它相同。订阅号读得出身份才有。
- */
-subId?: string, 
 /**
  * 各窗口照原名一格（`slots` 那两格照留：同一语义位几个窗口并成一格；这里一个窗口一格）；没有 ⇒ 缺。
  */
@@ -2149,19 +2108,6 @@ type QuotaCandidate = { agent: AgentKind, account: string, kind: QuotaKind, };
 type QuotaCell = { text: Words, tone: Tone, };
 type QuotaKind = "sub" | "api";
 type QuotaNames = { accounts: { [key in string]: Words }, slots: { [key in string]: Words }, };
-type QuotaOverageShown = { status?: QuotaStatus, 
-/**
- * 为什么不可用（那一家的原值）。
- */
-disabled?: string, 
-/**
- * 这一发正在用超额。
- */
-inUse: boolean, 
-/**
- * 几点重置（unix 秒）。
- */
-resetsAt?: number, resetsAtText?: Words, resetsAtRelText?: Words, };
 type QuotaRead = { 
 /**
  * 那份文件读到的三态。
@@ -2213,31 +2159,13 @@ names: QuotaNames,
 verdict: QuotaVerdict | null, };
 type QuotaReadReq = Record<symbol, never>;
 type QuotaReadState = "present" | "absent" | "unreadable";
-type QuotaReadingShown = { 
-/**
- * 限流器的结论；回包里没说 ⇒ 缺。
- */
-status?: QuotaStatus, 
-/**
- * 那一发被上游拒了（没被服务）。
- */
-refused: boolean, 
-/**
- * 此刻卡着的那个窗口名。
- */
-limiting?: string, windows: Array<QuotaWindowRead>, overage?: QuotaOverageShown, 
-/**
- * 几点重置（unix 秒）。
- */
-resetsAt?: number, resetsAtText?: Words, resetsAtRelText?: Words, };
 type QuotaSource = "headers" | "usage";
 type QuotaState = "ok" | "near" | "refused" | "overageInUse" | "unseen" | "resetSinceSeen";
-type QuotaStatus = "allowed" | "warning" | "rejected";
 type QuotaUnseen = { rows: Array<Array<QuotaCell>>, 
 /**
  * 没出过数 ⇒ 恒 `null`（这一格只给出过数的订阅号）。
  */
-fiveHour: Words | null, warm: QuotaWarm, agent: AgentKind, account: string, kind: QuotaKind, login: LoginState, subId?: string, 
+fiveHour: Words | null, warm: QuotaWarm, agent: AgentKind, account: string, kind: QuotaKind, login: LoginState, 
 /**
  * 用量那一格（没出过数 ⇒ `5h —` / `按量`；同出过数的号那一格一个写法，只是没有重置那一格）。
  */
@@ -2250,33 +2178,11 @@ type QuotaWarm = { act: QuotaWarmAct, at?: number,
  */
 atText?: Words, 
 /**
- * `at` 距今。
- */
-atRelText?: Words, 
-/**
  * 为什么这样办（「5h 83% ↻14:20」「被拒（7d）↻10-12 09:00」「无采样 · 发一句才知道」…）。
  */
 text: Words, };
 type QuotaWarmAct = "send" | "wait";
-type QuotaWindowRead = { name: string, 
-/**
- * 已用比例（通常 0–1，可以超过 1）。
- */
-used?: number, 
-/**
- * 越过了哪条预警线（比例）；没越过就没有。
- */
-warnedAt?: number, 
-/**
- * 几点重置（unix 秒）。
- */
-resetsAt?: number, resetsAtText?: Words, resetsAtRelText?: Words, };
-type QuotaWindowSeen = { at: number, atText: Words, atRelText?: Words, from: QuotaSource, };
 type SlotShow = { slot: string, pct?: number, resetsAt?: number, 
-/**
- * `resets_at` 写给人看的样子（出口那一下按钟写，`SlotShow::stamp`；内部与记账一律不填）。
- */
-resetsAtText?: string, 
 /**
  * `resets_at` 距今（`+1h50m`；同上，只在还没到时有）。
  */
@@ -2345,21 +2251,9 @@ pct?: number,
  */
 resetsAt?: number, 
 /**
- * `resets_at` 写给人看的样子（出口那一下按钟写，`WindowShow::stamp`；内部与记账一律不填）。
- */
-resetsAtText?: string, 
-/**
  * `resets_at` 距今（同上，只在还没到时有）。
  */
-resetsAtRelText?: string, seenAt: number, 
-/**
- * `seen_at` 写给人看的样子（同上）。
- */
-seenAtText?: string, 
-/**
- * `seen_at` 距今（别台的钟走在前面时才有）。
- */
-seenAtRelText?: string, from: QuotaSource, 
+resetsAtRelText?: string, from: QuotaSource, 
 /**
  * 这个号这个窗口「1% ≈ 多少用量」（折合输入 token：各类 token 按那一家的价比折）：中转数到的每发用量 ÷ 读数涨的点数；
  * 量不到（读数没动 · 样本太少 · 只有一次读数 · 量出来超过 7 天）⇒ 缺。
@@ -2369,10 +2263,6 @@ tokensPerPct?: number,
  * `tokens_per_pct` 写好的字（`1% ≈ 2.1M`）；量不到 ⇒ 缺。
  */
 perPctText?: string, 
-/**
- * 重置时刻已过、之后没再看到：上次的数不再作数（用量当 0、窗口没开）。
- */
-resetSinceSeen?: boolean, 
 /**
  * 这一窗口的语气（`rows` 里更细窗口那一行的值照它上色）：用满 ⇒ `fail`；快满 ⇒ `warn`；否则 `plain`。
  */
@@ -2521,10 +2411,6 @@ account: string, kind: QuotaKind, w5h: WinFact, w7d: WinFact,
  */
 weekly?: boolean, login: LoginState, 
 /**
- * 额度账上最后一次看到它（没出过数 ⇒ 缺）。
- */
-seenAt?: number, 
-/**
  * 事实上用不了 ⇒ 有；能用 ⇒ 缺。
  */
 blocked?: FactBlocked, };
@@ -2546,11 +2432,7 @@ type RotationFactsReq = {
  * 哪一家（线上的 kind）；缺 ⇒ 有账号库的那一家。
  */
 agent?: AgentKind, };
-type WinFact = { open: boolean, used: number, resets?: number, 
-/**
- * `resets` 写给人看的样子（按看的那一台的时区）。
- */
-resetsText?: string, rate?: number, 
+type WinFact = { open: boolean, used: number, resets?: number, rate?: number, 
 /**
  * 这一窗「1% ≈ 多少用量」（折合输入 token；同额度账那一格）：量不到 ⇒ 缺。
  */
@@ -2831,10 +2713,6 @@ account: string, kind: QuotaKind, w5h: WinFact, w7d: WinFact,
  */
 weekly?: boolean, login: LoginState, 
 /**
- * 额度账上最后一次看到它（没出过数 ⇒ 缺）。
- */
-seenAt?: number, 
-/**
  * 事实上用不了 ⇒ 有；能用 ⇒ 缺。
  */
 blocked?: FactBlocked, };
@@ -2882,11 +2760,7 @@ type RotDaySeg = { from: number, to: number, fromText: string, toText: string, v
 type RotFormKind = "percent" | "minutes" | "toggle" | "choice" | "daySegments";
 type RotFrom = "own" | "all" | "default" | "same";
 type RotGroup = "use" | "next" | "out" | "off";
-type RotHint = { "k": "hold", until?: number, account?: string, 
-/**
- * `until` 的钟面（`HH:MM`，看的那一台的时区；不在今天带日期）。
- */
-untilText?: string, } | { "k": "strategyError", error: RotStrategyError, path?: string, } | { "k": "tzUnknown", zone: string, } | { "k": "oldScripts", n: number, files: Array<RotOldFile>, } | { "k": "newer" } | { "k": "older", n: number, } | { "k": "wordsBad" } | { "k": "bookUnreadable", text: string, };
+type RotHint = { "k": "hold", until?: number, account?: string, } | { "k": "strategyError", error: RotStrategyError, path?: string, } | { "k": "tzUnknown", zone: string, } | { "k": "oldScripts", n: number, files: Array<RotOldFile>, } | { "k": "newer" } | { "k": "older", n: number, } | { "k": "wordsBad" } | { "k": "bookUnreadable", text: string, };
 type RotLine = { account: string, group: RotGroup, state: string, why?: string, movable: boolean, stay?: string, };
 type RotLogCause = { "k": "order" } | { "k": "unusable" } | { "k": "temp" } | { "k": "useNow" } | { "k": "hold", until?: number, } | { "k": "error" };
 type RotLogRow = { because: string, at: number, from: string, to: string, cause: RotLogCause, why?: string, 
@@ -3055,11 +2929,7 @@ type RotationViewReq = { target: RotTarget,
  */
 hours?: number, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
-type WinFact = { open: boolean, used: number, resets?: number, 
-/**
- * `resets` 写给人看的样子（按看的那一台的时区）。
- */
-resetsText?: string, rate?: number, 
+type WinFact = { open: boolean, used: number, resets?: number, rate?: number, 
 /**
  * 这一窗「1% ≈ 多少用量」（折合输入 token；同额度账那一格）：量不到 ⇒ 缺。
  */
@@ -3284,14 +3154,9 @@ type RotationStrategyTzReq = { id: string, tz: string, ifRev: string, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --apikey-key-set`
 
-入参 `KeySetReq` · 回包 `KeySet`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `KeySetReq` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type KeySet = { 
-/**
- * 这一行 key 的掩码（只留末四位）。
- */
-masked: string, };
 type KeySetReq = { 
 /**
  * 这个号的账号目录。
@@ -3410,11 +3275,7 @@ type ListMeta = {
 /**
  * 这台建了账号库（清单读得出）。
  */
-enabled: boolean, acctsDir: string, manifestPath: string, updatedAt: string | null, 
-/**
- * 账号 0 的配置目录（清单里写了才有）。
- */
-sharedStore: string | null, 
+enabled: boolean, manifestPath: string, updatedAt: string | null, 
 /**
  * 清单里认得的号数。
  */
@@ -4337,15 +4198,12 @@ removed: boolean, };
 
 ```ts
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
-type AttachFrom = "everywhere" | "elsewhere";
-type CanAttach = { "can": "yes", from: AttachFrom, } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
-type CanTerm = { "can": "yes", host: Launch, } | { "can": "no", why: Words, };
+type CanTerminal = { near: TermWay, far: TermWay, };
 type GroupsHere = { groups: Array<HereGroup>, members: Array<HereMember>, };
 type HereGroup = { id: string, name: string, made: number, named: number, };
 type HereMember = { sid: string, groups: Array<string>, pinned: boolean, face: SessionFace, facts: MemberFacts, };
-type Launch = "managed" | "tmux" | "direct";
 type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type MemberFacts = { 
 /**
@@ -4384,17 +4242,13 @@ close: CanClose,
  */
 resume: Allow, 
 /**
- * 还有终端可去（拉前 · 停 · 杀 · 终端页）。
+ * 「终端」那一颗（拉它的外部窗口 · 在这一端开它的终端 · 做不了，见 [`CanTerminal`]）。
  */
-term: CanTerm, 
+terminal: CanTerminal, 
 /**
  * 程序退了、tmux 会话还在 ⇒ 接回。
  */
 reattach: Allow, 
-/**
- * 「在终端里打开」（另开一个终端窗口接进它住的那个终端）：会话头 · 报错卡 · 右键菜单都只读它。
- */
-attach: CanAttach, 
 /**
  * 换模型（`session-model`）。
  */
@@ -4448,6 +4302,8 @@ order: number, can: SessionCan,
  * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
  */
 account?: string, };
+type TermOpen = { "kind": "attach", terminal?: string, } | { "kind": "resume" };
+type TermWay = { "go": "front", said: Words, } | { "go": "here", said: Words, open: TermOpen, } | { "go": "no", why: Words, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type Words = string;
 ```
@@ -4464,11 +4320,9 @@ type Words = string;
 
 ```ts
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
-type AttachFrom = "everywhere" | "elsewhere";
-type CanAttach = { "can": "yes", from: AttachFrom, } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
-type CanTerm = { "can": "yes", host: Launch, } | { "can": "no", why: Words, };
+type CanTerminal = { near: TermWay, far: TermWay, };
 type GroupCount = { dot: SessionDot, n: number, word: string, 
 /**
  * 组头那一句（「需手动 2」那样，出口照摆）。
@@ -4513,7 +4367,6 @@ pinned: Array<GroupMember>,
 machines: Array<GroupsMachine>, };
 type GroupsReadReq = { machines: Array<string>, };
 type HistoryMachineRead = { "is": "ok", notice: string | null, } | { "is": "stale", why: string, at: string, } | { "is": "failed", why: string, } | { "is": "unread" };
-type Launch = "managed" | "tmux" | "direct";
 type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type MemberFacts = { 
 /**
@@ -4551,17 +4404,13 @@ close: CanClose,
  */
 resume: Allow, 
 /**
- * 还有终端可去（拉前 · 停 · 杀 · 终端页）。
+ * 「终端」那一颗（拉它的外部窗口 · 在这一端开它的终端 · 做不了，见 [`CanTerminal`]）。
  */
-term: CanTerm, 
+terminal: CanTerminal, 
 /**
  * 程序退了、tmux 会话还在 ⇒ 接回。
  */
 reattach: Allow, 
-/**
- * 「在终端里打开」（另开一个终端窗口接进它住的那个终端）：会话头 · 报错卡 · 右键菜单都只读它。
- */
-attach: CanAttach, 
 /**
  * 换模型（`session-model`）。
  */
@@ -4615,6 +4464,8 @@ order: number, can: SessionCan,
  * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
  */
 account?: string, };
+type TermOpen = { "kind": "attach", terminal?: string, } | { "kind": "resume" };
+type TermWay = { "go": "front", said: Words, } | { "go": "here", said: Words, open: TermOpen, } | { "go": "no", why: Words, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type Words = string;
 ```
@@ -4648,11 +4499,9 @@ type HereGroup = { id: string, name: string, made: number, named: number, };
 
 ```ts
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
-type AttachFrom = "everywhere" | "elsewhere";
-type CanAttach = { "can": "yes", from: AttachFrom, } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
-type CanTerm = { "can": "yes", host: Launch, } | { "can": "no", why: Words, };
+type CanTerminal = { near: TermWay, far: TermWay, };
 type GroupCount = { dot: SessionDot, n: number, word: string, 
 /**
  * 组头那一句（「需手动 2」那样，出口照摆）。
@@ -4681,7 +4530,6 @@ named: number | null, known: GroupKnown,
  * 组员：照问的台序、再照 sid。
  */
 members: Array<GroupMember>, counts: Array<GroupCount>, };
-type Launch = "managed" | "tmux" | "direct";
 type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type Looked = "every" | "this_machine" | "nothing";
 type MemberFacts = { 
@@ -4721,17 +4569,13 @@ close: CanClose,
  */
 resume: Allow, 
 /**
- * 还有终端可去（拉前 · 停 · 杀 · 终端页）。
+ * 「终端」那一颗（拉它的外部窗口 · 在这一端开它的终端 · 做不了，见 [`CanTerminal`]）。
  */
-term: CanTerm, 
+terminal: CanTerminal, 
 /**
  * 程序退了、tmux 会话还在 ⇒ 接回。
  */
 reattach: Allow, 
-/**
- * 「在终端里打开」（另开一个终端窗口接进它住的那个终端）：会话头 · 报错卡 · 右键菜单都只读它。
- */
-attach: CanAttach, 
 /**
  * 换模型（`session-model`）。
  */
@@ -4794,6 +4638,8 @@ sid: string,
  * 我在的那几组（组员整组）。
  */
 groups: Array<GroupRead>, looked: Looked, };
+type TermOpen = { "kind": "attach", terminal?: string, } | { "kind": "resume" };
+type TermWay = { "go": "front", said: Words, } | { "go": "here", said: Words, open: TermOpen, } | { "go": "no", why: Words, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type Words = string;
 ```
@@ -4847,7 +4693,6 @@ type PlanRef = { start: number, end: number, ids: Array<string>, };
 ```ts
 type AgentKind = string;
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
-type AttachFrom = "everywhere" | "elsewhere";
 type Can = { 
 /**
  * `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话）。
@@ -4865,12 +4710,11 @@ fork: boolean,
  * `yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑。
  */
 delete: CanDelete, };
-type CanAttach = { "can": "yes", from: AttachFrom, } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
-type CanTerm = { "can": "yes", host: Launch, } | { "can": "no", why: Words, };
+type CanTerminal = { near: TermWay, far: TermWay, };
 type ForkedFrom = { label: string, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
@@ -4878,7 +4722,7 @@ type HistoryGroup = { key: string, agent: AgentKind, projectName: string, projec
 /**
  * 有在跑的 ⇒ `true`；有答不了的 ⇒ `null`；都没在跑 ⇒ `false`。
  */
-hasLive: boolean | null, starred: boolean, lastActivity: number, 
+hasLive: boolean | null, starred: boolean, 
 /**
  * `last_activity` 写好的字（同行尾那一格的写法）；读不了的那一组 ⇒ `null`。
  */
@@ -4937,7 +4781,7 @@ type HistoryRow = { agent: AgentKind, sessionId: string, projectPath: string, pr
 /**
  * 隐藏那一格（判定只住后端 `history/session_hidden.rs`）；不隐藏 ⇒ `null`（格恒在）。
  */
-hidden: Hidden | null, forkedFromSessionId?: string, forkedFromMessageUuid?: string, 
+hidden: Hidden | null, forkedFromSessionId?: string, 
 /**
  * 分叉来的：父会话那一行（显示标题）；不是分叉来的 · 父会话不在这台的清单里 ⇒ 缺（界面写「分叉自其他会话」）。
  */
@@ -4979,7 +4823,6 @@ reveal: boolean,
  */
 deleteAsk: Words, };
 type HistorySort = "activity" | "created";
-type Launch = "managed" | "tmux" | "direct";
 type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type Machine = string;
 type SessionActivity = "working" | "needs_you" | "idle" | "background_work";
@@ -4993,17 +4836,13 @@ close: CanClose,
  */
 resume: Allow, 
 /**
- * 还有终端可去（拉前 · 停 · 杀 · 终端页）。
+ * 「终端」那一颗（拉它的外部窗口 · 在这一端开它的终端 · 做不了，见 [`CanTerminal`]）。
  */
-term: CanTerm, 
+terminal: CanTerminal, 
 /**
  * 程序退了、tmux 会话还在 ⇒ 接回。
  */
 reattach: Allow, 
-/**
- * 「在终端里打开」（另开一个终端窗口接进它住的那个终端）：会话头 · 报错卡 · 右键菜单都只读它。
- */
-attach: CanAttach, 
 /**
  * 换模型（`session-model`）。
  */
@@ -5061,6 +4900,8 @@ type SyncHead<H> = { total: number, info: H, };
 type SyncHeld = string;
 type SyncPatch<H, T> = { held: SyncHeld, whole: boolean, same: boolean, order: Array<string> | null, up: { [key in string]: T }, head: SyncHead<H> | null, };
 type SyncRange = { from: number, limit: number, };
+type TermOpen = { "kind": "attach", terminal?: string, } | { "kind": "resume" };
+type TermWay = { "go": "front", said: Words, } | { "go": "here", said: Words, open: TermOpen, } | { "go": "no", why: Words, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type Words = string;
 ```
@@ -5078,7 +4919,6 @@ type Words = string;
 ```ts
 type AgentKind = string;
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
-type AttachFrom = "everywhere" | "elsewhere";
 type Can = { 
 /**
  * `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话）。
@@ -5096,12 +4936,11 @@ fork: boolean,
  * `yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑。
  */
 delete: CanDelete, };
-type CanAttach = { "can": "yes", from: AttachFrom, } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
-type CanTerm = { "can": "yes", host: Launch, } | { "can": "no", why: Words, };
+type CanTerminal = { near: TermWay, far: TermWay, };
 type ForkedFrom = { label: string, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
@@ -5157,7 +4996,7 @@ type HistoryGroup = { key: string, agent: AgentKind, projectName: string, projec
 /**
  * 有在跑的 ⇒ `true`；有答不了的 ⇒ `null`；都没在跑 ⇒ `false`。
  */
-hasLive: boolean | null, starred: boolean, lastActivity: number, 
+hasLive: boolean | null, starred: boolean, 
 /**
  * `last_activity` 写好的字（同行尾那一格的写法）；读不了的那一组 ⇒ `null`。
  */
@@ -5194,7 +5033,7 @@ type HistoryRow = { agent: AgentKind, sessionId: string, projectPath: string, pr
 /**
  * 隐藏那一格（判定只住后端 `history/session_hidden.rs`）；不隐藏 ⇒ `null`（格恒在）。
  */
-hidden: Hidden | null, forkedFromSessionId?: string, forkedFromMessageUuid?: string, 
+hidden: Hidden | null, forkedFromSessionId?: string, 
 /**
  * 分叉来的：父会话那一行（显示标题）；不是分叉来的 · 父会话不在这台的清单里 ⇒ 缺（界面写「分叉自其他会话」）。
  */
@@ -5242,7 +5081,6 @@ type HistoryRowId = {
 origin: Machine, sid: string, };
 type HistorySection = { at: number, text: string, };
 type HistorySort = "activity" | "created";
-type Launch = "managed" | "tmux" | "direct";
 type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type Machine = string;
 type SessionActivity = "working" | "needs_you" | "idle" | "background_work";
@@ -5256,17 +5094,13 @@ close: CanClose,
  */
 resume: Allow, 
 /**
- * 还有终端可去（拉前 · 停 · 杀 · 终端页）。
+ * 「终端」那一颗（拉它的外部窗口 · 在这一端开它的终端 · 做不了，见 [`CanTerminal`]）。
  */
-term: CanTerm, 
+terminal: CanTerminal, 
 /**
  * 程序退了、tmux 会话还在 ⇒ 接回。
  */
 reattach: Allow, 
-/**
- * 「在终端里打开」（另开一个终端窗口接进它住的那个终端）：会话头 · 报错卡 · 右键菜单都只读它。
- */
-attach: CanAttach, 
 /**
  * 换模型（`session-model`）。
  */
@@ -5324,6 +5158,8 @@ type SyncHead<H> = { total: number, info: H, };
 type SyncHeld = string;
 type SyncPatch<H, T> = { held: SyncHeld, whole: boolean, same: boolean, order: Array<string> | null, up: { [key in string]: T }, head: SyncHead<H> | null, };
 type SyncRange = { from: number, limit: number, };
+type TermOpen = { "kind": "attach", terminal?: string, } | { "kind": "resume" };
+type TermWay = { "go": "front", said: Words, } | { "go": "here", said: Words, open: TermOpen, } | { "go": "no", why: Words, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type Words = string;
 ```
@@ -5390,7 +5226,7 @@ launchTab?: LaunchTab,
 /**
  * 主会话（那台的会话血缘）；没有 ⇒ 缺。
  */
-parent?: string, forkedFromSessionId?: string, forkedFromMessageUuid?: string, 
+parent?: string, forkedFromSessionId?: string, 
 /**
  * 读它那一组用的键（记录目录名 · 合成历史 `<kind>:<cwd>`）。
  */
@@ -5423,7 +5259,6 @@ type Tab = "show" | "hide";
 ```ts
 type AgentKind = string;
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
-type AttachFrom = "everywhere" | "elsewhere";
 type Can = { 
 /**
  * `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话）。
@@ -5441,12 +5276,11 @@ fork: boolean,
  * `yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑。
  */
 delete: CanDelete, };
-type CanAttach = { "can": "yes", from: AttachFrom, } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
-type CanTerm = { "can": "yes", host: Launch, } | { "can": "no", why: Words, };
+type CanTerminal = { near: TermWay, far: TermWay, };
 type ForkedFrom = { label: string, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
@@ -5488,13 +5322,12 @@ limit?: number,
  * 只比会话标题与第一句（不搜内容）。
  */
 titles?: boolean, };
-type Launch = "managed" | "tmux" | "direct";
 type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type SearchHit = { 
 /**
  * 消息 uuid：打开查看器后据此滚动定位、高亮。
  */
-uuid: string, tsMs: number, 
+uuid: string, 
 /**
  * `user` · `assistant` · `tool` · `report`。
  */
@@ -5580,17 +5413,13 @@ close: CanClose,
  */
 resume: Allow, 
 /**
- * 还有终端可去（拉前 · 停 · 杀 · 终端页）。
+ * 「终端」那一颗（拉它的外部窗口 · 在这一端开它的终端 · 做不了，见 [`CanTerminal`]）。
  */
-term: CanTerm, 
+terminal: CanTerminal, 
 /**
  * 程序退了、tmux 会话还在 ⇒ 接回。
  */
 reattach: Allow, 
-/**
- * 「在终端里打开」（另开一个终端窗口接进它住的那个终端）：会话头 · 报错卡 · 右键菜单都只读它。
- */
-attach: CanAttach, 
 /**
  * 换模型（`session-model`）。
  */
@@ -5644,6 +5473,8 @@ order: number, can: SessionCan,
  * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
  */
 account?: string, };
+type TermOpen = { "kind": "attach", terminal?: string, } | { "kind": "resume" };
+type TermWay = { "go": "front", said: Words, } | { "go": "here", said: Words, open: TermOpen, } | { "go": "no", why: Words, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type Words = string;
 ```
@@ -5661,7 +5492,6 @@ type Words = string;
 ```ts
 type AgentKind = string;
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
-type AttachFrom = "everywhere" | "elsewhere";
 type Can = { 
 /**
  * `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话）。
@@ -5679,12 +5509,11 @@ fork: boolean,
  * `yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑。
  */
 delete: CanDelete, };
-type CanAttach = { "can": "yes", from: AttachFrom, } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
-type CanTerm = { "can": "yes", host: Launch, } | { "can": "no", why: Words, };
+type CanTerminal = { near: TermWay, far: TermWay, };
 type ForkedFrom = { label: string, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
@@ -5714,7 +5543,6 @@ limit?: number,
  * 只比会话标题与第一句（不搜内容）。
  */
 titles?: boolean, };
-type Launch = "managed" | "tmux" | "direct";
 type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type Machine = string;
 type Merged = { 
@@ -5818,7 +5646,7 @@ type SearchHit = {
 /**
  * 消息 uuid：打开查看器后据此滚动定位、高亮。
  */
-uuid: string, tsMs: number, 
+uuid: string, 
 /**
  * `user` · `assistant` · `tool` · `report`。
  */
@@ -5847,17 +5675,13 @@ close: CanClose,
  */
 resume: Allow, 
 /**
- * 还有终端可去（拉前 · 停 · 杀 · 终端页）。
+ * 「终端」那一颗（拉它的外部窗口 · 在这一端开它的终端 · 做不了，见 [`CanTerminal`]）。
  */
-term: CanTerm, 
+terminal: CanTerminal, 
 /**
  * 程序退了、tmux 会话还在 ⇒ 接回。
  */
 reattach: Allow, 
-/**
- * 「在终端里打开」（另开一个终端窗口接进它住的那个终端）：会话头 · 报错卡 · 右键菜单都只读它。
- */
-attach: CanAttach, 
 /**
  * 换模型（`session-model`）。
  */
@@ -5911,6 +5735,8 @@ order: number, can: SessionCan,
  * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
  */
 account?: string, };
+type TermOpen = { "kind": "attach", terminal?: string, } | { "kind": "resume" };
+type TermWay = { "go": "front", said: Words, } | { "go": "here", said: Words, open: TermOpen, } | { "go": "no", why: Words, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type Words = string;
 ```
@@ -6145,10 +5971,6 @@ cwd?: string,
  * 随这一句发的附件（适配层从正文里认出、正文里那几行引用已去掉；图片附件照旧是 `blocks` 里的图片块）。没有 ⇒ 缺。
  */
 attachments?: Array<Attachment>, } | { "t": "reply", blocks: Array<Block>, 
-/**
- * 型号名原样。
- */
-model?: string, 
 /**
  * 代理那一侧自动写的应答（不是模型说的，不建卡）。
  */
@@ -6633,10 +6455,6 @@ cwd?: string,
  * 随这一句发的附件（适配层从正文里认出、正文里那几行引用已去掉；图片附件照旧是 `blocks` 里的图片块）。没有 ⇒ 缺。
  */
 attachments?: Array<Attachment>, } | { "t": "reply", blocks: Array<Block>, 
-/**
- * 型号名原样。
- */
-model?: string, 
 /**
  * 代理那一侧自动写的应答（不是模型说的，不建卡）。
  */
@@ -7154,10 +6972,6 @@ cwd?: string,
  */
 attachments?: Array<Attachment>, } | { "t": "reply", blocks: Array<Block>, 
 /**
- * 型号名原样。
- */
-model?: string, 
-/**
  * 代理那一侧自动写的应答（不是模型说的，不建卡）。
  */
 autoReply: boolean, 
@@ -7619,10 +7433,6 @@ cwd?: string,
  */
 attachments?: Array<Attachment>, } | { "t": "reply", blocks: Array<Block>, 
 /**
- * 型号名原样。
- */
-model?: string, 
-/**
  * 代理那一侧自动写的应答（不是模型说的，不建卡）。
  */
 autoReply: boolean, 
@@ -7995,10 +7805,6 @@ said: string,
  */
 tools: number, thinking: number, agents: number, background: number, retries: number, 
 /**
- * 失败合计：工具（含派 agent）结果标了出错、且不是人拒的 ＋ 后台任务 / 子 agent 收场说失败。
- */
-fails: number, 
-/**
  * 露着的那几条（uuid，文件序）：带正文的 assistant 记录（中间说的话与结论）＋ 停下这一轮的那一条中断标记 / 报错卡。
  */
 shown: Array<string>, 
@@ -8037,14 +7843,11 @@ type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type AskEnd = { said: Words, stays: boolean, };
 type AskEndRow = { sid: string, end: AskEnd, };
 type AskKind = "approve" | "answer" | "plan";
-type AttachFrom = "everywhere" | "elsewhere";
-type CanAttach = { "can": "yes", from: AttachFrom, } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
-type CanTerm = { "can": "yes", host: Launch, } | { "can": "no", why: Words, };
+type CanTerminal = { near: TermWay, far: TermWay, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
-type Launch = "managed" | "tmux" | "direct";
 type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type LoginStartReq = { "kind": "account", agent: AgentKind, account: string, } | { "kind": "mcp", agent: AgentKind, account: string | null, server: string, projectDir: string | null, };
 type ManualFix = { command: string, args: LoginStartReq, };
@@ -8071,10 +7874,6 @@ call: string | null,
  */
 what: string | null, 
 /**
- * 何时起等（那台 pidfile 的 `statusUpdatedAt`，epoch ms）；没有 ⇒ `null`。
- */
-sinceMs: number | null, 
-/**
  * 写好的字（等批准 · 等回答 · 需手动），出口照抄。
  */
 text: Words, 
@@ -8100,10 +7899,6 @@ rank: number,
  * 起点比那一刻还晚（那台的钟往回拨过）⇒ 0。没有起点 ⇒ `null`。会走的钟：各出口从收到那一刻起按本机钟接着加（时长读口对同一份金样）。
  */
 waitedMs: number | null, 
-/**
- * `waitedMs` 写好的字（短时长那一处 `copy_core::short_duration`，与过程行步骤耗时同一种写法）；没有起点 ⇒ `null`。
- */
-waitedText: Words | null, 
 /**
  * 这一条可以怎么答（挂着的待答请求，`control::asks`）：选项的字 · 语气 · 要不要附话都写好；没有挂着的 ⇒ `null`（只能去终端）。
  */
@@ -8144,11 +7939,7 @@ choices: Array<NeedsChoice>,
 /**
  * 提问那一种的题目；别的种类为空。
  */
-questions: Array<NeedsQuestion>, 
-/**
- * 何时挂上的（epoch ms，这台的钟）。
- */
-sinceMs: number, };
+questions: Array<NeedsQuestion>, };
 type NeedsAskRun = { 
 /**
  * 那一趟的 id（那一家原样）。
@@ -8240,17 +8031,13 @@ close: CanClose,
  */
 resume: Allow, 
 /**
- * 还有终端可去（拉前 · 停 · 杀 · 终端页）。
+ * 「终端」那一颗（拉它的外部窗口 · 在这一端开它的终端 · 做不了，见 [`CanTerminal`]）。
  */
-term: CanTerm, 
+terminal: CanTerminal, 
 /**
  * 程序退了、tmux 会话还在 ⇒ 接回。
  */
 reattach: Allow, 
-/**
- * 「在终端里打开」（另开一个终端窗口接进它住的那个终端）：会话头 · 报错卡 · 右键菜单都只读它。
- */
-attach: CanAttach, 
 /**
  * 换模型（`session-model`）。
  */
@@ -8305,6 +8092,8 @@ order: number, can: SessionCan,
  */
 account?: string, };
 type SessionsNeedsReq = Record<symbol, never>;
+type TermOpen = { "kind": "attach", terminal?: string, } | { "kind": "resume" };
+type TermWay = { "go": "front", said: Words, } | { "go": "here", said: Words, open: TermOpen, } | { "go": "no", why: Words, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type Words = string;
 ```
@@ -8323,14 +8112,11 @@ type Words = string;
 type AgentKind = string;
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type AskKind = "approve" | "answer" | "plan";
-type AttachFrom = "everywhere" | "elsewhere";
-type CanAttach = { "can": "yes", from: AttachFrom, } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
-type CanTerm = { "can": "yes", host: Launch, } | { "can": "no", why: Words, };
+type CanTerminal = { near: TermWay, far: TermWay, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
-type Launch = "managed" | "tmux" | "direct";
 type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type LoginStartReq = { "kind": "account", agent: AgentKind, account: string, } | { "kind": "mcp", agent: AgentKind, account: string | null, server: string, projectDir: string | null, };
 type Machine = string;
@@ -8358,10 +8144,6 @@ call: string | null,
  */
 what: string | null, 
 /**
- * 何时起等（那台 pidfile 的 `statusUpdatedAt`，epoch ms）；没有 ⇒ `null`。
- */
-sinceMs: number | null, 
-/**
  * 写好的字（等批准 · 等回答 · 需手动），出口照抄。
  */
 text: Words, 
@@ -8387,10 +8169,6 @@ rank: number,
  * 起点比那一刻还晚（那台的钟往回拨过）⇒ 0。没有起点 ⇒ `null`。会走的钟：各出口从收到那一刻起按本机钟接着加（时长读口对同一份金样）。
  */
 waitedMs: number | null, 
-/**
- * `waitedMs` 写好的字（短时长那一处 `copy_core::short_duration`，与过程行步骤耗时同一种写法）；没有起点 ⇒ `null`。
- */
-waitedText: Words | null, 
 /**
  * 这一条可以怎么答（挂着的待答请求，`control::asks`）：选项的字 · 语气 · 要不要附话都写好；没有挂着的 ⇒ `null`（只能去终端）。
  */
@@ -8431,11 +8209,7 @@ choices: Array<NeedsChoice>,
 /**
  * 提问那一种的题目；别的种类为空。
  */
-questions: Array<NeedsQuestion>, 
-/**
- * 何时挂上的（epoch ms，这台的钟）。
- */
-sinceMs: number, };
+questions: Array<NeedsQuestion>, };
 type NeedsAskRun = { 
 /**
  * 那一趟的 id（那一家原样）。
@@ -8527,17 +8301,13 @@ close: CanClose,
  */
 resume: Allow, 
 /**
- * 还有终端可去（拉前 · 停 · 杀 · 终端页）。
+ * 「终端」那一颗（拉它的外部窗口 · 在这一端开它的终端 · 做不了，见 [`CanTerminal`]）。
  */
-term: CanTerm, 
+terminal: CanTerminal, 
 /**
  * 程序退了、tmux 会话还在 ⇒ 接回。
  */
 reattach: Allow, 
-/**
- * 「在终端里打开」（另开一个终端窗口接进它住的那个终端）：会话头 · 报错卡 · 右键菜单都只读它。
- */
-attach: CanAttach, 
 /**
  * 换模型（`session-model`）。
  */
@@ -8591,6 +8361,8 @@ order: number, can: SessionCan,
  * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
  */
 account?: string, };
+type TermOpen = { "kind": "attach", terminal?: string, } | { "kind": "resume" };
+type TermWay = { "go": "front", said: Words, } | { "go": "here", said: Words, open: TermOpen, } | { "go": "no", why: Words, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type Words = string;
 ```
@@ -8676,12 +8448,10 @@ type AgentKind = string;
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type AskEnd = { said: Words, stays: boolean, };
 type AskKind = "approve" | "answer" | "plan";
-type AttachFrom = "everywhere" | "elsewhere";
 type AutoChoice = { min: number, text: Words, };
-type CanAttach = { "can": "yes", from: AttachFrom, } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
-type CanTerm = { "can": "yes", host: Launch, } | { "can": "no", why: Words, };
+type CanTerminal = { near: TermWay, far: TermWay, };
 type FactsBackground = { 
 /**
  * 「后台任务运行中 · make test-all · 12m」；命令拿不到 ⇒ 「后台任务运行中」。手机与 CLI 照抄、按节拍重问。
@@ -8715,7 +8485,7 @@ type FactsBySid = {
  */
 sid: string, };
 type FactsClock = { text: Words, from: number, };
-type FactsCost = { micros: number, partial: boolean, text: Words, };
+type FactsCost = { partial: boolean, text: Words, };
 type FactsLine = { for: SessionActivity, text: Words, clock: FactsClock | null, peek: Words | null, };
 type FactsReply = { 
 /**
@@ -8750,6 +8520,11 @@ modelPick: string | null,
  */
 projectDir: string | null, 
 /**
+ * `project_dir` 的显示形：那台按自己的家目录写好的 `~/…`（`platform::paths::home_short`，写法同 `AccountRow.configDirShown`），
+ * 两端显示目录照抄它、不自己缩；项目目录还没读到 ⇒ 不出现。每次现给，不累加。
+ */
+cwdShown?: Words, 
+/**
  * 这份记录是哪一家的（线上的 kind，适配层按记录认：`agents::record_kind_of`）；认不出 ⇒ `null`（界面要分家的那几项灰着，不落哪一家）。
  */
 agent: AgentKind | null, 
@@ -8762,6 +8537,10 @@ writers: Array<number>,
  * 不止一个进程在写时那一句（[`writers_line`]，跟着 `writers` 现给；界面照摆）；一个或没有 ⇒ 不出现。
  */
 writersLine?: Words, 
+/**
+ * 分叉来的那一句（[`forked_line`]：「分叉自「父会话的名字」」，出口那一下照父会话那份记录起名；悬停卡照摆）；不是分叉来的 ⇒ 不出现。
+ */
+forkedLine?: Words, 
 /**
  * 这条会话在哪：「<目录> · <机器>」那一句（[`where_line`]，与终端页头同一句；机器照看的这一端对那台的称呼，信封 `called`；界面照摆）。
  * 没交称呼 ⇒ 只目录；目录还没读到 ⇒ 只名字；两样都没有 ⇒ 不出现。
@@ -8845,11 +8624,7 @@ childrenText: Words | null,
  * **状态一句里会走的那一截**：pidfile 此刻说的那一态 ＋ 记录里的事实（在跑的那一步 · 等的种类与起点 · 最后一句的时刻），[`line_of`] 写。
  * 不活 ⇒ `null`。不累加，每次现查。
  */
-line: FactsLine | null, 
-/**
- * 认不出、又不成卡的行（那一家的簿记行：没见过的类型、没有链上身份）：不在消息流里画，在这里照实说几行、哪几种。一行都没有 ⇒ `null`。
- */
-quietUnread: QuietUnread | null, };
+line: FactsLine | null, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
 type HistoryFactsReq = FactsByPath | FactsBySid;
@@ -8871,9 +8646,7 @@ at: string | null,
  * `at` 的毫秒（同 [`PendingCall::at_ms`]：「完成多久前」交那一个读口走字）。
  */
 atMs: number | null, };
-type Launch = "managed" | "tmux" | "direct";
 type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
-type LimitFrom = "relay" | "setting" | "model" | "observed" | "assumed";
 type McpStatus = "needsLogin" | "failed" | "pending" | "disabled" | "unknown";
 type McpTrouble = { name: string, 
 /**
@@ -8902,10 +8675,6 @@ call: string | null,
  */
 what: string | null, 
 /**
- * 何时起等（那台 pidfile 的 `statusUpdatedAt`，epoch ms）；没有 ⇒ `null`。
- */
-sinceMs: number | null, 
-/**
  * 写好的字（等批准 · 等回答 · 需手动），出口照抄。
  */
 text: Words, 
@@ -8931,10 +8700,6 @@ rank: number,
  * 起点比那一刻还晚（那台的钟往回拨过）⇒ 0。没有起点 ⇒ `null`。会走的钟：各出口从收到那一刻起按本机钟接着加（时长读口对同一份金样）。
  */
 waitedMs: number | null, 
-/**
- * `waitedMs` 写好的字（短时长那一处 `copy_core::short_duration`，与过程行步骤耗时同一种写法）；没有起点 ⇒ `null`。
- */
-waitedText: Words | null, 
 /**
  * 这一条可以怎么答（挂着的待答请求，`control::asks`）：选项的字 · 语气 · 要不要附话都写好；没有挂着的 ⇒ `null`（只能去终端）。
  */
@@ -8975,11 +8740,7 @@ choices: Array<NeedsChoice>,
 /**
  * 提问那一种的题目；别的种类为空。
  */
-questions: Array<NeedsQuestion>, 
-/**
- * 何时挂上的（epoch ms，这台的钟）。
- */
-sinceMs: number, };
+questions: Array<NeedsQuestion>, };
 type NeedsAskRun = { 
 /**
  * 那一趟的 id（那一家原样）。
@@ -9077,19 +8838,6 @@ text: Words | null,
  * 状态不明时那一行悬停说的为什么（照 `why` 写好）；别的 ⇒ `null`。
  */
 whyText: Words | null, };
-type QuietUnread = { 
-/**
- * 「无法识别 N 行（类型：a · b）」。
- */
-text: Words, 
-/**
- * 几行。
- */
-count: number, 
-/**
- * 哪几种（原文里的 `type`，首见序，至多 [`QUIET_KINDS_KEEP`] 种）。
- */
-kinds: Array<string>, };
 type RetryOutcome = "retrying" | "recovered" | "failed" | "interrupted";
 type RetryRun = { 
 /**
@@ -9113,17 +8861,13 @@ close: CanClose,
  */
 resume: Allow, 
 /**
- * 还有终端可去（拉前 · 停 · 杀 · 终端页）。
+ * 「终端」那一颗（拉它的外部窗口 · 在这一端开它的终端 · 做不了，见 [`CanTerminal`]）。
  */
-term: CanTerm, 
+terminal: CanTerminal, 
 /**
  * 程序退了、tmux 会话还在 ⇒ 接回。
  */
 reattach: Allow, 
-/**
- * 「在终端里打开」（另开一个终端窗口接进它住的那个终端）：会话头 · 报错卡 · 右键菜单都只读它。
- */
-attach: CanAttach, 
 /**
  * 换模型（`session-model`）。
  */
@@ -9178,30 +8922,20 @@ order: number, can: SessionCan,
  */
 account?: string, };
 type StepWait = "running" | "awaiting" | "unclear";
-type TokenUse = { input: number, output: number, cacheRead: number, cacheWrite5m: number, cacheWrite1h: number, 
-/**
- * 算进来的请求数。
- */
-requests: number, 
+type TermOpen = { "kind": "attach", terminal?: string, } | { "kind": "resume" };
+type TermWay = { "go": "front", said: Words, } | { "go": "here", said: Words, open: TermOpen, } | { "go": "no", why: Words, };
+type TokenUse = { input: number, output: number, 
 /**
  * 写好的串（输入 · 输出 · 读缓存 · 写缓存）。
  */
 text: Words, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type UnclearWhy = "noWriter" | "untracked";
-type UsageFact = { 
-/**
- * `input_tokens + cache_creation_input_tokens + cache_read_input_tokens`。
- */
-promptTokens: number, model: string | null, 
-/**
- * 全会话最大的一轮（见过超过标准上限的 ⇒ 上限不可能是标准那一档）。
- */
-peakPromptTokens: number, 
+type UsageFact = { model: string | null, 
 /**
  * 上下文上限（tokens），恒 ≥ `peak_prompt_tokens` ⇒ 百分比不会超过 100。
  */
-limit: number, limitFrom: LimitFrom, 
+limit: number, 
 /**
  * 最新一轮占上限的百分比（四舍五入，0–100）；上限判不出（`assumed`）⇒ `null`。
  */
@@ -9318,10 +9052,6 @@ before: string, matched: string, after: string,
  * 第几轮（这条之前含它人说过几句；第一句之前 ＝ 0）。
  */
 turn: number, 
-/**
- * 那条记录的时刻（毫秒；读不出 ＝ 0）。
- */
-tsMs: number, 
 /**
  * `tsMs` 按看的那一台的时区写好（今天 `HH:MM` · 昨天 · 更早带日期；读不出 ⇒ 空串）：出口那一下添（[`with_hit_text`]）。
  */
@@ -9763,10 +9493,6 @@ cwd?: string,
  */
 attachments?: Array<Attachment>, } | { "t": "reply", blocks: Array<Block>, 
 /**
- * 型号名原样。
- */
-model?: string, 
-/**
  * 代理那一侧自动写的应答（不是模型说的，不建卡）。
  */
 autoReply: boolean, 
@@ -10147,10 +9873,6 @@ statusText: string,
  */
 blocks: Array<string>, 
 /**
- * 同上。
- */
-blockedBy: Array<string>, 
-/**
  * 可缺（原文缺或 `null` ⇒ 这一格不出现），出现就是串。
  */
 description?: string, 
@@ -10336,24 +10058,19 @@ type Words = string;
 ```ts
 type FirstRun = { steps: Array<FirstRunStep>, 
 /**
- * 必做而还没打勾的几步（主窗口状态栏那一枚只数它）。
- */
-left: number, 
-/**
  * 「开始用」那一块点过「跳过」（`chores-mark` 的 `skipStart` 写）。
  */
 skipped: boolean, };
+type FirstRunAct = { label: Words, go: FirstRunGo, };
+type FirstRunGo = "aliases" | "add_machine";
 type FirstRunReq = { 
 /**
  * 机器表里有几台远端（机器表住 monitor 那一侧，问的那一方带上）。
  */
 remotes: number, };
-type FirstRunStep = { id: FirstRunStepId, done: boolean, 
-/**
- * 必做（今天只有 `terminal`）。
- */
-required: boolean, };
-type FirstRunStepId = "terminal" | "named" | "remote";
+type FirstRunStep = { id: FirstRunStepId, done: boolean, name: Words, hint: Words, act: FirstRunAct, };
+type FirstRunStepId = "terminal" | "remote";
+type Words = string;
 ```
 
 码：`bad_args`
@@ -10567,11 +10284,7 @@ type ListMeta = {
 /**
  * 这台建了账号库（清单读得出）。
  */
-enabled: boolean, acctsDir: string, manifestPath: string, updatedAt: string | null, 
-/**
- * 账号 0 的配置目录（清单里写了才有）。
- */
-sharedStore: string | null, 
+enabled: boolean, manifestPath: string, updatedAt: string | null, 
 /**
  * 清单里认得的号数。
  */
@@ -11161,14 +10874,6 @@ sourcePath: string,
  */
 status: "needsLogin" | "disabled" | "unknown", 
 /**
- * `needsLogin` 时：在哪几个号里要登录；别的状态恒空。
- */
-loginIn: Array<string>, 
-/**
- * `needsLogin` 时：最近一次看到是何时（epoch ms）；别的状态 `null`。
- */
-seenAt: number | null, 
-/**
  * 小标画哪一种：断开压过需登录；都没有 ⇒ `null`（只说装了，不说连上了）。
  */
 mark: McpMark | null, login: McpLoginMark | null, failed: McpFailedMark | null, };
@@ -11348,11 +11053,7 @@ type HubMachineDone = { to: string | null, name: string, done: ExtDone | null, e
 入参 `ExtListReq` · 回包 `ExtList`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type ExtBring = { from: string | null, 
-/**
- * 来源给人看的名字（本机 · 别的台 · cc-monitor 自带）。
- */
-fromName: string, scope: ExtScope, targets: Array<ExtTarget>, };
+type ExtBring = { from: string | null, scope: ExtScope, targets: Array<ExtTarget>, };
 type ExtCell = { 
 /**
  * 表上那个点。
@@ -11478,11 +11179,7 @@ type ExtTarget = { at: ExtLoc, ok: boolean, note: string | null, };
 入参 `ExtListReq` · 回包 `ExtList`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type ExtBring = { from: string | null, 
-/**
- * 来源给人看的名字（本机 · 别的台 · cc-monitor 自带）。
- */
-fromName: string, scope: ExtScope, targets: Array<ExtTarget>, };
+type ExtBring = { from: string | null, scope: ExtScope, targets: Array<ExtTarget>, };
 type ExtCell = { 
 /**
  * 表上那个点。
@@ -11946,7 +11643,7 @@ type ShellKind = "posix" | "powershell";
 ```ts
 type NoArgs = Record<symbol, never>;
 type ProfileAccountPick = { "kind": "account", name: string, } | { "kind": "base" };
-type ProfileAccountShape = { account: string, tmux: boolean, };
+type ProfileAccountShape = { account: string, form: "plain" | "tmux" | "hosted", };
 type ProfileCwdCase = { at: string, to: string, };
 type ProfileForm = { name: string, from: string | null, account: ProfileAccountPick | null, tmux: ProfileTmuxPick | null, cwdIf: Array<ProfileCwdCase> | null, cwd: string | null, agent: string | null, 
 /**
@@ -11982,7 +11679,7 @@ functionLine: string | null,
  */
 said: string, form: ProfileForm, 
 /**
- * 「账号那一形」（自己只写了号、可再加 tmux）⇒ 号与 tmux 按合并下来的算；其余 ⇒ `null`（账号页按它列各号的命令名）。
+ * 「账号那一形」（自己只写了号、可再加 tmux 或托管）⇒ 号与那一形按合并下来的算；其余 ⇒ `null`（账号页按它列各号的命令名）。
  */
 accountShape: ProfileAccountShape | null, 
 /**
@@ -11991,7 +11688,7 @@ accountShape: ProfileAccountShape | null,
 start: string, };
 type ProfileSlot = { id: ProfileSlotId, label: string, };
 type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "tab" | "tabGroup" | "say";
-type ProfileTmuxMode = "auto" | "fixed" | "base";
+type ProfileTmuxMode = "auto" | "fixed" | "base" | "hosted";
 type ProfileTmuxNaming = { mode: ProfileTmuxMode, text: string, };
 type ProfileTmuxPick = { mode: ProfileTmuxMode, name: string, };
 type ProfilesBook = { 
@@ -12113,7 +11810,7 @@ lineError: string | null,
  */
 problem: string | null, };
 type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "tab" | "tabGroup" | "say";
-type ProfileTmuxMode = "auto" | "fixed" | "base";
+type ProfileTmuxMode = "auto" | "fixed" | "base" | "hosted";
 type ProfileTmuxPick = { mode: ProfileTmuxMode, name: string, };
 type ProfilesResolveReq = { 
 /**
@@ -12157,7 +11854,7 @@ tabGroup: string | null,
  * 开口那句：落在 tmux 里起新会话时交给 agent（`null` ＝ 继承）。
  */
 say: string | null, };
-type ProfileTmuxMode = "auto" | "fixed" | "base";
+type ProfileTmuxMode = "auto" | "fixed" | "base" | "hosted";
 type ProfileTmuxPick = { mode: ProfileTmuxMode, name: string, };
 type ProfilesFromLineReq = { name: string, 
 /**
@@ -12206,7 +11903,7 @@ say: string | null, };
 type ProfileOp = { "op": "set", was: string | null, form: ProfileForm, } | { "op": "remove", name: string, children?: ProfileChildren, } | { "op": "init", seed: boolean, } | { "op": "saveSet", was: string | null, set: SetEdit, } | { "op": "removeSet", name: string, };
 type ProfileSlotChange = { slot: ProfileSlotId, label: string, before: string, after: string, };
 type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "tab" | "tabGroup" | "say";
-type ProfileTmuxMode = "auto" | "fixed" | "base";
+type ProfileTmuxMode = "auto" | "fixed" | "base" | "hosted";
 type ProfileTmuxPick = { mode: ProfileTmuxMode, name: string, };
 type ProfilesImpact = { affected: Array<ProfileAffected>, };
 type ProfilesImpactReq = { changes: Array<ProfileOp>, };
@@ -12263,9 +11960,9 @@ tabGroup: string | null,
  */
 say: string | null, };
 type ProfileOp = { "op": "set", was: string | null, form: ProfileForm, } | { "op": "remove", name: string, children?: ProfileChildren, } | { "op": "init", seed: boolean, } | { "op": "saveSet", was: string | null, set: SetEdit, } | { "op": "removeSet", name: string, };
-type ProfileTmuxMode = "auto" | "fixed" | "base";
+type ProfileTmuxMode = "auto" | "fixed" | "base" | "hosted";
 type ProfileTmuxPick = { mode: ProfileTmuxMode, name: string, };
-type ProfilesWriteDone = { wrote: boolean, rev: string | null, reload: string | null, };
+type ProfilesWriteDone = { rev: string | null, reload: string | null, };
 type ProfilesWriteReq = { changes: Array<ProfileOp>, ifRev: string | null, };
 type RowEdit = { cwd: string, alias: string, n: number, tabGroup: string | null, };
 type SetEdit = { name: string, rows: Array<RowEdit>, };
@@ -12562,47 +12259,6 @@ type NoArgs = Record<symbol, never>;
 
 ```ts
 type BusAct = "ask" | "answer" | "request" | "inform" | "handback" | "correct";
-type BusEnvelope = { 
-/**
- * 消息 id（`re` · `msg:` 引的就是它）。
- */
-id: string, 
-/**
- * 时间（UTC，`YYYY-MM-DDTHH:MM:SSZ`）。
- */
-ts: string, 
-/**
- * 发件人（会话 id）。
- */
-from: string, 
-/**
- * 收件人（会话 id）。
- */
-to: string, 
-/**
- * 1 ⇒ 敲门（对方闲着才送）；2 ⇒ 只进收件箱。
- */
-tier: number, 
-/**
- * 这一封是做什么的（线上码）。
- */
-act: BusAct, 
-/**
- * 标题（一行）。
- */
-title: string, 
-/**
- * 接在哪一条后面（消息 id），没有 ⇒ `null`。
- */
-re: string | null, 
-/**
- * 引用（路径 · `pb:` · `msg:` · `commit:` · URL）。
- */
-refs: Array<string>, 
-/**
- * 正文。
- */
-text: string, };
 type BusEnvelopeReq = { 
 /**
  * 发件人：会话 id。
@@ -12640,7 +12296,7 @@ refs?: Array<string> | null,
  * 正文，不超过 1200 字节（长的写成文件，给路径）。缺 ⇒ 只有标题。
  */
 text?: string | null, };
-type BusSent = { envelope: BusEnvelope, knock: boolean, };
+type BusSent = { id: string, };
 type Machine = string;
 ```
 
@@ -12972,11 +12628,7 @@ kind: "terminal-window",
 /**
  * 连上的时刻（秒）。
  */
-since: number, 
-/**
- * 最近动静（秒）。
- */
-last_activity: number, };
+since: number, };
 type HolderWho = "terminal-window" | "desktop" | "mobile" | "none";
 type InputHolder = { 
 /**
@@ -13066,10 +12718,6 @@ input: TermInput,
  * 此刻的样子。
  */
 state: TermState, 
-/**
- * 最近动静（秒）。
- */
-last_activity: number, 
 /**
  * 这个调用方能做什么（抓屏不过身份门、恒可用，不在这里）。
  */
@@ -13431,10 +13079,6 @@ scrollback_lines: number,
  * 要的比上限多、截到了上限。
  */
 capped: boolean, 
-/**
- * 抓屏时刻（秒）。
- */
-captured_at: number, 
 /**
  * 抓屏时刻在看的那一台钟上的（请求的 `tz`）`HH:MM:SS`（界面照抄、不换算）。
  */
@@ -13840,10 +13484,6 @@ result: ModeSwitchResult,
  * 读回的显示名（那一家写的原样，例如 `Opus 5.5 (1M context)`）；没读到 ⇒ `null`。
  */
 model: string | null, 
-/**
- * 读回时那一家顺带说的思考档（原样）；没说 ⇒ 不出。
- */
-effort?: string, 
 /**
  * `refused` 的原因（同 `terminal-input`）。
  */
@@ -14559,10 +14199,6 @@ cwd: string,
  */
 shown: string, 
 /**
- * 那个目录最近一次会话的修改时刻（毫秒）。
- */
-lastMs: number, 
-/**
  * 同一刻按请求的 `tz` 写给人看的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年）。
  */
 lastText: string, };
@@ -14605,102 +14241,6 @@ forkOf?: string, };
 
 码：`bad_args`
 
-#### `session-restart`
-
-换号重启。
-
-收 `args` · 可撤 · 只在流上
-
-入参 `RestartReq` · 回包 `Restarted`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type AccountUnavailable = { 
-/**
- * 要的那个号。
- */
-requested: string, 
-/**
- * 它是这条会话上次用的号（跟随），不是这一次点名的。
- */
-pinned: boolean, 
-/**
- * 这台的账号清单读得出来。
- */
-listKnown: boolean, 
-/**
- * 给的显式替代（这台的默认号）；`null` ⇒ 只能「不指定号」。
- */
-alternative: string | null, };
-type AgentKind = string;
-type Arrival = "arrived" | "missed";
-type Compact = "done" | "timed_out" | "skipped" | "unsupported" | "failed";
-type LaunchedAccount = { name: string, configDir: string, 
-/**
- * 这台模型偏好表里这个号的那一条（没有 ⇒ `null`）。
- */
-model: string | null, };
-type RestartRefused = { names: Array<string>, } | { pids: Array<number>, stopped?: boolean, } | { why: string, } | { terminal: string, why: string | null, stopped: boolean, };
-type RestartReq = { 
-/**
- * 会话 id。
- */
-sid: Sid, 
-/**
- * 工作目录。
- */
-cwd: string, 
-/**
- * 用户点名的号（只收名字，非空）。
- */
-account: string, 
-/**
- * 先请求压缩、等记录里出现压缩摘要再停。
- */
-compact_first: boolean, 
-/**
- * 等压缩的期限（≤ 3 600 000）。
- */
-compact_within_ms: number, 
-/**
- * 等新进程报出的期限（≤ 3 600 000）。
- */
-arrive_within_ms: number, 
-/**
- * 这台是不是界面所在那台（同 `session-open`）。
- */
-local: boolean, 
-/**
- * 哪一家（线上的 kind）。启动命令 · 模型表这台自己读。
- */
-agent: AgentKind, 
-/**
- * 自报的前端，同 `kill`。
- */
-client?: string, };
-type Restarted = { 
-/**
- * 先压缩那一步：`done` · `timed_out` · `skipped` · `unsupported` · `failed`。
- */
-compact: Compact, 
-/**
- * 新进程报没报出：`arrived` · `missed`。
- */
-started: Arrival, 
-/**
- * 所在的终端（会话名）。
- */
-terminal: string, 
-/**
- * 实际用的号（账号 0 / 不指定 ⇒ `null`）。
- */
-account: LaunchedAccount | null, };
-type Sid = string;
-```
-
-码：`bad_args` · `unobservable` · `account_unavailable` · `not_in_terminal` · `ambiguous` · `already_live` · `stop_failed` · `start_failed` · `child_timed_out`
-
-失败带 `data` 的码：`account_unavailable` ⇒ `AccountUnavailable` · `ambiguous` ⇒ `RestartRefused` · `already_live` ⇒ `RestartRefused` · `stop_failed` ⇒ `RestartRefused` · `start_failed` ⇒ `RestartRefused`
-
 ### 4.9 会话输入队
 
 #### `session-queue-put`
@@ -14719,11 +14259,7 @@ type QueuePut = { outcome: "queued" | "held" | "seen",
  */
 seq?: number, 
 /**
- * 排第几（排着的那几条里，从 1 数；不是排着 ⇒ 不在）。
- */
-place?: number, 
-/**
- * 那一条此刻的样子，会话那台写好（排队 · 第几 · 已送进 · 已撤），发件端贴在那一句下面。
+ * 那一条此刻的样子，会话那台写好（发送中 · 等确认 · 需手动 · 答完再送 · 已送进 · 已撤），同名单那一句。
  */
 said: string, };
 type Rewind = { 
@@ -14806,13 +14342,10 @@ attachments?: Array<string>,
  */
 rewind?: Rewind, state: "queued" | "held" | "undelivered", 
 /**
- * 那一条此刻的样子，会话那台写好（排队 · 第 N · 排队 · 失败 · 未送进会话；同回执那一句）：各端照摆，不按 `state` 自己挑字。
+ * 那一条此刻在等什么，会话那台写好（发送中 · 等确认 · 需手动 · 答完再送 · 未送进会话 · {为什么}；同回执那一句）：
+ * 不写第几、不写哪一端；各端照摆，不按 `state` 自己挑字。
  */
-said: string, 
-/**
- * 发自哪一端，会话那台写好的那个词（认得的端写名字，别的照 `end` 原样）。
- */
-from: string, };
+said: string, };
 type QueueList = { items: Array<QueueItem>, 
 /**
  * 最近送进 agent 的那几条的 id（先送的在前，只留最近几条）。两端都不据它判那一句的去向：回执到了就离开待发，之后只照名单与记录画。
@@ -14865,13 +14398,10 @@ attachments?: Array<string>,
  */
 rewind?: Rewind, state: "queued" | "held" | "undelivered", 
 /**
- * 那一条此刻的样子，会话那台写好（排队 · 第 N · 排队 · 失败 · 未送进会话；同回执那一句）：各端照摆，不按 `state` 自己挑字。
+ * 那一条此刻在等什么，会话那台写好（发送中 · 等确认 · 需手动 · 答完再送 · 未送进会话 · {为什么}；同回执那一句）：
+ * 不写第几、不写哪一端；各端照摆，不按 `state` 自己挑字。
  */
-said: string, 
-/**
- * 发自哪一端，会话那台写好的那个词（认得的端写名字，别的照 `end` 原样）。
- */
-from: string, };
+said: string, };
 type QueueList = { items: Array<QueueItem>, 
 /**
  * 最近送进 agent 的那几条的 id（先送的在前，只留最近几条）。两端都不据它判那一句的去向：回执到了就离开待发，之后只照名单与记录画。
@@ -14974,10 +14504,6 @@ type CcmCard = {
  * CLI 契约版本（`CCM_VERSION`）。
  */
 version: string, 
-/**
- * 这台 `ccm` 认得的能力（与名片的 `capabilities=` 行同一份）。
- */
-capabilities: Array<string>, 
 /**
  * 认得的 agent 种类。
  */
@@ -15107,7 +14633,7 @@ hint: string,
  */
 count: string, };
 type MachineDot = "up" | "pending" | "warn" | "failed" | "off";
-type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install";
+type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install" | "use_key";
 type MachineFixButton = { fix: MachineFix, label: string, };
 type MachineRead = { machines: { [key in string]: MachineState }, empty: FleetLines, };
 type MachineReadReq = Record<symbol, never>;
@@ -15142,10 +14668,6 @@ stage: MachineStage | null,
  */
 version: string | null, 
 /**
- * 与这一版的版本关系（握手过才有）。
- */
-versionRelation: VersionRelation | null, 
-/**
  * 那台的系统（部署问到过才有）。
  */
 os: string | null, 
@@ -15160,7 +14682,12 @@ said: string,
 /**
  * 那台离线那一句（恒有，连接层写的；哪一态都带着）。出口要说那台离线时照摆这一句，不各自取字。
  */
-offlineSaid: string, fixes: Array<MachineFixButton>, 
+offlineSaid: string, 
+/**
+ * 待发那一句交了、没等到回执、这一问已结束时那一行（恒有，拨号这一端写的：「{name} 离线 · 连上后补交」；还不知道那台什么样 ⇒ 状态不明那一句）。
+ * 两端输入框上方那一排照摆这一句，不拼。
+ */
+heldSaid: string, fixes: Array<MachineFixButton>, 
 /**
  * 指纹不对时那台这一次出示的主机指纹（`host_key_changed` 才有）。
  */
@@ -15185,7 +14712,6 @@ strip?: MachineStripLine, };
 type MachineStateKind = "up" | "connecting" | "installing" | "updating" | "down" | "host_key_changed" | "needs_update" | "newer" | "disabled" | "unsupported" | "unknown";
 type MachineStripLine = { tone: Tone, progress: boolean, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
-type VersionRelation = "same" | "older" | "newer" | "incomparable";
 ```
 
 码：`bad_args`
@@ -15228,7 +14754,7 @@ nth: number | null, };
 type DialWhy = "resolve" | "unreachable" | "timeout" | "host_key" | "auth" | "password" | "key_unreadable" | "jump" | "session_denied" | "other";
 type Machine = string;
 type MachineDot = "up" | "pending" | "warn" | "failed" | "off";
-type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install";
+type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install" | "use_key";
 type MachineFixButton = { fix: MachineFix, label: string, };
 type MachineFrom = "local" | "table" | "ssh_config";
 type MachineMenu = { from: MachineFrom, 
@@ -15268,10 +14794,6 @@ stage: MachineStage | null,
  */
 version: string | null, 
 /**
- * 与这一版的版本关系（握手过才有）。
- */
-versionRelation: VersionRelation | null, 
-/**
  * 那台的系统（部署问到过才有）。
  */
 os: string | null, 
@@ -15286,7 +14808,12 @@ said: string,
 /**
  * 那台离线那一句（恒有，连接层写的；哪一态都带着）。出口要说那台离线时照摆这一句，不各自取字。
  */
-offlineSaid: string, fixes: Array<MachineFixButton>, 
+offlineSaid: string, 
+/**
+ * 待发那一句交了、没等到回执、这一问已结束时那一行（恒有，拨号这一端写的：「{name} 离线 · 连上后补交」；还不知道那台什么样 ⇒ 状态不明那一句）。
+ * 两端输入框上方那一排照摆这一句，不拼。
+ */
+heldSaid: string, fixes: Array<MachineFixButton>, 
 /**
  * 指纹不对时那台这一次出示的主机指纹（`host_key_changed` 才有）。
  */
@@ -15313,7 +14840,6 @@ type MachineStripLine = { tone: Tone, progress: boolean, };
 type MenuAct = "open_terminal" | "new_session" | "files" | "machine_status" | "add_machine";
 type MenuAction = { act: MenuAct, sub: string | null, blocked: string | null, note: string | null, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
-type VersionRelation = "same" | "older" | "newer" | "incomparable";
 ```
 
 码：`bad_args` · `no_such_machine`
@@ -15329,7 +14855,7 @@ type VersionRelation = "same" | "older" | "newer" | "incomparable";
 ```ts
 type DialWhy = "resolve" | "unreachable" | "timeout" | "host_key" | "auth" | "password" | "key_unreadable" | "jump" | "session_denied" | "other";
 type MachineDot = "up" | "pending" | "warn" | "failed" | "off";
-type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install";
+type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install" | "use_key";
 type MachineFixButton = { fix: MachineFix, label: string, };
 type MachineStage = "deploy" | "attach";
 type MachineState = { 
@@ -15362,10 +14888,6 @@ stage: MachineStage | null,
  */
 version: string | null, 
 /**
- * 与这一版的版本关系（握手过才有）。
- */
-versionRelation: VersionRelation | null, 
-/**
  * 那台的系统（部署问到过才有）。
  */
 os: string | null, 
@@ -15380,7 +14902,12 @@ said: string,
 /**
  * 那台离线那一句（恒有，连接层写的；哪一态都带着）。出口要说那台离线时照摆这一句，不各自取字。
  */
-offlineSaid: string, fixes: Array<MachineFixButton>, 
+offlineSaid: string, 
+/**
+ * 待发那一句交了、没等到回执、这一问已结束时那一行（恒有，拨号这一端写的：「{name} 离线 · 连上后补交」；还不知道那台什么样 ⇒ 状态不明那一句）。
+ * 两端输入框上方那一排照摆这一句，不拼。
+ */
+heldSaid: string, fixes: Array<MachineFixButton>, 
 /**
  * 指纹不对时那台这一次出示的主机指纹（`host_key_changed` 才有）。
  */
@@ -15406,7 +14933,6 @@ type MachineStateKind = "up" | "connecting" | "installing" | "updating" | "down"
 type MachineStripLine = { tone: Tone, progress: boolean, };
 type MachineWakeReq = { machine: string, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
-type VersionRelation = "same" | "older" | "newer" | "incomparable";
 ```
 
 码：`bad_args` · `unknown_machine` · `disabled` · `busy`
@@ -15926,11 +15452,6 @@ fault: MachineFault | null, };
 ```ts
 type ElemKey = { fields: Array<string>, equals: string, };
 type FileState = "absent" | "ok" | "unreadable";
-type Gone = { 
-/**
- * 认出了不止一台（不猜是哪台）。
- */
-ambiguous: boolean, };
 type Host = { 
 /**
  * 这台的名字（origin）；空 ⇒ 用 `host`。
@@ -16016,7 +15537,7 @@ type MachinesSet = { machines: MachinesReply, };
 
 码：`bad_args` · `unreadable` · `element_gone` · `element_exists` · `bad_machine` · `io_failed`
 
-失败带 `data` 的码：`element_gone` ⇒ `Gone` · `bad_machine` ⇒ `MachineFault`
+失败带 `data` 的码：`bad_machine` ⇒ `MachineFault`
 
 #### `host-keys-forget`
 
@@ -16114,81 +15635,62 @@ key: string,
 /**
  * 见过多少次（本进程内的计数，不落盘）。
  */
-count: number, 
-/**
- * **首见**的一条样例（截断）。后来的不再覆盖 —— 第一条最接近「它刚出现时长什么样」。
- */
-first_sample: string | null, };
+count: number, };
 type DriftFaceReport = { 
 /**
  * 那一家的面的名字（那一家自己的词）。
  */
 face: string, 
 /**
- * 这个面「看不懂时会发生什么」（那一家写好的那一句）。
+ * 按 `count` 降序、同数按键名升序（键数触顶后新键并进那一家的溢出键）。
  */
-consequence: string, 
-/**
- * 按 `count` 降序、同数按键名升序。
- */
-entries: Array<DriftEntry>, 
-/**
- * 该面是否已经溢出（键数触顶）。溢出后新键并进那一家的溢出键。
- */
-overflowed: boolean, };
+entries: Array<DriftEntry>, };
 type DriftReport = { faces: Array<DriftFaceReport>, };
 type NoArgs = Record<symbol, never>;
 ```
 
 码：`bad_args`
 
-#### `drift-merge`
+#### `diagnostics-report`
 
-本机与各台的漂移账。
+日志页的诊断信息整段。
 
-不收 `args` · 可撤 · CLI：`ccm -- --drift-merge`
+收 `args` · 可撤 · CLI：`ccm -- --diagnostics-report`
 
-入参 `NoArgs` · 回包 `DriftMerge`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `DiagnosticsReportReq` · 回包 `DiagnosticsReport`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type DriftEntry = { 
+type DiagnosticsReport = { 
 /**
- * 看不懂的那个值（记录 type / kind / status / token）。
+ * 整段可复制的诊断文本。
  */
-key: string, 
+text: string, 
 /**
- * 见过多少次（本进程内的计数，不落盘）。
+ * 每台一行（本机在前，其余照机器表的顺序）。
  */
-count: number, 
+unknown: Array<UnknownOnMachine>, 
 /**
- * **首见**的一条样例（截断）。后来的不再覆盖 —— 第一条最接近「它刚出现时长什么样」。
+ * config.json 里认不出的项数。
  */
-first_sample: string | null, };
-type DriftFaceReport = { 
+configUnknown: number, };
+type DiagnosticsReportReq = { 
 /**
- * 那一家的面的名字（那一家自己的词）。
+ * monitor 这一版的版本号。
  */
-face: string, 
+version: string, 
 /**
- * 这个面「看不懂时会发生什么」（那一家写好的那一句）。
+ * 今天的日志文件（没写文件 ⇒ 没有）。
  */
-consequence: string, 
+logFile?: string, 
 /**
- * 按 `count` 降序、同数按键名升序。
+ * `config.json` 原文的顶层键（照盘上的先后；读不到 ⇒ 空）。
  */
-entries: Array<DriftEntry>, 
+configKeys: Array<string>, };
+type UnknownOnMachine = { 
 /**
- * 该面是否已经溢出（键数触顶）。溢出后新键并进那一家的溢出键。
+ * 那台的名字（本机 ⇒ 文案表里那个词）。
  */
-overflowed: boolean, };
-type DriftMerge = { machines: Array<DriftOn>, };
-type DriftOn = { 
-/**
- * 那台的键（本机 `<local>`，别的台是机器表里的名字）。
- */
-origin: string, report: DriftReport | null, };
-type DriftReport = { faces: Array<DriftFaceReport>, };
-type NoArgs = Record<symbol, never>;
+machine: string, records: number | null, };
 ```
 
 码：`bad_args`
@@ -16525,14 +16027,65 @@ type PlanStale = { said: string | null, raw: string | null, since: number, };
 
 ```ts
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
-type AttachFrom = "everywhere" | "elsewhere";
-type CanAttach = { "can": "yes", from: AttachFrom, } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
-type CanTerm = { "can": "yes", host: Launch, } | { "can": "no", why: Words, };
-type Launch = "managed" | "tmux" | "direct";
+type CanTerminal = { near: TermWay, far: TermWay, };
 type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type PlanArchived = { id: string, title: string | null, kind: string | null, };
+type PlanAudit = { 
+/**
+ * 那一份报告，相对工作区根。
+ */
+file: string, 
+/**
+ * 谁按的；认不出 ⇒ `null`。
+ */
+by: "person" | "agent" | null, 
+/**
+ * agent 按的 ⇒ 那个身份对到的会话（同负责人那一格）；人按的 ⇒ `null`。
+ */
+who: PlanWho | null, 
+/**
+ * 按的那一刻（pb 原样：带时区的 ISO 8601）。
+ */
+startedAt: string | null, 
+/**
+ * 带编号按的 ⇒ 那个编号（`project` ＝ 整个仓库）；不带 ⇒ `null`（审上次之后改过的）。
+ */
+tree: string | null, 
+/**
+ * 该审几个。
+ */
+due: number, 
+/**
+ * 这一回审的那几个（编号，照先后）。
+ */
+nodes: Array<string>, 
+/**
+ * 结局；认不出 ⇒ `null`。
+ */
+status: "done" | "failed" | "unfinished" | null, 
+/**
+ * 校验里说到这几个节点的不通过有几条。
+ */
+check: number, said: PlanAuditSaid, };
+type PlanAuditSaid = { 
+/**
+ * 审哪：带编号 ⇒ 那一棵（「编号 标题」）· 整个仓库；不带 ⇒ 上次之后改过的几个。
+ */
+what: string, 
+/**
+ * 人按的 ⇒ 那一句；agent 按的 ⇒ `null`（照 `who` 摆那一枚）。
+ */
+by: string | null, 
+/**
+ * 结果：审完报了几条 · 没写完 · 起不了为什么。
+ */
+result: string, 
+/**
+ * 按的那一刻写成的字（照看的那一台）；pb 给的认不出 ⇒ 原样。
+ */
+at: string | null, };
 type PlanBlock = { id: string, 
 /**
  * 根节点（最上面那一个 ⇒ `project`）。
@@ -16679,7 +16232,7 @@ type PlanFile = { path: string,
 /**
  * 对账的码；pb 给了认不得的 ⇒ `null`。
  */
-stateCode: "ok" | "missing" | "empty" | "broken" | null, 
+stateCode: "ok" | "uncommitted" | "missing" | "empty" | "broken" | null, 
 /**
  * pb 的那一句（长度 · 坏在哪）。
  */
@@ -16721,12 +16274,16 @@ lines: Array<string>,
  * 「第几条 / 共几条」（照认可记录标过之后、没认可的那几条照先后写）；认可过的 ⇒ `null`。
  */
 pos: string | null, };
-type PlanPendingSet = { source: string | null, target: string | null, value: string | null, op: "add" | "remove", 
+type PlanPendingSet = { source: string | null, target: string | null, 
+/**
+ * 那一笔写好的字：值（pb 的协议值写成字）；去一笔 ⇒ `-值`。没有值 ⇒ `null`。
+ */
+said: string | null, 
 /**
  * pb 那一句。
  */
 blockedReason: string | null, };
-type PlanPhase = { name: string | null, does: string | null, };
+type PlanPhase = { name: string | null, };
 type PlanProgress = { done: number, of: number, };
 type PlanRead = { pb: string | null, workspace: string, 
 /**
@@ -16839,7 +16396,11 @@ pendingSets: Array<PlanPendingSet>, check: PlanCheck,
 /**
  * 编号 ⇒「编号 标题」（图上每个节点，连排期的 ＋ 归档里的；后端拼，界面凡出现编号照它写）。
  */
-labels: { [key in string]: string }, cells: Array<PlanCell>, archived: Array<PlanArchived>, needs: Array<PlanNeed>, 
+labels: { [key in string]: string }, cells: Array<PlanCell>, archived: Array<PlanArchived>, 
+/**
+ * 审图的报告，一份一项，照按的先后。
+ */
+audits: Array<PlanAudit>, needs: Array<PlanNeed>, 
 /**
  * 这一片要你看的数（没认可的，不含问人）。
  */
@@ -16915,17 +16476,13 @@ close: CanClose,
  */
 resume: Allow, 
 /**
- * 还有终端可去（拉前 · 停 · 杀 · 终端页）。
+ * 「终端」那一颗（拉它的外部窗口 · 在这一端开它的终端 · 做不了，见 [`CanTerminal`]）。
  */
-term: CanTerm, 
+terminal: CanTerminal, 
 /**
  * 程序退了、tmux 会话还在 ⇒ 接回。
  */
 reattach: Allow, 
-/**
- * 「在终端里打开」（另开一个终端窗口接进它住的那个终端）：会话头 · 报错卡 · 右键菜单都只读它。
- */
-attach: CanAttach, 
 /**
  * 换模型（`session-model`）。
  */
@@ -16979,6 +16536,8 @@ order: number, can: SessionCan,
  * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
  */
 account?: string, };
+type TermOpen = { "kind": "attach", terminal?: string, } | { "kind": "resume" };
+type TermWay = { "go": "front", said: Words, } | { "go": "here", said: Words, open: TermOpen, } | { "go": "no", why: Words, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type Words = string;
 ```
@@ -17132,7 +16691,7 @@ path: string,
  */
 domain?: string | null, };
 type PlanPb = { state: "ok" | "missing" | "unsupported", said: string | null, version?: string, };
-type PlanPhase = { name: string | null, does: string | null, };
+type PlanPhase = { name: string | null, };
 ```
 
 码：`bad_args`
@@ -17198,7 +16757,7 @@ block: string | null,
 /**
  * 对账码；认不出 ⇒ `null`。
  */
-fileState: "ok" | "missing" | "empty" | "broken" | null, fileNote: string | null, 
+fileState: "ok" | "uncommitted" | "missing" | "empty" | "broken" | null, fileNote: string | null, 
 /**
  * 也声明它的那几格（pb 判据红「两个节点声明同一个文件」）。
  */
@@ -17329,12 +16888,9 @@ key: string, };
 
 ```ts
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
-type AttachFrom = "everywhere" | "elsewhere";
-type CanAttach = { "can": "yes", from: AttachFrom, } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
-type CanTerm = { "can": "yes", host: Launch, } | { "can": "no", why: Words, };
-type Launch = "managed" | "tmux" | "direct";
+type CanTerminal = { near: TermWay, far: TermWay, };
 type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type PlanReturnReply = { line: string, to: PlanWho | null, 
 /**
@@ -17403,17 +16959,13 @@ close: CanClose,
  */
 resume: Allow, 
 /**
- * 还有终端可去（拉前 · 停 · 杀 · 终端页）。
+ * 「终端」那一颗（拉它的外部窗口 · 在这一端开它的终端 · 做不了，见 [`CanTerminal`]）。
  */
-term: CanTerm, 
+terminal: CanTerminal, 
 /**
  * 程序退了、tmux 会话还在 ⇒ 接回。
  */
 reattach: Allow, 
-/**
- * 「在终端里打开」（另开一个终端窗口接进它住的那个终端）：会话头 · 报错卡 · 右键菜单都只读它。
- */
-attach: CanAttach, 
 /**
  * 换模型（`session-model`）。
  */
@@ -17467,6 +17019,8 @@ order: number, can: SessionCan,
  * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
  */
 account?: string, };
+type TermOpen = { "kind": "attach", terminal?: string, } | { "kind": "resume" };
+type TermWay = { "go": "front", said: Words, } | { "go": "here", said: Words, open: TermOpen, } | { "go": "no", why: Words, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type Words = string;
 ```
@@ -17566,7 +17120,7 @@ alias?: string | null, };
 | `--chores-merge` | ＝ 帧命令 `chores-merge`：问到各台的「文件与数据」、件数合成一份 |
 | `--commands` | 列全部命令与用途：stdout 一行 `{commands: [{cmd?, cli?, usage?, what, args?}]}`（`cmd` 帧命令名 · `cli` 子命令 · `what` 一句话 · `args` 收不收参数；只在流上的没有 `cli`，CLI 独有的没有 `cmd`） |
 | `--data-report` | ＝ 帧命令 `data-report`：「文件与数据」那一份成品 |
-| `--drift-merge` | ＝ 帧命令 `drift-merge`：本机与各台的漂移账 |
+| `--diagnostics-report` | ＝ 帧命令 `diagnostics-report`：日志页的诊断信息整段 |
 | `--drift-report` | ＝ 帧命令 `drift-report`：这台后端的漂移账 |
 | `--exit-policy-read` | ＝ 帧命令 `exit-policy-read`：读「退出行为」那个值（值住后端所在那台） |
 | `--exit-policy-set` | ＝ 帧命令 `exit-policy-set`：写「退出行为」那个值，写完读回 |

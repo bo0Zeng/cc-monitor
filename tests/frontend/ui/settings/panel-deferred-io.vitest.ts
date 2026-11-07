@@ -161,7 +161,7 @@ const MACHINE_PAGE_IPC = ["footprint_client_facts"] as const;
 /** 「应用」下两个子页各自的那几发（原来合在「应用」一页里）。 */
 // 日志页：日志设置 · 文件 · 诊断信息那一份（「未识别数据」那一行与复制读同一份）；诊断信息的原料：
 //   机器表（哪几台，经通道问本机后端 `machines-read`）· 各台记录账（经通道 `chan_call` 问 `drift-report`）。
-const LOGS_PAGE_IPC = ["chan_call", "diagnostics_report", "get_diagnostics_config", "get_log_file_info"] as const;
+const LOGS_PAGE_IPC = ["diagnostics_report", "get_diagnostics_config", "get_log_file_info"] as const;
 const DATA_PAGE_IPC = ["get_data_paths"] as const;
 
 /** 点左侧导航的某一项。 */

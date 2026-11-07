@@ -4,7 +4,7 @@
 # 那几行从 `session-open` 本体取（`open-line-emit.sh`：起会话时交出去的那一行，渲染器是 `ccm_invocation`）。
 #
 # 这是唯一能在没有真远端机器的场景下验证「CLI 渲染器真的会让 ccm 干对事」的手段——
-# tests/e2e/resume-suite.sh / restart-suite.sh 的 shim 对未知 invoke 一律走 default 分支（等价于
+# tests/e2e/resume-suite.sh 的 shim 对未知 invoke 一律走 default 分支（等价于
 # 探测失败），天然只覆盖兜底渲染器路径，测不到 CLI 渲染器这条新路径是否真的对得上 ccm 的行为。
 #
 # 跑法：bash tests/e2e/ccm-print-parity.sh   （npm run test:ccm-print-parity）

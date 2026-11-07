@@ -28,7 +28,7 @@
 //!
 //! 不读用户的文件（两份原文由调用方经文件管理那一面 `Door::peek` 读来 —— 读的那一份与 CAS 期望的那一份
 //! 必须是同一个读法）· 不写盘 · 不改写任何一条配置（写的内容由 monitor 从原文里原样取）。
-//! 事实只有两种：`stat` 一条绝对路径 · 在这个后端进程的 `PATH` 上找一个名字。
+//! 事实只有两种：`stat` 一条绝对路径 · 在起会话那一份 `PATH`（`platform::shell::probe_path`）上找一个名字。
 
 use crate::common::said::Said;
 use crate::platform::fs::Ro;
@@ -108,11 +108,12 @@ pub(crate) struct Suspect {
 pub(crate) trait Facts {
     /// 一条（调用方认为是绝对的）路径在这台机器上的样子。
     fn path(&self, p: &str) -> There;
-    /// 一个裸名字在这个后端进程的 `PATH` 上找不找得到。`None` = 没有 `PATH` 可查。
+    /// 一个裸名字在起会话那一份 `PATH` 上找不找得到。`None` = 没有 `PATH` 可查。
     fn command(&self, name: &str) -> Option<bool>;
 }
 
-/// 生产那一份：真 `stat` ＋ 这个进程的 `PATH`（按哪种系统的规矩找是入参，判据能在 Linux 上跑 Windows 那一形）。
+/// 生产那一份：真 `stat` ＋ 起会话那一份 `PATH`（[`crate::platform::shell::probe_path`]，与起子进程同一份；
+/// 按哪种系统的规矩找是入参，判据能在 Linux 上跑 Windows 那一形）。
 pub(crate) struct Live {
     pub path_var: Option<OsString>,
     pub windows: bool,
@@ -121,7 +122,7 @@ pub(crate) struct Live {
 impl Live {
     pub(crate) fn from_env() -> Self {
         Live {
-            path_var: std::env::var_os("PATH"),
+            path_var: crate::platform::shell::probe_path().map(OsString::from),
             windows: cfg!(windows),
         }
     }

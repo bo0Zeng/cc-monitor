@@ -67,9 +67,9 @@ pub const MAX_FOLLOWS_PER_CONNECTION: usize = 8;
 
 /// 一帧画面（`view` 序列化之后）的字节上限：超了不推，改推收尾帧 `too_big`。
 /// 依据：200 列 × 60 行、每格都着色的满屏约 150 KiB；512 KiB 留三倍多余量，又远小于客户端一行的上限（64 MiB）。
-pub(crate) const SCREEN_FRAME_CAP: relay_route_core::Cap = relay_route_core::Cap {
+pub(crate) const SCREEN_FRAME_CAP: cap_core::Cap = cap_core::Cap {
     bytes: 512 * 1024,
-    over: relay_route_core::Over::Reject,
+    over: cap_core::Over::Reject,
 };
 
 /// 「退过、却还没订过」的票记几张（退订先于订阅到的那一刻用；票只用一次，记最近的就够）。
@@ -703,10 +703,11 @@ fn open_client(
 )]
 const REDRAW_WAIT: std::time::Duration = std::time::Duration::from_millis(2_000);
 
-/// 一次性地看一个终端「变没变」：起一个控制模式客户端（同实时预览那一个），之后每问一次 [`Watch::changed`] 等下一次变化，
-/// 带期限 [`REDRAW_WAIT`]（一次一等、不循环；问几次由调用方定、有上限）。放手 ⇒ 关输入等它自己退（不杀，同 [`detach`]）。
+/// 一次性地看一个终端「变没变」：tmux 那一形起一个控制模式客户端、托管那一形开一条托管口只看的连接（同实时预览那两条），
+/// 之后每问一次 [`Watch::changed`] 等下一次变化，带期限 [`REDRAW_WAIT`]（一次一等、不循环；问几次由调用方定、有上限）。
+/// 放手 ⇒ 照 [`let_go`]（tmux 关输入等它自己退、不杀，同 [`detach`]；托管说 `bye`）。
 pub struct Watch {
-    proc: Option<crate::platform::child::Streaming>,
+    conn: Option<Conn>,
     rx: smpsc::Receiver<Ev>,
     pending: Arc<AtomicBool>,
     closed: bool,
@@ -720,7 +721,29 @@ impl Watch {
         let pending = Arc::new(AtomicBool::new(false));
         spawn_reader(out, t.pane.clone(), tx, Arc::clone(&pending));
         Ok(Watch {
-            proc: Some(proc),
+            conn: Some(Conn::Tmux(proc)),
+            rx,
+            pending,
+            closed: false,
+        })
+    }
+
+    /// 托管那一形：经托管口 `sock` 开一条只看的连接（同实时预览那一条），托管进程每推一帧（输出 · 尺寸 · 整屏重来 · 持有者变了）记一笔「变了」；
+    /// 不起 tmux、不轮询，等法同 [`Watch::changed`]。托管口不应 ⇒ `not_known`。
+    pub fn hosted(sock: &std::path::Path) -> Result<Watch, Said> {
+        let (conn, held, buf) = open_hosted(sock)?;
+        let (tx, rx) = smpsc::channel::<Ev>();
+        let pending = Arc::new(AtomicBool::new(false));
+        spawn_hosted_reader(
+            Arc::clone(&conn),
+            buf,
+            Arc::new(Mutex::new(held)),
+            Arc::new(AtomicBool::new(false)),
+            tx,
+            Arc::clone(&pending),
+        );
+        Ok(Watch {
+            conn: Some(Conn::Hosted(conn)),
             rx,
             pending,
             closed: false,
@@ -762,12 +785,8 @@ impl Watch {
 
 impl Drop for Watch {
     fn drop(&mut self) {
-        if let Some(proc) = self.proc.take() {
-            if self.closed {
-                drop(proc);
-            } else {
-                detach(proc, &self.rx);
-            }
+        if let Some(conn) = self.conn.take() {
+            let_go(conn, &self.rx, self.closed);
         }
     }
 }

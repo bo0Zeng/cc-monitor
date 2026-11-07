@@ -25,7 +25,7 @@
 use crate::platform::child::{Child, ChildFail, Deadline};
 use crate::platform::child_env::OWN_ENVS;
 use crate::platform::fs::{Own, OwnLock, OwnPath};
-use relay_route_core::{Cap, Over};
+use cap_core::{Cap, Over};
 use std::path::{Path, PathBuf};
 
 use copy_core::copy_text;
@@ -60,11 +60,6 @@ fn data_home() -> Option<PathBuf> {
             .as_deref(),
         home(),
     )
-}
-
-/// 这台的家（给入口 `stream/entry.rs` 记「谁在听」、升级那一跳用）。
-pub fn here() -> Option<PathBuf> {
-    data_home()
 }
 
 /// 按交进来的环境算这台的家（`CCM_DATA_DIR`，否则 `$HOME/.cc-monitor`）：常驻载体认门牌用（`stream/claim.rs::claim_then_log`，环境是注入的）。
@@ -477,7 +472,7 @@ impl Here {
     }
 }
 
-/// 中继断开的那一格（纯函数）：没人在听（文件不在 / 拒连）⇒ `absent`（刚起的还没绑上，monitor 隔一会儿再接）；
+/// 中继断开的那一格（纯函数）：没人在听（文件不在 / 拒连）⇒ `absent`（此刻没有常驻在听：客户端去 `--resident-ensure`，ensure 之后还是它就照退避再来）；
 /// 别的（不归本人 · 路径坏了）⇒ `unreachable`（再接也一样）。
 pub(crate) fn relay_refusal(kind: std::io::ErrorKind) -> &'static str {
     match kind {
@@ -674,20 +669,6 @@ fn spawn_detached(
         })
 }
 
-/// 解旧版那份「谁在听」记录的两行（纯函数；只剩 [`retire_legacy`] 读它）。
-pub(crate) fn parse_owner(body: &str) -> Option<(u32, PathBuf)> {
-    let mut lines = body.lines();
-    let pid: u32 = lines.next()?.trim().parse().ok()?;
-    let bin = lines.next()?.trim();
-    (pid != 0 && !bin.is_empty()).then(|| (pid, PathBuf::from(bin)))
-}
-
-/// `/proc/<pid>/exe` 读出来的路径是不是那个二进制：部署换过文件之后旧进程读出来带 ` (deleted)`，照样算（纯函数）。
-pub(crate) fn exe_matches(seen: &str, recorded: &Path) -> bool {
-    let seen = seen.strip_suffix(" (deleted)").unwrap_or(seen);
-    Path::new(seen) == recorded
-}
-
 /// 在听的那一位：`pid` 是内核报的对端（不靠盘上的记录、不靠路径相等）；`build` 是它 hello 报的（读不出 ⇒ `None`）。
 pub(crate) struct Listener {
     pub(crate) pid: u32,
@@ -808,28 +789,6 @@ fn swap_lock(own: &Own) -> Result<OwnLock, Said> {
     own.lock(&swap)
 }
 
-/// 按旧版记录停（只剩 [`retire_legacy`]）：先拿进程把手、再核程序路径（pid 会被复用；拿到把手之后信号只打得到它）→ [`finish`]。
-pub(crate) fn stop_pid(
-    pid: u32,
-    bin: &Path,
-    grace_ms: u32,
-    kill_wait_ms: u32,
-) -> Result<Stopped, Said> {
-    let Some(target) = crate::platform::signal::stoppable(pid)? else {
-        return Ok(Stopped::NotRunning);
-    };
-    let seen = crate::platform::proc::exe_of(pid)
-        .ok_or_else(|| copy_text("beResident.stop.cannotVerify", &[("pid", &pid.to_string())]))?;
-    if !exe_matches(&seen, bin) {
-        return Err(copy_text(
-            "beResident.stop.notOurs",
-            &[("pid", &pid.to_string()), ("exe", &seen)],
-        )
-        .into());
-    }
-    finish(&target, pid, grace_ms, kill_wait_ms)
-}
-
 /// 请它收尾 → 至多等 `grace_ms` → 还在 ⇒ 强杀 → 至多再等 `kill_wait_ms`；还在 ⇒ `Err`（不说「停了」）。
 fn finish(
     target: &crate::platform::signal::Stoppable,
@@ -947,63 +906,6 @@ pub fn sandbox_refusal(
         "beResident.sandbox.realHome",
         &[("path", &hit.display().to_string())],
     ))
-}
-
-/// 〔升级那一跳，跨过 4.1.x 之后删〕旧版常驻后端的进程记录 `<家>/listen-<口>.pid`：口是旧版按家散列出来的，
-/// 这里不再算，照名字的形状在家里找。没有 ⇒ `None`。
-pub fn legacy_listen_pid_in(data_home: &std::path::Path) -> Option<std::path::PathBuf> {
-    crate::platform::fs::Ro::read_dir(data_home)
-        .ok()?
-        .flatten()
-        .map(|e| e.path())
-        .find(|p| {
-            p.file_name()
-                .and_then(|n| n.to_str())
-                .and_then(|n| {
-                    n.strip_prefix("listen-")?
-                        .strip_suffix(".pid")?
-                        .parse::<u16>()
-                        .ok()
-                })
-                .is_some()
-        })
-}
-
-/// 〔同上〕旧版常驻后端的钥匙文件（在家里）：停掉旧的之后一并删掉。
-pub(crate) const LEGACY_LISTEN_TOKEN_NAME: &str = "listen-token";
-
-/// 〔同上〕旧版「谁在听」记录（两行：pid · 程序路径）读多大；超了 ⇒ 日志里说是哪一份，当没有旧的。
-const LEGACY_PID_RECORD_CAP: relay_route_core::Cap = relay_route_core::Cap {
-    bytes: 4096,
-    over: relay_route_core::Over::SkipAndSay,
-};
-
-/// 〔升级那一跳，跨过 4.1.x 之后删〕4.1.x 及以前的常驻后端听回环 TCP，「谁在听」记在 `<家>/listen-<口>.pid`。
-/// 新的常驻后端拿到锁之后、接中转之前调它：那一位还在跑 ⇒ 按旧记录核身份、请它收尾、到点强杀（它占着中转口）；
-/// 然后删掉旧记录与旧钥匙文件。回给日志的那一句（没有旧的 ⇒ `None`）。
-/// 等待在这里：只在常驻后端起来那一刻走一次（`no_timer_guard` 那张表登记了这一处入口）。
-pub fn retire_legacy(own: &Own) -> Option<String> {
-    let root = own.root()?;
-    let rec = legacy_listen_pid_in(root.as_path())?;
-    let rec_own = root.join(&rec.file_name()?.to_string_lossy()).ok()?;
-    let token = root.join(LEGACY_LISTEN_TOKEN_NAME).ok()?;
-    let (pid, bin) = crate::platform::fs::Ro::read_string_capped(&rec, LEGACY_PID_RECORD_CAP)
-        .ok()
-        .and_then(|b| parse_owner(&b))?;
-    let said = match stop_pid(pid, &bin, STOP_GRACE_MS, KILL_WAIT_MS) {
-        Ok(end) => copy_text(
-            "beResident.legacy.stopped",
-            &[("pid", &pid.to_string()), ("how", end.word())],
-        ),
-        Err(e) => copy_text(
-            "beResident.legacy.stuck",
-            &[("pid", &pid.to_string()), ("why", &e.logged())],
-        ),
-    };
-    // 结局已写进日志。旧记录删不掉只剩一份陈记录，下一个新版起来会再核一次身份；旧钥匙新版不读
-    own.delete_file(&rec_own).discard(Why::Reap);
-    own.delete_file(&token).discard(Why::Reap);
-    Some(said)
 }
 
 #[cfg(test)]

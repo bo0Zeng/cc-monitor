@@ -27,7 +27,7 @@
 
 use crate::control::place_self::BACKEND_BYTES_CAP;
 use crate::platform::fs::Ro;
-use relay_route_core::{Cap, Over};
+use cap_core::{Cap, Over};
 
 /// 装 · 卸那两条的入参与回包住 cmd-wire（名字与回包挂在入参上，monitor 照同一份发、照同一份解）。
 pub(crate) use cmd_wire::deploy::{

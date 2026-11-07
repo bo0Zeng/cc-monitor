@@ -1,7 +1,7 @@
 //! 按行读帧：出方向单行的上限 · 握完手的读半边（原样 / 那台认了 deflate 就边读边解）。桌面 monitor 与手机核心同一份。
 //! 带上限读一行本身住 `comms_inward::line`。
 
-use relay_route_core::{Cap, Over};
+use cap_core::{Cap, Over};
 use std::pin::Pin;
 use std::task::{ready, Context, Poll};
 use tokio::io::{AsyncBufRead, AsyncRead, BufReader, ReadBuf};

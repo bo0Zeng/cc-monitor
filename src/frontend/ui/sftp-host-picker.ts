@@ -1,22 +1,13 @@
 /**
- * 顶栏「远端文件」入口：按远端主机数分支 —— 0 台提示 / 1 台直开 / 多台先在一个小选单里选（终点是原生文件窗口，`file-window.ts`）。
+ * 「远端文件」入口（栏顶「更多去处 ⋯」那一项 · 命令面板）：按远端主机数分支 —— 0 台提示 / 1 台直开 / 多台先在一个小选单里选（终点是原生文件窗口，`file-window.ts`）。
  */
 import { openFileWindow } from "./file-window";
 import { readRemoteConfig, sftpEligibleHosts } from "./remote-config";
 import { toast } from "./kit/toast";
 import { copyText } from "./copy-table";
-import { closeMenu, menuAnchoredOn, openMenu } from "./kit/menu";
+import { openMenu } from "./kit/menu";
 
-/** 选主机那个菜单开着时再点顶栏按钮 ⇒ 收起；没开 ⇒ 照台数分支。 */
-export function toggleSftpFromTopbar(anchor: HTMLElement): Promise<void> {
-  if (menuAnchoredOn(anchor)) {
-    closeMenu();
-    return Promise.resolve();
-  }
-  return openSftpFromTopbar(anchor);
-}
-
-/** 顶栏 SFTP 入口点击：0 台提示 / 1 台直开 / 多台选单。 */
+/** 远端文件入口：0 台提示 / 1 台直开 / 多台选单（锚在 `anchor` 上）。 */
 export async function openSftpFromTopbar(anchor: HTMLElement): Promise<void> {
   const cfg = await readRemoteConfig();
   const hosts = sftpEligibleHosts(cfg);

@@ -12,9 +12,9 @@ use crate::platform::fs::Ro;
 /// 读 `/proc` 底下一份小文件（`stat` · `environ` · `cmdline` · `fdinfo` · 整机那份 `stat`）的上限：它们正常几 KB，
 /// 环境与命令行受内核参数总长限制（随栈上限走，默认 2 MiB 量级）。超了跳过、读那一层 `warn!` 点名，调用方照「这一刻读不到」办。
 #[cfg(target_os = "linux")]
-pub(crate) const PROC_FILE_CAP: relay_route_core::Cap = relay_route_core::Cap {
+pub(crate) const PROC_FILE_CAP: cap_core::Cap = cap_core::Cap {
     bytes: 16 * 1024 * 1024,
-    over: relay_route_core::Over::SkipAndSay,
+    over: cap_core::Over::SkipAndSay,
 };
 
 /// Whether `pid` currently exists as a process on this host (existence only).
@@ -252,21 +252,6 @@ pub(crate) fn unix_secs_from_filetime(filetime: u64) -> Option<u64> {
     filetime
         .checked_sub(FILETIME_TICKS_BEFORE_UNIX_EPOCH)
         .map(|t| t / FILETIME_TICKS_PER_SEC)
-}
-
-/// `pid` 此刻跑的二进制路径（Linux `/proc/<pid>/exe`；别的平台答不上 ⇒ `None`，调用方不杀）。
-pub fn exe_of(pid: u32) -> Option<String> {
-    #[cfg(target_os = "linux")]
-    {
-        Ro::read_link(format!("/proc/{pid}/exe"))
-            .ok()
-            .map(|p| p.to_string_lossy().into_owned())
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        let _ = pid;
-        None
-    }
 }
 
 /// `/proc/<pid>/cmdline`, NUL separators turned into spaces, lossily decoded.

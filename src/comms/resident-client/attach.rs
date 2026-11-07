@@ -4,23 +4,16 @@
 
 use crate::client::{split_and_park, BackendHello, ParkedWriter};
 use crate::line::Downstream;
+use cap_core::{Cap, Over};
 use cmd_wire::attach::{AttachLine, AttachReply, Relation, Yes};
 use cmd_wire::watch::WatchAsk;
 use comms_inward::line::{read_capped_line, CappedLine};
 use copy_core::copy_text;
-use relay_route_core::{Cap, Over};
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, ReadHalf, WriteHalf};
 
-/// 小中继（`--resident-attach`）回 `absent`：常驻后端还没绑上口（刚起 / 刚换）。桌面隔 [`RELAY_WAIT`] 再试，至多 [`RELAY_TRIES`] 次。
+/// 小中继（`--resident-attach`）回 `absent`：那台此刻没有常驻后端在听（没起 · 刚退）。重连循环凭它去 `--resident-ensure`。
 pub const RELAY_ABSENT: &str = "absent";
-/// 等常驻后端绑上口那一段：至多试几次 · 每次隔多久（合计 6 秒）。
-pub const RELAY_TRIES: u32 = 30;
-#[expect(
-    clippy::disallowed_methods,
-    reason = "等常驻后端绑上口那一段每次隔多久：客户端自己定的数，管小中继回 `absent` 之后的那一次重试"
-)]
-pub const RELAY_WAIT: Duration = Duration::from_millis(200);
 
 /// 握手那两行（hello · attach 回话）的上限：hello 实测 8.6 KB（10-13：命令名 · 撤不动名单 · 每条 typed 命令的形状指纹三张表，
 /// typed 命令越多越长），64 KiB 给足余量，又堵死「一直发字节不发换行」。

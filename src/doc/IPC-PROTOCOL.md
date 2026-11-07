@@ -20,7 +20,7 @@
 
 ## 2. 起流：时区与声明
 
-一条流要什么只由两样定：看的那一台的时区，与这条流的出口声明。没有别的起流旗标（10-10 删了 `--with-bg` · `--tail-only` · `--with-pid` · `--with-raw`，不认）。
+一条流要什么只由两样定：看的那一台的时区，与这条流的出口声明。没有别的起流旗标。
 流恒这样发：**历史不重放**（各文件从当前行数起只尾随新行；`[0, 当前)` 由客户端经骨架 / 尾段另取：`history-index` · `history-tail` · `history-read`）；
 **bg 会话照宣告**（`session_added.background: true`，成不成 tab 由客户端定）；`session_added` 带 `pid`；`line` 不带原文（两个前端都读成品 `record`）。
 
@@ -69,12 +69,12 @@
   缺 · 不是非空串 ⇒ 当没带，那一句只写目录、不编名字。带了 `machine` 的那一问不带它：转过去那一跳由本后端连那台的客户端带它自己的那一份。
 - **`machine`**：这一问是问哪台的（机器表里那台的名字）。缺 · `null` · 空串 ＝ 问这个后端自己；给了 ⇒ 这个后端不自己答，经它持有的那台的常驻流原样转过去
   （命令 · 入参 · `view` 交那台，那台的回包 · 码 · 原话 · `data` 原样回来，`control/feeds.rs::forward`）；那台没有在跑的一条 · 期限内没接上 ⇒ `unreachable`。撤单照本连接的 `id` 撤，转过去那一问随之撤。
-- **`view`**：出口的声明 —— 要哪几格、哪几格不要（缺 ＝ 全量）。词表今天两个：`cells: {<成品>: [<路径>…]}` 只要这几格（连同通往它们的那几层）·
+- **`view`**：出口的声明 —— 要哪几格、哪几格不要（缺 ＝ 全量）。词表两个（`faces/project.rs::WORDS`）：`cells: {<成品>: [<路径>…]}` 只要这几格（连同通往它们的那几层）·
   `omit: {<成品>: [<路径>…]}` 这几格不要；同一件成品两个都给 ⇒ 先挑后去。成品名与路径照格目录（金样 `tests/__fixtures__/cells-catalog.golden.json`）：`a.b` 嵌套 · `a[]` 列表每项 ·
   `a.*` 以 id 为键的表每项 · `a[k=v]` 列表里按判别格挑的那一种 · `a{k=v}` 非列表的那一种（根上写 `{k=v}`）；**不写挑法 ＝ 每一种都算**
   （`blocks[type=tool_use].input` 同时管 `said` 与 `reply` 两类记录的 `blocks`）。点到某一格的上一层 ＝ 那一层整个；以 `a[]` / `a.*` 收尾 ＝ `a` 这一格整个；
   去掉的格是**删掉**，不置空。认不出的词 · 成品 · 格（往透传的一团里再点格也算）· 或点了这条命令不出的成品 ⇒ 开跑之前就回 `bad_args`，
-  认不出的那几处写进 `detail`。今天出成品、收 `view` 的命令与成品住处：`history-read`（`rows[]` 是 `read_row`，其中 `record` 是 `record`）·
+  认不出的那几处写进 `detail`。出成品、收 `view` 的命令与成品住处（`stream/inbound/views.rs::PLACES`）：`history-read`（`rows[]` 是 `read_row`，其中 `record` 是 `record`）·
   `history-page` / `history-lines`（`lines[].record`）· `history-run`（`rows[].record`）· `history-facts`（整份应答是 `facts`）；别的命令带 `view` 一律 `bad_args`。
   投影只是「这一次不发」：成品与格目录（冻结的那几件也一样）一格不动。
 - **`tz`（时刻按谁的钟）**：看的那一台（桌面 · 手机）的时区，IANA 名。回包里写成字的时刻（`…Text` · `timeText` · `tsText` · `startText` · `mtime_text` · 今天 / 昨天那几格）**一律按它写**，不按答话那台后端自己的钟；远端那一跳（这台替看的人问另一台）回来的原始时刻也由这台按它写。
@@ -165,7 +165,7 @@
 - **`@ccm_sid`**：tmux 窗格上的会话标记。一个 tmux 会话可挂几个窗格、各挂各的 sid；送字 / 抓屏 / 结束都落在挂着那个 sid 的窗格上，身份也按那个窗格判（活动窗格是谁不算数）。
 - **`@ccm_client`**：会话由谁起。用户在终端里敲的 ccm / 别名起的写 `ccm`（谁都能动）；某个前端为自己内部起的写那个前端的名字（1–32 个 `[a-z0-9-]`）。
   请求可带 `args.client` 自报是哪个前端：没声明 / 声明成 `ccm` ⇒ 这一维不拦；声明的就是自报的 ⇒ 放；声明了别的 ⇒ `wrong_owner`（别的前端起的，这里只能看）。
-  `kill` · `sessions-*` · `session-open`（就地键入那一形）· `terminal-input` · `session-restart` 共用这一维；它防误动，不是安全边界。
+  `kill` · `sessions-*` · `session-open`（就地键入那一形）· `terminal-input` 共用这一维；它防误动，不是安全边界。
 - **破坏性动作三道门**：名字精确匹配（`=name:`，不许含 `:` / `=` / 控制字符）⇒ 名字像我们铸的（`cc-*` / `<X>-cc`）或已挂 `@ccm_sid` ⇒ 只有一个窗口（只给杀会话）。杀的是 `#{session_id}` 句柄，不是名字。
 - **抓屏不过身份门、恒可用**：`terminal-preview` 只读，谁问都给（身份门只管送字 / 结束）⇒ `terminals-list` 每行的 `can` 里只有会变的 `input` · `end`，没有 `preview` 那一格。
   `terminal-input` 只收 `terminal` | `sid` · `text` · `enter` · `key` · `seen_screen` · `client`，多送一格 ⇒ `bad_args`。
@@ -300,6 +300,6 @@
 ## 加一条协议
 
 - **线上命令**：在 `src/backend/stream/inbound/registry/` 对应那一族加一条 `CommandSpec`（名字 · 一句话 · 码 · 字段 ＋ 向 ＋ 一句话 · 收不收载荷 · 怎么跑），CLI 面自动派生（子命令闸门 `stream::cli::is_subcommand` 跟着认）；重生成 `IPC-COMMANDS.md`。
-- **帧字段**：加在 `wire/mod.rs` 的 `Frame` 上，写一句 `///`；只加不改；进金样；重生成。
+- **帧字段**：加在 `src/common/cmd-wire/src/frame.rs` 的 `Frame` 那一臂的类型上，写一句 `///`；只加不改；进金样；重生成。
 - **CLI 独有子命令**：进 `stream/oneshot.rs` 的 `ONESHOTS`（子命令 ＋ 用法 ＋ 一句话 ＋ 实现），闸门照它认。
 - **文件**：只许在 `~/.cc-monitor/` 下；UTF-8 无 BOM、原子写、未知字段忽略；写明短暂还是持久，短暂的写明超时；在 INVARIANTS §2.1 那张表里登它是真相还是缓存。后端自己的那份先在 `relay_route_core` 加一个 `Decl` 常量、排进 `OWN_FILES`，读写经 `Doc::of` 取的那一个（INVARIANTS §2.2）；几个进程之间交接的，再在 §9 那张表里写它的格式。

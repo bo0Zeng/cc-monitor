@@ -1,15 +1,15 @@
 /**
  * **右键一个标签页，菜单里放哪几项**（会话头「更多」是同一份）—— 以及那几格要异步就绪的项怎么就绪。
  *
- * 分组从上到下：看它（在新窗口打开 · 打开工作目录 · 切到终端 · 看它的终端 · 看一眼终端画面）· 改标题 / 固定 / 分组 / 隐藏
+ * 分组从上到下：看它（在新窗口打开 · 打开工作目录 · 终端）· 改标题 / 固定 / 分组 / 隐藏 · 无人答时自动答
  *（「已隐藏」那一行里的：只有取消隐藏 —— 隐藏的会话不是标签页，不固定、不分组）·
- * 恢复这个会话 ▸ · 在终端里打开 · 账号… · 关闭标签页 · 结束会话…（红字，最后一组，在 tmux 里的才有）。
- * 灰着的项第二行写为什么；还在问那台 tmux 的那几项先画出来、右侧转圈，答回来才变可点（`sessions-where`，界面不判）。
- * 状态不明（那台看不见）的标签页：恢复 · 在终端里打开 · 结束 · 账号… 一律灰（同一句），只有关闭标签页可点。
+ * 恢复这个会话 ▸ · 账号… · 关闭标签页 · 结束会话…（红字，最后一组，能不能照脸上的 `can.end`）。
+ * 灰着的项第二行写为什么；「恢复 ▸」里账号那一组等那台的号到了再换上，勾照这一代菜单问的那一次 `sessions-where`（界面不判）。
+ * 状态不明（那台看不见）的标签页：恢复 · 自动答 · 账号… 一律灰（同一句），关闭标签页照它自己那一格。
  * 点下去真正做事的住 `tab-session-actions.ts`。
  */
 import type { Tab } from "./tab-model";
-import { canAttach, canResume, closesFromMenu, frontWhy, hasTerminal, isLive } from "./face-can";
+import { canResume, closesFromMenu, terminalAlive, terminalWay } from "./face-can";
 import type { SessionFace } from "./generated/SessionFace";
 import { copyText } from "./copy-table";
 import type { TabGroup } from "./tab-bar-prefs";
@@ -130,10 +130,9 @@ export interface TabMenuHost {
   /** 隐藏 · 取消隐藏（与批量菜单同一口：交命令、给撤销 toast；栏上那一格等推帧来了才挪）。 */
   hide(sids: readonly string[]): void;
   unhide(sids: readonly string[]): void;
-  /** 打开工作目录 · 切到终端（Windows）· 看它的终端（底部抽屉终端页）。 */
+  /** 打开工作目录 · 「终端」那一颗（拉它的窗口还是在这里开照脸上那一格，宿主那一条判）。 */
   openCwd(sid: string): void;
-  front(sid: string): void;
-  viewTerminal(sid: string): void;
+  terminal(sid: string): void;
   /** 「账号…」：开这个会话的「账号」面板（与状态栏账号按钮同一个）。 */
   openAccountPanel?: (sid: string) => void;
   /** 面板接上了没有（没接 ⇒ 不给「账号…」）。 */
@@ -168,25 +167,23 @@ export class TabMenu {
   }
 
   /** 这个标签页的菜单项（右键与会话头「⋯」同一份；要问那台的几格先画成转圈）。 */
-  private build(sid: string): { items: MenuItem[]; t: Tab | undefined; unseen: boolean; attach: boolean } {
+  private build(sid: string): { items: MenuItem[]; t: Tab | undefined; unseen: boolean } {
     const t = this.host.tab(sid);
     const unseen = t !== undefined && t.face?.dot === "unknown";
     // 为什么灰：脸上那一句（后端照那台离线那一句写好，`SessionFace::unseen`）。
     const unseenWhy = t && unseen ? (t.face?.line ?? "") : undefined;
     const grey = (it: MenuItem): MenuItem => (unseenWhy !== undefined ? { ...it, enabled: false, pending: false, why: unseenWhy, onClick: () => {} } : it);
-    const attach = t !== undefined && canAttach(t.face, isRemoteOrigin(t.origin));
     const items: MenuItem[] = [];
 
     // ① 看它
     items.push({ id: "popOut", icon: "popOut", label: copyText("history.menu.openWindow"), detail: keyOf("tab.pop-out"), onClick: () => void this.actions.openInNewWindow(sid) });
     if (t?.projectDir) items.push({ icon: "folder", label: copyText("tabBarView.tab.cwdHint"), detail: keyOf("tab.open-cwd"), onClick: () => this.host.openCwd(sid) });
-    // ↗ 一直在：做不了灰着、右边写那一句（A2-17-12-1：壳说这台 ↗ 不是真的 · 那台说没有终端可去）。
+    // 「终端」一直在：做不了灰着、第二行写那台写好的那一句；做得了 ⇒ 第二行是去做什么（拉窗 · 在这里开）。
     if (t) {
-      const why = frontWhy(t.face);
-      const front: MenuItem = { icon: "front", label: copyText("terminal.head.front"), detail: keyOf("terminal.bring-front"), onClick: () => this.host.front(sid) };
-      items.push(why === null ? front : { ...front, enabled: false, why, onClick: () => {} });
+      const way = terminalWay(t.face, isRemoteOrigin(t.origin));
+      const term: MenuItem = { id: "terminal", icon: "terminal", label: copyText("mobDrawer.item.terminal"), detail: keyOf("session.terminal"), onClick: () => this.host.terminal(sid) };
+      items.push(way === null || way.go === "no" ? { ...term, enabled: false, why: way?.why, onClick: () => {} } : { ...term, title: way.said });
     }
-    if (t) items.push({ icon: "terminal", label: copyText("sessionHead.act.terminal"), detail: keyOf("panel.toggle-terminal"), onClick: () => this.host.viewTerminal(sid) });
 
     // ② 改标题 · 固定 · 分组 · 隐藏（隐藏的会话只有「取消隐藏」：它不占标签页，不固定、不分组）
     items.push({ label: "", divider: true });
@@ -212,17 +209,15 @@ export class TabMenu {
     }
     if (hidden === null && this.host.collectionsLoaded()) items.push({ id: "group", icon: "list", label: copyText("tabMenu.collection.add"), submenu: this.groupItems([sid]) });
     if (t && hidden === null) items.push({ id: "hide", icon: "hidden", label: copyText("history.menu.hide"), title: copyText("tabBar.hidden.tip"), onClick: () => this.host.hide([sid]) });
-    if (t && (isLive(t.face) || hasTerminal(t.face))) items.push(grey({ id: "autoAnswer", icon: "question", label: copyText("tabMenu.autoAnswer.label"), title: copyText("tabMenu.autoAnswer.tip"), submenu: autoAnswerItems(t, (min) => this.host.autoAnswer(sid, min)) }));
+    if (t && terminalAlive(t.face)) items.push(grey({ id: "autoAnswer", icon: "question", label: copyText("tabMenu.autoAnswer.label"), title: copyText("tabMenu.autoAnswer.tip"), submenu: autoAnswerItems(t, (min) => this.host.autoAnswer(sid, min)) }));
 
-    // ③ 恢复 · 在终端里打开 · 账号
+    // ③ 恢复 · 账号
     items.push({ label: "", divider: true });
     if (t && unseen) items.push(grey({ icon: "history", label: copyText("history.row.resume") }));
     else if (t && canResume(t.face)) {
       // 恢复 ▸：与历史页「恢复 ▾」同一个组件（`resume-menu.ts`）；账号那一组等那台的号到了再换上（`appendAccountMenuItems`）。
       items.push({ id: "resume", icon: "history", label: copyText("history.row.resume"), submenu: this.buildResumeSubmenu(sid, { kind: "off" }) });
     }
-    // 在终端里打开：出不出照脸上的 `can.attach`（`canAttach`）；命中几个那一句问到了再写。
-    if (attach) items.push(grey({ id: "attach", icon: "terminal", label: copyText("sessionHead.act.openTerm"), pending: true }));
     const openPanel = this.host.accountPanelWired?.() ? this.host.openAccountPanel : undefined;
     if (t && openPanel) items.push(grey({ id: "account", icon: "account", label: copyText("acct.menu.open"), onClick: () => openPanel(sid) }));
 
@@ -255,7 +250,7 @@ export class TabMenu {
       });
     }
     // 那台握手时说过做不到的那几项置灰（事实住 monitor 那份 `Offer`）。
-    return { items: t ? items.map((i) => gateByOffer(t.origin, i)) : items, t, unseen, attach };
+    return { items: t ? items.map((i) => gateByOffer(t.origin, i)) : items, t, unseen };
   }
 
   /**
@@ -263,17 +258,16 @@ export class TabMenu {
    * 会话头「⋯」多交两组：`top` ＝ 会话头放不下收进来的（排最上面）；`bottom` ＝ 流的开关 ＋「调整会话头按钮…」（排最后）。
    */
   open(e: MouseEvent | HTMLElement, sid: string, extra: { top?: readonly MenuItem[]; bottom?: readonly MenuItem[] } = {}): void {
-    const { items: base, t, unseen, attach } = this.build(sid);
+    const { items: base, t, unseen } = this.build(sid);
     const items = [...(extra.top ?? []), ...base];
     // 会话头「⋯」多出来的那几个开关（流的开关，不归那台机器能不能做）。
     if (extra.bottom && extra.bottom.length > 0) items.push({ label: "", divider: true }, ...extra.bottom);
     const shown = tidyDividers(items);
     openMenu(e instanceof HTMLElement ? { el: e, align: "end" } : { x: e.clientX, y: e.clientY }, shown);
     if (unseen || !t) return;
-    // 这一代菜单问那台一次 `sessions-where`：几格 tmux 项与「恢复 ▸」的勾共用这一答。
+    // 这一代菜单问那台一次 `sessions-where`：「恢复 ▸」的勾用这一答。
     let asked: Promise<Standing | undefined> | null = null;
     const where = (): Promise<Standing | undefined> => (asked ??= standingOf(t.origin, sid));
-    if (attach) void this.resolveAttach(t.origin, sid, where);
     // 已结束的会话：那台的号与默认放在哪到了再把「恢复 ▸」换上。
     if (t.face !== null) void this.appendAccountMenuItems(t.origin, sid, t.face, where);
   }
@@ -313,7 +307,7 @@ export class TabMenu {
 
 
 
-  /** 会话头 / 钉条 / 报错卡 / ↗ 浮层的［在终端里打开］：交那台接回（接哪个 · 命中几个都是那台判、那台说；出不出照 `canAttach`）。 */
+  /** 拉窗没成那一条上的［终端］：交那台接回（接哪个 · 命中几个都是那台判、那台说）。 */
   async attachTo(sid: string): Promise<void> {
     const t = this.host.tab(sid);
     if (!t) return;
@@ -323,35 +317,6 @@ export class TabMenu {
   /** 交那台接回：那一行那台渲（tmux 会话 ⇒ 接会话名 · 托管终端 ⇒ 瘦客户端 `--attach <句柄>`；远端经 SSH），这边开终端窗口跑它。 */
   private async attach(origin: Machine, sid: string): Promise<void> {
     await openSession(origin, { what: { kind: "look", sid }, local: isLocalOrigin(origin) });
-  }
-
-  /**
-   * 那台答回这个会话在哪个终端里 ⇒［在终端里打开］就位（菜单已换 / 已关 ⇒ 不动）：出不出已照脸定了，这一问只补「命中几个」那一句。
-   * 接回走 `session-open look`，那台两种宿主都认。
-   */
-  private async resolveAttach(origin: Machine, sid: string, where: () => Promise<Standing | undefined>): Promise<void> {
-    const gen = menuGeneration();
-    const s = await where();
-    if (gen !== menuGeneration()) return;
-    if (s === undefined) return this.unresolved();
-    updateMenuItem("attach", this.attachItem(origin, sid, s));
-  }
-
-  /** 就位的［在终端里打开］那一项：命中多个 ⇒ 那台接第一个（第二行先说了）。 */
-  private attachItem(origin: Machine, sid: string, s: Standing): MenuItem {
-    const ambiguous = s.kind === "ambiguous";
-    return {
-      id: "attach",
-      icon: "terminal",
-      label: copyText("sessionHead.act.openTerm"),
-      why: ambiguous ? copyText("tabMenu.attach.dupesWhy", { n: s.names.length, name: s.names[0] }) : undefined,
-      onClick: () => void this.attach(origin, sid),
-    };
-  }
-
-  /** 问不到那台（通道不在 / 超时）：［在终端里打开］停在灰着、第二行写原因（不悄悄摘掉）。 */
-  private unresolved(): void {
-    updateMenuItem("attach", { id: "attach", icon: "terminal", label: copyText("sessionHead.act.openTerm"), enabled: false, why: copyText("tabMenu.probe.failed") });
   }
 
   /** 每个标签页「恢复 ▸」里勾着的那一组（本窗开着时记）。 */

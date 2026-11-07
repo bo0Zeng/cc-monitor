@@ -87,7 +87,7 @@ fn a_session_without_its_terminal_keeps_the_model_for_the_next_resume() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
-/// ★ 读回：换成了 ⇒ done ＋ 显示名 ＋ 思考档 ＋ 那一句（照实说也存成了这个号新会话的默认）；没变 ⇒ done ＋ 「未变」那一句；
+/// ★ 读回：换成了 ⇒ done ＋ 显示名 ＋ 那一句（照实说也存成了这个号新会话的默认）；没变 ⇒ done ＋ 「未变」那一句；
 /// 没读到 ⇒ 结果未知，不猜。
 #[test]
 fn the_readback_decides_and_silence_is_unsure() {
@@ -95,13 +95,11 @@ fn the_readback_decides_and_silence_is_unsure() {
         Some(ModelSaid {
             name: "Opus 5.5 (1M context)".into(),
             kept: false,
-            effort: Some("xhigh".into()),
         }),
         false,
     );
     assert_eq!(set.result, SwitchResult::Done);
     assert_eq!(set.model.as_deref(), Some("Opus 5.5 (1M context)"));
-    assert_eq!(set.effort.as_deref(), Some("xhigh"));
     assert_eq!(
         set.said.as_deref(),
         Some(
@@ -116,7 +114,6 @@ fn the_readback_decides_and_silence_is_unsure() {
         Some(ModelSaid {
             name: "Fable 5.1".into(),
             kept: true,
-            effort: None,
         }),
         true,
     );
@@ -134,7 +131,7 @@ fn the_readback_decides_and_silence_is_unsure() {
     );
 }
 
-/// ★ 线上那一形：没有的格不出（`why` · `said` · `effort`），`model` 恒在（读不到 ⇒ `null`）。
+/// ★ 线上那一形：没有的格不出（`why` · `said`），`model` 恒在（读不到 ⇒ `null`）。
 #[test]
 fn the_reply_wire_names_its_cells() {
     let v = serde_json::to_value(settled(None, false)).unwrap();
@@ -162,7 +159,6 @@ fn the_saved_sentence_follows_whether_the_settings_are_shared() {
             Some(ModelSaid {
                 name: "Sonnet 5.5".into(),
                 kept: false,
-                effort: None,
             }),
             shared,
         )
@@ -213,7 +209,6 @@ impl ConfirmIo for Term {
         (self.arrive_at.is_some_and(|n| self.asked >= n)).then(|| ModelSaid {
             name: "Sonnet 5.5".into(),
             kept: false,
-            effort: None,
         })
     }
     fn redrawn(&mut self) -> bool {

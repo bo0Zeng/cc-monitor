@@ -24,14 +24,6 @@ sourcePath: string,
  */
 status: "needsLogin" | "disabled" | "unknown", 
 /**
- * `needsLogin` 时：在哪几个号里要登录；别的状态恒空。
- */
-loginIn: Array<string>, 
-/**
- * `needsLogin` 时：最近一次看到是何时（epoch ms）；别的状态 `null`。
- */
-seenAt: number | null, 
-/**
  * 小标画哪一种：断开压过需登录；都没有 ⇒ `null`（只说装了，不说连上了）。
  */
 mark: McpMark | null, login: McpLoginMark | null, failed: McpFailedMark | null, };

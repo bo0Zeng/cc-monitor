@@ -15,7 +15,7 @@ iana-time-zone = "0.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # 读上限只收它的 `Cap`（字节数与超了怎么办写在一处）；仓内 crate、零依赖。
-relay-route-core = { path = "../relay-route-core" }
+cap-core = { path = "../cap-core" }
 # 原子写与只给本人的目录只经它（后端同一份）；仓内 crate。
 platform-core = { path = "../platform-core" }
 

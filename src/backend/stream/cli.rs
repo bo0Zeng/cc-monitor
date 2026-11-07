@@ -87,7 +87,6 @@ pub(crate) const STREAM_ONLY: &[&str] = &[
     "ext-list",
     "ext-hub-preview",
     "ext-hub-apply",
-    "session-restart",
     "needs-answer",
     "login-finish",
     "login-cancel",

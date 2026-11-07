@@ -33,7 +33,7 @@ import { toggleSwitch } from "../kit/switch";
 import { readRecordDrift } from "../record-reads";
 import { ccRow } from "./cc-row";
 import type { MachineState } from "./machine-state";
-import { sayFailure, sayWithDetail, saidOf } from "../kit/detail";
+import { sayFailure, sayWithDetail } from "../kit/detail";
 
 /** 「停」的结局说一句（三个词各一句，穷举 —— 多一个词 tsc 就红）；机器页那一行照它说。 */
 export function stopSaid(a: StopAnswer): string {
@@ -67,20 +67,12 @@ const EXIT_POLICY_BUDGET_MS = 10_000;
 
 /** 问那台机器（本机也一样）「退出行为」的值（`exit-policy-read`，经通道）。失败就抛（那一句 monitor 写好）。 */
 async function askExitPolicy(origin: Machine): Promise<ExitAnswer> {
-  try {
-    return exitAnswerOf(await callTyped(origin, "exit-policy-read", {}, budgetWithin(EXIT_POLICY_BUDGET_MS)));
-  } catch (e) {
-    throw new Error(saidOf(e));
-  }
+  return exitAnswerOf(await callTyped(origin, "exit-policy-read", {}, budgetWithin(EXIT_POLICY_BUDGET_MS)));
 }
 
 /** 交那台机器写那个值：后端 `exit-policy-set`，经通道；回**写完读回来**的那一份。失败就抛。 */
 async function putExitPolicy(origin: Machine, kill: boolean): Promise<ExitAnswer> {
-  try {
-    return exitAnswerOf(await callTyped(origin, "exit-policy-set", { killOnExit: kill }, budgetWithin(EXIT_POLICY_BUDGET_MS)));
-  } catch (e) {
-    throw new Error(saidOf(e));
-  }
+  return exitAnswerOf(await callTyped(origin, "exit-policy-set", { killOnExit: kill }, budgetWithin(EXIT_POLICY_BUDGET_MS)));
 }
 
 /** 那台后端的 stderr 诊断文件尾部（后端 `backend-log` 的应答）。 */
@@ -88,11 +80,7 @@ export type BackendLog = LogTail;
 
 /** 问那台机器的后端要它的诊断文件尾部（经通道、只读面）。失败就抛（一句人话）。 */
 async function askBackendLog(origin: Machine): Promise<BackendLog> {
-  try {
-    return await callTyped(origin, "backend-log", {}, budgetWithin(EXIT_POLICY_BUDGET_MS));
-  } catch (e) {
-    throw new Error(saidOf(e));
-  }
+  return await callTyped(origin, "backend-log", {}, budgetWithin(EXIT_POLICY_BUDGET_MS));
 }
 
 /** 那一份怎么摆：头一行（路径 · 后端写好的大小 · 截没截）＋ 正文；没落文件（路径与大小一起缺）⇒ 只一行说清。 */

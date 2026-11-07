@@ -2,9 +2,8 @@
  * 设置窗「日志」页：复制诊断信息（页头主按钮）· 未识别数据（一行，计入诊断信息）· 日志写入文件（改了重启后生效）·
  * 记多细 · 后台出错弹提示 · 文件（今天的日志 · 本机 cc-monitor 输出）· 远端输出去哪看。
  *
- * 诊断信息整段由壳一个命令出（`diagnostics_report`：各版本 · 各台状态与原因码 · 未识别数据 · 日志位置；不含会话内容与 key），
- * 这一页只排版、只交原料：各台的记录账（只问本机后端一条 `drift-merge`，它问到各台、问不到的那台交 `null`；回包原样交壳）
- * 与认不出的顶层键（键表住界面）。
+ * 诊断信息整段由本机后端出成品（`diagnostics-report`：各版本 · 各台状态与原因码 · 未识别数据 · 日志位置；不含会话内容与 key），
+ * 壳那条 `diagnostics_report` 交它自己的事实、转回成品；这一页只问那一条、只排版。
  * 那一行「未识别数据 · …」读同一份答复里的数。读到之前 / 读不到 ⇒ 复制置灰（悬停说为什么）。
  * 构造零 I/O：宿主在这一页第一次可见时调 [`loadNow`]。
  */
@@ -16,14 +15,11 @@ import { toggleSwitch } from "../kit/switch";
 import { icon } from "../kit/icon";
 import { clearRestartNeeded, markRestartNeeded } from "./restart-notice";
 import { restartNowButton } from "./restart-now";
-import { unknownConfigKeys } from "../config";
 import { copyText } from "../copy-table";
 import { writeClipboard } from "../clipboard";
 import { openPath } from "@tauri-apps/plugin-opener";
 import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
 import type { DiagnosticsReport } from "../generated/DiagnosticsReport";
-import { readDriftOfAll, type DriftOfAll } from "../record-reads";
-import { LOCAL } from "../ipc/origin";
 import { copyDetailButton, detailOf, failSaid, sayFailure, sayWithDetail } from "../kit/detail";
 
 /** 记多细：界面上的四档（后端那一格的值 ＋ 怎么说）。 */
@@ -236,7 +232,7 @@ export class DiagnosticsSection {
   /** 诊断信息那一份：那一行的数 ＋ 复制用的整段。 */
   private async readReport(): Promise<void> {
     try {
-      this.report = await commands.diagnostics_report({ configUnknown: unknownConfigKeys(), drift: await driftOfAll() });
+      this.report = await commands.diagnostics_report();
       this.unknownLine.textContent = unknownSaid(this.report);
     } catch (e) {
       this.report = null;
@@ -329,16 +325,6 @@ export function unknownSaid(r: DiagnosticsReport): string {
   if (r.configUnknown > 0) parts.push(copyText("diagnostics.unknown.config", { n: r.configUnknown }));
   if (parts.length === 0) return copyText("hostKey.compare.none");
   return copyText("diagnostics.unknown.line", { parts: parts.join(copyText("kit.text.sep")) });
-}
-
-/** 各台的记录账（本机 ＋ 机器表里每一台，本机后端一条问到；那台问不到 ⇒ `null`，壳照实写「读不到」）。本机后端问不到 ⇒ 只本机一行 `null`。 */
-async function driftOfAll(): Promise<DriftOfAll> {
-  try {
-    return await readDriftOfAll();
-  } catch (e) {
-    console.warn("[diagnostics] 本机后端问不到各台的记录账：", e);
-    return [{ origin: LOCAL, report: null }];
-  }
 }
 
 /** 壳写好的大小照抄；读不到大小（`null`）⇒ 那一格不摆。 */

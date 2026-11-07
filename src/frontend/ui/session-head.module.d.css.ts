@@ -20,7 +20,6 @@ declare const classes: {
   readonly shExtra: string;
   readonly shHead: string;
   readonly shIb: string;
-  readonly shIbDrop: string;
   readonly shNeed: string;
   readonly shPlan: string;
   readonly shPlanSlot: string;

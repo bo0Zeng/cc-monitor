@@ -76,10 +76,7 @@ async fn local_put_lands_on_this_machine() {
     )
     .await
     .expect("本机那一支");
-    assert_eq!(
-        (got.outcome, got.seq, got.place),
-        (QueuePutOutcome::Queued, Some(1), Some(1))
-    );
+    assert_eq!((got.outcome, got.seq), (QueuePutOutcome::Queued, Some(1)));
     let list = q::read(&own, "s1", 101).unwrap();
     assert_eq!(list.items.len(), 1);
     assert_eq!(list.items[0].text, "hi");

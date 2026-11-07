@@ -140,6 +140,8 @@ export class PlanView {
   private seq = 0;
   private autoFail: string | null = null;
   private renderQueued = false;
+  /** 页头那一排上一回滚进视口的是哪一片（换了才再滚，不把人滚开的那一排拽回来）；开页时清掉。 */
+  private revealed: string | null = null;
   /** 按组看（标签页组菜单「在计划里看这一组接的块」）：块表只留这一组的会话接手的那几块；`null` ⇒ 不筛。 */
   private group: { id: string; name: string } | null = null;
   /** 从组菜单进来、还没落到哪一片：各台 `plan-list` 回来再照组员挑。 */
@@ -200,6 +202,7 @@ export class PlanView {
     if (this.isOpen) return;
     document.body.appendChild(this.root);
     this.isOpen = true;
+    this.revealed = null;
     dispatcher.pushOverlay(this.layer);
     // 要看的那一片（点进来指定的 · 上次看的）当场就读，与 `plan-list` 并行，不等清单回来。
     this.current ??= refOf(this.prefs.last);
@@ -537,8 +540,10 @@ export class PlanView {
     const title = document.createElement("div");
     title.className = s.pvTitle;
     title.append(icon("plan"), document.createTextNode(copyText("plan.page.title")));
+    const prevLeft = this.headEl.querySelector<HTMLElement>(`.${s.pvSlices}`)?.scrollLeft ?? 0;
     const slices = document.createElement("div");
     slices.className = s.pvSlices;
+    slices.addEventListener("wheel", sideWheel, { passive: false });
     for (const x of this.allSlices()) slices.appendChild(this.sliceChip(x.ref, x.slice, x.down));
     const search = document.createElement("label");
     search.className = s.pvSearch;
@@ -559,6 +564,17 @@ export class PlanView {
     }
     parts.push(button({ label: copyText("mobKit.act.back"), kind: "ghost", onClick: () => this.close() }));
     this.headEl.replaceChildren(...parts);
+    // 那一排放不下时横着滚：重画保住滚到哪；选中的那一片换了（点了 · 开页落到记住的那一片）⇒ 把它滚进那一排看得见的那一截。
+    slices.scrollLeft = prevLeft;
+    const key = this.current ? refKey(this.current) : null;
+    const chip = slices.querySelector<HTMLElement>('[aria-current="true"]');
+    if (chip && key !== this.revealed) {
+      this.revealed = key;
+      const sr = slices.getBoundingClientRect();
+      const cr = chip.getBoundingClientRect();
+      if (cr.left < sr.left) slices.scrollLeft -= sr.left - cr.left;
+      else if (cr.right > sr.right) slices.scrollLeft += cr.right - sr.right;
+    }
   }
 
   private currentWs(): PlanList["workspaces"][number] | null {
@@ -1139,6 +1155,17 @@ export class PlanView {
       box.appendChild(sec);
     }
 
+    // 审图（`pb audit` 的报告）：一份一行，字都是后端写好的；agent 按的挂负责人那一枚。按组看不出。
+    if (!g && slice.audits.length > 0) {
+      const sec = section(copyText("plan.audit.head"), String(slice.audits.length));
+      const tbl = table([copyText("plan.audit.colWhat"), copyText("plan.audit.colBy"), copyText("plan.audit.colResult"), copyText("detail.label.at")], []);
+      for (const a of slice.audits) {
+        tbl.row([text(a.said.what), a.who ? this.whoChip(a.who) : text(a.said.by ?? copyText("acct.val.none")), text(a.said.result), text(a.said.at ?? copyText("acct.val.none"))]);
+      }
+      sec.appendChild(tbl.el);
+      box.appendChild(sec);
+    }
+
     // 顶层进度
     const sec2 = section(copyText("plan.overview.progress"));
     const tbl2 = table([copyText("plan.progress.cell"), copyText("backend.column.status"), copyText("plan.blocks.block")], []);
@@ -1210,6 +1237,14 @@ export class PlanView {
 }
 
 // ───────────────────────── 小件 ─────────────────────────
+
+/** 横着滚的那一排上转竖滚轮 ⇒ 横着挪（触控板本来就带横向的不管；放得下的不吃这一下，照常往外传）。 */
+function sideWheel(e: WheelEvent): void {
+  const el = e.currentTarget as HTMLElement;
+  if (e.deltaX !== 0 || e.deltaY === 0 || el.scrollWidth <= el.clientWidth) return;
+  el.scrollLeft += e.deltaMode === WheelEvent.DOM_DELTA_LINE ? e.deltaY * 16 : e.deltaY;
+  e.preventDefault();
+}
 
 function joinSep(...parts: string[]): string {
   return parts.join(copyText("kit.text.sep"));

@@ -11,7 +11,7 @@ use super::*;
 /// 这几条判据用的读上限：64 字节，超了当读不出来。
 const CAP: Cap = Cap {
     bytes: 64,
-    over: relay_route_core::Over::Reject,
+    over: cap_core::Over::Reject,
 };
 
 /// 目录底下留着的旁名（`.tmp` 结尾）。
@@ -63,18 +63,18 @@ fn s5_the_sentence_carries_the_reason_word_and_the_raw_words_go_to_the_detail() 
 }
 
 /// 状态的读上限（超了拒收＋回错，同声明表的状态行）。
-const fn reject(bytes: u64) -> relay_route_core::Cap {
-    relay_route_core::Cap {
+const fn reject(bytes: u64) -> cap_core::Cap {
+    cap_core::Cap {
         bytes,
-        over: relay_route_core::Over::Reject,
+        over: cap_core::Over::Reject,
     }
 }
 
 /// 缓存的读上限（超了跳过＋说清，同声明表的缓存行）。
-const fn skip(bytes: u64) -> relay_route_core::Cap {
-    relay_route_core::Cap {
+const fn skip(bytes: u64) -> cap_core::Cap {
+    cap_core::Cap {
         bytes,
-        over: relay_route_core::Over::SkipAndSay,
+        over: cap_core::Over::SkipAndSay,
     }
 }
 

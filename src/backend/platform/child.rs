@@ -277,6 +277,8 @@ pub struct Child {
     /// 显式交的：`Some` 设、`None` 摘。排在继承之后（显式压过继承）。
     envs: Vec<(OsString, Option<OsString>)>,
     no_console_window: bool,
+    /// [`Child::run`] 时自成一个会话、离开本进程的控制终端（只有问登录 shell 要 `PATH` 那一趟要，见 [`Child::off_terminal`]）。
+    off_terminal: bool,
     /// 工作目录；`None` ＝ 照宿主的。
     cwd: Option<std::path::PathBuf>,
     /// 喂给它 stdin 的字节（只 [`Child::run`] 认）；`None` ＝ 空设备。
@@ -291,6 +293,7 @@ impl Child {
             inherit_only: None,
             envs: Vec::new(),
             no_console_window: false,
+            off_terminal: false,
             cwd: None,
             stdin: None,
         }
@@ -362,6 +365,14 @@ impl Child {
     /// Windows：不给控制台程序新开黑框（`CREATE_NO_WINDOW`）。别处什么都不做。
     pub(crate) fn no_console_window(mut self) -> Child {
         self.no_console_window = true;
+        self
+    }
+
+    /// Unix：[`Child::run`] 起它时自成一个会话（`setsid`），离开本进程的控制终端；组号仍即 pid，到期限整组杀照旧。别处什么都不做。
+    /// 只给问登录 shell 要 `PATH` 那一趟（`platform::shell::login_shell_asking_path`）：本进程挂在用户终端上时（ssh 会话里敲 `ccm`），
+    /// 只自成一组的子进程落在那个终端的后台组，交互 shell 一碰终端就被 SIGTTIN 停住、等满期限被杀，问不出 ⇒ 链上每一跳再问再停。
+    pub(crate) fn off_terminal(mut self) -> Child {
+        self.off_terminal = true;
         self
     }
 
@@ -476,7 +487,11 @@ impl Child {
         })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-        os::own_group(&mut cmd);
+        if self.off_terminal {
+            os::own_session(&mut cmd);
+        } else {
+            os::own_group(&mut cmd);
+        }
         let mut child = cmd.spawn().map_err(ChildFail::of_spawn)?;
         let group = os::Group::adopt(&child);
         if let (Some(bytes), Some(mut pipe)) = (self.stdin, child.stdin.take()) {
@@ -784,9 +799,9 @@ enum Ev {
 
 /// [`Child::run`] 每一根输出管子收多少（stdout · stderr 各算）：它收的是一问一答的输出（tmux · ssh · git · 一行脚本），
 /// 远到不了这么多；超了 ⇒ 这一趟回错，不交前一截当整份。
-const PIPE_CAP: relay_route_core::Cap = relay_route_core::Cap {
+const PIPE_CAP: cap_core::Cap = cap_core::Cap {
     bytes: 64 * 1024 * 1024,
-    over: relay_route_core::Over::HardError,
+    over: cap_core::Over::HardError,
 };
 
 /// 读一根管子到它关；超了 [`PIPE_CAP`] ⇒ 余下的照读掉、不存（不读完，它会卡在写上、等到期限被杀），回错。
@@ -794,9 +809,9 @@ fn read_all(r: Option<impl Read>) -> std::io::Result<Vec<u8>> {
     let Some(mut r) = r else {
         return Ok(Vec::new());
     };
-    match relay_route_core::read_capped_from(&mut r, PIPE_CAP)? {
-        relay_route_core::CappedAll::All(buf) => Ok(buf),
-        relay_route_core::CappedAll::OverCap => {
+    match cap_core::read_capped_from(&mut r, PIPE_CAP)? {
+        cap_core::CappedAll::All(buf) => Ok(buf),
+        cap_core::CappedAll::OverCap => {
             std::io::copy(&mut r, &mut std::io::sink()).discard(Why::Drain); // 只为让它写得完：读错了它照样会退
             Err(std::io::Error::other(copy_text(
                 "beFs.readRegularCapped.tooBig",
@@ -826,6 +841,22 @@ mod os {
 
     pub(super) fn own_group(cmd: &mut Command) {
         cmd.process_group(0);
+    }
+
+    /// 自成一个会话（[`super::Child::off_terminal`]）：组号 = 会话号 = 它的 pid，离开本进程的控制终端。
+    /// 不同时 `process_group(0)`：std 先 `setpgid` 再跑钩子，已是组长的进程 `setsid` 会失败。
+    /// fork 与 exec 之间只这一个系统调用（异步信号安全）；起的是用户的登录 shell，不是刚写进盘的程序。
+    pub(super) fn own_session(cmd: &mut Command) {
+        // SAFETY: 钩子在 fork 之后、exec 之前的子进程里跑，只调一次异步信号安全的 `setsid`，不分配、不碰锁。
+        unsafe {
+            cmd.pre_exec(|| {
+                if libc::setsid() == -1 {
+                    Err(std::io::Error::last_os_error())
+                } else {
+                    Ok(())
+                }
+            })
+        };
     }
 
     /// 这一组的组号（= 直接子进程的 pid，`process_group(0)` 的结果）。
@@ -980,6 +1011,9 @@ mod os {
     const _: () = assert!(std::mem::size_of::<ExtendedLimits>() == 144);
 
     pub(super) fn own_group(_cmd: &mut Command) {}
+
+    /// Windows 没有控制终端那一说：同 [`own_group`]（`run` 的 Job 照旧收整棵）。
+    pub(super) fn own_session(_cmd: &mut Command) {}
 
     /// 一个 Job（子进程起来后放进去，它再起的默认都在里面）。两种：
     /// - [`Group::adopt`]（`run` · `stream`）：不设「关句柄即杀」—— 正常结束后留下的后台进程（如第一次起的 tmux server）

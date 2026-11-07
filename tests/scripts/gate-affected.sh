@@ -7,6 +7,9 @@
 #                 恒跑的便宜格 ＋ 被改到的、本机才有的格（muslbuild 等）＋ @keep-local 那几格 ＋ 被改到被测对象的 e2e 套件（逐套现算）
 #   --full        全量（打发版标签前那一趟）：不挑格，gate.sh 每一格跑一遍；末行 `AFFECTED: OK` 即 `GATE: OK`，才打标签
 #   --dry-run     只印计划，不跑
+#   --recorded <rev>  不跑门禁，只印这个提交上记过的本机门禁记录（一行一种：full · trust-ci · affected · none）
+# 本机门禁记录：末行 `AFFECTED: OK` 时，在这一趟判的提交（HEAD，树是干净的）上记一条 git notes（引用 refs/notes/ccm-gate，
+#   正文一行 `<种> AFFECTED: OK`）。notes 是仓内引用，几棵工作树共用、不推远端；push-candidate.sh 推之前核它，打发版标签前核 full。
 # 规矩：工作树必须干净；经 heavy.sh 跑（它摘掉会话继承来的变量，表在 session-vars，并把整趟放进自己的 systemd scope、封顶内存）；
 #   排门禁锁；拿到锁时负载 > 核数 × 0.6 就串跑（GATE_SERIAL=1：机器忙时并行门禁会把按墙钟判的测试挤到超时）。
 # 门禁锁 · 槽位在 GATE_STATE_DIR（默认 ${XDG_RUNTIME_DIR:-/tmp}/cc-monitor-gate，几棵树共用一把锁）。
@@ -15,6 +18,12 @@
 # 计划另存 .build/gate-affected-plan.txt。末行：`AFFECTED: OK …` / `AFFECTED: 红 …`。
 set -uo pipefail
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+GATE_NOTES=refs/notes/ccm-gate
+if [ "${1:-}" = --recorded ]; then
+  rev=$(git rev-parse --verify --quiet "${2:?--recorded 要一个提交}^{commit}") || { echo "gate-affected: 没有提交 $2" >&2; exit 2; }
+  git notes --ref="$GATE_NOTES" show "$rev" 2>/dev/null | sed -n 's/^\([a-z-]*\) AFFECTED: OK$/\1/p'
+  exit 0
+fi
 state=${GATE_STATE_DIR:-${XDG_RUNTIME_DIR:-/tmp}/cc-monitor-gate}
 base_ref=; trust=; dry=; full=
 while [ $# -gt 0 ]; do
@@ -23,7 +32,7 @@ while [ $# -gt 0 ]; do
     --trust-ci) trust=--trust-ci; shift ;;
     --full) full=1; shift ;;
     --dry-run) dry=1; shift ;;
-    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
     *) echo "gate-affected: 不认识的参数 $1" >&2; exit 2 ;;
   esac
 done
@@ -37,6 +46,7 @@ if [ -n "$(git status --porcelain --untracked-files=normal)" ]; then
   echo "gate-affected: 工作树不干净 —— 门禁判的是盘上这棵树，挑格按的是提交过的改动；先提交（或 stash）再跑"
   git status --short | head -10; exit 2
 fi
+head_sha=$(git rev-parse HEAD) || exit 2
 mkdir -p .build "$state"
 plan_file=.build/gate-affected-plan.txt
 if [ -n "$full" ]; then
@@ -82,6 +92,14 @@ bash "$scan" . || fails+=("私人扫描")
 
 echo
 if [ ${#fails[@]} -eq 0 ]; then
+  # 本机门禁记录：判的是 HEAD 那个提交（开跑前树是干净的；跑完再核一次，半路有人改了树就不记）。
+  kind=$mode; [ "$mode" != full ] && [ -n "$trust" ] && kind="trust-ci"
+  if [ "$(git rev-parse HEAD)" = "$head_sha" ] && [ -z "$(git status --porcelain --untracked-files=normal)" ] \
+     && git notes --ref="$GATE_NOTES" append -m "$kind AFFECTED: OK" "$head_sha" 2>/dev/null; then
+    echo "gate-affected: 记下本机门禁记录 —— ${head_sha:0:9} 上 $kind AFFECTED: OK（git notes $GATE_NOTES）"
+  else
+    echo "gate-affected: ⚠ 本机门禁记录没记下（HEAD 或工作树在门禁跑的时候变了，或 git notes 写不进）—— push-candidate.sh 会拒推这一提交"
+  fi
   if [ "$mode" = full ]; then echo "AFFECTED: OK —— 全量，GATE: OK（可以出货的那种）"
   else echo "AFFECTED: OK —— 挑出的 $(echo $cells | wc -w) 格全绿（PARTIAL，不是出货用的 GATE: OK${trust:+；推送走 push-candidate.sh：先推 next、CI 全绿才快进 main}）"; fi
   exit 0

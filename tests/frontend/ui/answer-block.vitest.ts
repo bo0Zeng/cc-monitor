@@ -12,8 +12,6 @@
  * 夹具只造结构；字一律取自金样或文案表。
  */
 import { readFileSync } from "node:fs";
-vi.mock("../../../src/frontend/ui/terminal-front", () => ({ terminalFrontAvailable: vi.fn(() => false) }));
-import { terminalFrontAvailable } from "../../../src/frontend/ui/terminal-front";
 import { resolve } from "node:path";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AnswerBlock, type AnswerHost, type AnswerOutcome } from "../../../src/frontend/ui/answer-block";
@@ -31,7 +29,7 @@ const NOW = Date.parse("2026-10-11T12:00:00Z");
 const waiting = { face: liveFace("needs_you"), line: { for: "needs_you" as const, text: "", clock: null, peek: null } };
 
 function needs(ask: Ask | null, over: Partial<Needs> = {}): Needs {
-  return { kind: "approve", tool: "Bash", call: "toolu_1", what: "w", sinceMs: NOW - 12_000, text: "核心·等批准", head: "核心·等批准 · Bash", headCode: null, tone: "need", rank: 1, waitedMs: 12_000, waitedText: "核心·12s", ask, manualText: ask ? null : "核心·只能在终端里答", receivedAt: NOW, ...over };
+  return { kind: "approve", tool: "Bash", call: "toolu_1", what: "w", text: "核心·等批准", head: "核心·等批准 · Bash", headCode: null, tone: "need", rank: 1, waitedMs: 12_000, ask, manualText: ask ? null : "核心·只能在终端里答", receivedAt: NOW, ...over };
 }
 
 function tab(n: Needs | null, sid = "s1"): Tab {
@@ -393,13 +391,11 @@ describe("每一种需手动都有地方出（钉条删了以后）", () => {
     expect(b.el.hidden).toBe(true);
   });
 
-  it("★ 能不能去终端都一样：远端在 tmux 里 · Windows 有 ↗ · 都不行 ⇒ 块里都不放终端那几颗主按钮", () => {
+  it("★ 能不能去终端都一样：远端在 tmux 里 · 本机拉得了窗 · 都不行 ⇒ 块里都不放终端那颗（去终端只有会话头「终端」那一颗）", () => {
     const remote = { ...tab(needs(null)), origin: "devbox", face: liveFace("working", true) } as unknown as Tab;
     expect(rig(remote).b.el.querySelectorAll("button").length).toBe(0);
     document.body.innerHTML = "";
-    vi.mocked(terminalFrontAvailable).mockReturnValue(true);
-    expect(rig(tab(needs(null))).b.el.querySelectorAll("button").length).toBe(0);
-    vi.mocked(terminalFrontAvailable).mockReturnValue(false);
+    expect(rig({ ...tab(needs(null)), face: liveFace("working", true) } as unknown as Tab).b.el.querySelectorAll("button").length).toBe(0);
   });
 });
 

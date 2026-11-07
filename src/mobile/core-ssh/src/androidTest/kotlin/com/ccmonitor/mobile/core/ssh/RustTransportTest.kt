@@ -41,7 +41,7 @@ class RustTransportTest {
     /** 主机钥匙那份库：测试 APK 自己的私有目录（核心一个进程只装一次，路径以第一次为准）。 */
     private val book = File(InstrumentationRegistry.getInstrumentation().targetContext.filesDir, "known_hosts")
 
-    @Before fun setup() = installRustCore(book)
+    @Before fun setup() = installRustCore(book, File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "lists"))
 
     @After fun teardown() = open.forEach { it.close() }
 

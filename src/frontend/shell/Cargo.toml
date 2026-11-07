@@ -19,6 +19,8 @@ members = [
     "../../common/creds-core",
     "../../common/guard-core",
     "../../common/relay-route-core",
+    # 有上限读的唯一一份（读上限 `Cap` · 同步整读）：后端 · 壳 · 文件窗口 · comms · 手机核心同一份。
+    "../../common/cap-core",
     # 本人通道（Unix 套接字 ＋ 对端 uid）：后端 · monitor 同一份，不发钥匙。
     "../../common/own-chan",
     # 等一个进程退出（Linux pidfd · Windows 进程句柄，内核叫醒、零轮询）：后端 · monitor 同一份。
@@ -55,7 +57,7 @@ members = [
 
 [package]
 name = "monitor"
-version = "5.1.1"
+version = "5.1.2"
 description = "cc-monitor — Claude Code 的开发工作台：会话显示与答批准 + 本机/远端会话管理 + 多账号与轮换 + skill 接入面（Tauri 2 + TypeScript，Windows / Linux）"
 authors = ["cc-monitor contributors"]
 edition = "2021"
@@ -171,6 +173,8 @@ creds-core = { path = "../../common/creds-core" }
 shell-quote-core = { path = "../../common/shell-quote-core" }
 # 后端的门牌与家的契约（端口 · 钥匙 · 路由语法 · `~/.cc-monitor/` 下每一样的相对路径），与后端同一份（目标）。
 relay-route-core = { path = "../../common/relay-route-core" }
+# 有上限读（读上限 `Cap` · 同步整读）的唯一一份；零依赖。
+cap-core = { path = "../../common/cap-core" }
 # 本人通道：连本机常驻后端（Unix 套接字 ＋ 对端 uid，不发钥匙）；后端那一侧链同一份。
 own-chan = { path = "../../common/own-chan" }
 # 等一个进程退出（`bind.rs`：登记着窗口的 shell 一退就删那条登记）；后端那一侧链同一份。

@@ -20,12 +20,7 @@ const GONE: &[&str] = &[
 const KEPT: &[&str] = &["ZQKEEP-user", "ZQKEEP-queued", "ZQKEEP-preview"];
 
 /// 折起那一行要用的格（照那份声明投影 ⇒ 逐个还在、值不变；它们正是界面画那一行读的那几格）。
-const FOLDED_CELLS: &[(&str, &str)] = &[
-    ("u1", "who"),
-    ("a1", "steps"),
-    ("a1", "model"),
-    ("u3", "results"),
-];
+const FOLDED_CELLS: &[(&str, &str)] = &[("u1", "who"), ("a1", "steps"), ("u3", "results")];
 
 const FOLD_PAGE: &[&str] = &[
     r#"{"type":"user","uuid":"u1","timestamp":"2026-01-02T03:04:05.000Z","cwd":"/w","message":{"role":"user","content":[{"type":"text","text":"ZQKEEP-user"}]}}"#,

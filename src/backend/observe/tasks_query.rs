@@ -29,8 +29,8 @@
 
 use crate::common::said::Said;
 use crate::platform::fs::Ro;
+use cap_core::{Cap, Over};
 use copy_core::copy_text;
-use relay_route_core::{Cap, Over};
 use std::path::Path;
 
 /// 单个任务文件的读上限。本机实测任务文件是几百字节量级（一条 subject ＋ 一段 description）；
@@ -163,7 +163,6 @@ pub(crate) fn task_entry(v: &serde_json::Value) -> Option<Task> {
         description: opt("description")?,
         active_form: opt("activeForm")?,
         blocks: list("blocks")?,
-        blocked_by: list("blockedBy")?,
     })
 }
 

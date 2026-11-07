@@ -12,8 +12,8 @@ description = "出网口：这台所有出站 TCP 只在这里开 —— 按一�
 path = "lib.rs"
 
 [dependencies]
-# 字节上限的类型（`Cap`：数与超了怎么办写在一处）住契约包；它也零依赖，引它不给本包带进第三方包。
-relay-route-core = { path = "../../common/relay-route-core" }
+# 字节上限的类型（`Cap`：数与超了怎么办写在一处）住 `cap-core`；它零依赖，引它不给本包带进第三方包。
+cap-core = { path = "../../common/cap-core" }
 # 回环那一个事实只有 `upstream_is_loopback` 那一个家：直连判定（`describe::stays_on_this_machine`）与测试档不许出网那一句都问它。零依赖。
 upstream-url-core = { path = "../../common/upstream-url-core" }
 # 代理鉴权那一头的 base64 用全仓那一份（`cmd_wire::b64`）。它带进 serde 一族，后端与拨号核心本就链着。

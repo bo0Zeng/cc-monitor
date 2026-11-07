@@ -16,17 +16,13 @@
 
 pub use crate::agents::{RewindFace, RewindRow, RewindScreen};
 use crate::common::said::Said;
+use crate::control::screen_drive::{settle, REDRAWS_AFTER_SEND, REDRAWS_PER_PRESS};
 use crate::control::terminals::no_said;
 use crate::control::terminals_wire::{Sent, SentResult};
 pub(crate) use cmd_wire::rewind::{
     Rewind, RewindChoiceRow, RewindHow, RewindOptions, RewindWhen, RewindWhenRow,
 };
 use copy_core::copy_text;
-
-/// 按一下之后最多等几次重画（每次至多那一份 io 的一次等待）才认定「没变」。
-pub(crate) const REDRAWS_PER_PRESS: usize = 4;
-/// 送进改好的那一句之后，最多读回几次记录（每次之间等一次重画）。
-pub(crate) const READ_BACKS: usize = 8;
 
 /// 记录主线上人说过的一句（读回 · 核对列表用）。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -388,15 +384,23 @@ pub fn walk(face: &RewindFace, plan: Plan<'_>, io: &mut dyn RewindIo) -> Result<
         return Ok(Walked::Unsure(Why::NotSent));
     }
 
-    // 7 读回：主线 ＝ 被编辑那一句之前的那几句 ＋ 改好的那一句。
-    for _ in 0..READ_BACKS {
-        let now = w.io.lines()?;
-        if read_back_ok(&before[..at], plan.text, &now) {
-            return Ok(Walked::Done);
-        }
-        w.io.redrawn();
-    }
-    Ok(Walked::Unsure(Why::NotReadBack))
+    // 7 读回：主线 ＝ 被编辑那一句之前的那几句 ＋ 改好的那一句。记录不跟着屏走 ⇒ 等一次重画（到期也算）就再读一次。
+    let kept = &before[..at];
+    let first = w.io.lines()?;
+    let now = settle(
+        first,
+        REDRAWS_AFTER_SEND,
+        |now| read_back_ok(kept, plan.text, now),
+        || {
+            w.io.redrawn();
+            w.io.lines().map(Some)
+        },
+    )?;
+    Ok(if read_back_ok(kept, plan.text, &now) {
+        Walked::Done
+    } else {
+        Walked::Unsure(Why::NotReadBack)
+    })
 }
 
 /// 主线读回对不对：前面那几句一句不差、接着恰好是改好的那一句。
@@ -444,17 +448,10 @@ impl Walker<'_> {
 
     /// 等屏变到 `moved` 认的样子（至多 [`REDRAWS_PER_PRESS`] 次重画）；回最后读到的那一屏。
     fn settle(&mut self, moved: impl Fn(&RewindScreen) -> bool) -> Result<RewindScreen, Said> {
-        let mut now = self.read()?;
-        for _ in 0..REDRAWS_PER_PRESS {
-            if moved(&now) {
-                break;
-            }
-            if !self.io.redrawn() {
-                break;
-            }
-            now = self.read()?;
-        }
-        Ok(now)
+        let now = self.read()?;
+        settle(now, REDRAWS_PER_PRESS, moved, || {
+            self.io.redrawn().then(|| self.read()).transpose()
+        })
     }
 
     /// 输入行里有字 ⇒ 照申报的删字键删掉，读屏确认空了；删不掉 ⇒ 原因。

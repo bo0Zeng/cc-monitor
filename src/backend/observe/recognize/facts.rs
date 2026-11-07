@@ -89,6 +89,11 @@ pub struct SessionFacts {
     /// 会话的项目目录（会话起在哪个目录）：适配层读记录开头给（`agents::project_dir_of`），读到即锁定；
     /// 开头里还没有 ⇒ `null`，下一次再读。与会话宣告那一帧的 `project_dir` 同一个函数。
     pub project_dir: Option<String>,
+    /// `project_dir` 的显示形：那台按自己的家目录写好的 `~/…`（`platform::paths::home_short`，写法同 `AccountRow.configDirShown`），
+    /// 两端显示目录照抄它、不自己缩；项目目录还没读到 ⇒ 不出现。每次现给，不累加。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub cwd_shown: Option<Words>,
     /// 这份记录是哪一家的（线上的 kind，适配层按记录认：`agents::record_kind_of`）；认不出 ⇒ `null`（界面要分家的那几项灰着，不落哪一家）。
     pub agent: Option<crate::agents::AgentKind>,
     /// 此刻持着这条会话的活进程 pid（`accounts_query::session_holders`：照那一家声明的判活方式查），升序；不累加，每次现查。
@@ -98,6 +103,10 @@ pub struct SessionFacts {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub writers_line: Option<Words>,
+    /// 分叉来的那一句（[`forked_line`]：「分叉自「父会话的名字」」，出口那一下照父会话那份记录起名；悬停卡照摆）；不是分叉来的 ⇒ 不出现。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub forked_line: Option<Words>,
     /// 这条会话在哪：「<目录> · <机器>」那一句（[`where_line`]，与终端页头同一句；机器照看的这一端对那台的称呼，信封 `called`；界面照摆）。
     /// 没交称呼 ⇒ 只目录；目录还没读到 ⇒ 只名字；两样都没有 ⇒ 不出现。
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -173,7 +182,10 @@ pub struct SessionFacts {
     /// 不活 ⇒ `null`。不累加，每次现查。
     #[serde(default)]
     pub line: Option<FactsLine>,
-    /// 认不出、又不成卡的行（那一家的簿记行：没见过的类型、没有链上身份）：不在消息流里画，在这里照实说几行、哪几种。一行都没有 ⇒ `null`。
+    /// 认不出、又不成卡的行（那一家的簿记行：没见过的类型、没有链上身份）：照实说几行、哪几种，一行都没有 ⇒ `null`。
+    /// 后端接着记账用，不上线，骨架落它（[`skel`]）。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub quiet_unread: Option<QuietUnread>,
 }
 
@@ -492,16 +504,18 @@ pub struct TokenUse {
     pub input: u64,
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub output: u64,
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    /// 读缓存 · 写缓存两档 · 算进来的请求数：后端接着累加、写 `text` 用，不上线，骨架落它（[`skel`]）。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub cache_read: u64,
-    #[serde(rename = "cacheWrite5m")]
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub cache_write5m: u64,
-    #[serde(rename = "cacheWrite1h")]
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub cache_write1h: u64,
-    /// 算进来的请求数。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub requests: u64,
     /// 写好的串（输入 · 输出 · 读缓存 · 写缓存）。
     pub text: Words,
@@ -532,8 +546,6 @@ pub struct LastRequest {
     )
 )]
 pub struct Cost {
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-    pub micros: u64,
     pub partial: bool,
     pub text: Words,
 }
@@ -753,7 +765,6 @@ pub fn needs_of(agent: &str, pending: &[PendingCall], wait: Option<&PidWait>) ->
         tone: crate::common::cells::Tone::Need,
         rank: needs_rank(kind, waited_ms),
         waited_ms,
-        waited_text: waited_ms.map(|ms| Words(copy_core::short_duration(ms))),
         // 配不配挂着的请求在顶层壳（`faces::read_face` 查常驻进程那一份登记表，经 [`dress_ask_with`] 配）。
         ask: None,
         manual_text: None,
@@ -801,7 +812,6 @@ pub fn dress_ask_with(
                 tone: crate::common::cells::Tone::Need,
                 rank: needs_rank(kind, Some(waited)),
                 waited_ms: Some(waited),
-                waited_text: Some(Words(copy_core::short_duration(waited))),
                 ask: Some(a),
                 manual_text: None,
             })
@@ -945,16 +955,21 @@ fn needs_clock(n: &Needs) -> Option<cmd_wire::needs::NeedsClock> {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct UsageFact {
-    /// `input_tokens + cache_creation_input_tokens + cache_read_input_tokens`。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    /// `input_tokens + cache_creation_input_tokens + cache_read_input_tokens`（后端写字用，不上线，骨架落它）。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub(crate) prompt_tokens: u64,
     pub model: Option<String>,
-    /// 全会话最大的一轮（见过超过标准上限的 ⇒ 上限不可能是标准那一档）。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    /// 全会话最大的一轮（见过超过标准上限的 ⇒ 上限不可能是标准那一档；后端判上限用，不上线，骨架落它）。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub(crate) peak_prompt_tokens: u64,
     /// 上下文上限（tokens），恒 ≥ `peak_prompt_tokens` ⇒ 百分比不会超过 100。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) limit: u64,
+    /// 上限从哪来（后端写 `limitFromText` 用，不上线，骨架落它）。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub(crate) limit_from: LimitFrom,
     /// 最新一轮占上限的百分比（四舍五入，0–100）；上限判不出（`assumed`）⇒ `null`。
     pub(crate) percent: Option<u8>,
@@ -1032,10 +1047,8 @@ impl UsageFact {
 }
 
 /// 上限从哪来。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub enum LimitFrom {
     /// 中转看见了这个会话的请求：带了扩展上下文那一项 ⇒ 1M，没带过 ⇒ 这个模型的默认（`observe::relay_marks`）。
     Relay,
@@ -1046,6 +1059,7 @@ pub enum LimitFrom {
     /// 这份会话见过超过标准上限的一轮。
     Observed,
     /// 判不出（`limit` 只是占位的 1M）：界面不算百分比，只写用了多少。
+    #[default]
     Assumed,
 }
 
@@ -1708,7 +1722,6 @@ fn note_cost(f: &mut SessionFacts, c: crate::agents::beat::CostSaid) {
         (_, true) => copy_core::copy_text("beSpend.cost.about", &[("usd", &shown)]),
     };
     f.cost = Some(Cost {
-        micros,
         partial,
         text: Words(text),
     });
@@ -1730,15 +1743,41 @@ fn short_tokens(n: u64) -> String {
 }
 
 /// 骨架落盘那一形（`observe::skeleton`）：线上那一形跳过的 [`TokenUse::last`] · [`SessionFacts::notice_log`] · [`SessionFacts::retry_log`] ·
-/// [`SessionFacts::handed_back`] · [`SessionFacts::bg_tasks`] 另落一格，读回来放回去。
+/// [`SessionFacts::handed_back`] · [`SessionFacts::bg_tasks`] · 用量与上下文里只给后端的那几格 · [`SessionFacts::quiet_unread`] 另落一格，读回来放回去。
 pub(crate) mod skel {
-    use super::{BgTask, LastRequest, NoticeLog, RetrySeen, SessionFacts};
+    use super::{BgTask, LastRequest, LimitFrom, NoticeLog, QuietUnread, RetrySeen, SessionFacts};
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    /// 用量里线上跳过的那几格（[`super::TokenUse`]）。
+    #[derive(Serialize, Deserialize)]
+    struct TokenSide {
+        cache_read: u64,
+        cache_write5m: u64,
+        cache_write1h: u64,
+        requests: u64,
+    }
+
+    /// 上下文里线上跳过的那几格（[`super::UsageFact`]）。
+    #[derive(Serialize, Deserialize)]
+    struct UsageSide {
+        prompt_tokens: u64,
+        peak_prompt_tokens: u64,
+        limit_from: LimitFrom,
+    }
+
+    /// 线上跳过、骨架落的那几格；整格必在（缺 ⇒ 这份骨架是旧形，解不开、整份重扫）。
+    #[derive(Serialize, Deserialize)]
+    struct Side {
+        tokens: Option<TokenSide>,
+        usage: Option<UsageSide>,
+        quiet_unread: Option<QuietUnread>,
+    }
 
     #[derive(Serialize)]
     struct Ref<'a> {
         facts: &'a SessionFacts,
         last: Option<&'a LastRequest>,
+        side: Side,
         notices: &'a NoticeLog,
         retries: &'a [RetrySeen],
         handed_back: &'a [String],
@@ -1750,6 +1789,7 @@ pub(crate) mod skel {
     struct Owned {
         facts: SessionFacts,
         last: Option<LastRequest>,
+        side: Side,
         notices: NoticeLog,
         retries: Vec<RetrySeen>,
         handed_back: Vec<String>,
@@ -1760,6 +1800,20 @@ pub(crate) mod skel {
         Ref {
             facts: f,
             last: f.tokens.as_ref().and_then(|t| t.last.as_ref()),
+            side: Side {
+                tokens: f.tokens.as_ref().map(|t| TokenSide {
+                    cache_read: t.cache_read,
+                    cache_write5m: t.cache_write5m,
+                    cache_write1h: t.cache_write1h,
+                    requests: t.requests,
+                }),
+                usage: f.usage.as_ref().map(|u| UsageSide {
+                    prompt_tokens: u.prompt_tokens,
+                    peak_prompt_tokens: u.peak_prompt_tokens,
+                    limit_from: u.limit_from,
+                }),
+                quiet_unread: f.quiet_unread.clone(),
+            },
             notices: &f.notice_log,
             retries: &f.retry_log,
             handed_back: &f.handed_back,
@@ -1772,15 +1826,33 @@ pub(crate) mod skel {
         let Owned {
             mut facts,
             last,
+            side,
             notices,
             retries,
             handed_back,
             bg_tasks,
         } = Owned::deserialize(d)?;
+        let Side {
+            tokens,
+            usage,
+            quiet_unread,
+        } = side;
         facts.retry_log = retries;
         if let Some(t) = facts.tokens.as_mut() {
             t.last = last;
+            if let Some(side) = tokens {
+                t.cache_read = side.cache_read;
+                t.cache_write5m = side.cache_write5m;
+                t.cache_write1h = side.cache_write1h;
+                t.requests = side.requests;
+            }
         }
+        if let (Some(u), Some(side)) = (facts.usage.as_mut(), usage) {
+            u.prompt_tokens = side.prompt_tokens;
+            u.peak_prompt_tokens = side.peak_prompt_tokens;
+            u.limit_from = side.limit_from;
+        }
+        facts.quiet_unread = quiet_unread;
         facts.notice_log = notices;
         facts.handed_back = handed_back;
         facts.bg_tasks = bg_tasks;
@@ -1798,7 +1870,15 @@ pub fn writers_line(writers: &[u32]) -> Option<Words> {
     })
 }
 
-/// [`SessionFacts::where_line`]：`called` ＝ 看的这一端对这台的称呼（没交 ⇒ `None`，不编名字），`dir` ＝ 会话的项目目录。
+/// [`SessionFacts::forked_line`]：分叉来的 ⇒「分叉自「{父会话的名字}」」（名字照父会话那份记录起，与标签页 · 历史清单同一个函数）。
+pub fn forked_line(parent_label: &str) -> Words {
+    Words(copy_core::copy_text(
+        "newSession.fork.fromBare",
+        &[("title", parent_label)],
+    ))
+}
+
+/// [`SessionFacts::where_line`]：`called` ＝ 看的这一端对这台的称呼（没交 ⇒ `None`，不编名字），`dir` ＝ 会话项目目录的显示形（[`SessionFacts::cwd_shown`]）。
 pub fn where_line(called: Option<&str>, dir: Option<&str>) -> Option<Words> {
     match (called, dir) {
         (Some(machine), Some(dir)) => Some(Words(copy_core::copy_text(

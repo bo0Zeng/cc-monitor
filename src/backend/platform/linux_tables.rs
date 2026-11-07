@@ -10,7 +10,7 @@
 
 use crate::platform::fs::Ro;
 use crate::platform::proc::PROC_FILE_CAP;
-use relay_route_core::{Cap, Over};
+use cap_core::{Cap, Over};
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 

@@ -1392,7 +1392,7 @@ fn the_field_cap_stays_in_the_same_range_as_the_monitor_command_cap() {
     let shell =
         guard_core::production_code(include_str!("../../../src/frontend/shell/src/launch.rs"));
     let at = shell
-        .find("const MAX_REMOTE_CMD: relay_route_core::Cap = relay_route_core::Cap {")
+        .find("const MAX_REMOTE_CMD: cap_core::Cap = cap_core::Cap {")
         .expect("monitor 那一侧的命令串上限认不出了（改了写法就把这里一起改）");
     let monitor: u64 = shell[at..]
         .lines()

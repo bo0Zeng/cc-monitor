@@ -53,10 +53,6 @@ started_text?: string,
  */
 active_ms?: number, 
 /**
- * 收场：说它收场的那一条（还没收场 / 状态不明 ⇒ 不上线）。
- */
-ended_ms?: number, 
-/**
  * 为什么是这个结局（在跑 ⇒ 不上线）。
  */
 why?: RunWhy, 
@@ -64,10 +60,6 @@ why?: RunWhy,
  * 失败收场时的报错原话（说得出才有；至多 `observe::runs::ERROR_CHARS` 个字）。
  */
 error?: string, 
-/**
- * 它调了几次工具（它自己的记录里数的；零 ⇒ 不上线）。
- */
-calls?: number, 
 /**
  * 派出那一方没等它、接着做自己的事（后台派出；否则不上线）。
  */

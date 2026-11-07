@@ -14,8 +14,8 @@
 
 use crate::ccm_line::argv::{flag, parse_size, CwdSpec, Die, Opts};
 use crate::platform::fs::Ro;
+use cap_core::{Cap, Over};
 use copy_core::copy_text;
-use relay_route_core::{Cap, Over};
 // 铸名避让那张 hash 表的**唯一**来源（字段模块私有 ⇒ 这里造不出第二份）。
 use crate::accounts::upstream_select::endpoint::LaunchAccount;
 use crate::common::session_snapshot::TakenNames;
@@ -270,8 +270,6 @@ pub struct Env {
     pub tmux: Option<String>,
     /// 这一趟是 tmux 那一形的自检（[`SELF_CHECK_IN_PANE`] 设的标记）：照窗格里那一跳算（在 tmux 里），不为它去问 tmux server。
     pub self_check: bool,
-    /// 不在 tmux 里敲 `cc` 落托管容器（各平台都能托管；已在托管终端里 —— `CCM_HOST` 设了 —— 不再套一层）；`false` ⇒ 直路。
-    pub can_host: bool,
     /// 调用方**继承来的**账号配置目录（`agents::claudecode::paths::CONFIG_DIR_ENV`
     /// 那个环境变量的值），**不是**本进程设的。
     ///
@@ -380,8 +378,6 @@ impl Env {
                 .unwrap_or_default(),
             tmux: get("TMUX"),
             self_check: get(PANE_SELF_CHECK_ENV).is_some(),
-            // 托管进程给里面那一跳设了 `CCM_HOST` ⇒ 已在托管终端里：直路（不再套一层）。
-            can_host: get(crate::host::managed::run::HOST_ENV).is_none(),
             // 找上游那个变量名与它的继承值，要等**解析完 argv 知道是哪一家**才填得了 ⇒ 由 `mod.rs` 补。
             base_url_env: String::new(),
             inherited_base_url: None,
@@ -432,8 +428,6 @@ impl Env {
             pwd: home.clone(),
             tmux: None,
             self_check: false,
-            // 新终端里敲：不在 tmux、不在托管终端里 ⇒ 落托管（同真跑）。
-            can_host: true,
             base_url_env: String::new(),
             inherited_base_url: None,
             ccm_env: machine_env(get),
@@ -1010,20 +1004,36 @@ fn inherited_gate(env: &Env) -> Result<(), Die> {
     Ok(())
 }
 
-/// 起托管进程的那一串：`<自己> -- --host-run <名> name=<名> cwd=<目录> agent=<那一家> client=<谁建的> [size=宽x高] -- <里面那一跳>`。
+/// 一个托管终端落进 `facts.json` 的那几样（[`host_run_argv`] 拼成 `键=值`）。
+pub(crate) struct HostRunAt<'a> {
+    pub name: &'a str,
+    pub cwd: &'a str,
+    /// 哪一家（开空 shell 那一形空）。
+    pub agent: &'a str,
+    /// 点名的号（`--account`；空 ＝ 没点名，不写这个键）。
+    pub account: &'a str,
+    /// 谁建的。
+    pub client: &'a str,
+}
+
+/// 起托管进程的那一串：`<自己> -- --host-run <名> name=<名> cwd=<目录> agent=<那一家> client=<谁建的> [account=<号>] [size=宽x高] -- <里面那一跳>`。
 /// 句柄就是名字（调用方已避让过这台的 tmux 会话名与托管终端）；托管进程直接起里面那一跳（`inner`）、不经 shell：
 /// 托管进程是脱离起的，环境原样往下传，用不着 tmux 那一形为跨 tmux 边界写的 `export`（里面那一跳一退、托管终端收尾）。
 /// 起会话那一形：`inner` 与 tmux 那一形键进窗格的是同一串词，`client` 是 `gate_rules::CLIENT_TERMINAL`（同 tmux 那一形 ccm 起的会话）；
 /// 开空 shell 那一形（`ccm::open_hosted_shell`）：`agent` 空、`client` 是建它的那个前端。
 pub(crate) fn host_run_argv(
     self_argv: &[String],
-    name: &str,
-    cwd: &str,
-    agent: &str,
-    client: &str,
+    at: &HostRunAt<'_>,
     size: Option<&(String, String)>,
     inner: &[String],
 ) -> Vec<String> {
+    let HostRunAt {
+        name,
+        cwd,
+        agent,
+        account,
+        client,
+    } = at;
     let mut v: Vec<String> = self_argv.to_vec();
     v.extend([
         flag::END.to_string(),
@@ -1034,6 +1044,9 @@ pub(crate) fn host_run_argv(
         format!("agent={agent}"),
         format!("client={client}"),
     ]);
+    if !account.is_empty() {
+        v.push(format!("account={account}"));
+    }
     if let Some((w, h)) = size {
         v.push(format!("size={w}x{h}"));
     }
@@ -1052,14 +1065,12 @@ fn unset_prefix(vars: &[impl AsRef<str>]) -> String {
 }
 
 /// 这一发进哪种容器（`None` ⇒ 直路）：`--hosted` ⇒ 托管；要 tmux 容器（`use_tmux`：已在 tmux 里且没给名的那一形已摘掉）⇒ tmux；
-/// 都没说、不在 tmux 窗格里、这台能托管（[`Env::can_host`]）⇒ 托管。在 tmux 窗格里敲 · 已在托管终端里 · 不能托管 ⇒ 直路。
-fn container_host(o: &Opts, env: &Env, use_tmux: bool) -> Option<TerminalHost> {
+/// 都没说 ⇒ 直路（就地 exec，不进容器）。
+fn container_host(o: &Opts, use_tmux: bool) -> Option<TerminalHost> {
     if o.hosted {
         Some(TerminalHost::Managed)
     } else if use_tmux {
         Some(TerminalHost::Tmux)
-    } else if !o.use_tmux && !env.in_tmux() && env.can_host {
-        Some(TerminalHost::Managed)
     } else {
         None
     }
@@ -1096,13 +1107,9 @@ pub fn build(
 /// 透传里还没有那一家自己的 `--`（这一趟当场给了第一句 ⇒ 它盖过别名的）⇒ 接在透传末尾成 `-- <那句>`（`None` ＝ 照原样）；
 /// 窗格里那一趟拿到的就是普通透传。不进 tmux 的那一发起在当前终端里，开口留给人，不交。
 /// 那一家起的时候不收第一句（`LaunchFace::first_prompt_arg`）⇒ 说清、不起。
-fn say_into(
-    o: &Opts,
-    env: &Env,
-    face: Option<crate::agents::LaunchFace>,
-) -> Result<Option<Vec<String>>, Die> {
+fn say_into(o: &Opts, face: Option<crate::agents::LaunchFace>) -> Result<Option<Vec<String>>, Die> {
     // 落在容器里（tmux · 托管）或已在 tmux 里就地起；直路那一发起在当前终端里。
-    let contained = o.use_tmux || container_host(o, env, false).is_some();
+    let contained = o.use_tmux || o.hosted;
     if o.say.is_empty()
         || !contained
         || o.resumes.is_some()
@@ -1148,7 +1155,7 @@ pub fn build_among(
 
     // 开口那句落成那一家的第一句：之后两路（容器 · 直起）读的都是接好的透传。
     let said: Opts;
-    let o = match say_into(o, env, face)? {
+    let o = match say_into(o, face)? {
         Some(passthru) => {
             said = Opts {
                 passthru,
@@ -1249,7 +1256,7 @@ pub fn build_among(
         }
         use_tmux = false;
     }
-    let host = container_host(o, env, use_tmux);
+    let host = container_host(o, use_tmux);
 
     if let Some(host) = host {
         inherited_gate(env)?;
@@ -1364,10 +1371,13 @@ pub fn build_among(
                 );
                 let run = host_run_argv(
                     &env.self_argv,
-                    &name,
-                    &cwd,
-                    &o.agent,
-                    crate::control::gate_rules::CLIENT_TERMINAL,
+                    &HostRunAt {
+                        name: &name,
+                        cwd: &cwd,
+                        agent: &o.agent,
+                        account: &o.account,
+                        client: crate::control::gate_rules::CLIENT_TERMINAL,
+                    },
                     size.as_ref(),
                     &inner,
                 );
@@ -1658,7 +1668,7 @@ fn sideload_here(face: &crate::agents::PluginFace) -> Sideload {
     });
     Sideload {
         inherited: std::env::var(face.env).ok().filter(|v| !v.is_empty()),
-        version: (face.installed_version)(std::env::var("PATH").ok().as_deref()),
+        version: (face.installed_version)(crate::platform::shell::probe_path().as_deref()),
         policy_blocked,
         env_readable: cfg!(target_os = "linux"),
     }

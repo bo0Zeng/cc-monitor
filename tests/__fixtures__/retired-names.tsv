@@ -417,3 +417,18 @@ diff_cell
 baselineText
 ACCOUNT_ZERO
 StripTone
+session-restart
+session_restart
+session_restart_face
+SessionRestart
+RestartReq
+RestartRefused
+RestartErr
+RESTART_CODES
+compact_summary
+record_line
+relaunch_in
+drift-merge	5.1.2
+DriftMergeCmd
+readDriftOfAll
+DriftOfAll

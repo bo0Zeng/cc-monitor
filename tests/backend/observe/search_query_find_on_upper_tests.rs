@@ -179,8 +179,16 @@ fn find_hits_carry_turn_and_time_and_page_by_skip_on_both_arms() {
         .map(|u| (u.to_string(), u[1..2].parse().unwrap()))
         .collect();
     assert_eq!(turns, want);
-    assert_eq!(all["hits"][1]["tsMs"].as_i64(), Some(1_767_225_660_000));
-    assert_eq!(all["hits"][4]["tsMs"].as_i64(), Some(0), "读不出的时刻 ⇒ 0");
+    assert!(
+        all["hits"][1].get("tsMs").is_none(),
+        "时刻只给后端写字，不上线"
+    );
+    assert!(!all["hits"][1]["tsText"].as_str().unwrap().is_empty());
+    assert_eq!(
+        all["hits"][4]["tsText"].as_str(),
+        Some(""),
+        "读不出的时刻 ⇒ 空串"
+    );
     let page = ask(2, 2);
     assert_eq!(page, scan(2, 2));
     assert_eq!(page["total"].as_u64(), Some(5), "续页照报全量");

@@ -291,9 +291,11 @@ jobs:
           AR_x86_64_pc_windows_msvc: zig lib
         run: cargo check --workspace --all-targets --target x86_64-pc-windows-msvc
 
-      - name: 门禁 · 后端 fmt / clippy / test
+      # `generated`：后端那棵带 ts-rs 导出的类型只有这一棵的 `cargo test`（`backend` 格）才重写 `generated/`，
+      #   `rust-linux` 那一份判的是壳那棵 ⇒ 这里要再判一次（门禁里它排在 `backend` 之后）。
+      - name: 门禁 · 后端 fmt / clippy / test / 生成物
         env:
-          GATE_ONLY: fmt-backend clippy-backend backend deadcode-backend
+          GATE_ONLY: fmt-backend clippy-backend backend deadcode-backend generated
         run: bash tests/scripts/gate.sh
 
   # **Linux 宿主上 app 能不能构建**的持续信号（`release.yml` 的 Linux 打包 job 只在 tag 时跑）。

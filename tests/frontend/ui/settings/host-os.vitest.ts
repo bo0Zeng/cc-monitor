@@ -40,7 +40,7 @@ describe("readHostFacts", () => {
   });
 
   it("★ 界面生产代码里零处按 User-Agent 判系统（判定只住壳 platform/host_facts.rs）", () => {
-    for (const f of ["src/frontend/ui/settings/host-os.ts", "src/frontend/ui/terminal-front.ts", "src/frontend/ui/settings/machine-aliases.ts", "src/frontend/ui/settings/backend-section.ts"]) {
+    for (const f of ["src/frontend/ui/settings/host-os.ts", "src/frontend/ui/settings/machine-aliases.ts", "src/frontend/ui/settings/backend-section.ts"]) {
       expect(readFileSync(resolve(REPO_ROOT, f), "utf8"), f).not.toMatch(/userAgent/);
     }
   });

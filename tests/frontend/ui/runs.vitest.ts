@@ -349,7 +349,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     tm.onSessionRuns(table([run("w6", "running", "扫目录", "t1")], []));
     expect([card.dataset.runState, stateOf()]).toEqual(["running", said("running")]);
     const T = Date.parse("2026-10-01T10:00:00Z");
-    tm.onSessionRuns(table([{ ...run("w6", "failed", "扫目录", "t1"), started_ms: T, ended_ms: T + 120_000, took_text: "核心·用时" }], []));
+    tm.onSessionRuns(table([{ ...run("w6", "failed", "扫目录", "t1"), started_ms: T, took_text: "核心·用时" }], []));
     expect([card.dataset.runState, stateOf()]).toEqual([
       "failed",
       [said("failed"), "核心·用时"].join(copyText("kit.text.sep")),

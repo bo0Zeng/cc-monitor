@@ -25,11 +25,11 @@
     "children": [],
     "childrenText": null,
     "cost": {
-      "micros": 424200,
       "partial": false,
       "text": "$0.42"
     },
     "forkedFrom": "src-0",
+    "forkedLine": "分叉自「src-0」",
     "lastSay": {
       "at": "t5",
       "atMs": null,
@@ -95,13 +95,7 @@
     "permissionMode": "acceptEdits",
     "permissionModeText": "自动接受编辑",
     "projectDir": "/g/proj",
-    "quietUnread": {
-      "count": 1,
-      "kinds": [
-        "golden-future-ledger"
-      ],
-      "text": "无法识别 1 行（类型：golden-future-ledger）"
-    },
+    "cwdShown": "/g/proj",
     "retries": [
       {
         "id": "rt-1",
@@ -117,12 +111,8 @@
     "startedBy": null,
     "startedByText": null,
     "tokens": {
-      "cacheRead": 3,
-      "cacheWrite1h": 0,
-      "cacheWrite5m": 2,
       "input": 1,
       "output": 0,
-      "requests": 1,
       "text": "输入 1 · 输出 0 · 读缓存 3 · 写缓存 2"
     },
     "touchedFiles": [
@@ -132,13 +122,10 @@
       "contextText": "6",
       "contextTone": "plain",
       "limit": 1000000,
-      "limitFrom": "assumed",
       "limitFromText": null,
       "limitText": "1M",
       "model": "m-g",
-      "peakPromptTokens": 6,
       "percent": null,
-      "promptTokens": 6,
       "promptTokensText": "6"
     },
     "whereLine": "/g/proj",
@@ -153,7 +140,6 @@
         "kind": "user",
         "line": 0,
         "matched": "zqx",
-        "tsMs": 0,
         "tsText": "",
         "turn": 1,
         "uuid": "in-1"
@@ -164,7 +150,6 @@
         "kind": "assistant",
         "line": 1,
         "matched": "zqx",
-        "tsMs": 0,
         "tsText": "",
         "turn": 1,
         "uuid": "out-1"
@@ -288,7 +273,6 @@
         "background": 0,
         "done": true,
         "end": "t8",
-        "fails": 1,
         "folds": [
           {
             "after": "t-1",
@@ -366,7 +350,6 @@
         "background": 0,
         "done": false,
         "end": "t10",
-        "fails": 0,
         "folds": [
           {
             "after": "t-9",

@@ -1,13 +1,13 @@
 /**
  * 计划那一族的盘上输入：一个装在插件缓存里的 pb 替身（真后端照常找名字是 planned-build 的插件、起 `python3 <入口> <动词>`）＋
- * 工作区里 pb 原样那一份 dump（pb 0.5 · 形状 6，键名照 pb：`current_repo` · `repos[]` · `nodes[]` · `state` · `file_check` ·
- * `scopes[].handoff` · `pending_sets` …；每个节点另存一段 `agent_view`，替身的 `dump` 摘掉它、`dump --node` 才给，同 0.5）。
+ * 工作区里 pb 原样那一份 dump（pb 0.7.2 · 形状 8，键名照 pb：`current_repo` · `repos[]` · `nodes[]` · `state` · `file_check` ·
+ * `scopes[].handoff` · `pending_sets` …；每个节点另存一段 `agent_view`，替身的 `dump` 摘掉它、`dump --node` 才给，同 0.7）。
  * 替身只吐那一份、照几条命令改那一份、演 pb 的退出码（判据 `tests/shots/pb-stand-in.vitest.ts`）；数 · 排 · 短词一律是真后端算的。
  */
 import type { MachineDisk } from "./index";
 
 /** 插件根（相对家目录）：配置根 `.claude` 底下插件缓存里的一个版本。 */
-export const PB_ROOT = ".claude/plugins/cache/shots/planned-build/0.5.2";
+export const PB_ROOT = ".claude/plugins/cache/shots/planned-build/0.7.2";
 /** 入口脚本（相对家目录）。 */
 export const PB_ENTRY = `${PB_ROOT}/skills/planned-build/tools/entry.py`;
 
@@ -37,7 +37,7 @@ while not os.path.isdir(os.path.join(d, ".planned-build")):
     up = os.path.dirname(d)
     if up == d:
         if domains:
-            sys.stdout.write(json.dumps({"pb": "0.6.0", "shape": 6, "workspace": None, "domains": cfg.get("domains", [])}, ensure_ascii=False)); sys.exit(0)
+            sys.stdout.write(json.dumps({"pb": "0.7.2", "shape": 8, "workspace": None, "domains": cfg.get("domains", [])}, ensure_ascii=False)); sys.exit(0)
         sys.stderr.write("读不成：这里不是一个 pb 工作区\n"); sys.exit(3)
     d = up
 f = os.path.join(d, ".planned-build", "dump.json")
@@ -86,7 +86,7 @@ sys.stderr.write("用法：认不得 %s\n" % verb); sys.exit(4)
 
 /** 装上 pb 替身。 */
 export function putPb(d: MachineDisk, cfg: PbStandIn = {}): void {
-  d.files[`${PB_ROOT}/.claude-plugin/plugin.json`] = JSON.stringify({ name: "planned-build", version: "0.5.2" }) + "\n";
+  d.files[`${PB_ROOT}/.claude-plugin/plugin.json`] = JSON.stringify({ name: "planned-build", version: "0.7.2" }) + "\n";
   d.files[PB_ENTRY] = ENTRY_PY;
   d.files[`${PB_ROOT}/stand-in.json`] = JSON.stringify(cfg) + "\n";
 }
@@ -122,7 +122,7 @@ export interface NodeIn {
   coveredBy?: string[];
   /** 自己写的、还没执行的 sets。 */
   sets?: { target: string; value: string; op?: "add" | "remove" }[];
-  /** 住哪种图（默认 permanent 那一种；排期的节点写 `排期`）。 */
+  /** 住哪种图（默认 permanent 那一种；排期的节点写 `排期`，元数据住 `排期.md`）。 */
   graph?: string;
   /** 站在这个节点时 pb 印给 agent 的那一段；`false` ⇒ 没有。缺 ⇒ 照编号拼一段。 */
   view?: string | false;
@@ -141,16 +141,27 @@ function refsIn(text: string, ids: ReadonlySet<string>): { start: number; end: n
 
 const agentView = (n: NodeIn): string => `── ${n.id} ${n.title}（${n.kind}）\n> id: ${n.id} | kind: ${n.kind}\n\n要做成什么样：见上。\n${n.id} 底下下一个可用编号：${n.id}-1`;
 
-/** 一个仓库的节点（pb 原样）：父节点照 `children` 倒出来，标题与正文里的编号标出位置。`graph` ⇒ permanent 那一种图的名字。 */
-export function dumpNodes(nodes: NodeIn[], graph: string, lead: string | null): Record<string, unknown>[] {
+/**
+ * 一个仓库的节点（pb 原样）：父节点照 `children` 倒出来，标题与正文里的编号标出位置。`graph` ⇒ permanent 那一种图的名字；
+ * `dir` ⇒ 这个仓库 project 的目录（相对工作区根）：元数据写在父节点 `children_in` 那个权力范围的 `图.md`，排期的写 `排期.md`。
+ */
+export function dumpNodes(nodes: NodeIn[], graph: string, lead: string | null, dir: string): Record<string, unknown>[] {
   const ids = new Set(nodes.map((n) => n.id));
   const parentOf = new Map<string, string>();
   for (const n of nodes) for (const k of n.children ?? []) parentOf.set(k, n.id);
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const storedIn = (n: NodeIn): string => {
+    if (n.graph !== undefined && n.graph !== graph) return `${dir}/${n.graph}.md`;
+    const p = parentOf.get(n.id);
+    const scope = p === undefined ? "project" : (byId.get(p)?.childrenIn ?? "project");
+    return scope === "project" ? `${dir}/图.md` : `${dir}/${scope}/图.md`;
+  };
   return nodes.map((n) => ({
     id: n.id,
     title: n.title,
     kind: n.kind,
     graph: n.graph ?? graph,
+    stored_in: storedIn(n),
     body: n.body ?? "",
     parent: parentOf.get(n.id) ?? null,
     children: n.children ?? [],

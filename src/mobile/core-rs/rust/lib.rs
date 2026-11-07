@@ -18,7 +18,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 #[used]
 static TEST_HOME: fn() = test_home::linked;
 
-use jni::objects::{GlobalRef, JByteArray, JClass, JObject, JObjectArray, JString, JValue};
+use jni::objects::{GlobalRef, JByteArray, JClass, JObject, JString, JValue};
 use jni::sys::{jboolean, jint, jlong, jstring, JNI_FALSE, JNI_TRUE};
 use jni::{JNIEnv, JavaVM};
 use ssh_dial::env::{Credential, Env, ExternalSigner, Facts, HostKeys, KeySource};
@@ -33,7 +33,9 @@ mod busy;
 mod copy;
 mod host_keys;
 pub mod install;
+mod key_line;
 mod keys;
+mod listing;
 pub mod plan;
 pub mod resident;
 pub mod transfer;
@@ -180,6 +182,12 @@ fn hold_key(id: &str, holding: bool) -> bool {
         }
     }
     true
+}
+
+/// 编号 `id` 那一样是不是密码（机器条「用密码登录」那一行照它：[`deploy::machine::signed_in`]）；不在表里 ⇒ 不是。
+pub(crate) fn is_password(id: &str) -> bool {
+    let table = keys().lock().unwrap_or_else(|e| e.into_inner());
+    matches!(table.get(id).map(|h| &h.key), Some(Key::Password(_)))
 }
 
 struct PhoneKeys;
@@ -749,13 +757,17 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_version<'l>(
     new_jstring(&env, guarded("{}".to_string(), version_json))
 }
 
-/// `Core.init(sink, knownHosts)`：记下 Kotlin 那一侧、装上手机那一套（主机钥匙那份库在 `knownHosts`）。只认第一次。
+/// 会话列表副本（[`listing`]）：装核心时 Kotlin 交的那个目录，一个进程一份。
+static LISTS: OnceLock<listing::Lists> = OnceLock::new();
+
+/// `Core.init(sink, knownHosts, lists)`：记下 Kotlin 那一侧、装上手机那一套（主机钥匙那份库在 `knownHosts`，会话列表副本在 `lists` 目录）。只认第一次。
 #[no_mangle]
 pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_init<'l>(
     mut env: JNIEnv<'l>,
     _class: JClass<'l>,
     sink_obj: JObject<'l>,
     known_hosts: JString<'l>,
+    lists: JString<'l>,
 ) {
     guarded((), || {
         if SINK.get().is_none() {
@@ -766,36 +778,62 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_init<'l>(
         if let Some(p) = string(&mut env, &known_hosts) {
             install_env(p.into());
         }
+        if let Some(d) = string(&mut env, &lists) {
+            let _ = LISTS.set(listing::Lists::new(d.into()));
+        }
     });
 }
 
-/// `Core.migrateHostKeys(rows)`：Room 旧表（平铺：主机 · 口 · 类型 · base64 四个一行）迁进库、读回比；对上 ⇒ `null`（Kotlin 清空旧表），
-/// 对不上 ⇒ 那一句（之后拨号一律拒，下次启动再迁）。只活这一版。
+/// 整份那一答 ⇒ 交 Kotlin 的那一行（JSON）；没有 ⇒ 空串。
+fn list_json(p: Option<listing::ListPatch>) -> String {
+    p.and_then(|p| serde_json::to_string(&p).ok())
+        .unwrap_or_default()
+}
+
+/// `Core.listingHeld(host)`：这台手上那一份会话列表，摊成整份那一答（`SyncPatch`，`whole`）；没问过 · 核心没装 ⇒ 空串。
 #[no_mangle]
-pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_migrateHostKeys<'l>(
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_listingHeld<'l>(
     mut env: JNIEnv<'l>,
     _class: JClass<'l>,
-    rows: JObjectArray<'l>,
+    host: JString<'l>,
 ) -> jstring {
     guarded(std::ptr::null_mut(), || {
-        let rows = host_keys::OldRow::flat(&copy::strings(&mut env, &rows));
-        match BOOK.get().and_then(|b| b.migrate(&rows)) {
-            Some(said) => new_jstring(&env, said),
-            None => std::ptr::null_mut(),
-        }
+        let held = string(&mut env, &host).and_then(|h| LISTS.get()?.held(&h));
+        new_jstring(&env, list_json(held))
     })
 }
 
-/// `Core.forgetAllHostKeys()`：迁移对不上那一句的出路（点了、确认过才调）：清空库、开闸；`true` ⇒ Kotlin 删旧表。没对不上 · 写不成 ⇒ `false`。
+/// `Core.listingKeep(host, reply)`：那台 `history-list` 不带筛选那一问的回包（`data` 的 JSON）换上、存盘，回换好的整份；读不动 ⇒ 空串、手上那一份不动。
 #[no_mangle]
-pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_forgetAllHostKeys<'l>(
-    _env: JNIEnv<'l>,
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_listingKeep<'l>(
+    mut env: JNIEnv<'l>,
     _class: JClass<'l>,
-) -> jboolean {
-    guarded(JNI_FALSE, || match BOOK.get().map(|b| b.forget_all()) {
-        Some(true) => JNI_TRUE,
-        _ => JNI_FALSE,
+    host: JString<'l>,
+    reply: JString<'l>,
+) -> jstring {
+    guarded(std::ptr::null_mut(), || {
+        let (Some(h), Some(r)) = (string(&mut env, &host), string(&mut env, &reply)) else {
+            return new_jstring(&env, "");
+        };
+        let kept = serde_json::from_str(&r)
+            .ok()
+            .and_then(|v| LISTS.get()?.keep(&h, &v));
+        new_jstring(&env, list_json(kept))
     })
+}
+
+/// `Core.listingForget(host)`：删了一台，它的会话列表副本一并丢掉。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_listingForget<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    host: JString<'l>,
+) {
+    guarded((), || {
+        if let (Some(h), Some(l)) = (string(&mut env, &host), LISTS.get()) {
+            l.forget(&h);
+        }
+    });
 }
 
 /// `Core.forgetHost(host, port)`：忘掉这台的主机钥匙（「钥匙变了」页上点了才调）。写不成 ⇒ `false`。

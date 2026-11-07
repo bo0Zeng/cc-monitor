@@ -90,8 +90,6 @@ fun ClaudeReadingPane(
     listState: LazyListState = rememberLazyListState(),
     matchedKeys: Set<String> = emptySet(), // 搜索命中的 unit.key：高亮，并展开命中的折叠卡
     onCopyCode: (String) -> Unit = {}, // 复制代码块
-    // 本地消息发送失败时的重试。默认 no-op，只读阅读面用不到。
-    onRetrySend: (String) -> Unit = {},
     // 正文尾巴上不进时间线的那一块（聊天屏的活卡）。
     trailer: LazyListScope.() -> Unit = {},
     // 一次工具调用（tool_use id）此刻在等人 ⇒ 卡上那枚标的字（那台写好的）；不在等 ⇒ null。
@@ -130,7 +128,7 @@ fun ClaudeReadingPane(
                 // 点开着的那一段里的卡：左边一道 2dp 竖线标出「这是过程」；回退框里的：淡显 ＋ 左边一道虚线。
                 is StreamItem.Card ->
                     Box((if (item.fold != null) Modifier.foldRail() else Modifier).then(if (item.branch != null) Modifier.branchRail() else Modifier).then(fade)) {
-                        UnitCard(item.unit, item.unit.key in matchedKeys, onCopyCode, onRetrySend, Steps(stepBadge, stepWait, retry, errorNext, notice), said)
+                        UnitCard(item.unit, item.unit.key in matchedKeys, onCopyCode, Steps(stepBadge, stepWait, retry, errorNext, notice), said)
                     }
             }
         }
@@ -215,12 +213,11 @@ private fun UnitCard(
     unit: RenderUnit,
     matched: Boolean,
     onCopyCode: (String) -> Unit,
-    onRetrySend: (String) -> Unit,
     steps: Steps,
     said: SaidHooks?,
 ) {
     when (unit) {
-        is RenderUnit.UserText -> UserTextCard(unit, matched, onRetrySend, said)
+        is RenderUnit.UserText -> UserTextCard(unit, matched, said)
         is RenderUnit.AssistantMarkdown -> AssistantMarkdownCard(unit, matched, onCopyCode)
         is RenderUnit.Thinking -> ThinkingCard(unit, matched)
         is RenderUnit.ToolCall -> ToolCallCard(unit, matched, steps.badge(unit.toolUseId), steps.wait(unit.toolUseId).takeIf { unit.pending })
@@ -671,7 +668,6 @@ private fun Caret(expanded: Boolean) {
 private fun UserTextCard(
     unit: RenderUnit.UserText,
     matched: Boolean,
-    onRetrySend: (String) -> Unit = {},
     said: SaidHooks? = null,
 ) {
     val tokens = LocalAppTokens.current
@@ -680,7 +676,7 @@ private fun UserTextCard(
     val bubble = editing || unit.text.isNotEmpty() || unit.delivery != null
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
         if (unit.images.isNotEmpty() || unit.attachments.isNotEmpty()) SaidAttachments(unit)
-        if (bubble) UserBubble(unit, matched, onRetrySend, said)
+        if (bubble) UserBubble(unit, matched, said)
     }
 }
 
@@ -746,7 +742,6 @@ private fun SaidAttachments(unit: RenderUnit.UserText) {
 private fun UserBubble(
     unit: RenderUnit.UserText,
     matched: Boolean,
-    onRetrySend: (String) -> Unit,
     said: SaidHooks?,
 ) {
     val tokens = LocalAppTokens.current
@@ -769,17 +764,12 @@ private fun UserBubble(
             } else {
                 unit.parts.forEach { SaidPartView(it, matched) }
             }
-            // 投递状态贴在这条消息下面：只有在送 · 排着（已到 · 排第 N · 已送进）· 送达未知 · 没送到才有。
+            // 投递状态贴在这条消息下面：只有在送 · 排着 · 送达未知 · 没送到才有（没送到的那一句改了再送走输入框上方那一排的［撤回］）。
             val line = unit.deliveryText
             when (unit.delivery) {
                 DeliveryState.SENDING, DeliveryState.QUEUED, DeliveryState.UNSURE ->
                     line?.let { Text(it, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                DeliveryState.FAILED ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        line?.let { Text(it, style = monoSmall, color = tokens.errorText) }
-                        SecondaryButton(onClick = { onRetrySend(unit.key) }) { Text(copyText("front.act.retry"), style = monoSmall) }
-                    }
-                DeliveryState.FAILED_PERMANENT ->
+                DeliveryState.FAILED, DeliveryState.FAILED_PERMANENT ->
                     line?.let { Text(it, style = monoSmall, color = tokens.errorText) }
                 null -> Unit
             }

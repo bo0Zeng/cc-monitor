@@ -6,7 +6,7 @@
 #
 # 跑法：bash tests/e2e/ccm-cli.test.sh   （npm run test:ccm-cli）
 . "$(cd "$(dirname "$0")" && pwd)/sandbox-env.sh"  # 无条件清掉继承来的 CCM_* / CLAUDE* / ANTHROPIC_* / TMUX* / CC_BUS_*
-export CCM_HOST=e2e-ccm-cli  # 本套钉最终 exec 那一跳（直接执行）：不在 tmux 里缺省落托管容器 ⇒ 当已在托管终端里；托管那一形另有 plan_tests 钉着
+export CCM_HOST=e2e-ccm-cli  # 本套钉最终 exec 那一跳（直接执行）：当它就是托管终端里那一跳；托管那一形另有 plan_tests 钉着
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
@@ -29,7 +29,7 @@ CCM="$CCMDIR/ccm"
 zh() { "$REPO/node_modules/.bin/tsx" "$REPO/tests/e2e/copy-text.mts" "$@"; }
 # 中转那一格由 ccm 在最终 exec 那一处自己判（这台家目录下的钥匙 ＋ 回环口连得上）⇒ 不隔离的话，开发机上真跑着的
 #   常驻后端会让每条黄金串多出一句注入（结果随「是谁在跑测试」漂移）。家目录一律换成沙箱（没有钥匙 ⇒ 当中转不在），
-#   中转那几个变量一律不继承。注入那一形另有专测（`plan_tests.rs` · `tests/e2e/restart-suite.sh`）。
+#   中转那几个变量一律不继承。注入那一形另有专测（`plan_tests.rs`）。
 export HOME="$CCMDIR/home"; mkdir -p "$HOME"
 unset CCM_RELAY_PORT CCM_RELAY_ALL_SESSIONS ANTHROPIC_BASE_URL
 
@@ -458,5 +458,43 @@ ck "没有这一段：说清" "ccm: $(zh beProfile.chain.unknown name=nope)" "$(
 ck "@ 后面当不了配置名（@文件 那种提问）：整行原样交 claude" \
    "$UNSET; cd '/p' && exec $BIN/claude$(hk "$PHOME") '@README.md 讲讲'" \
    "$(pccm "$PHOME" "$CCM" '@README.md 讲讲' -- --cwd /p --ccm-print)"
+
+echo "===== 托管入口：ccm -- --hosts · cch ls · cch attach（写了 hosted = true 的那一段）====="
+# 家目录换成本段自己的：托管终端的家在 `<家>/.cc-monitor/hosts/`。托管进程直接起（`-- --host-run`，里面跑 sleep，不起 agent），
+#   按 PID 收（`env` 换成 ccm，$! 就是托管进程）。
+HHOME="$CCMDIR/hhome"; mkdir -p "$HHOME/.cc-monitor"
+cat > "$HHOME/.cc-monitor/profiles.toml" <<'TOML'
+[cc]
+
+[cch]
+from = "cc"
+hosted = true
+
+[bcch]
+from = "cch"
+account = "b"
+TOML
+ln -s "$CCM_NATIVE" "$CCMDIR/cch"; ln -s "$CCM_NATIVE" "$CCMDIR/bcch"
+HENV=(env -u CLAUDE_CONFIG_DIR -u TMUX -u TMUX_PANE -u CCM_HOST HOME="$HHOME")
+hrun() { "${HENV[@]}" "$@"; }
+ck "没有托管终端：说一句" "$(zh beHost.hosts.none)" "$(hrun "$CCM" -- --hosts)"
+"${HENV[@]}" "$CCM" -- --host-run h1 name=one cwd=/x/one account=b -- sleep 60 </dev/null >/dev/null 2>&1 & H1=$!
+"${HENV[@]}" "$CCM" -- --host-run h2 name=two cwd=/x/two -- sleep 60 </dev/null >/dev/null 2>&1 & H2=$!
+wall_until '[ "$(hrun "$CCM" -- --hosts | wc -l)" -ge 2 ]'
+HOSTS="$(hrun "$CCM" -- --hosts)"
+ck "ccm -- --hosts：两个托管终端两行、头一格是名字" "one two" \
+   "$(printf '%s\n' "$HOSTS" | awk '{print $1}' | sort | tr '\n' ' ' | sed 's/ $//')"
+ck "ccm -- --hosts：点名的号 · 没点名的说缺省号 · 没人接着" "b $(zh beHost.hosts.defaultAccount)" \
+   "$(printf '%s\n' "$HOSTS" | sort | awk '{print $3}' | tr '\n' ' ' | sed 's/ $//')"
+ck "ccm -- --hosts：没人接着" "2" "$(printf '%s\n' "$HOSTS" | grep -cF "$(zh beHost.hosts.detached)")"
+ck "cch ls ＝ ccm -- --hosts（管道里也答：不起会话）" "$HOSTS" "$(hrun "$CCMDIR/cch" ls </dev/null)"
+ck "bcch ls 与 cch ls 同一份" "$HOSTS" "$(hrun "$CCMDIR/bcch" ls </dev/null)"
+ck "cch attach 缺名：说清" "ccm: $(zh beArgv.needVal.missing name=attach)" "$(hrun "$CCMDIR/cch" attach 2>&1)"
+ck "cch ls 后面多了词：说清" "ccm: $(zh beArgv.hostedEntry.extra word=ls extra=x)" "$(hrun "$CCMDIR/cch" ls x 2>&1)"
+ck "cch 别的第一个词照 ccm @cch：起在托管终端里" "yes" \
+   "$(hrun "$CCMDIR/cch" 你好 -- --cwd /p --ccm-print 2>/dev/null | grep -qF "'--host-run'" && echo yes || echo no)"
+ck "没写 hosted 的那一段（cc）：ls 照旧交 claude、不在托管终端里" "no" \
+   "$(hrun "$CCM" @cc ls -- --cwd /p --ccm-print 2>/dev/null | grep -qF "'--host-run'" && echo yes || echo no)"
+kill "$H1" "$H2" 2>/dev/null; wait "$H1" "$H2" 2>/dev/null
 
 finish

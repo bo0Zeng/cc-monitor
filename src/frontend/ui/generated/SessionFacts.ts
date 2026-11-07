@@ -11,7 +11,6 @@ import type { McpTrouble } from "./McpTrouble";
 import type { Needs } from "./Needs";
 import type { NoticeRun } from "./NoticeRun";
 import type { PendingCall } from "./PendingCall";
-import type { QuietUnread } from "./QuietUnread";
 import type { RetryRun } from "./RetryRun";
 import type { TokenUse } from "./TokenUse";
 import type { UsageFact } from "./UsageFact";
@@ -49,6 +48,11 @@ modelPick: string | null,
  */
 projectDir: string | null, 
 /**
+ * `project_dir` 的显示形：那台按自己的家目录写好的 `~/…`（`platform::paths::home_short`，写法同 `AccountRow.configDirShown`），
+ * 两端显示目录照抄它、不自己缩；项目目录还没读到 ⇒ 不出现。每次现给，不累加。
+ */
+cwdShown?: Words, 
+/**
  * 这份记录是哪一家的（线上的 kind，适配层按记录认：`agents::record_kind_of`）；认不出 ⇒ `null`（界面要分家的那几项灰着，不落哪一家）。
  */
 agent: AgentKind | null, 
@@ -61,6 +65,10 @@ writers: Array<number>,
  * 不止一个进程在写时那一句（[`writers_line`]，跟着 `writers` 现给；界面照摆）；一个或没有 ⇒ 不出现。
  */
 writersLine?: Words, 
+/**
+ * 分叉来的那一句（[`forked_line`]：「分叉自「父会话的名字」」，出口那一下照父会话那份记录起名；悬停卡照摆）；不是分叉来的 ⇒ 不出现。
+ */
+forkedLine?: Words, 
 /**
  * 这条会话在哪：「<目录> · <机器>」那一句（[`where_line`]，与终端页头同一句；机器照看的这一端对那台的称呼，信封 `called`；界面照摆）。
  * 没交称呼 ⇒ 只目录；目录还没读到 ⇒ 只名字；两样都没有 ⇒ 不出现。
@@ -144,8 +152,4 @@ childrenText: Words | null,
  * **状态一句里会走的那一截**：pidfile 此刻说的那一态 ＋ 记录里的事实（在跑的那一步 · 等的种类与起点 · 最后一句的时刻），[`line_of`] 写。
  * 不活 ⇒ `null`。不累加，每次现查。
  */
-line: FactsLine | null, 
-/**
- * 认不出、又不成卡的行（那一家的簿记行：没见过的类型、没有链上身份）：不在消息流里画，在这里照实说几行、哪几种。一行都没有 ⇒ `null`。
- */
-quietUnread: QuietUnread | null, };
+line: FactsLine | null, };

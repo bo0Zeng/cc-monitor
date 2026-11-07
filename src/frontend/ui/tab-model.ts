@@ -43,6 +43,11 @@ export interface Tab {
    */
   projectDir: string | null;
   /**
+   * 项目目录的显示形：那台按自己的家目录写好的 `~/…`（会话事实的 `cwdShown`）。会话头目录行与终端页页头「在哪」照它显，不显原样 `projectDir`；
+   * 事实还没到 / 那台还没读到目录 ⇒ `null`（不显目录）。
+   */
+  cwdShown: string | null;
+  /**
    * 这个会话是哪一家（线上的 kind）：只来自后端（会话事实的 `agent`，那台按记录认）。恢复 · 接回 · 选号 · 账号面板 · 卡头都按它；
    * `null` ＝ 事实还没到 / 认不出 ⇒ 要分家的那几项灰着，不落哪一家。
    */
@@ -53,12 +58,10 @@ export interface Tab {
    */
   label: string | null;
   /**
-   * 本会话是从哪个会话 fork 来的（判定住后端 `history::listing::fork_origin`，与历史树同一份；出现一次就锁定）。null = 非 fork。
-   * 悬停卡那一行说源会话（标题里的 `↳` 是核心写进整行的）。
+   * 分叉来的那一句（后端会话事实的 `forkedLine`：「分叉自「父会话的名字」」，界面照摆）；不是分叉来的 ⇒ `null`。
+   * 悬停卡那一行照它（标题里的 `↳` 是核心写进整行的）。
    */
-  forkedFromSessionId: string | null;
-  /** 不止一个进程在同时写这条会话时那一句（后端会话事实的 `writersLine`，界面照摆）；没有 ⇒ `null`。 */
-  writersLine: string | null;
+  forkedLine: string | null;
   /** 这条会话在哪：「机器 · 目录」那一句（后端会话事实的 `whereLine`，那台照看的这一端对它的称呼写好，界面照摆）；没有 ⇒ `null`。 */
   whereLine: string | null;
   /**

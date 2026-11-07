@@ -18,7 +18,8 @@ import { icon } from "./kit/icon";
 import { closePopover, openPopover } from "./kit/popover";
 import { attachTooltip } from "./kit/tooltip";
 import { OrderDrag, type DragEnd, type DragRow } from "./rot-drag";
-import { avatar, markEls, meters, nameIn, rowOf } from "./rot-board";
+import { avatar, markEls, nameIn, rowOf } from "./rot-board";
+import { accountLine, quotaCellOf } from "./account-line";
 import { orderKeys } from "./rot-keys";
 import type { RotLine } from "./generated/RotLine";
 import type { RotationViewReply } from "./generated/RotationViewReply";
@@ -295,10 +296,9 @@ export function createOrder(origin: Machine, acts: OrderActs, onIdle: () => void
     const head = el("span", s.rotOrderNameTop);
     const acct = el("b", s.rotOrderAcct, nameIn(v, l.account));
     acct.id = `rot-order-name-${++nameSeq}`;
-    head.append(acct, ...markEls(rowOf(v, l.account), r));
+    head.append(accountLine({ plate: avatar(v, l.account, origin), name: acct, quota: quotaCellOf(origin, l.account) }), ...markEls(rowOf(v, l.account), r));
     name.appendChild(head);
     if (l.why !== undefined) name.appendChild(el("span", s.rotOrderWhy, l.why));
-    const f = v.accounts.find((x) => x.account === l.account);
     const state = el("span", s.rotOrderState, l.state);
     state.dataset.rotState = "";
     const end = el("span", s.rotOrderEnd);
@@ -315,8 +315,7 @@ export function createOrder(origin: Machine, acts: OrderActs, onIdle: () => void
       tick.addEventListener("change", () => acts.off(l.account, !tick.checked));
       end.appendChild(tick);
     }
-    r.append(handle, el("span", s.rotOrderIx, String(k + 1)), avatar(v, l.account, origin), name);
-    if (f) r.appendChild(meters(f, undefined));
+    r.append(handle, el("span", s.rotOrderIx, String(k + 1)), name);
     r.appendChild(end);
     r.addEventListener("pointerdown", (e) => onPointerDown(e, lines.indexOf(r)));
     return r;

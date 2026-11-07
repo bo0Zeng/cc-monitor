@@ -1,6 +1,6 @@
 /**
  * 计划页的合成世界：本机一个工作区两个仓库（软件 `ledger` · 研究 `export-survey`）＋ devbox 一个工作区一个仓库（`site`）。
- * 盘上是 pb 0.5 原样的 dump（形状 6）与 pb 替身（`../disk/plan.ts`），计划那一族帧命令全由真后端答；名字与正文全是合成的中性例子。
+ * 盘上是 pb 0.7.2 原样的 dump（形状 8）与 pb 替身（`../disk/plan.ts`），计划那一族帧命令全由真后端答；名字与正文全是合成的中性例子。
  */
 import type { SessionSpec, World } from "./types";
 import { Convo } from "./records";
@@ -46,13 +46,13 @@ export function planSessions(): SessionSpec[] {
 }
 
 const labels = (w: string): Record<string, string> => ({ to: w, with: w, after: "排在后面", covers: w, file: "管文件", replaces: "替换", sets: "改状态" });
-const kind = (name: string, w: string, graph: string, evidence: boolean, values: string[]): Record<string, unknown> => ({ name, graph, evidence, values, edge_labels: labels(w) });
+const kind = (name: string, w: string, graph: string, evidence: boolean, values: string[]): Record<string, unknown> => ({ name, graph, stored_in: null, evidence, values, edge_labels: labels(w) });
 
-/** 软件那张表（插件那一份的形状；阶段说明、规则只留真后端读得到的几条）。 */
+/** 软件那张表（插件那一份的形状；阶段说明、规则只留真后端读得到的几条）。排期只划出，先后住节点上的 after。 */
 const SOFT = {
   graphs: [
-    { name: "架构", file: "图.md", lifetime: "permanent", copies: "per_scope", prefix: null, order_by: null, scope_by: null },
-    { name: "排期", file: "排期.md", lifetime: "temporary", copies: "per_scope", prefix: "P", order_by: "to", scope_by: "covers" },
+    { name: "架构", file: "图.md", lifetime: "permanent", prefix: null, scope_by: null },
+    { name: "排期", file: "排期.md", lifetime: "temporary", prefix: "P", scope_by: "covers" },
   ],
   kinds: [
     kind("能力", "连着", "架构", false, ["已签收", "decided"]),
@@ -66,8 +66,9 @@ const SOFT = {
   ],
   phases: [
     { name: "定架构", description: "先定结构" },
-    { name: "审计", description: "审架构与实现" },
+    { name: "审架构", description: "审架构" },
     { name: "开发", description: "写代码" },
+    { name: "审实现", description: "审实现" },
     { name: "回看", description: "回看整体，决定下一步" },
   ],
   views: [{ name: "没签收的", query: "subtree=this kind=能力,模块 state!=已签收" }],
@@ -81,8 +82,8 @@ const SOFT = {
 /** 研究那张表（没有加 · 去状态的规则 ⇒ 不出进度）。 */
 const RESEARCH = {
   graphs: [
-    { name: "知识", file: "图.md", lifetime: "permanent", copies: "per_scope", prefix: null, order_by: null, scope_by: null },
-    { name: "排期", file: "排期.md", lifetime: "temporary", copies: "per_scope", prefix: "P", order_by: "to", scope_by: "covers" },
+    { name: "知识", file: "图.md", lifetime: "permanent", prefix: null, scope_by: null },
+    { name: "排期", file: "排期.md", lifetime: "temporary", prefix: "P", scope_by: "covers" },
   ],
   kinds: [kind("问题", "连着", "知识", false, ["decided"]), kind("来源", "连着", "知识", false, ["支持", "反对", "decided"]), kind("推断", "推自", "知识", false, ["支持", "反对", "decided"]), kind("佐证", "连着", "知识", true, [])],
   phases: [
@@ -135,6 +136,8 @@ export interface PlanWorldOpts {
   docsOnly?: boolean;
   /** 本机有两组（注解文件里）：「导入组」里有导入解析、「底座组」里有工程底座；导出实现不在组里。 */
   groups?: boolean;
+  /** 本机那个工作区再多几个仓库（页头那一排放不下）。 */
+  moreRepos?: number;
 }
 
 /** 两组（id 全局不重 · 名字 · 几时建 · 名字几时起，毫秒）与组员（会话注解上的 `groups`）。 */
@@ -194,7 +197,7 @@ function ledgerRepo(o: PlanWorldOpts, landed?: Landed): Record<string, unknown> 
       { id: "A2-1-4", title: "签收编码探测", kind: "验收记录", ...inA21, body: "GBK 与 UTF-8 各一份样本读得出，别的编码报错。", sets: [{ target: "A2-1-3", value: "已签收" }] },
       { id: "A2-1-5", title: "签收解析模块", kind: "验收记录", edges: { with: ["A2-1-1"] }, ...inA21, body: "读入与校验写完，单测 38 passed；变异 22/22 被杀，对过 A2 的边界三条。" },
       { id: "A2-2", title: "导入验收测试", kind: "测试", edges: { with: ["A2"], after: ["A2-1-1"] }, coveredBy: ["A8"], files: [{ path: "tests/test_accept_import.py", check: "empty", note: "0 字" }] },
-      { id: "A3", title: "导出 CSV", kind: "能力", state: signed, children: ["A3-1", "A3-2", "A3-3"], body: "把对过账的行写回 CSV，列序照 A2。" },
+      { id: "A3", title: "导出 CSV", kind: "能力", state: signed, children: ["A3-1", "A3-2", "A3-3"], edges: { after: ["A2"] }, body: "把对过账的行写回 CSV，列序照 A2。" },
       { id: "A3-1", title: "导出实现", kind: "模块", state: signed, edges: { with: ["A3"] }, childrenIn: "A3-1", assignee: P.export, files: [{ path: "ledger/export_csv.py", check: "invalid", note: "是个目录" }] },
       { id: "A3-2", title: "导出验收测试", kind: "测试", edges: { with: ["A3"] }, view: false },
       { id: "A3-3", title: "导出格式选项", kind: "模块", state: signed, edges: { with: ["A3"] }, childrenIn: "A3-3", assignee: null, body: "分隔符与编码两个选项，默认逗号与 UTF-8。" },
@@ -210,11 +213,11 @@ function ledgerRepo(o: PlanWorldOpts, landed?: Landed): Record<string, unknown> 
       { id: "A6-1", title: "列定义只写一处", kind: "原话", edges: { with: ["A6"] }, body: "「列定义只写一处」「导出照导入的列序」" },
       { id: "A8", title: "列定义一处", kind: "规矩", covers: ["A2"], body: "守什么：导入与导出照同一份列定义（A2）。" },
       ...(landed === "top" ? [{ id: "A7", title: "导出与导入对拍", kind: "能力" }] : []),
-      { id: "P1", title: "先后", kind: "排期", graph: "排期", edges: { to: ["A1"] } },
       { id: "P2", title: "划出", kind: "排期", graph: "排期", covers: ["A2-1"] },
     ],
     "架构",
     P.lead,
+    ".planned-build/ledger",
   );
   return {
     name: "ledger",
@@ -225,7 +228,7 @@ function ledgerRepo(o: PlanWorldOpts, landed?: Landed): Record<string, unknown> 
     top_level: ["A1", "A2", "A3", "A4", "A5", "A6", "A8", ...(landed === "top" ? ["A7"] : [])],
     scopes: [
       scope("ledger", "project", "", P.lead, o.topDone ? "回看" : "开发", "A3"),
-      scope("ledger", "A2-1", "导入解析", SUB_ID, "审计", "A2-1-3"),
+      scope("ledger", "A2-1", "导入解析", SUB_ID, "审实现", "A2-1-3"),
       scope("ledger", "A3-1", "导出实现", P.export, "开发", null),
       scope("ledger", "A3-3", "导出格式选项", null, "定架构", null),
       scope("ledger", "A4", "工程底座", P.base, "回看", null),
@@ -245,6 +248,7 @@ function ledgerRepo(o: PlanWorldOpts, landed?: Landed): Record<string, unknown> 
     ],
     pending_replaces: [],
     archived: [{ id: "A9", title: "网页导入", kind: "能力", replaced_by: null }],
+    audits: [],
   };
 }
 
@@ -270,10 +274,12 @@ function surveyRepo(): Record<string, unknown> {
       ],
       "知识",
       lead,
+      ".planned-build/export-survey",
     ),
     pending_sets: [],
     pending_replaces: [],
     archived: [],
+    audits: [],
   };
 }
 
@@ -294,6 +300,35 @@ function freshRepo(): Record<string, unknown> {
     pending_sets: [],
     pending_replaces: [],
     archived: [],
+    audits: [],
+  };
+}
+
+/** 多出来的那几个仓库：名字长短不一、各有三个顶层节点，签了一部分。 */
+function extraRepo(k: number): Record<string, unknown> {
+  const name = k % 3 === 0 ? `工具箱-${k}` : k % 3 === 1 ? `docs-site-${k}` : `x${k}`;
+  const ids = [1, 2, 3].map((i) => `C${k}-${i}`);
+  return {
+    name,
+    domain: "软件",
+    path: name,
+    plan_only: false,
+    ...SOFT,
+    top_level: ids,
+    scopes: [scope(name, "project", "", PLAN_SIDS.site, "开发", null)],
+    pending_scopes: [],
+    unowned: { paths: [], error: null },
+    check: NO_CHECK,
+    nodes: dumpNodes(
+      ids.map((id, i) => ({ id, title: `第 ${i + 1} 样`, kind: "能力", ...(i < k % 4 ? { state: ["已签收"] } : {}) })),
+      "架构",
+      PLAN_SIDS.site,
+      `.planned-build/${name}`,
+    ),
+    pending_sets: [],
+    pending_replaces: [],
+    archived: [],
+    audits: [],
   };
 }
 
@@ -322,10 +357,12 @@ function siteRepo(): Record<string, unknown> {
       ],
       "架构",
       s,
+      ".planned-build/site",
     ),
     pending_sets: [],
     pending_replaces: [],
     archived: [],
+    audits: [],
   };
 }
 
@@ -334,11 +371,12 @@ const DOMAINS = [
   { name: "软件", source: "plugin", ...SOFT },
 ];
 
-const dumpOf = (workspace: string, repo: string, repos: Record<string, unknown>[]): Record<string, unknown> => ({ pb: "0.5.2", shape: 6, workspace, current_repo: repo, auto_continue: false, domains: DOMAINS, repos });
+const dumpOf = (workspace: string, repo: string, repos: Record<string, unknown>[]): Record<string, unknown> => ({ pb: "0.7.2", shape: 8, workspace, current_repo: repo, auto_continue: false, domains: DOMAINS, repos });
 
 /** 本机那个工作区此刻的 dump（`landed` ⇒ 退回之后 pb 那一侧加了一个节点：场景开页之后改写那一份）。 */
 export function ledgerDump(o: PlanWorldOpts, landed?: Landed): Record<string, unknown> {
-  return dumpOf(LEDGER_WS, "ledger", [ledgerRepo(o, landed), surveyRepo(), ...(o.fresh ? [freshRepo()] : [])]);
+  const more = Array.from({ length: o.moreRepos ?? 0 }, (_, i) => extraRepo(i + 1));
+  return dumpOf(LEDGER_WS, "ledger", [ledgerRepo(o, landed), surveyRepo(), ...(o.fresh ? [freshRepo()] : []), ...more]);
 }
 
 /** 计划页的世界：默认世界 ＋ 计划用到的几个会话 ＋ 各台装着 pb 替身（`pb: missing` ⇒ 不装）＋ 本机与 devbox 各一个工作区。 */

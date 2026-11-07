@@ -35,7 +35,7 @@ fn token_of(d: &Path, sid: &str, max: Option<usize>) -> String {
 #[test]
 fn a_delivered_letter_is_peeked_then_committed_and_unread_drops_to_zero() {
     let d = test_home::scratch("cycle");
-    assert_eq!(deliver(&own(&d), &env(B, "t1", "m1"), 1_000), Ok(false));
+    assert_eq!(deliver(&own(&d), &env(B, "t1", "m1"), 1_000), Ok(()));
     assert_eq!(unread(&bus(&d), B).unwrap(), 1);
     let p = peek(&bus(&d), B, None).unwrap().expect("有一封");
     assert_eq!(p.lines.len(), 1);
@@ -206,7 +206,7 @@ fn tier1(to: &str, title: &str, id: &str) -> BusEnvelope {
 fn a_tier_one_letter_knocks_by_queueing_one_line_for_the_recipient() {
     let h = test_home::scratch("knock");
     let own = crate::platform::fs::Own::issue_at(&h);
-    assert_eq!(deliver(&own, &tier1(B, "合一下", "m1"), 1_000), Ok(true));
+    assert_eq!(deliver(&own, &tier1(B, "合一下", "m1"), 1_000), Ok(()));
     let q = queue_of(&h, B);
     assert_eq!(q.len(), 1, "收件人的输入队多一条");
     assert_eq!(q[0].end, "cc-bus", "发自 cc-bus");
@@ -221,7 +221,7 @@ fn a_tier_one_letter_knocks_by_queueing_one_line_for_the_recipient() {
         "不带标题与正文：那一句是对方的输入"
     );
     // 去抖窗里第二封照收、不再敲。
-    assert_eq!(deliver(&own, &tier1(B, "又一封", "m2"), 1_500), Ok(false));
+    assert_eq!(deliver(&own, &tier1(B, "又一封", "m2"), 1_500), Ok(()));
     assert_eq!(queue_of(&h, B).len(), 1);
     assert_eq!(unread(&h.join(".cc-monitor").join(DIR), B).unwrap(), 2);
 }
@@ -230,15 +230,15 @@ fn a_tier_one_letter_knocks_by_queueing_one_line_for_the_recipient() {
 fn a_tier_two_letter_never_touches_the_input_queue() {
     let h = test_home::scratch("noknock");
     let own = crate::platform::fs::Own::issue_at(&h);
-    assert_eq!(deliver(&own, &env(B, "t", "m1"), 1_000), Ok(false));
+    assert_eq!(deliver(&own, &env(B, "t", "m1"), 1_000), Ok(()));
     assert!(queue_of(&h, B).is_empty());
 }
 
 #[test]
 fn a_knock_that_cannot_be_queued_still_keeps_the_letter() {
-    // 只有数据目录、没有家目录 ⇒ 输入队那一处写不了：信照收，回「没敲」。
+    // 只有数据目录、没有家目录 ⇒ 输入队那一处写不了：信照收，投信不算失败。
     let d = test_home::scratch("knockfail");
-    assert_eq!(deliver(&own(&d), &tier1(B, "t", "m1"), 1_000), Ok(false));
+    assert_eq!(deliver(&own(&d), &tier1(B, "t", "m1"), 1_000), Ok(()));
     assert_eq!(unread(&bus(&d), B).unwrap(), 1);
 }
 
@@ -249,7 +249,7 @@ fn the_state_file_version_is_kept_by_the_declaration() {
     let state = bus(&d).join("state.json");
     // 没写 `version` 的一份当第 1 版读。
     std::fs::write(&state, br#"{"pos":{}}"#).unwrap();
-    assert_eq!(deliver(&own(&d), &env(B, "t", "m1"), 1_000), Ok(false));
+    assert_eq!(deliver(&own(&d), &env(B, "t", "m1"), 1_000), Ok(()));
     let v: serde_json::Value = serde_json::from_slice(&std::fs::read(&state).unwrap()).unwrap();
     assert_eq!(v["version"], 1, "写回的那一份带声明表那一版");
     // 比声明新 ⇒ 不投、盘上字节不动。

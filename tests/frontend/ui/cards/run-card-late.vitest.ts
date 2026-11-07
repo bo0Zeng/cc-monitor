@@ -38,14 +38,14 @@ describe("卡上用了多久照抄运行表写好的那一句", () => {
 
   it("收场了 ⇒ 状态 · 写好的用时（不拿起止时刻现算）", () => {
     const card = buildAgentCard("t1", "Task", undefined);
-    const i = info({ took_text: "核心·用时", started_ms: 0, ended_ms: 90_000 });
+    const i = info({ took_text: "核心·用时", started_ms: 0 });
     markRunCard(card, i, i);
     expect(stateOf(card)).toBe(["核心·完成", "核心·用时"].join(copyText("kit.text.sep")));
   });
 
   it("没有写好的用时 ⇒ 只写状态", () => {
     const card = buildAgentCard("t1", "Task", undefined);
-    const i = info({ started_ms: 0, ended_ms: 90_000 });
+    const i = info({ started_ms: 0 });
     markRunCard(card, i, i);
     expect(stateOf(card)).toBe("核心·完成");
   });

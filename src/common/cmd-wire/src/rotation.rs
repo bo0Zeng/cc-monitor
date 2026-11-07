@@ -19,9 +19,9 @@ pub struct WinFact {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
     pub resets: Option<u64>,
-    /// `resets` 写给人看的样子（按看的那一台的时区）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    /// `resets` 写给人看的样子（按看的那一台的时区；后端写行用，不上线）。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub resets_text: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
@@ -79,9 +79,9 @@ pub struct Fact {
     #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
     pub weekly: bool,
     pub login: LoginState,
-    /// 额度账上最后一次看到它（没出过数 ⇒ 缺）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
+    /// 额度账上最后一次看到它（没出过数 ⇒ 缺；后端自己用，不上线）。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub seen_at: Option<u64>,
     /// 事实上用不了 ⇒ 有；能用 ⇒ 缺。
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -513,9 +513,9 @@ pub enum RotHint {
         #[serde(skip_serializing_if = "Option::is_none")]
         #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         account: Option<String>,
-        /// `until` 的钟面（`HH:MM`，看的那一台的时区；不在今天带日期）。
-        #[serde(rename = "untilText", skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        /// `until` 的钟面（`HH:MM`，看的那一台的时区；不在今天带日期）：后端写提示那一句用，不上线。
+        #[serde(skip)]
+        #[cfg_attr(any(test, feature = "ts"), ts(skip))]
         until_text: Option<String>,
     },
     /// 策略出错（这一判走了兜底：此刻的号发得出去就照用，否则照号列表的先后）。`path` ＝ 那份文件在那台上的路径（文件不在 ⇒ 缺）：「看代码」照它开。

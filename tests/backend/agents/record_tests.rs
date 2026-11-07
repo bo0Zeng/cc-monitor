@@ -99,7 +99,6 @@ fn draw_and_human_are_worked_out_once_from_the_body() {
     };
     let reply = |blocks: Vec<Block>, cards: &[(&str, ToolCard)]| Body::Reply {
         blocks,
-        model: None,
         auto_reply: false,
         cards: cards.iter().map(|(k, c)| (k.to_string(), *c)).collect(),
         steps: BTreeMap::new(),
@@ -127,12 +126,10 @@ fn draw_and_human_are_worked_out_once_from_the_body() {
             cards,
             steps,
             runs,
-            model,
             error,
             ..
         } => Body::Reply {
             blocks,
-            model,
             auto_reply: true,
             cards,
             steps,
@@ -147,12 +144,10 @@ fn draw_and_human_are_worked_out_once_from_the_body() {
             cards,
             steps,
             runs,
-            model,
             auto_reply,
             ..
         } => Body::Reply {
             blocks,
-            model,
             auto_reply,
             cards,
             steps,

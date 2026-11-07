@@ -10,6 +10,7 @@ enum class DrawerItem {
     Conversations,
     Files,
     Terminal,
+    Plan,
 }
 
 /** 抽屉里点下去的每一件事。去哪由导航层 `drawerDestination` 定。 */
@@ -21,6 +22,9 @@ sealed interface DrawerAction {
     data object Files : DrawerAction
 
     data object Terminal : DrawerAction
+
+    /** 这台的计划页（全局去处，与桌面栏顶「更多去处」里的「计划」同一个；聊天 ⋯ 里不再另有一项）。 */
+    data object Plan : DrawerAction
 
     /** 底行点名字那半 ⇒ 服务器列表。 */
     data object Servers : DrawerAction
@@ -60,7 +64,8 @@ fun drawerEntries(): List<DrawerEntry> =
         DrawerEntry(DrawerItem.NewConversation, Ph.PlusCircle, copyText("newSession.title.plain")),
         DrawerEntry(DrawerItem.Conversations, Ph.Chats, copyText("mobDrawer.item.sessions")),
         DrawerEntry(DrawerItem.Files, Ph.FolderSimple, copyText("mobDrawer.item.files")),
-        DrawerEntry(DrawerItem.Terminal, Ph.TerminalWindow, copyText("mobDrawer.item.terminal")),
+        DrawerEntry(DrawerItem.Terminal, Ph.TerminalWindow, copyText("main.cmd.openTerminals")),
+        DrawerEntry(DrawerItem.Plan, Ph.CheckSquare, copyText("plan.page.title")),
     )
 
 fun DrawerItem.action(): DrawerAction =
@@ -69,6 +74,7 @@ fun DrawerItem.action(): DrawerAction =
         DrawerItem.Conversations -> DrawerAction.Conversations
         DrawerItem.Files -> DrawerAction.Files
         DrawerItem.Terminal -> DrawerAction.Terminal
+        DrawerItem.Plan -> DrawerAction.Plan
     }
 
 /** 「最近」里的一行：只有标题。编号只用来打开它，不上屏。 */
@@ -100,7 +106,8 @@ fun recentFitCount(
     return ((availablePx - headerPx) / rowPx).coerceIn(0, total)
 }
 
-const val DRAWER_TITLE = "cc-monitor"
+/** 抽屉顶上那个名字（经文案表，与窗口的基础标题同一个键）。 */
+fun drawerTitle(): String = copyText("needs.windowTitle.base")
 
 val RECENT_HEADER: String get() = copyText("mobDrawer.recent.title")
 

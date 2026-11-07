@@ -68,10 +68,10 @@
 
 use crate::detail::Shell as _;
 use crate::platform::own_fs::OwnBin;
+use cap_core::{Cap, Over};
 use copy_core::copy_text;
 use copy_core::said::Said;
 use copy_core::{Discard, Why};
-use relay_route_core::{Cap, Over};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
@@ -1159,9 +1159,9 @@ pub fn place_local_program(
 
 /// 盘上 `dest` 与手上这份逐字节相同。读上限就是手上这份的长度：更长的就不是这一份，超了拒、不截一段去比，照「不同」回。
 fn same_on_disk(dest: &Path, bytes: &[u8]) -> bool {
-    let cap = relay_route_core::Cap {
+    let cap = cap_core::Cap {
         bytes: bytes.len() as u64,
-        over: relay_route_core::Over::Reject,
+        over: cap_core::Over::Reject,
     };
     matches!(
         host_core::read_capped_bytes(dest, cap),

@@ -17,10 +17,6 @@ account: string, kind: QuotaKind, w5h: WinFact, w7d: WinFact,
  */
 weekly?: boolean, login: LoginState, 
 /**
- * 额度账上最后一次看到它（没出过数 ⇒ 缺）。
- */
-seenAt?: number, 
-/**
  * 事实上用不了 ⇒ 有；能用 ⇒ 缺。
  */
 blocked?: FactBlocked, };

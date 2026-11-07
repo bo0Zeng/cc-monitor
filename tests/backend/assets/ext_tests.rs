@@ -291,7 +291,6 @@ fn the_table_judges_every_cell_place_and_target() {
     );
     assert!(rows[1..].iter().all(|r| r.known.is_none()));
     let cc_bring = cc.cells[0].bring.as_ref().unwrap();
-    assert_eq!(cc_bring.from_name, n("beExt.from.builtin"));
     assert_eq!(
         cc_bring.targets[1].note,
         Some(n("beExt.target.builtinUserOnly"))

@@ -256,6 +256,16 @@ pub(crate) fn parse_entry(
     match named {
         Some(name) => {
             let b = book().map_err(Die)?;
+            // 托管入口（那一段合下来写了 `--hosted`，如 `cch`）：第一个词是它的（`ls` · `attach`）就归它，其余照那一段。
+            if let Some(words) = argv::hosted_entry(&args[1..]) {
+                let hosted = matches!(
+                    profile::resolve(&b, name, &[]).map(|r| r.parsed),
+                    Ok(Parsed::Opts(o)) if o.hosted
+                );
+                if hosted {
+                    return argv::parse_layered(&[], &words?);
+                }
+            }
             profile::resolve(&b, name, &args[1..])
                 .map(|r| (r.parsed, r.origins))
                 .map_err(Die)
@@ -294,20 +304,23 @@ pub fn run(
     }
     // 托管名单的家：铸托管名避让 · resume 认托管那几行 · `--attach` 都凭它（`host::managed::installed`）。
     crate::host::managed::install(own);
-    if refuses_without_terminal(
-        args,
-        std::io::stdin().is_terminal(),
-        std::io::stdout().is_terminal(),
-    ) {
+    let env = Env::from_process(process_argv);
+    let parsed = parse_entry(args, || crate::assets::aliases::profile::read_at(&env.home));
+    // 真要起会话才看有没有终端：立即答完的（如 `cch ls`）· 用法错（照实说哪里错）不看。
+    if matches!(parsed, Ok((Parsed::Opts(_), _)))
+        && refuses_without_terminal(
+            args,
+            std::io::stdin().is_terminal(),
+            std::io::stdout().is_terminal(),
+        )
+    {
         eprintln!("{}", copy_text("beCcm.noTerminal.say", &[]));
         return EXIT_NO_TERMINAL;
     }
-    let env = Env::from_process(process_argv);
-    let (parsed, origins) =
-        match parse_entry(args, || crate::assets::aliases::profile::read_at(&env.home)) {
-            Ok(p) => p,
-            Err(Die(msg)) => return die(&msg),
-        };
+    let (parsed, origins) = match parsed {
+        Ok(p) => p,
+        Err(Die(msg)) => return die(&msg),
+    };
     match parsed {
         Parsed::Early(Early::Version) => {
             println!("ccm {CCM_VERSION}");
@@ -315,6 +328,15 @@ pub fn run(
         }
         Parsed::Early(Early::Help) => {
             print!("{}", *USAGE);
+            0
+        }
+        Parsed::Early(Early::Hosts) => {
+            use crate::host::managed::home;
+            let now = i64::try_from(crate::common::time::now_secs()).unwrap_or(i64::MAX);
+            print!(
+                "{}",
+                home::listing(&home::alive(own), now, &crate::common::time::Tz::here())
+            );
             0
         }
         Parsed::Early(Early::Probe) => {
@@ -438,7 +460,7 @@ fn plan_of(
 /// 直路最后起的那个启动器**在计划里**就换成要起的那个文件（＋ 前导参数）：找法只一处（`find` 生产是
 /// [`crate::platform::shell::agent_launch`]：照起会话那个 shell 的 `PATH` · Windows 的几种装法 · `.ps1` 的执行策略）。
 /// `--ccm-print`、托管那一形的自检与真跑读的是同一份计划 ⇒ 找不到在计划里就拒、说清查过哪份 `PATH`，不等到起进程那一下。
-pub(crate) fn launcher_resolved(
+pub fn launcher_resolved(
     d: &mut plan::Direct,
     find: &dyn Fn(&str) -> Result<crate::platform::shell::AgentLaunch, String>,
 ) -> Result<(), Die> {
@@ -469,20 +491,19 @@ struct Planned {
 
 /// 一条别名的预置参数最多几个词、每个词最长多少（帧面入参的上界；别名表单产出的远小于它）。
 pub const PRINT_MAX_WORDS: usize = 64;
-const PRINT_MAX_WORD_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+const PRINT_MAX_WORD_BYTES: cap_core::Cap = cap_core::Cap {
     bytes: 4096,
-    over: relay_route_core::Over::Reject,
+    over: cap_core::Over::Reject,
 };
 
-/// `ccm-probe` 的应答：这台的 `ccm` 会哪些（与名片 `ccm --ccm-probe` 同一组常量）＋ 终端里敲 `ccm` 走到哪。
+/// `ccm-probe` 的应答：这台的 `ccm` 是哪一版、认哪几种 agent（与名片 `ccm --ccm-probe` 同一组常量）＋ 终端里敲 `ccm` 走到哪。
+/// 能力表不上帧：能力协商读的是名片的 `capabilities=` 那一行。
 #[derive(Debug, serde::Serialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct CcmCard {
     /// CLI 契约版本（`CCM_VERSION`）。
     pub(crate) version: &'static str,
-    /// 这台 `ccm` 认得的能力（与名片的 `capabilities=` 行同一份）。
-    pub(crate) capabilities: Vec<&'static str>,
     /// 认得的 agent 种类。
     pub(crate) agents: Vec<&'static str>,
     /// 这一份的 `BUILD_ID`。
@@ -493,14 +514,10 @@ pub struct CcmCard {
 }
 
 /// 帧命令 `ccm-probe` 的成品：与 `ccm --ccm-probe` 同一张名片（同一组常量，[`probe_output_for`]）＋ 终端里敲 `ccm` 走到哪那一格
-/// （[`on_path::here`]）。`ccm` 就是这台后端本身，「它会哪些」退化成问它自己。平台档与那一格是入参。
-pub(crate) fn answer_probe_for(
-    platform: crate::platform::tmux::TmuxPlatform,
-    on_path: on_path::OnPath,
-) -> CcmCard {
+/// （[`on_path::here`]）。`ccm` 就是这台后端本身，「它是哪一份」退化成问它自己。那一格是入参。
+pub(crate) fn answer_probe_for(on_path: on_path::OnPath) -> CcmCard {
     CcmCard {
         version: CCM_VERSION,
-        capabilities: ccm_launcher_with(platform),
         agents: agents(),
         build: crate::common::id::BUILD_ID,
         on_path,
@@ -532,7 +549,7 @@ impl crate::wire::typed::Handle for CcmProbe {
         let here = tokio::task::spawn_blocking(on_path::here)
             .await
             .unwrap_or_else(|_| on_path::on_path(&on_path::Reach::Unknown, ""));
-        Ok(answer_probe_for(crate::platform::tmux::TMUX_PLATFORM, here))
+        Ok(answer_probe_for(here))
     }
 }
 
@@ -1016,10 +1033,13 @@ pub fn open_hosted_shell(
     );
     let run = plan::host_run_argv(
         &[me],
-        name,
-        &dir,
-        "",
-        client.unwrap_or(crate::control::gate_rules::CLIENT_TERMINAL),
+        &plan::HostRunAt {
+            name,
+            cwd: &dir,
+            agent: "",
+            account: "",
+            client: client.unwrap_or(crate::control::gate_rules::CLIENT_TERMINAL),
+        },
         None,
         &crate::platform::shell::bare_terminal_argv(),
     );

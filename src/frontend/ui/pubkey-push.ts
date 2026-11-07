@@ -10,7 +10,6 @@ import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import type { Host } from "./generated/Host";
 import { LOCAL } from "./ipc/origin";
 import type { PubkeyPushed } from "./generated/PubkeyPushed";
-import { saidOf } from "./kit/detail";
 
 /** 推送的结局：`said` 后端写好的那一句，界面照摆。 */
 export type PushResult = PubkeyPushed;
@@ -27,9 +26,5 @@ export async function pushPublicKey(
   machine: Host,
   pubKeyPath: string | null,
 ): Promise<PushResult> {
-  try {
-    return await callTyped(LOCAL, "pubkey-push", { machine, pubKeyPath }, budgetWithin(PUSH_BUDGET_MS));
-  } catch (e) {
-    throw new Error(saidOf(e));
-  }
+  return await callTyped(LOCAL, "pubkey-push", { machine, pubKeyPath }, budgetWithin(PUSH_BUDGET_MS));
 }

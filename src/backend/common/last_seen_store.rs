@@ -12,9 +12,9 @@ use serde_json::{json, Map, Value};
 use std::path::{Path, PathBuf};
 
 /// 一样最大多少字节（序列化后）。
-pub const MAX_VALUE_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+pub const MAX_VALUE_BYTES: cap_core::Cap = cap_core::Cap {
     bytes: 256 * 1024,
-    over: relay_route_core::Over::Reject,
+    over: cap_core::Over::Reject,
 };
 /// 最多记几台。
 pub const MAX_ORIGINS: usize = 64;

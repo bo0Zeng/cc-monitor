@@ -1071,7 +1071,10 @@ fn a_clash_is_asked_before_assembling_and_the_same_request_with_an_answer_lands(
             assert_eq!(c.conflicts.len(), 1);
             let one = &c.conflicts[0];
             assert_eq!((one.key.as_str(), one.name.bytes()), ("0", &b"a.txt"[..]));
-            assert_eq!((one.size, one.there_size), (Some(11), Some(4)));
+            assert_eq!(
+                (one.size, one.there_size_text.as_deref()),
+                (Some(11), Some(copy_core::size_text(4).as_str()))
+            );
             use cmd_wire::batch::Decide;
             assert_eq!(
                 one.answers,

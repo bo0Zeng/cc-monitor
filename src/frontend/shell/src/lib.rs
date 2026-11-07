@@ -35,7 +35,6 @@
 // `adapter`（monitor 那一份 agent 适配表 ＋ 画像生成器，`adapter/claude_code.rs` · `adapter/codex.rs`）删了：
 //   起会话事实只住后端适配层（`src/backend/agents/<名>/resume.rs`，注册表 `Adapter.launch`），monitor 读它生成的
 //   `src/frontend/ui/generated/agent-profile-table.ts`（起前清洗那一格，[`nested_env_markers`]）。
-mod asset_sync; // 资产目录同步：连上那一刻把「怎么够到那台」交给本机常驻后端 `assets-sync`（零判定；看机器页那一问界面直问）
 mod auto_launch;
 // 🔴 `origin` 归一的地基：「这一趟问的是哪台机器」的唯一类型。
 mod backend_policy;

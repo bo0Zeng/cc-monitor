@@ -969,10 +969,6 @@ fn quota_read_adds_the_display_state() {
     };
     assert_eq!(row("a")["state"], "ok");
     assert_eq!(row("b")["state"], "near");
-    assert_eq!(
-        row("b")["subId"],
-        crate::accounts::quota::show::sub_id_of(UUID_B)
-    );
     assert_eq!(row("api")["state"], "refused");
     assert_eq!(got["unseen"][0]["account"], "c");
     let text = got.to_string();

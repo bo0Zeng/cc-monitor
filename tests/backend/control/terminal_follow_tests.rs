@@ -206,7 +206,6 @@ fn first_frame_comes_at_once_with_the_preview_product() {
         "rows",
         "cursor",
         "lines",
-        "captured_at",
         "captured_at_text",
     ] {
         assert!(

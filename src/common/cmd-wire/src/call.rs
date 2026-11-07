@@ -13,6 +13,7 @@ use crate::attachment::{
 use crate::batch::{BatchReply, FilesBatchStopReply, FilesBatchStopReq};
 use crate::bookmarks::{Bookmarks, BookmarksEditReq, BookmarksReadReq};
 use crate::deploy::{DeployInstallReq, DeployUninstallReq, Installed, Uninstalled};
+use crate::diagnostics::{DiagnosticsReport, DiagnosticsReportReq};
 use crate::exit_policy::{ExitPolicy, ExitPolicyReadReq, ExitPolicySetReq};
 use crate::files::*;
 use crate::listing::{HistoryHead, HistoryListReq, HistoryRow};
@@ -124,6 +125,7 @@ calls! {
     MachineReadReq => "machine-read", MachineRead;
     MachineWakeReq => "machine-wake", MachineState;
     MachineStopReq => "machine-stop", MachineStopped;
+    DiagnosticsReportReq => "diagnostics-report", DiagnosticsReport;
     // 记录那一格是原样的一团（`Value`）：各端照自己的读法再判（手机核心 `face_core::record::mend_records` · 壳搬成品）。
     HistoryReadReq => "history-read", HistoryRead;
     HistoryTailReq => "history-tail", HistoryTail;

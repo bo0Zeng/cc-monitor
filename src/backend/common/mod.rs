@@ -26,7 +26,7 @@ extern crate self as common;
 use backend_platform as platform;
 
 /// 字节上限的类型（数与超了怎么办写在一处），给不直接依赖契约包的后端小包用（如 `backend-stderr-log`）。
-pub use relay_route_core::{Cap, Over};
+pub use cap_core::{Cap, Over};
 
 /// 只往后追加的文件（会话记录）的增量读：读到哪了的账（[`append_read::Tailed`]）· 按块读（[`append_read::Blocks`]）。① observe（全文搜索的常驻索引 · watcher · 子运行 · 骨架）
 /// 与 history（历史清单的缓存）都用 · ② 读盘经 `platform::fs::Ro` · ③ 只认「一份只往后长的文件读到了哪」，不认里面是什么（原 `observe/fs.rs`）。

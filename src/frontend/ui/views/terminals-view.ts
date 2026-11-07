@@ -1,6 +1,6 @@
 /**
- * 主窗口顶层「终端」视图：左边是各台的终端名单（按机器分组），右边是抽屉里同一个终端面部件（宿主交进来，看的是选中那一行的终端）。
- * 与历史同级的浮层：命令面板「终端」进，`Esc` · 返回 回原标签页。
+ * 主窗口顶层「终端名单」视图（全局去处之一，`global-dests.ts`）：左边是各台的终端名单（按机器分组），右边是抽屉里同一个终端面部件（宿主交进来，看的是选中那一行的终端）。
+ * 与历史同级的浮层：栏顶 ⋯ · 命令面板「终端名单」进，`Esc` · 返回 回原标签页。
  *
  * - 名单与状态全是本机后端 `terminals-board` 写好的（组 · 行 · 字 · 筛选四格的数）：这里只挑格摆、按 `tags` 筛、按 `find` 找。
  * - **实时只改行内字不挪行**：按 `key` 认行；已在的行原地改字、原位不动；新来的接在那一组末尾；没了的删掉。
@@ -9,6 +9,7 @@
  * - 多选：Ctrl / Shift 点行；底下一条「已选 n · 取消选择 · 结束 n 个」，结束交宿主（确认与交哪条命令在宿主）。
  */
 import { copyText } from "../copy-table";
+import { destLabel } from "../global-dests";
 import { dispatcher } from "../keybindings/registry";
 import { el } from "../kit/el";
 import { button } from "../kit/button";
@@ -93,7 +94,7 @@ export class TerminalsView {
   constructor(private readonly host: TerminalsHost) {
     this.root = el("div", s.tvView);
     const bar = el("div", s.tvBar);
-    bar.append(el("span", s.tvTitle, copyText("mobDrawer.item.terminal")));
+    bar.append(el("span", s.tvTitle, destLabel("terminals")));
     this.filtersEl = el("div", s.tvFilters);
     this.findBox = el("input", s.tvFind);
     this.findBox.type = "search";

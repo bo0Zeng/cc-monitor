@@ -5,7 +5,7 @@ use super::{Clash, DeadLines, Facts, Hooks, Relay, SelfPaste, StaleCcm};
 use crate::assets::aliases;
 use crate::common::door::Door;
 use crate::platform::shell::dialect::Shell;
-use relay_route_core::{Cap, Over};
+use cap_core::{Cap, Over};
 use serde_json::Value;
 use std::path::Path;
 

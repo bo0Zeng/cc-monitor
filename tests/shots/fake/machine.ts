@@ -101,8 +101,6 @@ export function machineOps(): Record<string, OpHandler> {
     }),
     "accounts-mcp-sync": (_o, req) => ({ enabled: true, sync: req.on === true, servers: ["docs-search", "issue-tracker"], conflicts: [], changed: [], notes: [] }),
     "drift-report": (origin) => driftOf(origin),
-    // 诊断信息那一份只问本机后端一条（照真本机后端：本机在前、其余照机器表；看不见的那台问不到 ⇒ null）。
-    "drift-merge": (_o, _r, w) => ({ machines: w.machines.map((origin) => ({ origin, report: w.unseenMachines.includes(origin) ? null : driftOf(origin) })) }),
     // 起新会话要的三格那台推：源会话在跑 ⇒ 号与终端都知道；已结束 ⇒ 号与终端说不出（码同真后端）。
     "session-fork": (_o, req, w) => {
       const s = w.sessions.find((x) => x.sid === req.sid);
@@ -155,16 +153,6 @@ export function machineOps(): Record<string, OpHandler> {
     }),
     // 文件与数据：devbox 那六件（旧 ccm · 两条重名 · 失效行 · 实时显示 · 收信）；本机缺一个可选的开终端工具、实时显示已做；改过 ~/.bashrc 与扩展装的 skill。
     // 离线那台的上次值（本机后端记着的）：gpu-01 两天前读成的那一份「文件与数据」；记下一律答好。
-    // 「开始用」那份数：只有本机的那个世界（刚装好）三步都没做；有远端的世界第三步勾上、终端已接上。
-    "first-run": (_o, r) => {
-      const fresh = Number(r.remotes) === 0;
-      const steps = [
-        { id: "terminal", done: !fresh, required: true },
-        { id: "named", done: false, required: false },
-        { id: "remote", done: !fresh, required: false },
-      ];
-      return { steps, left: steps.filter((s) => s.required && !s.done).length, skipped: false };
-    },
     "data-report": (o, _r, w) => {
       if (w.unseenMachines.includes(o)) throw new Error(`${o} unreachable`);
       const todo = o === "devbox" ? DEVBOX_CHORES : o === "<local>" ? LOCAL_CHORES : [];
@@ -262,19 +250,7 @@ export function machineCommands(): Record<string, CommandHandler> {
       backend_stderr: [],
     }),
     cc_get_auto_launch: () => ({ auto_launch_enabled: false, monitor_exe_path: "/opt/cc-monitor/cc-monitor" }),
-    diagnostics_report: (a) => {
-      const keys = (a.configUnknown as string[] | undefined) ?? [];
-      return {
-        text: [copyText("rsDiagReport.text.head"), "版本 4.1.1 · 构建 p8n-mcp-sync · linux", copyText("rsDiagReport.text.machines"), "  本机 · up · 版本 4.1.1 · 构建 p8n-mcp-sync", "  devbox · up · 版本 4.1.1 · 构建 p8n-mcp-sync", copyText("rsDiagReport.text.unknown"), "  devbox · 会话记录 3 条", `  config.json · ${keys.length} 项`, `日志：${HOME}/.cc-monitor/logs/monitor.2026-10-01.log`].join("\n"),
-        unknown: [
-          { machine: "本机", records: 0 },
-          { machine: "devbox", records: 3 },
-          { machine: "gpu-01", records: 0 },
-          { machine: "win-laptop", records: 0 },
-        ],
-        configUnknown: keys.length,
-      };
-    },
+    // `diagnostics_report` 不在这里：整段由本机真后端 `diagnostics-report` 出（`backend.ts` 的 `invoke` 那一臂交过去）。
     // 形状照壳那一口（`footprint_client.rs`）：界面原样带进本机后端的 `{client}`，后端照 `FootprintClient` 收；家是沙箱里后端那一份。
     footprint_client_facts: (): FootprintClient => ({ home: HOME, path: `${HOME}/.cc-monitor/bin:/usr/bin:/bin` }),
   };

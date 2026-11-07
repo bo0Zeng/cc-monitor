@@ -209,12 +209,12 @@ pub(crate) type TmuxRun<'a> = &'a mut dyn FnMut(&[String]) -> Result<(bool, Stri
     reason = "装 / 摘 tmux hook（`set-hook` · `show-hooks`）：改的是 tmux server 的运行期状态，不写任何文件"
 )]
 fn run_tmux(args: &[String]) -> Result<(bool, String), RunErr> {
-    run_tmux_via(crate::host::tmux::child(None), HOOK_TMUX_WITHIN, args)
+    run_tmux_via(
+        crate::host::tmux::child(None),
+        crate::host::tmux::TMUX_WITHIN,
+        args,
+    )
 }
-
-/// 装钩子那几发 tmux 各自的期限：在 watcher 的事件循环里就地跑，一发 5 s（同 watcher 探测 tmux 的期限）；
-/// 超时 ⇒ 这一轮不装（[`install_hooks_with`]），流照走。
-const HOOK_TMUX_WITHIN: Deadline = Deadline::secs(5);
 
 /// [`run_tmux`] 的本体（命令与期限由调用方给：判据换一个不应答的假 tmux ＋ 短期限）。
 pub(crate) fn run_tmux_via(

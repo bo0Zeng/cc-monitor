@@ -45,10 +45,9 @@ pub struct QueueItem {
     pub rewind: Option<crate::rewind::Rewind>,
     #[cfg_attr(any(test, feature = "ts"), ts(inline))]
     pub state: QueueState,
-    /// 那一条此刻的样子，会话那台写好（排队 · 第 N · 排队 · 失败 · 未送进会话；同回执那一句）：各端照摆，不按 `state` 自己挑字。
+    /// 那一条此刻在等什么，会话那台写好（发送中 · 等确认 · 需手动 · 答完再送 · 未送进会话 · {为什么}；同回执那一句）：
+    /// 不写第几、不写哪一端；各端照摆，不按 `state` 自己挑字。
     pub said: String,
-    /// 发自哪一端，会话那台写好的那个词（认得的端写名字，别的照 `end` 原样）。
-    pub from: String,
 }
 
 /// 一条会话此刻的名单：排着的照序号在前，收着的照到达先后在后，未送达的照序号在最后。
@@ -103,7 +102,7 @@ pub enum QueuePutOutcome {
     Queued,
     /// 收着（同一端前一号还没到）。
     Held,
-    /// 这个 id 收过：没再入队（那一条此刻的样子见 `seq` · `place`；已经送掉或撤掉 ⇒ 两格都不在）。
+    /// 这个 id 收过：没再入队（那一条此刻的样子见 `seq` · `said`；已经送掉或撤掉 ⇒ 没有 `seq`）。
     Seen,
 }
 
@@ -119,11 +118,7 @@ pub struct QueuePut {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
     pub seq: Option<u64>,
-    /// 排第几（排着的那几条里，从 1 数；不是排着 ⇒ 不在）。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
-    pub place: Option<u32>,
-    /// 那一条此刻的样子，会话那台写好（排队 · 第几 · 已送进 · 已撤），发件端贴在那一句下面。
+    /// 那一条此刻的样子，会话那台写好（发送中 · 等确认 · 需手动 · 答完再送 · 已送进 · 已撤），同名单那一句。
     pub said: String,
 }
 

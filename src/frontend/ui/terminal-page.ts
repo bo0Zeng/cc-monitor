@@ -3,7 +3,7 @@
  * 占位标签页显着时看它的那个终端（没报到的会话与已有会话看画面是同一页）。
  *
  * - 找终端：问那台 `terminals-list`，按会话 ID 认出那一行（占位那一形按终端句柄认）；没有那一行 ⇒ 已结束的写「已结束 · 无终端」；活着的（不在任何终端里 ·
- *   在终端里却认不出，对用户是同一件事）写「非 cc-monitor 起的」（↗ 真能用时给「切到终端」）。
+ *   在终端里却认不出，对用户是同一件事）写「非 cc-monitor 起的」。
  * - 画面：带颜色（`terminal-screen.ts` 照后端给的颜色段画）。开到这一页 / 切到这个标签页时抓一次，同时订那台的实时画面（`terminal-follow.ts`）：
  *   订上了 ⇒ 头上「● 实时」、画面跟着变、送完不再重抓；那台只能快照 ⇒ 多一枚「仅快照」，照旧送完 0.5 · 1.5 · 3 秒各再抓一次、其余时候点「重新看」；
  *   实时断了 ⇒ 画面留着变淡、头上退回「画面几点 ＋ 重新看」、头下一条原因 ＋［重新接上］（流断了不自己重连）；断在「那台断开」的，
@@ -17,14 +17,12 @@
  * - 输入行只敲进终端（`terminal-input`）：回车连字带回车送 · Shift+回车换行 · Ctrl+回车只送字、不补回车；组字时回车归输入法；
  *   Esc 只把焦点还给消息流（不清字、不收抽屉）。没送的字按会话各记一份，切回来还在。常用键一律往终端里送。
  *   说一句（投进会话的输入队 · 附件 · 待发 · 队列名单）只在消息流底下那个输入框（`composer.ts`），这里不兼做。
- * - 页头右边「切到终端」只在 ↗ 真能用时出（同会话头那一道）。
  */
 import { countText } from "./format";
 import type { Tab } from "./tab-model";
 import { copyText } from "./copy-table";
 import { machineName } from "./control-said";
-import { canResume, hasTerminal } from "./face-can";
-import { terminalFrontAvailable } from "./terminal-front";
+import { canResume } from "./face-can";
 import { dotOf, stateWord } from "./session-face";
 import { renderScreen, screenPre } from "./terminal-screen";
 import { startFollow, type Follow, type FollowEvents, type FollowStop } from "./terminal-follow";
@@ -96,8 +94,6 @@ const machineWord = (w: Watched): string => machineName(originOf(w));
 
 export interface TerminalPageHost {
   active(): Watched | null;
-  /** ↗ 切到这个会话的终端窗口。 */
-  front(sid: string): void;
   /** Esc：焦点还给消息流。 */
   focusStream(): void;
 }
@@ -181,7 +177,6 @@ export class TerminalPage {
   private readonly screenWrap: HTMLElement;
   /** 「回到最新」外面那一格（定位 · 收起都在它身上：kit 按钮自带 display，`hidden` 切不动它）。 */
   private readonly followBox: HTMLElement;
-  private readonly frontBtn: HTMLButtonElement;
   private readonly bar: HTMLElement;
   private readonly screen: HTMLElement;
   private readonly pre: HTMLPreElement;
@@ -226,11 +221,10 @@ export class TerminalPage {
     this.snapTag.className = s.termTag;
     const sp = el("span");
     sp.className = s.termSp;
-    this.frontBtn = button({ label: copyText("terminal.head.front"), kind: "ghost", size: "compact", icon: "front", onClick: () => this.frontActive() });
     this.snapGroup = el("span");
     this.snapGroup.className = s.termSnap;
     this.snapGroup.append(this.at, again);
-    this.head.append(this.dot, this.title, this.where, this.tag, this.tag2, this.liveTag, this.snapGroup, this.snapTag, sp, this.frontBtn);
+    this.head.append(this.dot, this.title, this.where, this.tag, this.tag2, this.liveTag, this.snapGroup, this.snapTag, sp);
     this.bar = el("div");
     this.bar.className = s.termBar;
     // 画面：外面一格管版位与滚动（本页的类），里面那块 `pre` 只挂画面的类（`terminal-screen.ts`）。
@@ -304,12 +298,6 @@ export class TerminalPage {
       this.stopTimers();
       this.stopLive();
     }
-  }
-
-  /** ↗ 切到当前标签页那个会话的终端窗口（占位那一形没有）。 */
-  private frontActive(): void {
-    const w = this.host.active();
-    if (w?.kind === "tab") this.host.front(w.tab.sessionId);
   }
 
   /** 当前标签页换了 / 它的状态变了：换了会话 ⇒ 字按会话存取、开着就重新找终端抓一屏；同一个会话 ⇒ 只重画页头。 */
@@ -642,9 +630,8 @@ export class TerminalPage {
     }
     if (this.phase === "none" && w.kind === "tab") {
       const tab = w.tab;
-      const sid = tab.sessionId;
       const ended = canResume(tab.face); // 已结束（能恢复的那一态）
-      // 活着、名单里没有：不在任何终端里 · 在终端里却认不出，对用户是同一件事（非 cc-monitor 起的）；↗ 真能用时给［切到终端］。
+      // 活着、名单里没有：不在任何终端里 · 在终端里却认不出，对用户是同一件事（非 cc-monitor 起的）；去它的窗口走会话头「终端」那一颗。
       this.body.replaceChildren(
         ended
           ? emptyState({ icon: "terminal", text: copyText("terminal.empty.ended", { state: copyText("sessionState.ended.name") }), hint: copyText("terminal.empty.endedHint") })
@@ -652,7 +639,6 @@ export class TerminalPage {
               icon: "terminal",
               text: copyText("terminal.empty.notOurs"),
               hint: copyText("terminal.empty.notOursHint"),
-              ...(terminalFrontAvailable() ? { action: button({ label: copyText("terminal.head.front"), size: "compact", icon: "front", onClick: () => this.host.front(sid) }) } : {}),
             }),
       );
       return;
@@ -675,7 +661,7 @@ export class TerminalPage {
     if (tab) setDot(this.dot, dotOf(tab), stateWord(tab));
     else setDot(this.dot, "unknown", copyText("launch.placeholder.title"));
     this.title.textContent = labelOf(w);
-    this.where.textContent = tab?.projectDir ? copyText("terminal.head.where", { dir: tab.projectDir, machine: machineWord(w) }) : machineWord(w);
+    this.where.textContent = tab?.cwdShown ? copyText("terminal.head.where", { dir: tab.cwdShown, machine: machineWord(w) }) : machineWord(w);
     this.tag.textContent = row.name !== "" ? copyText("terminal.tag.tmux", { name: row.name }) : "";
     this.tag.style.display = row.name !== "" ? "" : "none";
     this.tag2.textContent = row.clients > 0 ? copyText("terminal.tag.windows", { n: row.clients }) : copyText("terminal.tag.background");
@@ -687,7 +673,6 @@ export class TerminalPage {
     this.liveTag.textContent = this.live.at === "on" ? copyText("terminal.head.live") : copyText("terminal.head.joining");
     this.snapTag.hidden = this.live.at !== "snapOnly";
     if (this.live.at === "snapOnly") this.snapTag.title = this.live.said;
-    this.frontBtn.style.display = tab && terminalFrontAvailable() && hasTerminal(tab.face) ? "" : "none";
 
     const bars: HTMLElement[] = [];
     if (row.programExited) {

@@ -36,7 +36,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   dispatcher.applyOverrides(await getKeybindings());
   dispatcher.start();
   bindErrorToast();
-  const page = new TerminalPage({ active: () => watched, front: () => {}, focusStream: () => page.el.focus() });
+  const page: TerminalPage = new TerminalPage({ active: () => watched, focusStream: () => page.el.focus() });
   page.el.tabIndex = -1;
   root.replaceChildren(page.el);
   // 那台断开又连上 ⇒ 实时自己重新订上。

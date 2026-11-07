@@ -52,7 +52,7 @@ class ChatSessionTest {
     private fun FakeCoreLink.puts() = calls("session-queue-put").map { it!!["sid"] to it["text"] }
 
     /** 会话那台的回执：排进去了、排第一。 */
-    private val queued = Reply.Ok(mapOf("outcome" to "queued", "seq" to 1L, "place" to 1L, "said" to "q-1"))
+    private val queued = Reply.Ok(mapOf("outcome" to "queued", "seq" to 1L, "said" to "q-1"))
 
     @Test
     fun `新建会话：第一句 ⇒ 请那台起（带票）⇒ 回包那一问原样交那台等报到 ⇒ 字投进那条会话的输入队`() =
@@ -143,9 +143,12 @@ class ChatSessionTest {
             link.arrive("pre")
             runCurrent()
             val o = s.box().single()
-            assertTrue(o.failed && o.retry)
+            assertTrue(o.failed)
             assertEquals("那一句照那台回包里的 note 原样摆", "N-未送：终端已不在", o.said)
-            s.retry(o.id)
+            s.cancel(o.id)
+            val back = s.state.value.recall
+            assertEquals("★［撤回］⇒ 字回到输入框（没有［重试］）", "你好", back?.text)
+            s.send("你好")
             runCurrent()
             assertEquals(listOf("pre" to "你好"), link.puts())
             assertEquals(1, link.calls("session-open").size)
@@ -237,7 +240,7 @@ class ChatSessionTest {
             s.send("你好")
             runCurrent()
             assertEquals("目录不在", s.state.value.failedWhy)
-            assertTrue("那句话留在待发、可再发一次", s.box().single().retry)
+            assertTrue("那句话留在待发、错误色（［撤回］把字放回输入框再发）", s.box().single().failed)
         }
 
     @Test
@@ -373,7 +376,7 @@ class ChatSessionTest {
             val file = FakeCoreLink.File(mutableListOf(human("u0", "问")))
             val ids = mutableListOf<String>()
             // 那台的名单：第一句已送进，第二句还排着。
-            val listed = { mapOf("items" to ids.drop(1).map { mapOf("seq" to 2, "id" to it, "end" to "mobile", "text" to "继续", "state" to "queued", "said" to "第 1", "from" to "手机") }, "sent" to ids.take(1)) }
+            val listed = { mapOf("items" to ids.drop(1).map { mapOf("seq" to 2, "id" to it, "end" to "mobile", "text" to "继续", "state" to "queued", "said" to "第 1") }, "sent" to ids.take(1)) }
             link.answer = { cmd, args ->
                 when (cmd) {
                     "session-queue-put" -> queued.also { ids += args!!["id"] as String }
@@ -449,7 +452,7 @@ class ChatSessionTest {
             assertNull("接上以后那一句撤掉", s.state.value.failedWhy)
         }
 
-    /** 回执（排着 · 那个编号收过）⇒ 离开待发；期限到了 · 断线 ⇒ 没回执、照旧发送中；那台拒了（码）⇒ 待发里标没送到、那一句照那台写的。 */
+    /** 回执（排着 · 那个编号收过）⇒ 离开待发；期限到了 ⇒ 没回执、那一排写排队 · 无应答（断着时照那台的 heldSaid，见 ChatCacheTest）；那台拒了（码）⇒ 待发里标没送到、那一句照那台写的。 */
     @Test
     fun `回执 · 没回执 · 那台拒了：各是各的样子，字照文案表`() =
         runTest {
@@ -471,8 +474,8 @@ class ChatSessionTest {
             }
             assertTrue("回执到了的两句离开待发、流里不另画", s.local().isEmpty())
             val (c, d) = s.box()
-            assertEquals(copyText("mobChat.delivery.sending") to false, c.said to c.failed)
-            assertEquals("队满了" to true, d.said to d.retry)
+            assertEquals("★ 连着、超时没回执 ⇒「排队 · 无应答」、淡着，不写「发送中」也不说离线", Triple(copyText("beQueue.said.noAnswer"), false, true), Triple(c.said, c.failed, c.held))
+            assertEquals("队满了" to true, d.said to d.failed)
         }
 
     @Test
@@ -569,7 +572,8 @@ class ChatSessionTest {
             assertEquals(mapOf("kind" to "named", "name" to "personal"), args["account"])
             assertTrue("起不来 ⇒ 选项回来", s.state.value.drafting)
             start = ok(started + ("sid" to "pre"))
-            s.retry(s.box().single().id)
+            s.cancel(s.box().single().id)
+            s.send("你好")
             link.arrive("pre")
             link.report("pre", "/h/proj/sub")
             runCurrent()

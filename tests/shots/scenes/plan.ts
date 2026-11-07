@@ -8,6 +8,7 @@ import { LEDGER_REL, LEDGER_WS, ledgerDump, planWorld, type Landed, type PlanWor
 import { dumpFile } from "../disk/plan";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { byText, click, mainReady, sleep, type, until, waitFor } from "./helpers";
+import { planSlices } from "./layout-check";
 
 const TABS = 12;
 
@@ -16,9 +17,15 @@ function plan(id: string, title: string, desc: string, act: Scene["act"], o: Pla
   return { id, page: "index", dir: "计划", title, desc, width: size[0], height: size[1], world, act };
 }
 
+/** 栏顶右端 ⋯ 里点「计划」（计划不在栏顶常驻）。 */
+async function enterPlan(): Promise<void> {
+  await click(".head-more-trigger");
+  await click(await byText("[role^=menuitem]", copyText("plan.page.title")));
+}
+
 async function openPlan(wait = true): Promise<void> {
   await mainReady(TABS);
-  await click(".plan-trigger");
+  await enterPlan();
   if (wait) await waitFor(".plan-view .plan-row[data-cell]");
   await sleep(500);
 }
@@ -47,9 +54,11 @@ export const PLAN_SCENES: Scene[] = [
   plan("plan-01-outline", "计划 · 大纲 ＋ 概览", "开计划页：左大纲只写标题（状态图标 · 类一道颜色 · 原因短词 · 划出的根节点挂负责人与阶段），右概览（权力范围 · 顶层进度）；顶上一条读不成的那一处、子头「无法判定的节点」", async () => {
     await openPlan();
   }),
-  plan("plan-02-entry", "计划 · 顶栏入口", "顶栏多一颗「计划」（单键 P），悬停出名字与快捷键", async () => {
+  plan("plan-02-entry", "计划 · 顶栏入口", "栏顶右端 ⋯ 里一项「计划」（单键 P，行尾写着快捷键）", async () => {
     await mainReady(TABS);
-    await waitFor(".plan-trigger");
+    await click(".head-more-trigger");
+    await byText("[role^=menuitem]", copyText("plan.page.title"));
+    await sleep(300);
   }, {}),
   plan("plan-03-filter-open", "计划 · 过滤 没签收的", "子头过滤点「没签收的」：只留算活没签收的、待定还没人定的与它们的上级", async () => {
     await openPlan();
@@ -62,7 +71,7 @@ export const PLAN_SCENES: Scene[] = [
     await sleep(600);
     await backend.dropMachine("devbox");
     await click(await byText(".plan-view button", "返回"));
-    await click(".plan-trigger");
+    await enterPlan();
     await sleep(900);
   }),
   plan("plan-05-empty", "计划 · 空态", "哪台都没有 pb 工作区：一句 ＋［添加工作区…］", async () => {
@@ -82,7 +91,7 @@ export const PLAN_SCENES: Scene[] = [
   }, { pb: "old" }),
   plan("plan-08-loading", "计划 · 首次加载", "plan-list 还没回来：骨架", async () => {
     await mainReady(TABS);
-    await click(".plan-trigger");
+    await enterPlan();
     await sleep(500);
   }, { slowMs: 20_000 }),
   plan("plan-09-narrow", "计划 · 窄窗 1000 × 640", "窄窗：大纲 360、类的词收起只留颜色、搜索框收起；折起签收了的分支", async () => {
@@ -262,4 +271,23 @@ export const PLAN_SCENES: Scene[] = [
     await openPlan();
     await waitFor(".plan-view .plan-returned");
   }, { topDone: true }),
+  plan("plan-44-many-repos", "计划 · 页头那一排仓库放不下", "本机那个工作区多二十个仓库、窄窗：页头那一排横着滚（竖滚轮也滚它）；滚到最后点最后一个，关页再开，选中的那一个仍在那一排里看得见", async () => {
+    await openPlan();
+    const strip = (): HTMLElement => document.querySelector<HTMLElement>(".plan-view .plan-slice")!.parentElement!;
+    const before = strip().scrollLeft;
+    strip().dispatchEvent(new WheelEvent("wheel", { deltaY: 300, bubbles: true, cancelable: true }));
+    await sleep(200);
+    if (!(strip().scrollLeft > before)) throw new Error(`竖滚轮在那一排上没横滚（scrollLeft ${before} → ${strip().scrollLeft}）`);
+    strip().scrollLeft = strip().scrollWidth;
+    await sleep(200);
+    const chips = document.querySelectorAll<HTMLElement>(".plan-view .plan-slice");
+    await click(chips[chips.length - 1]);
+    await sleep(800);
+    const bad = planSlices();
+    if (bad.length > 0) throw new Error(`点了最后一个之后：${bad.join("；")}`);
+    await click(await byText(".plan-view button", "返回"));
+    await enterPlan();
+    await waitFor(".plan-view .plan-row[data-cell]");
+    await sleep(600);
+  }, { moreRepos: 20 }, [1000, 640]),
 ];

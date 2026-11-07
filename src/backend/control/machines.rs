@@ -195,31 +195,22 @@ impl MachineEdit {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Applied {
     Done,
-    NoMatch,
-    Ambiguous,
+    /// `removein` · `setin`：满足 `where` 的不是恰好一行（没有 · 不止一行，不猜是哪台）。
+    NotOne,
     /// `insertin`：已有满足 `where` 的。
     Exists,
 }
 
 crate::wire::typed::codes! {
-    /// `machines-set` 的码：盘上那份读不懂（不拿空的盖掉它）· 认不出那一台（`ambiguous` ＝ 认出了不止一台）·
+    /// `machines-set` 的码：盘上那份读不懂（不拿空的盖掉它）· 认不出那一台（没有 · 不止一台）·
     /// 要加的那一台已在 · 改完的表不成立（那一处）· 写没成。
     pub enum MachinesSetErr {
         Unreadable = "unreadable",
-        ElementGone = "element_gone" => Gone,
+        ElementGone = "element_gone",
         ElementExists = "element_exists",
         BadMachine = "bad_machine" => MachineFault,
         IoFailed = "io_failed",
     }
-}
-
-/// 认不出那一台时多带的那一格。
-#[derive(Debug, Clone, serde::Serialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct Gone {
-    /// 认出了不止一台（不猜是哪台）。
-    pub(crate) ambiguous: bool,
 }
 
 /// 元素里 `fields` 按序第一个非空字符串。
@@ -260,15 +251,13 @@ fn apply(rows: &mut Vec<Map<String, Value>>, e: &MachineEdit) -> Applied {
                 rows.remove(*i);
                 Applied::Done
             }
-            [] => Applied::NoMatch,
-            _ => Applied::Ambiguous,
+            _ => Applied::NotOne,
         },
         MachineEdit::SetIn { field, value, .. } => {
-            let i = match found.as_slice() {
-                [i] => *i,
-                [] => return Applied::NoMatch,
-                _ => return Applied::Ambiguous,
+            let [i] = found.as_slice() else {
+                return Applied::NotOne;
             };
+            let i = *i;
             rows[i].insert(field.clone(), value.clone());
             Applied::Done
         }
@@ -300,17 +289,11 @@ pub(crate) fn patched(base: &[Host], edits: &[MachineEdit]) -> Result<Patched, M
     for e in edits {
         match apply(&mut rows, e) {
             Applied::Done => changed = true,
-            Applied::NoMatch => {
-                return Err(MachinesSetErr::ElementGone(
-                    copy_text("rsConfig.write.elementGone", &[]),
-                    Gone { ambiguous: false },
-                ))
-            }
-            Applied::Ambiguous => {
-                return Err(MachinesSetErr::ElementGone(
-                    copy_text("rsConfig.write.elementGone", &[]),
-                    Gone { ambiguous: true },
-                ))
+            Applied::NotOne => {
+                return Err(MachinesSetErr::ElementGone(copy_text(
+                    "rsConfig.write.elementGone",
+                    &[],
+                )))
             }
             Applied::Exists => {
                 return Err(MachinesSetErr::ElementExists(copy_text(

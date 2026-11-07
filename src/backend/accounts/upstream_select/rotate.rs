@@ -370,35 +370,28 @@ impl Hop {
         now: u64,
     ) -> show::Facts {
         let kind = kind_with(row, lib, account);
-        let (login, sub_id) = match kind {
-            // 起会话时没说是哪个号：是哪一份登录说不准 ⇒ 不带订阅标识；登录照起它的那个会话（它自己发得出去）。
-            Kind::Sub if account == super::endpoint::UNDECLARED_ACCOUNT_SEGMENT => {
-                (LoginState::Ok, None)
-            }
-            Kind::Api => (
+        let login = match kind {
+            // 起会话时没说是哪个号：是哪一份登录说不准 ⇒ 登录照起它的那个会话（它自己发得出去）。
+            Kind::Sub if account == super::endpoint::UNDECLARED_ACCOUNT_SEGMENT => LoginState::Ok,
+            Kind::Api => {
                 if row(account) == Some(true) {
                     LoginState::Ok
                 } else {
                     LoginState::NeedsKey
-                },
-                None,
-            ),
+                }
+            }
             Kind::Sub => match self.who_on_disk(agent, lib, account) {
                 Ok(_)
                     if self.missed(agent, lib, account, now)
                         == Some(oauth::missed::Unrenewed::Manual) =>
                 {
-                    (LoginState::NeedsLogin, None)
+                    LoginState::NeedsLogin
                 }
-                Ok(who) => (LoginState::Ok, Some(show::sub_id_of(&who))),
-                Err(_) => (LoginState::NeedsLogin, None),
+                Ok(_) => LoginState::Ok,
+                Err(_) => LoginState::NeedsLogin,
             },
         };
-        show::Facts {
-            kind,
-            login,
-            sub_id,
-        }
+        show::Facts { kind, login }
     }
 
     /// ★ 这台这一家每个号此刻的事实（`rotation-facts` 与判 · 推演同用这一处；只读：不续令牌、不记）。号照账号库的先后。

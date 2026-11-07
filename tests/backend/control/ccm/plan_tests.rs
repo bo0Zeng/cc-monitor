@@ -2755,14 +2755,6 @@ fn the_shell_line_writes_the_key_the_route_takes() {
     }
 }
 
-/// 这台能托管（Linux）、不在 tmux 里那一份环境。
-fn hosting_env() -> Env {
-    Env {
-        can_host: true,
-        ..env()
-    }
-}
-
 /// 一份固定快照：tmux 那几个名字 ＋ 这台活着的托管终端那几个名字（挂着的 sid 空）。
 fn snapshot_with_hosted(tmux: &[&str], hosted: &[&str]) -> TakenNames {
     let rows = |names: &[&str]| -> Vec<crate::common::session_snapshot::SessionRow> {
@@ -2777,13 +2769,30 @@ fn snapshot_with_hosted(tmux: &[&str], hosted: &[&str]) -> TakenNames {
     snapshot_of(tmux).with_hosted(rows(hosted))
 }
 
-/// 这台能托管、不在 tmux 里敲 `cc`（不带 `--ccm-tmux`）⇒ 托管容器；名字照 tmux 那一形铸，
+/// 没说进哪种容器、不在 tmux 里敲 `cc` ⇒ 直路（就地起，不落托管）。
+#[test]
+fn with_no_container_named_a_plain_cc_runs_in_place() {
+    let p = plan_of_with(
+        &["--cwd", "/x/proj"],
+        &env(),
+        &no_library,
+        Some(&snapshot_of(&[])),
+    );
+    assert!(matches!(p, Plan::Direct(_)), "没说容器该是直路：{p:?}");
+}
+
+/// `--hosted`（`cch` 那一段带的）、不在 tmux 里 ⇒ 托管容器；名字照 tmux 那一形铸，
 /// `--ccm-print` 那一行里就是那个名字（真跑读同一份计划）。
 #[test]
-fn outside_tmux_a_plain_cc_goes_into_a_managed_container_named_like_tmux_would() {
-    let e = hosting_env();
+fn hosted_outside_tmux_goes_into_a_managed_container_named_like_tmux_would() {
+    let e = env();
     let taken = snapshot_of(&[]);
-    let p = plan_of_with(&["--cwd", "/x/proj"], &e, &no_library, Some(&taken));
+    let p = plan_of_with(
+        &["--hosted", "--cwd", "/x/proj"],
+        &e,
+        &no_library,
+        Some(&taken),
+    );
     let Plan::Container(c) = &p else {
         panic!("该是托管容器：{p:?}")
     };
@@ -2803,9 +2812,9 @@ fn outside_tmux_a_plain_cc_goes_into_a_managed_container_named_like_tmux_would()
 /// 托管名避让的那份「已占用」＝ tmux 快照 ∪ 这台活着的托管终端。
 #[test]
 fn the_managed_name_steps_aside_of_tmux_and_managed_names_alike() {
-    let e = hosting_env();
+    let e = env();
     let name = |taken: &TakenNames| match plan_of_with(
-        &["--cwd", "/x/proj"],
+        &["--hosted", "--cwd", "/x/proj"],
         &e,
         &no_library,
         Some(taken),
@@ -2819,19 +2828,6 @@ fn the_managed_name_steps_aside_of_tmux_and_managed_names_alike() {
         name(&snapshot_with_hosted(&["proj-cc"], &["proj-cc-2"])),
         "proj-cc-3"
     );
-}
-
-/// 不是托管的那几种：在 tmux 窗格里（就地直路）· 这台不能托管 · 已在托管终端里（`can_host` 由入口按 `CCM_HOST` 摘掉）。
-#[test]
-fn in_a_tmux_pane_or_where_hosting_is_off_a_plain_cc_still_runs_in_place() {
-    let in_tmux = Env {
-        tmux: Some("/tmp/tmux-1000/default,1,0".into()),
-        ..hosting_env()
-    };
-    for (what, e) in [("在 tmux 窗格里", in_tmux), ("不能托管", env())] {
-        let p = plan_of(&["--cwd", "/x/proj"], &e, &no_library);
-        assert!(matches!(p, Plan::Direct(_)), "{what}：该是直路，实得 {p:?}");
-    }
 }
 
 /// tmux 那一形的自检把「在 tmux 里」这一事实交给计划，不冒充 `$TMUX`：前缀里没有 `TMUX`（tmux 客户端照它找 server，
@@ -2852,20 +2848,20 @@ fn the_pane_self_check_says_in_tmux_without_posing_as_tmux() {
     assert!(!v.is_empty(), "自检那一格是空值（入口当没有）");
     let check = Env {
         self_check: true,
-        ..hosting_env()
+        ..env()
     };
     assert!(check.in_tmux(), "自检那一趟没算成在 tmux 里");
     let p = plan_of(&["--cwd", "/x/proj"], &check, &no_library);
     assert!(matches!(p, Plan::Direct(_)), "自检该算直路那一份：{p:?}");
     let pane = Env {
         tmux: Some("/tmp/tmux-1000/default,1,0".into()),
-        ..hosting_env()
+        ..env()
     };
     assert!(
         pane.in_tmux() && !pane.self_check,
         "真 $TMUX 只说在 tmux 里"
     );
-    assert!(!hosting_env().in_tmux(), "都没有 ⇒ 不在 tmux 里");
+    assert!(!env().in_tmux(), "都没有 ⇒ 不在 tmux 里");
 }
 
 /// `--hosted` ⇒ 托管容器（在 tmux 窗格里也是）；`--detach` 认托管那一形；与 `--ccm-tmux` 不同时给。
@@ -2873,7 +2869,7 @@ fn the_pane_self_check_says_in_tmux_without_posing_as_tmux() {
 fn hosted_asks_for_a_managed_container_and_takes_detach() {
     let in_tmux = Env {
         tmux: Some("/tmp/tmux-1000/default,1,0".into()),
-        ..hosting_env()
+        ..env()
     };
     let p = plan_of(
         &["--hosted", "--detach", "--cwd", "/x/proj"],
@@ -2902,7 +2898,7 @@ fn resuming_a_session_running_in_a_managed_terminal_rejoins_it() {
     }]);
     let p = plan_of_with(
         &["--resume", sid, "--cwd", "/x/proj"],
-        &hosting_env(),
+        &env(),
         &no_library,
         Some(&taken),
     );
@@ -2920,8 +2916,8 @@ fn resuming_a_session_running_in_a_managed_terminal_rejoins_it() {
 #[test]
 fn a_managed_container_runs_the_inner_hop_as_argv_without_a_shell() {
     let p = plan_of_with(
-        &["--cwd", "/x/proj"],
-        &hosting_env(),
+        &["--hosted", "--cwd", "/x/proj"],
+        &env(),
         &no_library,
         Some(&snapshot_of(&[])),
     );
@@ -2966,10 +2962,10 @@ fn a_managed_container_runs_the_inner_hop_as_argv_without_a_shell() {
     let parent = crate::agents::self_sid_envs()[0];
     let with_parent = Env {
         inherited_parent: Some((parent.to_string(), "p1".into())),
-        ..hosting_env()
+        ..env()
     };
     let Plan::Container(c) = plan_of_with(
-        &["--cwd", "/x/proj"],
+        &["--hosted", "--cwd", "/x/proj"],
         &with_parent,
         &no_library,
         Some(&snapshot_of(&[])),
@@ -2983,16 +2979,28 @@ fn a_managed_container_runs_the_inner_hop_as_argv_without_a_shell() {
     );
 }
 
-/// 每个平台都能托管（托管进程 · 托管口 · 瘦客户端在 Unix 与 Windows 上都做实了）⇒ 新终端里敲 `cc` 那一份环境能托管。
-#[test]
-fn every_platform_hosts_a_plain_cc_typed_in_a_new_terminal() {
-    assert!(Env::for_preview_in("/home/pi".into()).can_host);
-}
-
 /// Windows 的目录用反斜杠分段 ⇒ 名字取最后一段（同 `/` 那一形），不把整条路径揉成名字。
 #[test]
 fn a_windows_directory_names_the_terminal_after_its_last_segment() {
     assert_eq!(derive_tmux_name(r"C:\Users\pi\proj"), "proj-cc");
     assert_eq!(derive_tmux_name(r"C:\Users\pi\proj\"), "proj-cc");
     assert_eq!(derive_tmux_name(r"C:\"), "C-cc");
+}
+
+/// 托管那一形把点名的号交给托管进程（`account=<号>`，落 `facts.json`，`cch ls` 列它）；没点名 ⇒ 不写这个键。
+#[test]
+fn a_hosted_container_tells_the_host_which_account_was_named() {
+    let db = tempdir();
+    let t = table(&[("b", Some(db.as_str()), true)]);
+    let host_run = |args: &[&str]| match plan_of_with(args, &env(), &t, Some(&snapshot_of(&[]))) {
+        Plan::Container(c) => c.host_run,
+        other => panic!("该是托管容器：{other:?}"),
+    };
+    let named = host_run(&["--hosted", "--account", "b", "--cwd", "/x/proj"]);
+    assert!(named.iter().any(|a| a == "account=b"), "{named:?}");
+    let plain = host_run(&["--hosted", "--cwd", "/x/proj"]);
+    assert!(
+        !plain.iter().any(|a| a.starts_with("account=")),
+        "{plain:?}"
+    );
 }

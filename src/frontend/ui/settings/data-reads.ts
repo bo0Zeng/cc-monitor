@@ -13,7 +13,6 @@ import type { SeenAt } from "../generated/SeenAt";
 import { commands } from "../ipc/commands";
 import { isLocalOrigin, LOCAL, type Machine } from "../ipc/origin";
 import { recallSeen, rememberSeen } from "../last-seen";
-import { saidOf } from "../kit/detail";
 
 export type { DataReport } from "../generated/DataReport";
 export type { Chore } from "../generated/Chore";
@@ -30,11 +29,7 @@ const MARK_BUDGET_MS = 10_000;
 /** 记下「待办」里的一个选择（那台后端写它自己的 `~/.cc-monitor/chores.json`）。失败抛一句人话。 */
 export async function markChore(origin: Machine, args: ChoresMarkReq): Promise<void> {
   const target = isLocalOrigin(origin) ? LOCAL : origin;
-  try {
-    await callTyped(target, "chores-mark", args, budgetWithin(MARK_BUDGET_MS));
-  } catch (e) {
-    throw new Error(saidOf(e));
-  }
+  await callTyped(target, "chores-mark", args, budgetWithin(MARK_BUDGET_MS));
 }
 
 /** 问那台（本机带 monitor 那几条事实）。问不到 / 形状不对 ⇒ 抛一句人话。 */
@@ -42,12 +37,7 @@ export async function readDataReport(origin: Machine): Promise<DataReport> {
   const local = isLocalOrigin(origin);
   // monitor 那几条事实本侧不认识形状、原样带过去（monitor `footprint_client.rs` 写，后端按 `FootprintClient` 收，多一格就 bad_args）。
   const req = local ? { client: (await commands.footprint_client_facts()) as unknown as FootprintClient } : {};
-  let report: DataReport;
-  try {
-    report = await callTyped(local ? LOCAL : origin, "data-report", req, budgetWithin(DATA_BUDGET_MS));
-  } catch (e) {
-    throw new Error(saidOf(e));
-  }
+  const report = await callTyped(local ? LOCAL : origin, "data-report", req, budgetWithin(DATA_BUDGET_MS));
   void rememberSeen(origin, "data", report);
   return report;
 }
@@ -73,12 +63,7 @@ export async function recallDataReport(origin: Machine): Promise<{ report: DataR
  */
 export async function readChores(machines: Machine[]): Promise<ChoresMerged> {
   const client = machines.some(isLocalOrigin) ? ((await commands.footprint_client_facts()) as unknown as FootprintClient) : null;
-  let got: ChoresMerged;
-  try {
-    got = await callTyped(LOCAL, "chores-merge", { machines, client }, budgetWithin(DATA_BUDGET_MS));
-  } catch (e) {
-    throw new Error(saidOf(e));
-  }
+  const got = await callTyped(LOCAL, "chores-merge", { machines, client }, budgetWithin(DATA_BUDGET_MS));
   for (const m of got.machines) if (m.report) void rememberSeen(m.origin, "data", m.report);
   return got;
 }

@@ -6,6 +6,7 @@
         "dot": "up",
         "expectedHostKey": null,
         "fixes": [],
+        "heldSaid": "gpu-01 离线 · 连上后补交",
         "linked": true,
         "name": "gpu-01",
         "offline": false,
@@ -17,7 +18,6 @@
         "stage": null,
         "state": "up",
         "version": "<ver>",
-        "versionRelation": "same",
         "word": ""
       },
       "name": "连着"
@@ -28,6 +28,7 @@
         "dot": "pending",
         "expectedHostKey": null,
         "fixes": [],
+        "heldSaid": "gpu-01 离线 · 连上后补交",
         "linked": false,
         "name": "gpu-01",
         "offline": false,
@@ -43,7 +44,6 @@
           "tone": "busy"
         },
         "version": null,
-        "versionRelation": null,
         "word": "连接中"
       },
       "name": "正在连"
@@ -54,6 +54,7 @@
         "dot": "pending",
         "expectedHostKey": null,
         "fixes": [],
+        "heldSaid": "gpu-01 离线 · 连上后补交",
         "linked": false,
         "name": "gpu-01",
         "offline": false,
@@ -69,7 +70,6 @@
           "tone": "busy"
         },
         "version": null,
-        "versionRelation": null,
         "word": "安装中"
       },
       "name": "正在装"
@@ -80,6 +80,7 @@
         "dot": "pending",
         "expectedHostKey": null,
         "fixes": [],
+        "heldSaid": "gpu-01 离线 · 连上后补交",
         "linked": false,
         "name": "gpu-01",
         "offline": false,
@@ -95,7 +96,6 @@
           "tone": "busy"
         },
         "version": null,
-        "versionRelation": null,
         "word": "更新中"
       },
       "name": "正在更新"
@@ -108,13 +108,14 @@
         "fixes": [
           {
             "fix": "push_key",
-            "label": "推送公钥…"
+            "label": "换成密钥"
           },
           {
             "fix": "conn_settings",
             "label": "连接设置"
           }
         ],
+        "heldSaid": "gpu-01 离线 · 连上后补交",
         "linked": false,
         "name": "gpu-01",
         "offline": true,
@@ -130,7 +131,6 @@
           "tone": "offline"
         },
         "version": null,
-        "versionRelation": null,
         "word": "离线"
       },
       "name": "密钥被拒"
@@ -150,6 +150,7 @@
             "label": "连接设置"
           }
         ],
+        "heldSaid": "gpu-01 离线 · 连上后补交",
         "linked": false,
         "name": "gpu-01",
         "offline": true,
@@ -165,7 +166,6 @@
           "tone": "offline"
         },
         "version": null,
-        "versionRelation": null,
         "word": "离线"
       },
       "name": "无应答"
@@ -181,6 +181,7 @@
             "label": "比对指纹…"
           }
         ],
+        "heldSaid": "gpu-01 离线 · 连上后补交",
         "linked": false,
         "name": "gpu-01",
         "offline": true,
@@ -196,7 +197,6 @@
           "tone": "fail"
         },
         "version": null,
-        "versionRelation": null,
         "word": "指纹变更"
       },
       "name": "指纹变了"
@@ -212,6 +212,7 @@
             "label": "更新"
           }
         ],
+        "heldSaid": "gpu-01 离线 · 连上后补交",
         "linked": true,
         "name": "gpu-01",
         "offline": false,
@@ -227,7 +228,6 @@
           "tone": "warn"
         },
         "version": null,
-        "versionRelation": "older",
         "word": "要更新"
       },
       "name": "要更新"
@@ -238,6 +238,7 @@
         "dot": "up",
         "expectedHostKey": null,
         "fixes": [],
+        "heldSaid": "gpu-01 离线 · 连上后补交",
         "linked": true,
         "name": "gpu-01",
         "offline": false,
@@ -249,7 +250,6 @@
         "stage": null,
         "state": "newer",
         "version": null,
-        "versionRelation": "newer",
         "word": "版本较新"
       },
       "name": "较新"
@@ -260,6 +260,7 @@
         "dot": "up",
         "expectedHostKey": null,
         "fixes": [],
+        "heldSaid": "gpu-01 离线 · 连上后补交",
         "linked": true,
         "name": "gpu-01",
         "offline": false,
@@ -271,7 +272,6 @@
         "stage": null,
         "state": "up",
         "version": null,
-        "versionRelation": "incomparable",
         "word": "开发版"
       },
       "name": "版本不可比"
@@ -282,6 +282,7 @@
         "dot": "failed",
         "expectedHostKey": null,
         "fixes": [],
+        "heldSaid": "gpu-01 离线 · 连上后补交",
         "linked": false,
         "name": "gpu-01",
         "offline": true,
@@ -297,7 +298,6 @@
           "tone": "fail"
         },
         "version": null,
-        "versionRelation": null,
         "word": "不支持"
       },
       "name": "不是 Unix"
@@ -310,9 +310,10 @@
         "fixes": [
           {
             "fix": "push_key",
-            "label": "推送公钥…"
+            "label": "换成密钥"
           }
         ],
+        "heldSaid": "gpu-01 离线 · 连上后补交",
         "linked": false,
         "name": "gpu-01",
         "offline": true,
@@ -328,7 +329,6 @@
           "tone": "offline"
         },
         "version": null,
-        "versionRelation": null,
         "word": "离线"
       },
       "name": "要密码"
@@ -344,6 +344,7 @@
             "label": "连接"
           }
         ],
+        "heldSaid": "gpu-01 离线 · 连上后补交",
         "linked": false,
         "name": "gpu-01",
         "offline": false,
@@ -355,7 +356,6 @@
         "stage": null,
         "state": "disabled",
         "version": null,
-        "versionRelation": null,
         "word": "已停用"
       },
       "name": "停用"

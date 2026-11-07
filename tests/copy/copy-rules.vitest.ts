@@ -7,7 +7,7 @@
  * **一份不标这个的规范会和散文一起腐**，而且腐了没人会发现」。所以本文件判三件事：
  *
  * 1. ★ **规矩 ↔ 实现两向相等**：`rules.json` 里标「机检」的规矩号 ==
- *    九条检法（`copy-checks.ts` 的 `CHECKS`）各自管的规矩号之并 ∪ `copy-table.vitest.ts` 里以 `[C-xx]` 开头的测试标题。
+ *    各检法（`copy-checks.ts` 的 `CHECKS`）各自管的规矩号之并 ∪ `copy-table.vitest.ts` 里以 `[C-xx]` 开头的测试标题。
  *    标了机检却没实现 ⇒ 红（规范在吹牛）；实现了却标主观 / 没登记 ⇒ 红（规范漏记）。
  *    两侧异源：一侧是 JSON 里人写的标签，一侧是代码里真存在的检查。
  * 2. ★ **文案表逐条过全部机检规矩**：违反的要么改，要么在该条 `waive` 里登记理由；
@@ -20,7 +20,7 @@
  *
  * # 不判什么（诚实段）
  *
- * - 标「主观」的六条（C-Y1 · C-K3 · C-T2 · C-R2 · C-R3 · C-R4）**机器一个字都没判**。
+ * - 标「主观」的那几条（rules.json 里 check = 主观 的）**机器一个字都没判**。
  * - 机检规矩今天只对文案表里的条目生效（本波只有样板区 6 条）；没抽进表的文案不归本文件管。
  */
 import { readFileSync } from "node:fs";
@@ -29,7 +29,7 @@ import { describe, expect, it } from "vitest";
 
 import { REPO_ROOT } from "../test-support/repo-root.ts";
 import { censusList, loadTable, loadTerms, type Entry, type Table, type Term } from "./copy-support.ts";
-import { CHECKS, hitsOf, ruleHit, type CheckCtx, type WRule } from "./copy-checks.ts";
+import { CHECKS, confirmItemNames, hitsOf, ruleHit, type CheckCtx, type WRule } from "./copy-checks.ts";
 import { rawFedArgs, rustRefsIn, rustRefsOfTree } from "./rust-refs.ts";
 import { nonEmpty } from "../test-support/non-empty.ts";
 
@@ -63,7 +63,7 @@ interface Rule extends WRule {
 }
 
 /**
- * 欠账名单（按检法号记，`J1`–`J9`）：命中多的检法不大批进豁免，而是把「今天还违反着的键」一次列全 ——
+ * 欠账名单（按检法号记，`J1` 起）：命中多的检法不大批进豁免，而是把「今天还违反着的键」一次列全 ——
  * 名单 == 现打（两向）：改好一条就得删一行（否则死账红），新长出一条越界当场红。
  */
 export type Debt = Record<string, string[]>;
@@ -246,6 +246,33 @@ describe("CP2a · 文案规范", () => {
     expect(run("说明", "失败 · 报错已交回"), "不是状态句：缺主语照逮").not.toBeNull();
     expect(run("状态", "重启失败 · 报错已交回"), "「<动作>失败」照判原因格").not.toBeNull();
     expect(run("状态", "失败 · 磁盘满 · 写入失败 · 盘写满"), "后面的「失败 · X」照判").not.toBeNull();
+  });
+});
+
+describe("C-W22 · 确认框正文的项名只用 words 那几个", () => {
+  const rules = loadRules();
+  const ctx = y3Ctx(rules, loadTerms());
+  const run = (role: string, zh: string) => ruleHit("C-W22", { kind: "body", role, zh, args: [] }, ctx);
+
+  // 第六个项名红、五个之内放过：C-W22 的正反例由上面「正反例与实现一致」那一条跑（probeRole = 确认框）；这里只钉射程与分隔。
+  it("★ 射程：同一串换个角色、换成标题档都放过", () => {
+    nonEmpty(rules.find((r) => r.id === "C-W22")?.words ?? []);
+    expect(run("确认框", "覆盖  {name}"), "正控").not.toBeNull();
+    expect(run("说明", "覆盖  {name}"), "不是确认框不归这一条").toBeNull();
+    expect(ruleHit("C-W22", { kind: "title", role: "确认框", zh: "覆盖  {name}", args: [] }, ctx), "只量正文").toBeNull();
+  });
+
+  it("★ 分隔：项名后面接「 · 」或一个空格红（要两个空格）；项名连着字（删除后）不算项名", () => {
+    expect(run("确认框", "删除 · ~/.cc-monitor/bin/ccm")).toMatch(/两个空格/);
+    expect(run("确认框", "{pretty} 已绑定\n改动 · 改为未绑定")).toMatch(/两个空格/);
+    expect(run("确认框", "之后 pb 照规则守 {path}")).toMatch(/两个空格/);
+    expect(run("确认框", "删除后无法撤销")).toBeNull();
+  });
+
+  it("★ 表里认得出项名的确认框正文不为零（检法没瞎）", () => {
+    const table = loadTable();
+    const seen = Object.values(table).filter((e) => e.role === "确认框" && e.kind === "body" && confirmItemNames(e.zh).length > 0);
+    nonEmpty(seen);
   });
 });
 

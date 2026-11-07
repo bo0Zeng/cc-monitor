@@ -7,17 +7,12 @@
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { isLocalOrigin, LOCAL, type Machine } from "./ipc/origin";
 import type { AssetsSynced } from "./generated/AssetsSynced";
-import { saidOf } from "./kit/detail";
 
 /** 一趟同步要拉 / 并 / 推，远端慢的时候分钟级；给 180 秒。 */
 const SYNC_BUDGET_MS = 180_000;
 
 /** 让本机常驻后端对 `origin` 那一台做一趟（本机那一页 ⇒ 对机器表里「连这台」的每一台）。 */
 export async function syncAssets(origin: Machine): Promise<AssetsSynced> {
-  try {
-    const req = isLocalOrigin(origin) ? {} : { origin };
-    return await callTyped(LOCAL, "assets-sync", req, budgetWithin(SYNC_BUDGET_MS));
-  } catch (e) {
-    throw new Error(saidOf(e));
-  }
+  const req = isLocalOrigin(origin) ? {} : { origin };
+  return await callTyped(LOCAL, "assets-sync", req, budgetWithin(SYNC_BUDGET_MS));
 }

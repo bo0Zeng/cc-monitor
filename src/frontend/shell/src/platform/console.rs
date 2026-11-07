@@ -554,9 +554,9 @@ fn run_helper(req: &HelperRequest) -> Option<String> {
 
 /// 小助手的答话收多少：它答的是一行（几个数 · 一个标题），远到不了这么多；超了 ⇒ 当没答成（记一行日志）。
 #[cfg(any(windows, test))]
-const HELPER_ANSWER_CAP: relay_route_core::Cap = relay_route_core::Cap {
+const HELPER_ANSWER_CAP: cap_core::Cap = cap_core::Cap {
     bytes: 64 * 1024,
-    over: relay_route_core::Over::HardError,
+    over: cap_core::Over::HardError,
 };
 
 /// 等小助手答完（至多 `wait`），回它的标准输出；起不来 / 到点没答完 ⇒ `None`。
@@ -572,9 +572,9 @@ pub(crate) fn ask_helper(
     let mut out = child.stdout.take()?;
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
-        let read = match relay_route_core::read_capped_from(&mut out, HELPER_ANSWER_CAP) {
-            Ok(relay_route_core::CappedAll::All(buf)) => Ok(buf),
-            Ok(relay_route_core::CappedAll::OverCap) => {
+        let read = match cap_core::read_capped_from(&mut out, HELPER_ANSWER_CAP) {
+            Ok(cap_core::CappedAll::All(buf)) => Ok(buf),
+            Ok(cap_core::CappedAll::OverCap) => {
                 // 余下的读掉、不存：不读完它会卡在写上、退不了。
                 std::io::copy(&mut out, &mut std::io::sink()).discard(Why::Drain);
                 Err(std::io::Error::other(format!(

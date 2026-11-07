@@ -7,7 +7,7 @@ import org.junit.Test
 import java.io.File
 
 /**
- * 缓存（别台东西的副本：会话列表 · 列表记号 · 记录页 · 续读点）住它自己那个库，永不迁移：纯 JVM，读源码。
+ * 缓存（别台东西的副本：记录页 · 续读点 · 看过哪几条；会话列表副本住嵌的核心）住它自己那个库，永不迁移：纯 JVM，读源码。
  *
  * 缓存读不懂 · 版本不对就当没有、照那台重取；跟 ④（机器 · 钥匙 · 待发 · 草稿 …）住一个库，缓存换一次形就得写一跳迁移、
  * 迁移写错连 ④ 一起丢。所以：缓存那几张表只在 `CacheDatabase`、状态库一张都没有；缓存库不接迁移、版本一换整份丢了重建。
@@ -58,6 +58,6 @@ class CacheStoreTest {
         const val DATA_MODULE = "core-data/src/main/kotlin/com/ccmonitor/mobile/core/data/di/DataModule.kt"
         const val CACHE_FILE = "ccm-cache.db"
         const val MAX_WALK_UP = 12
-        val CACHE_ENTITIES = setOf("CachedSession", "ListHold", "RecordPage", "SyncAnchor")
+        val CACHE_ENTITIES = setOf("CachedSession", "RecordPage", "SyncAnchor")
     }
 }

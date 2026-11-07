@@ -136,7 +136,7 @@ pub(crate) fn seen_block(a: &AccountHead) -> Rows {
         .limiting
         .as_deref()
         .is_some_and(|l| !l.is_empty() && slot_of(show, l).is_some());
-    let reading = &a.reading.resets_at;
+    let reading = &a.resets_at;
     if show.kind == Kind::Api {
         rows.push(state_row(show, reading).unwrap_or_else(|| {
             vec![
@@ -235,7 +235,6 @@ const WARM_UNREADABLE_RETRY_S: i64 = 15 * 60;
 pub(crate) fn stamped(mut w: Warm, clock: &crate::common::time::TextClock) -> Warm {
     if let Some(t) = w.at.and_then(|t| u64::try_from(t).ok()) {
         w.at_text = Some(clock.text(t));
-        w.at_rel_text = clock.rel(t);
     }
     w
 }
@@ -246,14 +245,12 @@ pub(crate) fn warm_of(login: LoginState, seen: Option<&QuotaShow>, now: i64) -> 
         act: WarmAct::Wait,
         at: Some(at),
         at_text: None,
-        at_rel_text: None,
         text: Words(text),
     };
     let send = |text: String| Warm {
         act: WarmAct::Send,
         at: None,
         at_text: None,
-        at_rel_text: None,
         text: Words(text),
     };
     match login {
@@ -324,7 +321,6 @@ pub(crate) fn warm_unreadable(why: &str, now: i64) -> Warm {
         act: WarmAct::Wait,
         at: Some(now + WARM_UNREADABLE_RETRY_S),
         at_text: None,
-        at_rel_text: None,
         text: Words(copy_text("acct.warm.unreadable", &[("why", why)])),
     }
 }

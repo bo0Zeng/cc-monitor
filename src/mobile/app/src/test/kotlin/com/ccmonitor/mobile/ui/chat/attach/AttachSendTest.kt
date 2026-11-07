@@ -58,7 +58,7 @@ class AttachSendTest {
 
     private fun says(link: FakeCoreLink) = link.calls("session-queue-put").map { it!!["text"] to it["attachments"] }
 
-    private val queued = Reply.Ok(mapOf("outcome" to "queued", "seq" to 1L, "place" to 1L, "said" to "q-1"))
+    private val queued = Reply.Ok(mapOf("outcome" to "queued", "seq" to 1L, "said" to "q-1"))
 
     @Test
     fun send_hands_the_ids_in_order_with_the_line_and_clears_the_row() =
@@ -95,7 +95,7 @@ class AttachSendTest {
         }
 
     @Test
-    fun a_retry_after_a_failed_send_carries_the_same_ids() =
+    fun a_refused_send_is_recalled_to_the_input_and_frees_its_ids() =
         runTest {
             var first = true
             val refused = Reply.Failed(Failed("queue_full", "队满了", "", null))
@@ -117,11 +117,12 @@ class AttachSendTest {
             runCurrent()
             val local =
                 s.state.value.outbox
-                    .single { it.failed && it.retry }
+                    .single { it.failed }
                     .id
-            s.retry(local)
+            s.cancel(local)
             runCurrent()
-            assertEquals(List(2) { "这张" to listOf("id-1") }, says(link))
+            val back = s.state.value.recall
+            assertEquals("撤回 ⇒ 字回输入框（没有［重试］）", "这张", back?.text)
             assertEquals(emptyList<String>(), AttachStore(dir.root).sentOf(local))
         }
 

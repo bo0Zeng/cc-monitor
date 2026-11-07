@@ -223,9 +223,6 @@ pub(crate) fn tag(pid: u32, sid: &str) -> Outcome {
 )]
 pub mod door;
 
-/// 打标那一发的期限：tmux 一发 5 s（同 watcher 探测 tmux 的期限）。
-const SET_SID_WITHIN: crate::platform::child::Deadline = crate::platform::child::Deadline::secs(5);
-
 /// 真写那一下：`set-option -p -t <窗格句柄> <事实键> <sid>`。
 ///
 /// tmux 的 stderr 收下来进原因（不然失败只剩一个退出码）。`cmd` 由调用方造（生产 = `host::tmux::child(None)`，经 `door`），
@@ -238,7 +235,7 @@ fn set_sid(
 ) -> Outcome {
     match cmd
         .args(["set-option", "-p", "-t", &target, "@ccm_sid", sid])
-        .run(SET_SID_WITHIN)
+        .run(crate::host::tmux::TMUX_WITHIN)
     {
         Ok(out) if out.status.success() => Outcome::Tagged(terminal),
         Ok(out) => Outcome::Failed(format!(

@@ -69,7 +69,6 @@ pub(crate) const TMUX_LS_FMT_FIELDS: usize = 8;
 //    （`tests::tmux_server_query_yields_nothing_without_a_server`）⇒ 动脚本串会让两份漂开，
 //    而挂 env 一个字节都不用动它。
 use crate::common::tmux_utf8::tab_underflow;
-use crate::platform::child::Deadline;
 
 // ---------- P1（zero-poll-liveness）：tmux 观测的取值（原 `tmux_sessions` 帧的 `observation` 格；那一帧删了，只喂会话账本） ----------
 //
@@ -131,16 +130,12 @@ pub(super) enum TmuxObservation {
 ///
 /// 探测跑在一次性后台线程里，`watch_loop` 的 `tmux_inflight` 去重标志只在收到 `TmuxObserved` 时清：
 /// 探测永不返回 ⇒ 标志永远为真 ⇒ 此后一次探测都不会再发起、不出声。
-/// ⇒ 两发探测都经起子进程原语带期限跑（[`TMUX_PROBE_WITHIN`]，到点杀整组），超时落 `Unobservable`。
+/// ⇒ 两发探测都经起子进程原语带期限跑（[`crate::host::tmux::TMUX_WITHIN`]，到点杀整组），
+/// 超时落 `Unobservable`（「我没看清」，不是「零会话」，后者会误 retire 活会话）。
 fn tmux_probe_script() -> String {
     // 脚本与起法住宿主口 tmux 那一形（起 tmux 只在那一份文件里）。
     crate::host::tmux::ls_script(TMUX_LS_FMT, TMUX_PROBE_NO_TMUX_RC)
 }
-
-/// 两发探测（`tmux ls` · `display-message`）各自的期限。`tmux ls` 在健康机器上是毫秒级；
-/// 5 s 容忍一次慢盘 / 高负载，又远短于「面板不更新」被注意到的时间尺度。
-/// 超时 ⇒ `Unobservable`（「我没看清」，不是「零会话」，后者会误 retire 活会话）。
-const TMUX_PROBE_WITHIN: Deadline = Deadline::secs(5);
 
 /// P1：把探测的 (rc, stdout) 折成四态。**可单测**（判据只有 rc + stdout 的形状，
 /// 刻意**不看 stderr**——P0 实测 stderr 有两种措辞，且拿英文消息当判据本身就是错的）。
@@ -191,12 +186,14 @@ fn classify_tmux_probe(code: Option<i32>, stdout: &str) -> TmuxObservation {
 ///
 /// P1 起返回四态分类而非裸 `String`——见 [`TmuxObservation`]。
 ///
-/// 带期限（[`TMUX_PROBE_WITHIN`]）；仍只在一次性后台线程里调（见 `watch_loop` 的 `tmux_inflight`），
+/// 带期限（[`crate::host::tmux::TMUX_WITHIN`]）；仍只在一次性后台线程里调（见 `watch_loop` 的 `tmux_inflight`），
 /// 不跑在 watch_loop 线程上 —— 卡到期限那几秒也不该冻住 reader。
 fn run_tmux_ls() -> TmuxObservation {
     // 🔴 起 shell 这一跳在适配层（平台差异只许在适配层），这里不写裸 `Command::new("sh")`。
     //    非 unix 上 `None` ⇒ 整趟观测判为无效。
-    let Some(ran) = crate::host::tmux::via_shell(&tmux_probe_script(), TMUX_PROBE_WITHIN) else {
+    let Some(ran) =
+        crate::host::tmux::via_shell(&tmux_probe_script(), crate::host::tmux::TMUX_WITHIN)
+    else {
         tracing::warn!("本平台没有 POSIX shell ⇒ tmux ls 这一跳没有实现，整趟观测判为无效");
         return TmuxObservation::Unobservable;
     };
@@ -229,9 +226,10 @@ pub(super) struct TmuxProbe {
 /// 与 `run_tmux_ls` 同一套 `sh -c` + `command -v` 门控；rc≠0（没有 server）⇒ 全 None。
 fn query_tmux_server() -> (Option<u32>, Option<PathBuf>) {
     // 一行两列（TAB 分隔），避免两次 subprocess。脚本与起法住宿主口 tmux 那一形（挂 UTF-8 那个 env 也在那里）。
-    let Some(ran) =
-        crate::host::tmux::via_shell(&crate::host::tmux::server_script(), TMUX_PROBE_WITHIN)
-    else {
+    let Some(ran) = crate::host::tmux::via_shell(
+        &crate::host::tmux::server_script(),
+        crate::host::tmux::TMUX_WITHIN,
+    ) else {
         tracing::warn!("本平台没有 POSIX shell ⇒ 问不出 tmux server 的 pid 与 socket 路径");
         return (None, None);
     };

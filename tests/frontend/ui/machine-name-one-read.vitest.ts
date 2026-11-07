@@ -36,7 +36,7 @@ function tab(sid: string, origin: string, over: Partial<Tab> = {}): Tab {
     pinned: false,
     group: null,
     origin,
-    forkedFromSessionId: null,
+    forkedLine: null,
     writers: [],
     unread: 0,
     needs: null,
@@ -61,7 +61,7 @@ beforeAll(() => {
 });
 
 function headText(t: Tab): string {
-  const host = { active: () => t, viewTerminal: vi.fn(), openCwd: vi.fn(), front: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), attach: vi.fn(), reconnect: vi.fn(), planMark: () => null, menuItem: () => null, displayItems: () => [], tabOf: () => null, switchTo: vi.fn(), switching: NO_SWITCHING };
+  const host = { active: () => t, openCwd: vi.fn(), terminal: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), reconnect: vi.fn(), planMark: () => null, menuItem: () => null, displayItems: () => [], tabOf: () => null, switchTo: vi.fn(), switching: NO_SWITCHING };
   const h = new SessionHead(host);
   document.body.appendChild(h.el);
   h.render(NOW);
@@ -78,7 +78,7 @@ async function terminalText(t: Tab): Promise<string> {
     shot: vi.fn(async () => ({ lines: [{ text: "屏", spans: [] }], text: "屏", screen: "fp", atText: "22:13:20" })),
     send: vi.fn(async () => ({ result: "delivered", note: "S-delivered", acts: [] })),
   } as unknown as TerminalReads;
-  const page = new TerminalPage({ active: () => ({ kind: "tab" as const, tab: t }), front: vi.fn(), focusStream: vi.fn() }, reads);
+  const page = new TerminalPage({ active: () => ({ kind: "tab" as const, tab: t }), focusStream: vi.fn() }, reads);
   document.body.appendChild(page.el);
   page.sessionChanged();
   page.setVisible(true);

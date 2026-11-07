@@ -7,6 +7,7 @@
           "dot": "pending",
           "expectedHostKey": null,
           "fixes": [],
+          "heldSaid": "box 离线 · 连上后补交",
           "linked": false,
           "name": "box",
           "offline": false,
@@ -22,7 +23,6 @@
             "tone": "busy"
           },
           "version": null,
-          "versionRelation": null,
           "word": "连接中"
         },
         "state": "connecting"
@@ -37,6 +37,7 @@
           "dot": "up",
           "expectedHostKey": null,
           "fixes": [],
+          "heldSaid": "box 离线 · 连上后补交",
           "linked": true,
           "name": "box",
           "offline": false,
@@ -48,7 +49,6 @@
           "stage": null,
           "state": "up",
           "version": null,
-          "versionRelation": "same",
           "word": ""
         },
         "state": "up"
@@ -68,6 +68,7 @@
               "label": "更新"
             }
           ],
+          "heldSaid": "box 离线 · 连上后补交",
           "linked": true,
           "name": "box",
           "offline": false,
@@ -83,7 +84,6 @@
             "tone": "warn"
           },
           "version": null,
-          "versionRelation": "older",
           "word": "要更新"
         },
         "state": "up"
@@ -98,6 +98,7 @@
           "dot": "up",
           "expectedHostKey": null,
           "fixes": [],
+          "heldSaid": "box 离线 · 连上后补交",
           "linked": true,
           "name": "box",
           "offline": false,
@@ -109,7 +110,6 @@
           "stage": null,
           "state": "newer",
           "version": null,
-          "versionRelation": "newer",
           "word": "版本较新"
         },
         "state": "up"
@@ -128,6 +128,7 @@
               "label": "安装"
             }
           ],
+          "heldSaid": "box 离线 · 连上后补交",
           "linked": false,
           "name": "box",
           "offline": true,
@@ -143,7 +144,6 @@
             "tone": "fail"
           },
           "version": null,
-          "versionRelation": null,
           "word": "离线"
         },
         "state": "down"
@@ -162,6 +162,7 @@
               "label": "更新"
             }
           ],
+          "heldSaid": "box 离线 · 连上后补交",
           "linked": true,
           "name": "box",
           "offline": false,
@@ -177,7 +178,6 @@
             "tone": "warn"
           },
           "version": null,
-          "versionRelation": null,
           "word": "要更新"
         },
         "state": "down"
@@ -193,13 +193,14 @@
           "fixes": [
             {
               "fix": "push_key",
-              "label": "推送公钥…"
+              "label": "换成密钥"
             },
             {
               "fix": "conn_settings",
               "label": "连接设置"
             }
           ],
+          "heldSaid": "box 离线 · 连上后补交",
           "linked": false,
           "name": "box",
           "offline": true,
@@ -215,7 +216,6 @@
             "tone": "offline"
           },
           "version": null,
-          "versionRelation": null,
           "word": "离线"
         },
         "state": "down"
@@ -238,6 +238,7 @@
               "label": "连接设置"
             }
           ],
+          "heldSaid": "box 离线 · 连上后补交",
           "linked": false,
           "name": "box",
           "offline": true,
@@ -253,7 +254,6 @@
             "tone": "offline"
           },
           "version": null,
-          "versionRelation": null,
           "word": "离线"
         },
         "state": "down"
@@ -267,6 +267,7 @@
           "dot": "failed",
           "expectedHostKey": null,
           "fixes": [],
+          "heldSaid": "box 离线 · 连上后补交",
           "linked": false,
           "name": "box",
           "offline": true,
@@ -282,7 +283,6 @@
             "tone": "fail"
           },
           "version": null,
-          "versionRelation": null,
           "word": "不支持"
         },
         "state": "down"
@@ -296,6 +296,7 @@
           "dot": "pending",
           "expectedHostKey": null,
           "fixes": [],
+          "heldSaid": "box 离线 · 连上后补交",
           "linked": false,
           "name": "box",
           "offline": false,
@@ -311,7 +312,6 @@
             "tone": "busy"
           },
           "version": null,
-          "versionRelation": null,
           "word": "连接中"
         },
         "state": "down"
@@ -325,6 +325,7 @@
           "dot": "pending",
           "expectedHostKey": null,
           "fixes": [],
+          "heldSaid": "box 离线 · 连上后补交",
           "linked": false,
           "name": "box",
           "offline": false,
@@ -340,7 +341,6 @@
             "tone": "busy"
           },
           "version": null,
-          "versionRelation": null,
           "word": "安装中"
         },
         "state": "down"
@@ -355,6 +355,7 @@
           "dot": "pending",
           "expectedHostKey": null,
           "fixes": [],
+          "heldSaid": "box 离线 · 连上后补交",
           "linked": false,
           "name": "box",
           "offline": false,
@@ -370,7 +371,6 @@
             "tone": "busy"
           },
           "version": null,
-          "versionRelation": "older",
           "word": "更新中"
         },
         "state": "up"

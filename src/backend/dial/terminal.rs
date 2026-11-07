@@ -28,9 +28,9 @@ use crate::platform::shell::posix;
 use crate::platform::ssh_client::SshClient;
 
 /// 远端命令长度上限（防异常输入；正常 resume 命令 < 300 字节）。与 monitor 本机那条送法的上限同值。
-pub(crate) const MAX_COMMAND: relay_route_core::Cap = relay_route_core::Cap {
+pub(crate) const MAX_COMMAND: cap_core::Cap = cap_core::Cap {
     bytes: 4096,
-    over: relay_route_core::Over::Reject,
+    over: cap_core::Over::Reject,
 };
 
 use crate::common::said::Said;

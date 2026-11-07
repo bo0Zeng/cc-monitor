@@ -31,6 +31,7 @@
 #   bash tests/scripts/re-embed.sh --stage-native  # 同上只编只铺、不判：发版 Windows job 调它（核对在发版那几步）
 #   bash tests/scripts/re-embed.sh --stage-filewin # 只编只铺文件窗口程序：发版 Linux job 调它
 #   bash tests/scripts/re-embed.sh --clean     # 守卫给的第二条出路：删掉落点（自动部署诚实关闭）
+#   bash tests/scripts/re-embed.sh --hello-id <后端二进制>  # 照 native_starts 的隔离真起一趟那份字节，印它 hello 自报的 build_id（抠不到退 1）
 #
 # 退出码 0 = 过；1 = 有对不上的 / 抠不到身份 / 编不过 / 铺了却起不来 /（`--check-dev`）本机那一份没铺。
 # 最后一行恒印 `re-embed: <N> passed（…）`，`N` = 上面逐行印出来的 PASS 条数。
@@ -332,8 +333,15 @@ case "${1:---reembed}" in
   --stage-filewin) do_filewin ;;
   --reembed) do_build; do_check 0 ;;
   --build-only) do_compile ;;
+  --hello-id)
+    # 别处要问「这份后端字节自报哪一版」也走这里（台架 `tier2-rig.sh` 的自证 ①）：同一套隔离起一趟，只印 `build_id`；抠不到 ⇒ 退 1。
+    [ -n "${2:-}" ] || { printf 'usage: %s --hello-id <后端二进制>\n' "$0" >&2; exit 2; }
+    hid="$(hello_build_id "$(native_starts "$2")")"
+    [ -n "$hid" ] || exit 1
+    printf '%s\n' "$hid"
+    ;;
   *)
-    printf 'usage: %s [--build-only|--stage-native|--stage-filewin|--check|--check-dev|--clean|--native]\n' "$0" >&2
+    printf 'usage: %s [--build-only|--stage-native|--stage-filewin|--check|--check-dev|--clean|--native|--hello-id <后端二进制>]\n' "$0" >&2
     exit 2
     ;;
 esac

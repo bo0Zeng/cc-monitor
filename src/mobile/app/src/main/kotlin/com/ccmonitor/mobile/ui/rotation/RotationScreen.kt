@@ -28,10 +28,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -45,6 +41,7 @@ import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
+import com.ccmonitor.mobile.ui.common.MachineBar
 import com.ccmonitor.mobile.ui.common.rememberHostLink
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
@@ -74,7 +71,6 @@ fun RotationScreen(
     val board = remember(hostId, sid, focus) { RotationBoard(feed, sid, machine, scope, feed.changed, focus) }
     val ui by board.state.collectAsState()
     val linkState by feed.state.collectAsState()
-    val offline by feed.offline.collectAsState()
     val table by feed.table.collectAsState()
     // 会话那一形顶栏第二行：那台写好的会话名（`rotation-view` 的 `title`）。
     val title = ui.view?.title.orEmpty()
@@ -97,9 +93,11 @@ fun RotationScreen(
                 .testTag(RotTags.SCREEN),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            // 那台的状态只由机器条说（离线不画旧数）。
+            MachineBar(hostId)
             val down = linkState as? LinkLine.Down
             when {
-                down != null -> DownBox(offline)
+                down != null -> Unit
                 !ui.loaded -> Skeleton(sid != null)
                 else -> {
                     ui.readFailed?.let { ReadFailed(it.text, it.detail) { scope.launch { board.refresh() } } }
@@ -194,21 +192,6 @@ private fun ReadFailed(
             CopyDetailButton(text, detail)
             SecondaryButton(onClick = retry) { Text(copyText("front.act.retry")) }
         }
-    }
-}
-
-/** 那台离线（常驻流断着）：中性灰虚线框「{machine} 离线」，不画旧数。 */
-@Composable
-private fun DownBox(text: String) {
-    val line = MaterialTheme.colorScheme.outline
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .drawBehind {
-                drawRoundRect(line, style = Stroke(width = 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f))), cornerRadius = CornerRadius(6.dp.toPx()))
-            }.padding(14.dp),
-    ) {
-        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

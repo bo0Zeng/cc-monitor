@@ -37,13 +37,13 @@ const settle = async () => {
 const waiting = {
   face: liveFace("needs_you"),
   line: { for: "needs_you" as const, text: "", clock: null, peek: null },
-  needs: { kind: "approve", tool: null, call: null, what: null, sinceMs: null, text: "核心·需手动", head: "核心·需手动", headCode: null, tone: "need", rank: 1, waitedMs: null, waitedText: null, ask: null, manualText: null, receivedAt: 0 } as Needs,
+  needs: { kind: "approve", tool: null, call: null, what: null, text: "核心·需手动", head: "核心·需手动", headCode: null, tone: "need", rank: 1, waitedMs: null, ask: null, manualText: null, receivedAt: 0 } as Needs,
 };
 
 function tab(sid: string, over: Partial<Tab> = {}): Tab {
   return {
     sessionId: sid, title: sid, background: false, bgName: null, label: null, labelProject: null, projectDir: `/w/${sid}`, face: liveFace("working"), line: null, pinned: false, group: null,
-    origin: LOCAL, forkedFromSessionId: null, writersLine: null, whereLine: null, unread: 0, needs: null, backgroundWork: null, pending: [], lastSay: null, ...over,
+    origin: LOCAL, forkedLine: null, whereLine: null, unread: 0, needs: null, backgroundWork: null, pending: [], lastSay: null, ...over,
   } as unknown as Tab;
 }
 
@@ -66,10 +66,10 @@ function rig(tabs: Tab[], answers: Record<string, NeedsRead>, reply?: Parameters
   }
   store.activeId = tabs[0]?.sessionId ?? null;
   const host = {
-    refreshTabBar: vi.fn(), closeEndedIn: vi.fn(), openTabCwd: vi.fn().mockResolvedValue(undefined), bringTerminalToFront: vi.fn().mockResolvedValue(undefined),
+    refreshTabBar: vi.fn(), closeEndedIn: vi.fn(),
     closeTab: vi.fn(), switchTo: vi.fn(), answerAt: vi.fn(), pick: vi.fn(),
     isSelected: vi.fn().mockReturnValue(false), beginDrag: vi.fn(), takeSuppressedClick: vi.fn().mockReturnValue(false), beginGroupDrag: vi.fn(),
-    takeSuppressedHeadClick: vi.fn().mockReturnValue(false), openMenu: vi.fn(), toggleSelect: vi.fn(), openMenuAt: vi.fn(), rereadAll: vi.fn().mockResolvedValue(undefined), fixMachine: vi.fn(),
+    takeSuppressedHeadClick: vi.fn().mockReturnValue(false), openMenu: vi.fn(), toggleSelect: vi.fn(), openMenuAt: vi.fn(), fixMachine: vi.fn(),
   } satisfies TabBarViewHost;
   const el = document.createElement("div");
   document.body.appendChild(el);
@@ -110,7 +110,7 @@ describe("浮层", () => {
     const fromAgent = {
       ...waiting.needs,
       what: "核心·sed -n 1,40p",
-      ask: { id: "ask-1", kind: "approve", tool: "Bash", run: { id: "a1", text: "核心·agent「Audit」 · Explore" }, what: "核心·sed -n 1,40p", detail: "", choices: [], questions: [], sinceMs: 0 },
+      ask: { id: "ask-1", kind: "approve", tool: "Bash", run: { id: "a1", text: "核心·agent「Audit」 · Explore" }, what: "核心·sed -n 1,40p", detail: "", choices: [], questions: [] },
     } as Needs;
     const r = rig([tab("a", { ...waiting, needs: fromAgent }), tab("b", waiting)], {
       [LOCAL]: listOf([sessionItem("a", fromAgent), sessionItem("b", waiting.needs)]),

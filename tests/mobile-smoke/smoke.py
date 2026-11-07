@@ -1547,12 +1547,12 @@ def walk():
         name = tmux_name_of(f"{T} new session")
         hide_keyboard()
         tap(t("history.row.more"))
-        if not wait(t("sessionHead.act.openTerm"), 15):
-            raise Step.Fail("⋯ 里没有「在终端里打开」")
+        if not wait(t("mobDrawer.item.terminal"), 15):
+            raise Step.Fail("⋯ 里没有「终端」")
         if not name or ui.find(name) is None:
-            raise Step.Fail(f"「在终端里打开」第二行不是那个 tmux 会话名（{name}）")
+            raise Step.Fail(f"「终端」第二行不是那个 tmux 会话名（{name}）")
         shot("4h-菜单")
-        tap(t("sessionHead.act.openTerm"))
+        tap(t("mobDrawer.item.terminal"))
         def attached():
             rows = rig("tmux", "list-sessions", "-F", "#{session_name} #{session_attached}").stdout.splitlines()
             return any(r.rsplit(" ", 1)[0] == name and r.rsplit(" ", 1)[-1] != "0" for r in rows)

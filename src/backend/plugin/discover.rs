@@ -61,8 +61,9 @@ pub fn find(
     if !search_path {
         return Err(not_installed_message(name, fixed, 0, hint));
     }
-    // `PATH` 那一档：找法只住 `platform::shell::find_session_command`（Windows 上 [`is_executable`] 只认 `.exe` ⇒ 找到的就是 `<名>.exe`）。
-    let path = std::env::var("PATH").ok();
+    // `PATH` 那一档：照起会话那一份（`platform::shell::probe_path`，与起子进程同一份）；
+    // 找法只住 `platform::shell::find_session_command`（Windows 上 [`is_executable`] 只认 `.exe` ⇒ 找到的就是 `<名>.exe`）。
+    let path = crate::platform::shell::probe_path();
     if let crate::platform::shell::SessionCommand::Found { file, .. } =
         crate::platform::shell::find_session_command(
             name,

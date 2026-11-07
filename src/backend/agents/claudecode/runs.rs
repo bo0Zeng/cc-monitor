@@ -18,7 +18,7 @@
 //!   报错原话：前台那次调用 `is_error` 的结果正文 · API 报错那条 assistant 记录的正文。
 
 use crate::platform::fs::Ro;
-use relay_route_core::{Cap, Over};
+use cap_core::{Cap, Over};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 

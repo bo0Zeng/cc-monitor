@@ -1,9 +1,9 @@
 //! 一项是哪一种、读得起来的那几道门：图标 · 「类型」那一列 · 按类型排 · 预览 / 看图 / 编辑许读多少、不许时那一句。
 //! 只在这里判（按名字判那一种住 `common::file_class`）；文件窗口与手机照画。
 
+use cap_core::{Cap, Over};
 use cmd_wire::files::{FileClass, Gate, Gates, PreviewGate, TextPreview};
 use copy_core::{copy_text, size_text};
-use relay_route_core::{Cap, Over};
 
 /// 预览当文本读的上限：预览跟着光标走（每挪一下一趟），比编辑上限小得多。超了不读、不截断。
 pub const PREVIEW_TEXT_MAX_BYTES: Cap = Cap {

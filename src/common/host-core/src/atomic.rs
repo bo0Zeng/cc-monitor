@@ -5,7 +5,7 @@
 //! **作用范围限于** monitor 数据目录（`~/.cc-monitor/`）下前端自己的产物（详 IPC-PROTOCOL.md § 通用约束）；
 //! 用户文件一律经后端文件管理面写（INVARIANTS § 4）。今天的调用方：文件窗口的书签。
 
-use relay_route_core::{Cap, CappedAll};
+use cap_core::{Cap, CappedAll};
 
 /// 一个进程里第几次写（临时件名字里带它：同一毫秒两个线程各写各的）。
 static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -57,7 +57,7 @@ pub enum Capped<T> {
 }
 
 /// 整读一份文件，最多 `cap.bytes` 字节（上限是调用方声明的那道 [`Cap`]，如声明表 `relay_route_core::CONFIG_FILE` 那一行的）。
-/// 读经 [`relay_route_core::read_capped_from`]：只读 `cap.bytes + 1` 个字节分辨「刚好读满」与「其实还有」，不按文件大小分配。
+/// 读经 [`cap_core::read_capped_from`]：只读 `cap.bytes + 1` 个字节分辨「刚好读满」与「其实还有」，不按文件大小分配。
 /// 前端两个包整读一份文件只经它与 [`read_capped`]。
 pub fn read_capped_bytes(path: &std::path::Path, cap: Cap) -> std::io::Result<Capped<Vec<u8>>> {
     let f = match std::fs::File::open(path) {
@@ -65,7 +65,7 @@ pub fn read_capped_bytes(path: &std::path::Path, cap: Cap) -> std::io::Result<Ca
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Capped::Absent),
         Err(e) => return Err(e),
     };
-    Ok(match relay_route_core::read_capped_from(f, cap)? {
+    Ok(match cap_core::read_capped_from(f, cap)? {
         CappedAll::All(buf) => Capped::Whole(buf),
         CappedAll::OverCap => Capped::TooBig,
     })

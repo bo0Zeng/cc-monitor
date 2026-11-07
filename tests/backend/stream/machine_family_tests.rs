@@ -235,6 +235,6 @@ fn the_deploy_replies_the_shell_reads_keep_their_wire_bytes() {
     );
     assert_eq!(
         wire_of(&got).replace(crate::common::id::BUILD_ID, "<BUILD>"),
-        r#"{"agents":["claude","codex"],"build":"<BUILD>","capabilities":["new","resume","attach","tmux","account","model","cwd","agent","launcher","ccm-sid","print","detach","tmux-size","tmux-base","backend-discover","account-via-backend","base-url-across-tmux"],"version":"7"}"#
+        r#"{"agents":["claude","codex"],"build":"<BUILD>","version":"7"}"#
     );
 }

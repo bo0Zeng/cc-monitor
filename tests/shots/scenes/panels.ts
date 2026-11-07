@@ -383,13 +383,15 @@ export const PANEL_SCENES: Scene[] = [
   }),
   panel("panel-grid", "监控板", "右上田字格：所有会话一屏看", async () => {
     await mainReady(ALL_TABS);
-    await click(".grid-monitor-trigger");
+    await click(".head-more-trigger");
+    await click(await byText("[role^=menuitem]", copyText("main.cmd.openGrid")));
     await waitFor(".grid-monitor");
     await sleep(600);
   }),
   panel("panel-grid-peek", "监控板 · 选中一格", "监控板里点开第一格：右侧看那个会话的模型、碰过的文件、子 agent", async () => {
     await mainReady(ALL_TABS);
-    await click(".grid-monitor-trigger");
+    await click(".head-more-trigger");
+    await click(await byText("[role^=menuitem]", copyText("main.cmd.openGrid")));
     await waitFor(".grid-monitor");
     await sleep(400);
     const cell = document.querySelector<HTMLElement>(".grid-monitor-body [class*='cell']");
@@ -445,7 +447,8 @@ export const PANEL_SCENES: Scene[] = [
   }),
   panel("panel-sftp-picker", "文件按钮 · 选机器", "右上文件夹：有多台机器时先选去哪台", async () => {
     await mainReady(ALL_TABS);
-    await click(".sftp-trigger");
+    await click(".head-more-trigger");
+    await click(await byText("[role^=menuitem]", copyText("mobDrawer.item.files")));
     await sleep(600);
   }),
   panel("panel-stream-closed", "会话流断了的提示", "devbox 的会话流被那台后端关掉：右下角报错提示", async () => {
@@ -519,13 +522,11 @@ export const PANEL_SCENES: Scene[] = [
     await click(".status-account");
     await sleep(500);
   }),
-  panel("panel-sftp-reclick", "文件按钮 · 再点一下", "选机器的小单开着时再点一下文件按钮：小单收起", async () => {
+  panel("panel-head-more", "栏顶 · 更多去处", "栏顶只常驻新建 · 历史 · 设置；右端 ⋯ 里是计划 · 远端文件 · 会话总览 · 终端名单 · cc-bus", async () => {
     await mainReady(ALL_TABS);
-    await click(".sftp-trigger");
+    await click(".head-more-trigger");
     await waitFor("[role=menu]");
-    await sleep(300);
-    await click(".sftp-trigger");
-    await sleep(500);
+    await sleep(400);
   }),
   panel("panel-tab-menu-edge", "贴着窗口底边点右键", "在窗口最底下右键一个 tab：菜单往上翻，不伸出窗口", async () => {
     await mainReady(ALL_TABS);
@@ -609,7 +610,8 @@ export const PANEL_SCENES: Scene[] = [
     "文件窗口进程一启动就退了：toast 标题是壳写好的那一句（只说原因词），灰字是那台，［复制详情］里是退出状态与它的错误输出",
     async () => {
       await mainReady(ALL_TABS);
-      await click(".sftp-trigger");
+      await click(".head-more-trigger");
+      await click(await byText("[role^=menuitem]", copyText("mobDrawer.item.files")));
       const item = await byText("[role^=menuitem]", "devbox", 2000).catch(() => null);
       if (item) await click(item);
       await byText("[role=alert]", /文件窗口未启动/);
@@ -652,7 +654,7 @@ export const PANEL_SCENES: Scene[] = [
   }),
 ];
 
-/** ↗ 那几张：装成 Windows 上的 cc-monitor；壳 / 那台 / 本机后端各答什么由 `tune` 定。 */
+/** 「终端」拉窗那几张：装成 Windows 上的 cc-monitor；壳 / 本机后端各答什么由 `tune` 定。结局只走底部一条（没有锚在按钮上的浮层）。 */
 function frontScene(id: string, title: string, desc: string, act: Scene["act"], tune: (w: World) => void): Scene {
   const w = (): World => {
     const x = defaultWorld();
@@ -663,8 +665,11 @@ function frontScene(id: string, title: string, desc: string, act: Scene["act"], 
 }
 
 async function clickHeadFront(): Promise<void> {
-  await click("[data-role=head-front]");
+  await click('[data-head="terminal"]');
 }
+
+/** 结局那一条底部条（toast：出错 ⇒ alert，别的 ⇒ status）。 */
+const FRONT_TOAST = '[role="region"] [role="alert"], [role="region"] [role="status"]';
 
 /** 壳 · 本机后端交来的 ↗ 那一张（台架替它们写：键与 `face_core::front` 取的同一把）。 */
 function frontFace(title: string, body: string, tone: "plain" | "warn" | "fail", acts: unknown[] = [], hint?: string): Record<string, unknown> {
@@ -681,36 +686,6 @@ function wayland(w: World): void {
     frontSaid(frontFace(copyText("front.title.desktopWontSwitch"), copyText("front.body.desktopWontSwitch", { desktop: "GNOME" }), "plain", [{ kind: "open-here" }]));
 }
 
-/** 本机后端问 devbox 那一问：那台旧 ⇒ 写好的那一张（要更新 ＋［更新］）；部署那一下答什么由 `deploy` 定。 */
-function tooOld(deploy: () => unknown): (w: World) => void {
-  return (w) => {
-    w.ops["session-window"] = () => ({
-      labels: [],
-      chain: [],
-      tmux: false,
-      face: frontFace(copyText("front.title.update", { machine: "devbox" }), copyText("front.body.update"), "warn", [{ kind: "update" }]),
-    });
-    w.commands.deploy_remote_backend = deploy;
-    // 换上了就重拨那条流（主窗口 `reconnect`）。
-    w.commands.backend_start = () => undefined;
-  };
-}
-
-async function frontTooOld(): Promise<void> {
-  await mainReady(ALL_TABS);
-  await openTab(3);
-  await sleep(400);
-  await clickHeadFront();
-  await waitFor("[data-role=front-result]");
-  await sleep(400);
-}
-
-/** 浮层［更新］→ 会打断什么的确认框里点「更新」（devbox 上有经它的会话）。 */
-async function clickUpdate(): Promise<void> {
-  await click(await byText("[data-role=front-result] button", "更新"));
-  await click(await byText("[role=dialog] button", /^更新$/));
-}
-
 /** 高 DPI：1.5x / 2x 下 1px 线、图标、字形照常（同一屏，像素比不同）。 */
 export const DPI_SCENES: Scene[] = [1.5, 2].map((scale) => ({
   ...panel(`main-dpi-${scale}x`, `主窗口 · ${scale}x`, `设备像素比 ${scale}：标签页栏、会话头、消息流、状态栏的 1px 线与图标都照常`, async () => {
@@ -721,10 +696,10 @@ export const DPI_SCENES: Scene[] = [1.5, 2].map((scale) => ({
 }));
 
 export const FRONT_SCENES: Scene[] = [
-  { ...frontScene("panel-front-several", "↗ · 分不清是哪个窗口", "Linux 本机会话：终端程序开着 3 个窗口、这个 shell 开在接上终端之前（没登记）⇒ 不挑一个切、不闪；浮层锚在会话头的 ↗ 下，照实说拉不了、带候选个数（Windows 上按控制台认窗口，到不了这一形）", async () => {
+  { ...frontScene("panel-front-several", "终端 · 分不清是哪个窗口", "Linux 本机会话：终端程序开着 3 个窗口、这个 shell 开在接上终端之前（没登记）⇒ 不挑一个切、不闪；底部一条照实说拉不了、带候选个数（Windows 上按控制台认窗口，到不了这一形）", async () => {
     await mainReady(ALL_TABS);
     await clickHeadFront();
-    await waitFor("[data-role=front-result]");
+    await waitFor(FRONT_TOAST);
     await sleep(400);
   }, (w) => {
     w.ops["session-window"] = () => ({ labels: [], chain: [{ pid: 4242, name: "bash", start: 1 }], tmux: false });
@@ -739,113 +714,45 @@ export const FRONT_SCENES: Scene[] = [
         ),
       );
   }), hostOs: "linux" },
-  { ...frontScene("panel-front-wayland", "↗ · Wayland 桌面上切不了", "Linux 的 Wayland 会话（GNOME）：别的程序的窗口 cc-monitor 看不见也切不了 ⇒ 照实说，给［在 cc-monitor 里打开］", async () => {
+  { ...frontScene("panel-front-wayland", "终端 · Wayland 桌面上切不了", "Linux 的 Wayland 会话（GNOME）：别的程序的窗口 cc-monitor 看不见也切不了 ⇒ 照实说，给［在 cc-monitor 里打开］", async () => {
     await mainReady(ALL_TABS);
     await clickHeadFront();
-    await waitFor("[data-role=front-result]");
+    await waitFor(FRONT_TOAST);
     await sleep(400);
   }, wayland), hostOs: "linux" },
-  frontScene("panel-front-shell-timeout", "↗ · 壳那一跳超时", "本机后端答了窗口在哪，壳那一跳到期限还没回（Win32 调用卡住）⇒ 未切换 · 期限到那一张（红），字由壳照 `face_core::front` 写", async () => {
+  frontScene("panel-front-shell-timeout", "终端 · 壳那一跳超时", "本机后端答了窗口在哪，壳那一跳到期限还没回（Win32 调用卡住）⇒ 未切换 · 期限到那一张（红），字由壳照 `face_core::front` 写", async () => {
     await mainReady(ALL_TABS);
     await clickHeadFront();
-    await waitFor("[data-role=front-result]");
+    await waitFor(FRONT_TOAST);
     await sleep(400);
   }, (w) => {
     w.ops["session-window"] = () => ({ labels: [], chain: [{ pid: 4242, name: "pwsh.exe", start: 1 }], tmux: false });
     w.commands.bring_terminal_to_front = () => new Promise(() => {});
   }),
-  frontScene("panel-front-shell-broken", "↗ · 壳那一跳坏了", "壳那一跳出错（拉前那一步自己坏了）⇒ 未切换 · 原因不明那一张（红），原话可复制；字由壳照 `face_core::front` 写", async () => {
+  frontScene("panel-front-shell-broken", "终端 · 壳那一跳坏了", "壳那一跳出错（拉前那一步自己坏了）⇒ 未切换 · 原因不明那一张（红），原话可复制；字由壳照 `face_core::front` 写", async () => {
     await mainReady(ALL_TABS);
     await clickHeadFront();
-    await waitFor("[data-role=front-result]");
+    await waitFor(FRONT_TOAST);
     await sleep(400);
   }, (w) => {
     w.ops["session-window"] = () => ({ labels: [], chain: [{ pid: 4242, name: "pwsh.exe", start: 1 }], tmux: false });
     w.commands.bring_terminal_to_front = () =>
       Promise.reject({ code: "crashed", said: copyText("rsShellCmd.self.crashed"), detail: `${copyText("detail.label.command")}：bring_terminal_to_front\n${copyText("detail.label.raw")}：SetForegroundWindow: Access is denied. (os error 5)` });
   }),
-  { ...frontScene("panel-front-wayland-open-here", "↗ · ［在 cc-monitor 里打开］", "上一张点了［在 cc-monitor 里打开］⇒ 浮层收起，底部抽屉开到这个会话的「终端」页", async () => {
+  { ...frontScene("panel-front-wayland-open-here", "终端 · ［在 cc-monitor 里打开］", "上一张点了［在 cc-monitor 里打开］⇒ 底部抽屉开到这个会话的「终端」页", async () => {
     await mainReady(ALL_TABS);
     await clickHeadFront();
-    await waitFor("[data-role=front-result]");
-    await click(await byText("[data-role=front-result] button", "在 cc-monitor 里打开"));
+    await waitFor(FRONT_TOAST);
+    await click(await byText(`${FRONT_TOAST.split(", ").map((x) => `${x} button`).join(", ")}`, "在 cc-monitor 里打开"));
     await sleep(800);
   }, wayland), hostOs: "linux" },
-  frontScene("panel-front-remote-detached", "↗ · 远端 tmux 里没有终端连着", "devbox 那台说：tmux 会话在、没有终端连着 ⇒ 无终端窗口 ＋［在终端里打开］（灰）", async () => {
+  frontScene("panel-terminal-remote-here", "终端 · 远端会话在这里开", "devbox 上的会话：脸上 far 那一格说在这里开 ⇒ 点「终端」切到底部抽屉的终端页看它那一屏（不去拉外部窗口）", async () => {
     await mainReady(ALL_TABS);
     await openTab(3);
     await sleep(400);
     await clickHeadFront();
-    await waitFor("[data-role=front-result]");
-    await sleep(400);
-  }, (w) => {
-    w.ops["session-window"] = () => ({
-      labels: [],
-      chain: [],
-      tmux: true,
-      face: frontFace(copyText("front.title.noTerminal"), copyText("front.body.detached"), "plain", [{ kind: "open-in-terminal" }]),
-    });
-  }),
-  frontScene("panel-front-remote-offline", "↗ · 断开那台", "devbox 那一问够不着 ⇒ 未切换 · devbox 离线 ＋［重新连接］（红）", async () => {
-    await mainReady(ALL_TABS);
-    await openTab(3);
-    await sleep(400);
-    await clickHeadFront();
-    await waitFor("[data-role=front-result]");
-    await sleep(400);
-  }, (w) => {
-    // 没问到那台：那一句是连接层写的，本机后端照摆进那一张。
-    w.ops["session-window"] = () => ({
-      labels: [],
-      chain: [],
-      tmux: false,
-      face: frontFace(copyText("front.title.failed"), "devbox 离线", "fail", [{ kind: "reconnect" }]),
-    });
-  }),
-  frontScene("panel-front-update", "↗ · 那台后端旧", "devbox 那台后端不认这一问 ⇒「devbox 要更新」＋［更新］（就地做，不开设置）", async () => {
-    await frontTooOld();
-  }, tooOld(() => new Promise(() => {}))),
-  frontScene("panel-front-updating", "↗ · ［更新］在做", "点了［更新］、确认框里点「更新」⇒ 同一个浮层说正在更新 devbox", async () => {
-    await frontTooOld();
-    await clickUpdate();
-    await waitFor("[data-role=front-result]");
-    await sleep(400);
-  }, tooOld(() => new Promise(() => {}))),
-  frontScene("panel-front-updated", "↗ · ［更新］换上了", "部署回来了、重拨成了 ⇒ 浮层说 devbox 已更新、带后端那句结果，只留关闭", async () => {
-    await frontTooOld();
-    await clickUpdate();
-    await byText("[data-role=front-result]", /已更新/);
-    await sleep(400);
-  }, tooOld(() => "已安装后端（p13，x86_64）到 ~/.cc-monitor/bin/ccm（原 p12 · 换为 p13）。")),
-  frontScene("panel-front-updated-redial-failed", "↗ · ［更新］换上了、重拨没成", "部署回来了、重拨那台没成 ⇒ 已更新那句后面说重新连接失败，给［重新连接］", async () => {
-    await frontTooOld();
-    await clickUpdate();
-    await byText("[data-role=front-result]", /重新连接失败/);
-    await sleep(400);
-  }, (w) => {
-    tooOld(() => "已安装后端（p13，x86_64）到 ~/.cc-monitor/bin/ccm（原 p12 · 换为 p13）。")(w);
-    w.commands.backend_start = () => Promise.reject("拨不通");
-  }),
-  frontScene("panel-front-update-failed", "↗ · ［更新］没成", "那台答不出系统（默认 shell 没有 uname）⇒ 浮层红着说更新失败、那一句只说原因词，［重试］再更新一次 ·［复制详情］（那台的原话在详情里）", async () => {
-    await frontTooOld();
-    await clickUpdate();
-    await byText("[data-role=front-result]", /更新失败/);
-    await sleep(400);
-  }, tooOld(() =>
-    Promise.reject({
-      said: "devbox 系统未知 · 未安装 · 应答报错",
-      detail: "时刻：2026-10-08 14:02:11 +08:00\n机器：Linux x86_64 · 后端 p13-shots\n命令：deploy-plan\n码：refused\n原话：uname : The term 'uname' is not recognized",
-    }),
-  )),
-  frontScene("panel-front-busy", "↗ · 在找终端", "壳那一跳超过 300ms 还没回 ⇒ ↗ 转圈、旁边「查找终端…」", async () => {
-    await mainReady(ALL_TABS);
-    await clickHeadFront();
-    await waitFor("[data-role=front-busy]");
-    await sleep(300);
-  }, (w) => {
-    w.ops["session-window"] = () => ({ labels: [], chain: [{ pid: 4242, name: "bash", start: 1 }], tmux: false });
-    w.commands.bring_terminal_to_front = () => new Promise(() => {});
-  }),
+    await sleep(800);
+  }, () => {}),
 ];
 
 // 首次打开那一张不带默认存储（tab 栏默认宽、命令面板提示没看过）

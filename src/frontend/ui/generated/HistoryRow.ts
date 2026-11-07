@@ -14,7 +14,7 @@ export type HistoryRow = { agent: AgentKind, sessionId: string, projectPath: str
 /**
  * 隐藏那一格（判定只住后端 `history/session_hidden.rs`）；不隐藏 ⇒ `null`（格恒在）。
  */
-hidden: Hidden | null, forkedFromSessionId?: string, forkedFromMessageUuid?: string, 
+hidden: Hidden | null, forkedFromSessionId?: string, 
 /**
  * 分叉来的：父会话那一行（显示标题）；不是分叉来的 · 父会话不在这台的清单里 ⇒ 缺（界面写「分叉自其他会话」）。
  */

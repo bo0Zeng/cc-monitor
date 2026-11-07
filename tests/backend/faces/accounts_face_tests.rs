@@ -365,8 +365,11 @@ fn init_moves_the_identity_links_the_rest_and_writes_the_manifest_and_alias() {
             .contains("cred-d"),
         "清单里漏了凭据"
     );
-    // 配置文件第一次建出来：首建那两段 ＋ 这个号的两段（基于 cc / cct、只写自己的号；只在建号那一刻加）。
-    assert_eq!(profile_names(&t), ["cc", "cct", "labcc", "labcct"]);
+    // 配置文件第一次建出来：首建那三段 ＋ 这个号的三段（基于 cc / cct / cch、只写自己的号；只在建号那一刻加）。
+    assert_eq!(
+        profile_names(&t),
+        ["cc", "cct", "cch", "labcc", "labcct", "labcch"]
+    );
     assert_eq!(
         own(&t, "labcc"),
         (Some("cc".into()), sv(&["--account", "lab"]))
@@ -383,8 +386,11 @@ fn init_moves_the_identity_links_the_rest_and_writes_the_manifest_and_alias() {
         "ccm",
         "不撞名的做成指向 ccm 的链接"
     );
-    assert_eq!(got["aliases"][0]["added"], json!(["labcc", "labcct"]));
-    assert_eq!(got["aliasNames"], json!(["labcc", "labcct"]));
+    assert_eq!(
+        got["aliases"][0]["added"],
+        json!(["labcc", "labcct", "labcch"])
+    );
+    assert_eq!(got["aliasNames"], json!(["labcc", "labcct", "labcch"]));
 }
 
 /// 拒绝：已建过 · 名字不合规（空格 · `../` · `/` · 保留名 `0`）· 身份文件是链接（旧的软链切号方案）。拒了一个字节都不写。
@@ -542,9 +548,9 @@ fn add_imports_credentials_links_shared_items_and_updates_manifest_and_aliases()
     for n in ["labcc", "xcc", "xcct", "mine"] {
         assert!(have.iter().any(|h| h == n), "少了 {n}：{have:?}");
     }
-    assert_eq!(got["aliases"][0]["added"], json!(["xcc", "xcct"]));
-    // 新加的两条是链接：已开的终端马上能用，不叫人重读。
-    for n in ["xcc", "xcct"] {
+    assert_eq!(got["aliases"][0]["added"], json!(["xcc", "xcct", "xcch"]));
+    // 新加的几条是链接：已开的终端马上能用，不叫人重读。
+    for n in ["xcc", "xcct", "xcch"] {
         assert!(t.p(&format!(".cc-monitor/bin/{n}")).is_symlink(), "{n}");
     }
 
@@ -579,7 +585,7 @@ fn add_without_credentials_leaves_login_to_its_own_command() {
         json!({ "name": "b-2", "kind": "subscription", "isDefault": true }),
     );
     assert!(got.get("loginCmd").is_none(), "{got}");
-    assert_eq!(got["aliasNames"], json!(["b2cc", "b2cct"]));
+    assert_eq!(got["aliasNames"], json!(["b2cc", "b2cct", "b2cch"]));
     let m = t.manifest();
     assert_eq!(m["accounts"][0]["isDefault"], false);
     assert_eq!(m["accounts"][1]["isDefault"], true);
@@ -796,7 +802,7 @@ fn remove_deletes_only_the_account_dir_and_its_alias() {
         !t.p(".cc-monitor/bin/xcc").is_symlink(),
         "删掉的那一段，链接也没了"
     );
-    assert_eq!(got["aliases"][0]["removed"], json!(["xcc", "xcct"]));
+    assert_eq!(got["aliases"][0]["removed"], json!(["xcc", "xcct", "xcch"]));
     assert_eq!(
         code(&t, "accounts-remove", json!({ "name": "lab" })),
         "refused"
@@ -1238,7 +1244,7 @@ fn rollback_of_a_removal_brings_the_accounts_aliases_back() {
     let id = got["backup"].as_str().unwrap().to_string();
     assert!(!profile_names(&t).iter().any(|n| n == "xcc"));
     let back = ok(&t, "accounts-rollback", json!({ "backup": id }));
-    assert_eq!(back["aliases"][0]["added"], json!(["xcc", "xcct"]));
+    assert_eq!(back["aliases"][0]["added"], json!(["xcc", "xcct", "xcch"]));
     assert!(profile_names(&t).iter().any(|n| n == "xcct"));
 }
 
@@ -1303,7 +1309,7 @@ fn a_user_alias_with_the_same_name_is_not_overwritten() {
         "用户那一条没被盖"
     );
     assert_eq!(got["aliases"][0]["skipped"], json!(["labcc"]));
-    assert_eq!(got["aliases"][0]["added"], json!(["labcct"]));
+    assert_eq!(got["aliases"][0]["added"], json!(["labcct", "labcch"]));
 }
 
 // ───────────────────────────── 现有账号库原样接着用 ─────────────────────────────

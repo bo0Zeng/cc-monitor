@@ -38,30 +38,30 @@ use copy_core::{copy_text, Discard, Why};
 /// 页越大，实时行被挡住的时间越长；页越小，往返越多。1 MiB 在 1 Mbps 的弱网上约 8 秒一页。
 /// 量的是交出去的、不是读过的：不进界面的大行（请求体那一类）只占一个号，按源字节封顶会让尾段白白多出几页往返。
 /// 一页最多扫多少源字节见 `history_face::read_rows`（[`LINE_CAP_BYTES`]）。
-pub(crate) const READ_PAGE_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+pub(crate) const READ_PAGE_BYTES: cap_core::Cap = cap_core::Cap {
     bytes: 1 << 20,
-    over: relay_route_core::Over::Chunk,
+    over: cap_core::Over::Chunk,
 };
 
 /// 单行比一页还长时，最多续读到多长（超过 ⇒ `oversized_line`）。
 ///
 /// monitor 那头单帧上限 64 MiB（`stream_source::BACKEND_FRAME_LINE_CAP`），而字节进 JSON 串
 /// 要转义（引号、反斜杠）—— 留一半余量。
-pub(crate) const LINE_CAP_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+pub(crate) const LINE_CAP_BYTES: cap_core::Cap = cap_core::Cap {
     bytes: 32 << 20,
-    over: relay_route_core::Over::Reject,
+    over: cap_core::Over::Reject,
 };
 
 /// 按行那六条整份输出的上限（同上，留一半余量）。
-pub(crate) const LINES_CAP_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+pub(crate) const LINES_CAP_BYTES: cap_core::Cap = cap_core::Cap {
     bytes: 32 << 20,
-    over: relay_route_core::Over::Reject,
+    over: cap_core::Over::Reject,
 };
 
 /// `backend-log` 一次最多回多少字节（尾部）。
-pub(crate) const LOG_TAIL_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+pub(crate) const LOG_TAIL_BYTES: cap_core::Cap = cap_core::Cap {
     bytes: 256 << 10,
-    over: relay_route_core::Over::TruncateAndSay,
+    over: cap_core::Over::TruncateAndSay,
 };
 
 /// 本进程的 stderr 此刻落在哪份文件（进程入口装上之后交进来；没装 ⇒ 空）。
@@ -95,7 +95,7 @@ pub(crate) fn log_tail(
     let from = size.saturating_sub(max);
     let buf = f
         .seek(SeekFrom::Start(from))
-        .and_then(|_| relay_route_core::read_window(&mut f, max))
+        .and_then(|_| cap_core::read_window(&mut f, max))
         .map_err(|e| crate::common::said::Said::new("failed", e.to_string()))?;
     let body = if from > 0 {
         buf.iter()
@@ -198,76 +198,34 @@ impl crate::wire::typed::Handle for DriftReportCmd {
     }
 }
 
-/// `drift-merge` 的一台：那台的漂移账（`drift-report` 的回包原样）；问不到 ⇒ `null`。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+/// 各台漂移账并好的一台：那台的漂移账（`drift-report` 的回包原样）；问不到 ⇒ 没有。
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DriftOn {
     /// 那台的键（本机 `<local>`，别的台是机器表里的名字）。
     pub(crate) origin: String,
     pub(crate) report: Option<crate::agents::drift::DriftReport>,
 }
 
-/// `drift-merge` 的回包：本机在前，其余照机器表的顺序。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct DriftMerge {
+/// 各台漂移账并好的那一份：本机在前，其余照机器表的顺序（只有诊断信息用，`diagnostics_face.rs`）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DriftMerge {
     pub(crate) machines: Vec<DriftOn>,
 }
 
-crate::wire::typed::codes! {
-    /// `drift-merge` 没有别的码。
-    pub enum DriftMergeErr {}
+/// 这一端机器表里各台的名字（机器表的顺序；读盘进阻塞池，读不到 ⇒ 空）。
+pub(crate) async fn machine_names() -> Vec<String> {
+    tokio::task::spawn_blocking(|| {
+        crate::control::machines::answer_read_in(crate::platform::paths::home_dir().as_deref())
+            .hosts
+            .iter()
+            .map(|h| h.name().to_string())
+            .collect::<Vec<_>>()
+    })
+    .await
+    .unwrap_or_default()
 }
 
-/// `drift-merge`：本机与机器表里每台的漂移账（诊断信息要的那一份）。界面只问本机后端这一条：别的台那一份由这台经它的常驻流问
-/// `drift-report`（`control/feeds.rs::call`），同时问、并好再答（[`drift_hub`]）。只读；读机器表进阻塞池。
-pub struct DriftMergeCmd;
-
-impl crate::wire::typed::Command for DriftMergeCmd {
-    const NAME: &'static str = "drift-merge";
-    const TAKES_INPUT: bool = false;
-    type Req = crate::wire::typed::NoArgs;
-    type Reply = DriftMerge;
-    type Err = DriftMergeErr;
-}
-
-impl crate::wire::typed::Handle for DriftMergeCmd {
-    type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
-        _req: crate::wire::typed::NoArgs,
-        cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<DriftMerge, DriftMergeErr>> + Send + 'static {
-        let until = cx.until;
-        async move {
-            let names = tokio::task::spawn_blocking(|| {
-                crate::control::machines::answer_read_in(
-                    crate::platform::paths::home_dir().as_deref(),
-                )
-                .hosts
-                .iter()
-                .map(|h| h.name().to_string())
-                .collect::<Vec<_>>()
-            })
-            .await
-            .unwrap_or_default();
-            let there = move |m: String| async move {
-                crate::control::feeds::call::<DriftReportCmd>(
-                    &m,
-                    &crate::wire::typed::NoArgs {},
-                    until,
-                )
-                .await
-                .map_err(|f| tracing::warn!("drift-merge [{m}]: {}", f.said))
-                .ok()
-            };
-            Ok(drift_hub(names, crate::agents::drift_report(), there).await)
-        }
-    }
-}
-
-/// [`DriftMergeCmd`] 并好再答的那一层（这台那一份 · 怎么问到那台由调用方给，判据喂假的）：本机在前，
+/// 各台的漂移账并成一份（诊断信息那一段用；这台那一份 · 怎么问到那台由调用方给，判据喂假的）：本机在前，
 /// `names`（机器表的顺序）里每台各问一次、同时问；表里写着本机 · 写了两遍的只算一次；问不到 ⇒ 那一行 `null`。
 pub(crate) async fn drift_hub<T, TF>(
     names: Vec<String>,

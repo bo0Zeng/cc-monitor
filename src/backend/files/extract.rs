@@ -34,18 +34,18 @@ use std::path::{Path, PathBuf};
 // ══════════════════════════════════════════════════════════════════════════
 
 /// zip 里一条链接的目标文本最多多长（Linux `PATH_MAX` 同量级）；超了整趟拒、不截断。
-pub const LINK_TARGET_MAX_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+pub const LINK_TARGET_MAX_BYTES: cap_core::Cap = cap_core::Cap {
     bytes: 4096,
-    over: relay_route_core::Over::Reject,
+    over: cap_core::Over::Reject,
 };
 
 /// 解出的字节之和最多是包本身的几倍。量过：源码 · 依赖 · 编译产物打的 tar.gz 展开 3–5 倍、日志约 10 倍，全零的 zip 约 1000 倍。
 pub const EXPAND_RATIO_CAP: u64 = 100;
 
 /// 小包不按倍数卡：解出的字节之和在这以内总放行；往上按包的 [`EXPAND_RATIO_CAP`] 倍卡，超了整趟拒。
-pub const EXPAND_FLOOR_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+pub const EXPAND_FLOOR_BYTES: cap_core::Cap = cap_core::Cap {
     bytes: 1 << 30,
-    over: relay_route_core::Over::Reject,
+    over: cap_core::Over::Reject,
 };
 
 /// 一趟解压的两条上限：条目数 ＋ 解出的字节之和（包的 `ratio` 倍、至少 `floor`）。
@@ -446,9 +446,9 @@ pub fn plan(archive: &Path, kind: Kind, cap: usize, bytes_cap: u64) -> Result<Pl
                     Raw::Dir
                 } else if f.is_symlink() {
                     // zip 里链接的目标文本是那一条的正文；超了上限整趟拒，不截一半当目标。
-                    let read = relay_route_core::read_capped_from(&mut f, LINK_TARGET_MAX_BYTES)
+                    let read = cap_core::read_capped_from(&mut f, LINK_TARGET_MAX_BYTES)
                         .map_err(|e| broken(archive, e))?;
-                    let relay_route_core::CappedAll::All(to) = read else {
+                    let cap_core::CappedAll::All(to) = read else {
                         return Err(refused(copy_text(
                             "beFilesExtract.entry.linkTooLong",
                             &[

@@ -107,7 +107,7 @@ async function open(): Promise<{ w: AgentWindow; root: HTMLElement }> {
   return { w, root };
 }
 
-const RUN: Bare = { run: "a1", label: "审交互", kind: "general-purpose", tool: "t1", state: "running", started_ms: T0, active_ms: T0 + 60_000, calls: 2 };
+const RUN: Bare = { run: "a1", label: "审交互", kind: "general-purpose", tool: "t1", state: "running", started_ms: T0, active_ms: T0 + 60_000 };
 
 beforeEach(() => {
   vi.stubGlobal(
@@ -140,7 +140,6 @@ describe("agent 窗口", () => {
         ...RUN,
         state: "failed",
         why: "reported",
-        ended_ms: T0 + 120_000,
         error: "API Error: 529",
         started_text: "核心·10:00 起",
         facts: [{ text: "核心·用时 2m" }],

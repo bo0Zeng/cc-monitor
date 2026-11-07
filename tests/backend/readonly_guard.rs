@@ -1312,7 +1312,13 @@ mod g6_dependency_signoff {
             "relay-route-core",
             DEPS,
             MEASURED_CLEAN,
-            "中转门牌：端口 · 钥匙文件相对路径两个 const ＋ 路由语法（拼 / 拆 / 段闸，纯字符串）；仓内 crate、零依赖，现打 0 处写面、0 处 I/O",
+            "中转门牌：端口 · 钥匙文件相对路径两个 const ＋ 路由语法（拼 / 拆 / 段闸，纯字符串）；仓内 crate、只依赖 `cap-core`，现打 0 处写面、0 处 I/O",
+        ),
+        (
+            "cap-core",
+            DEPS,
+            MEASURED_CLEAN,
+            "有上限读：读上限 `Cap` · `Over` 与同步整读（读到流尽 · 读一个窗口 · 读一份本机文件，读的都是调用方交进来的句柄）；仓内 crate、零依赖，现打 0 处写面",
         ),
         (
             "tokio",

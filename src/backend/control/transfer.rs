@@ -913,7 +913,6 @@ impl Desk {
                             size_text: None,
                             mtime_text: None,
                             there,
-                            there_size: m.is_file().then_some(m.len()),
                             there_size_text: (m.is_file().then_some(m.len()))
                                 .map(copy_core::size_text),
                             there_mtime_text: crate::common::batch_book::moment_text(
@@ -1179,7 +1178,6 @@ async fn upload_fates(
                 size_text: (local.as_ref().map(|m| m.len())).map(copy_core::size_text),
                 mtime_text: moment_text(local.as_ref().and_then(|m| mtime_secs(m.modified())), tz),
                 there: there.kind,
-                there_size: there.size,
                 there_size_text: there.size.map(copy_core::size_text),
                 there_mtime_text: moment_text(there.mtime, tz),
                 answers: crate::common::batch_book::answers_of(dir_into, true),

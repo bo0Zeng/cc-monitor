@@ -327,13 +327,6 @@ const STREAM_ONLY_WHY: &[(&str, &str)] = &[
         "同 `ext-hub-preview`：两头都要经本进程的可达表够到；一次性进程里那张表是空的。",
     ),
     (
-        "session-restart",
-        "停旧 ＋ 起新那一步拿的是**退出排空的票**（`wire::drain::DRAIN`），等压缩摘要与等新进程报出各一次有界等待（各 ≤ 1 h）——\
-         「发起方走了那台照样做完」靠的就是那张票钉住**常驻进程**不退；一次性进程里那张票钉的是命令自己那个进程，\
-         钉不住任何东西，而调用方还得把一次调用挂在那儿几分钟 ⇒ 真依赖流语义。命令行那一侧要同一件事：\
-         `--sessions-stop` 再 `--session-open`，自己掌期限。",
-    ),
-    (
         "needs-answer",
         "答的是**常驻进程里挂着的那一条**（`control::asks` 的登记表：答题 hook 经常驻那条连接挂进来、在那儿阻塞等）——\
          一次性进程里那张表永远是空的，答哪一条都只能回 `not_found`，是假话 ⇒ 真依赖流语义。",
@@ -520,7 +513,6 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         // `bookmarks-read`：这台的书签，无入参、有输出字段 `dirs`（同族 `bookmarks-edit` 要输入，不在表里）。
         "bookmarks-read",
         "drift-report", // 这台后端的漂移账（纯读、不收输入）
-        "drift-merge",  // 本机与各台的漂移账（纯读、不收输入；别的台由本机后端问到）
         "exit-policy-read",
         "prefs-read",    // 这台的偏好（纯读、不收输入）
         "machines-read", // 本机的机器表（纯读、不收输入）

@@ -14,8 +14,8 @@ use crate::common::seen_terminal::WindowLabel;
 use crate::platform::fs::Ro;
 use crate::platform::shell::dialect::ps_literal;
 use crate::platform::Own;
+use cap_core::{Cap, Over};
 use copy_core::{Discard, Why};
-use relay_route_core::{Cap, Over};
 use std::path::{Path, PathBuf};
 
 /// 数据目录底下的那一层。

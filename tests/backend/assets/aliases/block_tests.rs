@@ -1007,8 +1007,8 @@ fn the_powershell_cc_goes_through_ccm_exactly_like_the_posix_one() {
     );
     let names =
         |sh: Shell| -> Vec<String> { first_aliases(sh).into_iter().map(|a| a.name).collect() };
-    assert_eq!(names(Shell::Posix), ["cc", "cct"]);
-    assert_eq!(names(Shell::PowerShell), ["cc"]);
+    assert_eq!(names(Shell::Posix), ["cc", "cct", "cch"]);
+    assert_eq!(names(Shell::PowerShell), ["cc", "cch"]);
 }
 
 /// ★★ **真机逮到的那一条**：

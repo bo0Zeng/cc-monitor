@@ -55,6 +55,7 @@ pub mod bus;
 pub mod call;
 pub mod cells;
 pub mod deploy;
+pub mod diagnostics;
 pub mod dial;
 pub mod exit_policy;
 pub mod failed;

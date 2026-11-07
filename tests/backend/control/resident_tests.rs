@@ -1,5 +1,5 @@
 //! 常驻后端的起 · 找 · 接 · 停（`control/resident.rs`）。
-//! 守的要求：「远端常驻、本机远端同形」；`INVARIANTS §48.1`「门由内核给，没有钥匙」；升级那一跳先停旧版再接中转；台架不许占真家。
+//! 守的要求：「远端常驻、本机远端同形」；`INVARIANTS §48.1`「门由内核给，没有钥匙」；台架不许占真家。
 
 use super::*;
 
@@ -28,24 +28,6 @@ fn the_child_env_is_the_switch_plus_the_hosted_slots() {
             ),
         ]
     );
-}
-
-/// 停之前核身份：部署换过文件之后旧进程的 exe 带 ` (deleted)` 照样认；别的程序不认。
-#[test]
-fn the_owner_record_parses_and_the_identity_check_tolerates_a_replaced_file() {
-    assert_eq!(
-        parse_owner("123\n/h/.cc-monitor/bin/cc-monitor-backend\n"),
-        Some((123, PathBuf::from("/h/.cc-monitor/bin/cc-monitor-backend")))
-    );
-    assert_eq!(parse_owner("0\n/x\n"), None);
-    assert_eq!(parse_owner("123\n"), None);
-    let rec = Path::new("/h/.cc-monitor/bin/cc-monitor-backend");
-    assert!(exe_matches("/h/.cc-monitor/bin/cc-monitor-backend", rec));
-    assert!(exe_matches(
-        "/h/.cc-monitor/bin/cc-monitor-backend (deleted)",
-        rec
-    ));
-    assert!(!exe_matches("/usr/bin/python3", rec));
 }
 
 fn env_of<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
@@ -217,21 +199,23 @@ impl Drop for Reap {
 }
 
 /// T2 **同机监督者三态，真进程 ＋ 真信号**：听话的（收 SIGTERM 就退）⇒ `graceful`；聋的（忽略 SIGTERM）⇒ 宽限期满强杀、
-/// `killed`、它真没了（收尸后 `/proc` 里没有）；不在的 ⇒ `not_running`；记下的程序对不上 ⇒ 拒、不发信号。
-/// 要求：「读 pid → SIGTERM → 在本机按 pidfd 等到退出或宽限期到 → 到点 SIGKILL → 回结局」。
+/// `killed`、它真没了（收尸后 `/proc` 里没有）；不在的 ⇒ 拿不到把手（`stop_listener` 答 `not_running`）。
+/// 要求：「SIGTERM → 在本机按 pidfd 等到退出或宽限期到 → 到点 SIGKILL → 回结局」。
 #[test]
 #[cfg(target_os = "linux")]
 fn the_one_shot_supervisor_stops_politely_then_by_force() {
-    let exe = |pid: u32| PathBuf::from(crate::platform::proc::exe_of(pid).expect("exe"));
+    let stop = |pid: u32, grace_ms: u32, kill_wait_ms: u32| {
+        let target = crate::platform::signal::stoppable(pid)
+            .expect("拿把手")
+            .expect("它在跑");
+        finish(&target, pid, grace_ms, kill_wait_ms)
+    };
     // 听话的。
     let mut c = Reap(sh_child(
         "trap 'exit 0' TERM; echo ready; while :; do sleep 0.05; done",
     ));
     let pid = c.0.id();
-    assert_eq!(
-        stop_pid(pid, &exe(pid), 5_000, 1_000),
-        Ok(Stopped::Graceful(pid))
-    );
+    assert_eq!(stop(pid, 5_000, 1_000), Ok(Stopped::Graceful(pid)));
     assert_eq!(
         c.0.wait().expect("wait").code(),
         Some(0),
@@ -242,10 +226,7 @@ fn the_one_shot_supervisor_stops_politely_then_by_force() {
         "trap '' TERM; echo ready; while :; do sleep 0.05; done",
     ));
     let pid = c.0.id();
-    assert_eq!(
-        stop_pid(pid, &exe(pid), 200, 2_000),
-        Ok(Stopped::Killed(pid))
-    );
+    assert_eq!(stop(pid, 200, 2_000), Ok(Stopped::Killed(pid)));
     use std::os::unix::process::ExitStatusExt as _;
     assert_eq!(
         c.0.wait().expect("wait").signal(),
@@ -256,19 +237,8 @@ fn the_one_shot_supervisor_stops_politely_then_by_force() {
         !std::path::Path::new(&format!("/proc/{pid}")).exists(),
         "进程表里还有 {pid}"
     );
-    // 已经不在的（刚收过尸的那个 pid）⇒ not_running。
-    assert_eq!(
-        stop_pid(pid, &exe(std::process::id()), 200, 200),
-        Ok(Stopped::NotRunning)
-    );
-    // 记下的程序对不上 ⇒ 拒，且它照样活着（没发任何信号）。
-    let mut c = Reap(sh_child(
-        "trap 'exit 0' TERM; echo ready; while :; do sleep 0.05; done",
-    ));
-    let pid = c.0.id();
-    let err = stop_pid(pid, Path::new("/nonexistent/cc-monitor-backend"), 200, 200).unwrap_err();
-    assert!(err.said.contains(&pid.to_string()), "{err}");
-    assert!(matches!(c.0.try_wait(), Ok(None)), "对不上身份的也被停了");
+    // 已经不在的（刚收过尸的那个 pid）⇒ 拿不到把手。
+    assert!(matches!(crate::platform::signal::stoppable(pid), Ok(None)));
     // 线上三个词。
     let words: Vec<&str> = [
         Stopped::Graceful(1),
@@ -279,71 +249,6 @@ fn the_one_shot_supervisor_stops_politely_then_by_force() {
     .map(|s| s.word())
     .collect();
     assert_eq!(words, ["graceful", "killed", "not_running"]);
-}
-
-/// 〔升级那一跳〕旧版常驻后端占着中转口（这里用一个占着回环口的进程扮它，`<家>/listen-<口>.pid` 记着它）：
-/// `retire_legacy` 停掉它、删掉旧记录与旧钥匙文件 ⇒ 那个口空出来，新的常驻后端接得上中转；没有旧记录 ⇒ 什么都不做。
-/// 而进程入口（`stream/entry.rs`）里先停旧的、再接中转（同一条线程里，顺序钉住）。
-#[test]
-#[cfg(target_os = "linux")]
-fn upgrading_retires_the_old_resident_so_the_relay_port_frees_up() {
-    use std::io::BufRead as _;
-    let dh = test_home::scratch("legacy");
-    assert_eq!(
-        retire_legacy(&crate::platform::fs::Own::issue_data_at(&dh)),
-        None,
-        "没有旧记录也动了手"
-    );
-    let mut old = std::process::Command::new("python3")
-        .args([
-            "-c",
-            "import socket,signal; s=socket.socket(); s.bind(('127.0.0.1',0)); s.listen(); \
-             print(s.getsockname()[1], flush=True); signal.pause()",
-        ])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        .expect("起扮旧版的那个进程");
-    let mut line = String::new();
-    std::io::BufReader::new(old.stdout.take().unwrap())
-        .read_line(&mut line)
-        .unwrap();
-    let port: u16 = line.trim().parse().expect("口号");
-    let pid = old.id();
-    let exe = crate::platform::proc::exe_of(pid).expect("exe");
-    std::fs::write(
-        dh.join(format!("listen-{port}.pid")),
-        format!("{pid}\n{exe}\n"),
-    )
-    .unwrap();
-    std::fs::write(dh.join(LEGACY_LISTEN_TOKEN_NAME), "old").unwrap();
-    assert!(
-        std::net::TcpListener::bind(("127.0.0.1", port)).is_err(),
-        "前提：旧版占着那个口"
-    );
-    let said =
-        retire_legacy(&crate::platform::fs::Own::issue_data_at(&dh)).expect("有旧记录却说没有");
-    assert!(said.contains("graceful"), "{said}");
-    let _ = old.wait();
-    assert!(
-        std::net::TcpListener::bind(("127.0.0.1", port)).is_ok(),
-        "旧版停了，口却没空出来 —— 新版接不上中转"
-    );
-    assert!(legacy_listen_pid_in(&dh).is_none());
-    assert!(!dh.join(LEGACY_LISTEN_TOKEN_NAME).exists());
-    // 顺序：同一条线程里先 `retire_legacy`，后 `host_relay`。
-    let main = guard_core::production_code(include_str!("../../../src/backend/stream/entry.rs"));
-    let at = main
-        .find("control::resident::retire_legacy")
-        .expect("stream/entry.rs 里没有升级那一跳");
-    let relay_after = main[at..]
-        .find("host_relay(")
-        .expect("停了旧的之后没接中转");
-    assert!(
-        !main[at..at + relay_after].contains("thread::spawn"),
-        "停旧版与接中转不在同一条线程里 —— 顺序就钉不住了"
-    );
-    let _ = std::fs::remove_dir_all(&dh);
 }
 
 /// 扮一个在听的常驻后端：另一个进程绑 `<家>/run/backend.sock`，每条连接先给一行 hello（带 `build`）再关；收 SIGTERM 就退。
@@ -387,7 +292,10 @@ fn stopping_asks_the_socket_not_a_recorded_pid() {
         "trap 'exit 0' TERM; echo ready; while :; do sleep 0.05; done",
     ));
     let dpid = decoy.0.id();
-    let exe = crate::platform::proc::exe_of(dpid).expect("exe");
+    let exe = std::fs::read_link(format!("/proc/{dpid}/exe"))
+        .expect("exe")
+        .display()
+        .to_string();
     std::fs::write(
         relay_route_core::listen_dir_for(&dh).join("backend.pid"),
         format!("{dpid}\n{exe}\n"),
@@ -435,17 +343,6 @@ fn replacing_never_downgrades_the_one_that_listens() {
         drop(listening);
         let _ = std::fs::remove_dir_all(&dh);
     }
-}
-
-/// 旧版常驻后端的进程记录照名字的形状找：`listen-<口>.pid` 才算，别的同前缀文件（钥匙 · 不是口号的）不算。
-#[test]
-fn legacy_listen_record_is_found_by_its_name_shape() {
-    let dh = test_home::scratch("legacy-shape");
-    std::fs::write(dh.join(LEGACY_LISTEN_TOKEN_NAME), "old").unwrap();
-    std::fs::write(dh.join("listen-x.pid"), "").unwrap();
-    assert_eq!(legacy_listen_pid_in(&dh), None);
-    std::fs::write(dh.join("listen-56233.pid"), "").unwrap();
-    assert_eq!(legacy_listen_pid_in(&dh), Some(dh.join("listen-56233.pid")));
 }
 
 /// 扮常驻的那一侧（同进程，绑 `<家>/run/backend.sock`）：收一条连接，先给 hello，读 attach 行、回「接上了」，

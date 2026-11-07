@@ -4,7 +4,7 @@
 //! # 名字还叫 `server.rs`
 //!
 //! 拆分表要的名字是 **exchange**（交换面）。拿这个路径当住址的登记已经一处都没有了：凭据出口那张
-//! （`tests/common/guard-core/rules/creds_store_exits.rs`）不钉本文件，三道字节上限是 `relay_route_core::Cap`、数与超了怎么办写在常量上。
+//! （`tests/common/guard-core/rules/creds_store_exits.rs`）不钉本文件，三道字节上限是 `cap_core::Cap`、数与超了怎么办写在常量上。
 //! 监听那半已经在 `listen.rs`，这里剩下的就是 `exchange`；改名是另一件。
 //!
 //! # 中转与上游选择的分界就在这一层里的一句话上
@@ -30,9 +30,9 @@ use std::sync::Arc;
 //   的**两向相等断言**钉着（中转零处 ＋ 上游选择恰好登记那几处），不是一条散文。
 
 /// 请求头部字节上限（响应头同此）：超了拒收＋回错。
-const HEAD_CAP: relay_route_core::Cap = relay_route_core::Cap {
+const HEAD_CAP: cap_core::Cap = cap_core::Cap {
     bytes: 64 * 1024,
-    over: relay_route_core::Over::Reject,
+    over: cap_core::Over::Reject,
 };
 /// **请求体**字节上限。
 ///
@@ -46,9 +46,9 @@ const HEAD_CAP: relay_route_core::Cap = relay_route_core::Cap {
 ///
 /// 值怎么定的：claude 搬的是 `POST /v1/messages` 的载荷 —— 一次会话的全部上下文 + 附件。
 /// 64 MiB 比本仓见过的任何一次请求都宽两个量级以上，同时把「一个数就能耗尽内存」这条路堵死。
-const BODY_CAP: relay_route_core::Cap = relay_route_core::Cap {
+const BODY_CAP: cap_core::Cap = cap_core::Cap {
     bytes: 64 * 1024 * 1024,
-    over: relay_route_core::Over::Reject,
+    over: cap_core::Over::Reject,
 };
 /// **tee 侧解码缓冲**的字节上限（`SseSplitter` 的半行 · `ChunkedView` 攒着的那截）。
 ///
@@ -56,9 +56,9 @@ const BODY_CAP: relay_route_core::Cap = relay_route_core::Cap {
 /// 不用发），这一条防的是「按**真实收到的字节**无界增长」（上游发一条永不换行的 `data:` 行 /
 /// 永不结束的块长度行）。超了**丢弃+带身份报告**：丢掉那一截并计数，
 /// 由 tee 在 tap 上占一个号不发报出去（接收侧看得见缺口）—— **tee 少一段，下游的字节一个不少**。
-const TEE_DECODE_CAP: relay_route_core::Cap = relay_route_core::Cap {
+const TEE_DECODE_CAP: cap_core::Cap = cap_core::Cap {
     bytes: 8 * 1024 * 1024,
-    over: relay_route_core::Over::DropAndReport,
+    over: cap_core::Over::DropAndReport,
 };
 /// 每次从上游读多少 —— **上限**，不是「要凑满这么多」。
 /// `std::io::Read::read` 本来就是「有多少给多少」，不循环凑满。
@@ -90,7 +90,7 @@ const NOT_A_ROUTE: &str = "404 Not Found";
 /// 在飞连接顶满（`listen.rs::INFLIGHT_CONNECTIONS`）· 在途请求体合计记不下（[`BodyBudget`]，原因头 `body-budget`）·
 /// 起不了连接线程。**「我们这侧现在吃不下」**。
 ///
-/// 是一个状态码，不是读上限（读上限是 `relay_route_core::Cap`）：名字不带 `CAP`/`MAX`/`LIMIT`/`BYTES`。
+/// 是一个状态码，不是读上限（读上限是 `cap_core::Cap`）：名字不带 `CAP`/`MAX`/`LIMIT`/`BYTES`。
 pub const BUSY: &str = "503 Service Unavailable";
 /// 🔴 **中转自己的传输失败、而且不是超时**：上游断开 · 发到一半断了 · 没回应就断 · 回的不是 HTTP · 只给 1xx。
 /// 上游选择的拒绝回的是 4xx，502 只留给这个本义。
@@ -266,7 +266,7 @@ impl Relay {
         open: Arc<OpenFor>,
         downstream_deadline: std::time::Duration,
         upstream_deadline: std::time::Duration,
-        in_flight_bodies: relay_route_core::Cap,
+        in_flight_bodies: cap_core::Cap,
     ) -> Self {
         Self {
             stream_headers: dest.stream_label_headers(),

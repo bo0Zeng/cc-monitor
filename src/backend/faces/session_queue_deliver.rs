@@ -4,17 +4,19 @@
 //! - **醒**：活会话表发布一份（[`crate::history::live_table::on_publish`] 那一声）· 队动了（本进程投进一条 · watcher 看见别的进程写了队目录，
 //!   都经 [`crate::history::session_queue::moved`]）·
 //!   有等着的期限（送出后等那一轮起来 [`CONFIRM_MS`] · 收着的等够了 · 送那一下回了「等」之后再试 [`WAITING_RETRY_MS`]）到点。别的时候一直睡。
-//! - **判**（[`step`]，纯函数）：
+//! - **判**（[`step`]，纯函数）：不看会话在不在跑、也不分来源（人发的 · cc-bus 投的 · 斜杠命令 · 计划审面退回一样），agent 自己处理插进来的话。
 //!   - 不活：这一段队里有东西时看见它活过 ⇒ 会话结束，没送的标未送达；没看见过 ⇒ 送（送字本体恢复它，那一句当第一句）。
-//!   - 闲着 · 一轮停了、后台在跑 ⇒ 送；但上一条送出之后那一态没换过（那一态起始不晚于送出那一刻）、又没过 [`CONFIRM_MS`] ⇒ 等，
-//!     那一轮还没起来（不往 agent 自己的排队里塞：那一队看不见也撤不了）。
-//!   - 在跑 · 在等人（批准 · 回答框开着，打的字会落进框里）· 说不清 ⇒ 等。
-//!   - 编辑已发的那一句、选了「现在停」⇒ 在跑也送（停下这一轮是回退那一串的第一步，[`crate::control::rewind`]）。
+//!   - 屏上正有批准框 · 问答框（在等人）⇒ 压着：这时送字带回车会被当成对框的回答、可能误批；框答完就送。
+//!   - 别的（闲着 · 在跑 · 后台在跑 · 说不清）⇒ 送。一次一条：上一条送出之后那一态没换过（那一态起始不晚于送出那一刻）、又没过
+//!     [`CONFIRM_MS`] ⇒ 下一条先等，免得几句粘成一行。
+//!   - 编辑已发的那一句、选了「等这一轮完」⇒ 在跑时不送（回退要走的那几步不插在一轮中间）；选「现在停」照送（停下这一轮是回退那一串的第一步，
+//!     [`crate::control::rewind`]）。
+//!   - 那台离线不归这里：发件端留着待发，接上之后照同一个编号补交。
 //! - **送**：照送字本体（`faces/session_send.rs`：同一道身份门 · 只剩 shell 不送 · 终端没了按记下的号恢复）。结局：送到 · 不知道送没送到 ⇒ 摘掉
-//!   （不重送）；在等人 · 托管终端里人敲了半句没回车 ⇒ 照排着，最晚 [`WAITING_RETRY_MS`] 再试（人把半句删回空行又不回车时没有事件来）；别的被拒 ⇒ 那一条标未送达（留给发件人看、撤；旧版托管进程不认「说一句」⇒ 那一条写明要重开那个终端）；命令级错 ⇒ 照排着，下一次醒再试。
+//!   （不重送）；送那一下回「等」（框开着 · 回退那一串要等）⇒ 照排着，最晚 [`WAITING_RETRY_MS`] 再试；别的被拒 ⇒ 那一条标未送达（留给发件人看、撤；旧版托管进程不认「说一句」⇒ 那一条写明要重开那个终端）；命令级错 ⇒ 照排着，下一次醒再试。
 //!   编辑已发的那一句（带 `rewind`）⇒ 先在会话里退到那一句之前再说它（[`super::session_rewind_face::walk_here`]）：成了 ⇒ 摘掉；
 //!   等 ⇒ 照排着；没退成 · 退了没送进 ⇒ 标未送达、那一条写上为什么；送进了、记录里还没读到 ⇒ 摘掉（不重送）。
-//! - 终端输入行里有没提交的字：托管那一形由托管进程判（回「等」，见上）；tmux 那一形判不出，照送。
+//! - 终端输入行里有没有没提交的字：投递不看。
 
 use super::session_send::Delivery;
 use crate::agents::SessionActivity;
@@ -28,8 +30,8 @@ use std::collections::BTreeMap;
 /// 送出一条之后，那一态一直没换（那一句没起一轮：`/clear` 一类）最多等多久就送下一条（毫秒，这台的钟）。
 pub(crate) const CONFIRM_MS: i64 = 15_000;
 
-/// 送那一下回「等」（托管终端里人敲了半句没回车 · 框开着）之后，最晚多久再试一次（毫秒）：人把半句删回空行又不回车时
-/// 没有一样事件会来，不到点再试那一条就一直排着。
+/// 送那一下回「等」（框开着 · 回退那一串要等）之后，最晚多久再试一次（毫秒）：等的那一样了结时不一定有事件来，
+/// 不到点再试那一条就一直排着。
 pub(crate) const WAITING_RETRY_MS: i64 = 5_000;
 
 /// 一条会话此刻的样子（活会话表那一份）。
@@ -73,16 +75,21 @@ fn settled(look: &Look, sent_ms: i64, now_ms: i64) -> bool {
 }
 
 /// 排在最前那一条此刻送不送（见头注）。
-pub(crate) fn step(look: &Look, memo: &Memo, now_ms: i64) -> Step {
+pub(crate) fn step(look: &Look, memo: &Memo, item: &QueueItem, now_ms: i64) -> Step {
     let waiting_turn = memo.sent_ms.is_some_and(|t| !settled(look, t, now_ms));
     match look.doing {
         None if memo.live => Step::End,
-        None if waiting_turn => Step::Wait,
-        None => Step::Send,
-        Some(Some(SessionActivity::Idle | SessionActivity::BackgroundWork)) if !waiting_turn => {
-            Step::Send
+        None => {
+            if waiting_turn {
+                Step::Wait
+            } else {
+                Step::Send
+            }
         }
-        Some(_) => Step::Wait,
+        Some(Some(SessionActivity::NeedsYou)) => Step::Wait,
+        Some(Some(SessionActivity::Working)) if after_turn(item) => Step::Wait,
+        Some(_) if waiting_turn => Step::Wait,
+        Some(_) => Step::Send,
     }
 }
 
@@ -93,18 +100,18 @@ pub(crate) struct Deps<'a> {
     pub(crate) send: &'a dyn Fn(&str, &QueueItem) -> Result<Delivery, Said>,
 }
 
-/// 编辑已发的那一句、选了现在停：主 agent 在跑也送（[`step`] 照它让路）。
-pub(crate) fn urgent(item: &QueueItem) -> bool {
+/// 编辑已发的那一句、选了等这一轮完：在跑时不送（回退要走的那几步不能插在一轮中间；选「现在停」的照送）。
+fn after_turn(item: &QueueItem) -> bool {
     item.rewind
         .as_ref()
-        .is_some_and(|r| r.when == cmd_wire::rewind::RewindWhen::Now)
+        .is_some_and(|r| r.when == cmd_wire::rewind::RewindWhen::AfterTurn)
 }
 
 /// 送的结局怎么落：摘掉 · 照排着 · 标未送达。
 fn landed(d: &Delivery) -> Option<bool> {
     match d {
         Delivery::In { .. } => Some(true),
-        Delivery::Waiting | Delivery::HalfTyped => None,
+        Delivery::Waiting => None,
         Delivery::No(_) => Some(false),
     }
 }
@@ -132,6 +139,18 @@ pub(crate) fn pass(deps: &Deps<'_>, memos: &mut Memos, now_ms: i64) -> Option<i6
         }
         let memo = memos.entry(sid.clone()).or_default();
         let look = (deps.look)(sid);
+        // 名单那一句跟着屏上开没开着框换（排着的说需手动 · 答完再送）：变了才写盘、推名单。投递判定不看它。
+        if let Err(f) = q::mark_box(
+            deps.own,
+            sid,
+            look.doing == Some(Some(SessionActivity::NeedsYou)),
+        ) {
+            tracing::warn!(
+                "[session-queue] {sid} 记开框没成：{} {}",
+                f.code_or_fallback(),
+                f.said
+            );
+        }
         if memo.sent_ms.is_some_and(|t| settled(&look, t, now_ms)) {
             memo.sent_ms = None;
         }
@@ -144,13 +163,7 @@ pub(crate) fn pass(deps: &Deps<'_>, memos: &mut Memos, now_ms: i64) -> Option<i6
             memo.retry_ms = None;
             continue;
         };
-        let now_step = match step(&look, memo, now_ms) {
-            Step::Wait if urgent(&item) && look.doing == Some(Some(SessionActivity::Working)) => {
-                Step::Send
-            }
-            s => s,
-        };
-        match now_step {
+        match step(&look, memo, &item, now_ms) {
             Step::Wait => {}
             Step::End => {
                 if let Err(f) = q::end(deps.own, sid, now_ms) {
@@ -166,15 +179,6 @@ pub(crate) fn pass(deps: &Deps<'_>, memos: &mut Memos, now_ms: i64) -> Option<i6
             Step::Send => match (deps.send)(sid, &item) {
                 Ok(sent) => match landed(&sent) {
                     None => {
-                        // 等的是托管终端里那半句 ⇒ 那一条说出来（三端照摆）；别的等 ⇒ 不说。没变不写。
-                        let half = sent == Delivery::HalfTyped;
-                        if let Err(f) = q::mark_half(deps.own, sid, &item.id, half) {
-                            tracing::warn!(
-                                "[session-queue] {sid} 记等的原因没成：{} {}",
-                                f.code_or_fallback(),
-                                f.said
-                            );
-                        }
                         memo.retry_ms = Some(now_ms.saturating_add(WAITING_RETRY_MS));
                     }
                     Some(true) => {

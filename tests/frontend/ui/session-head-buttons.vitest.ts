@@ -24,19 +24,19 @@ vi.mock("../../../src/frontend/ui/config", async (orig) => {
   };
 });
 vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), undoToast: vi.fn(), failToast: vi.fn(), silentUndo: vi.fn() }));
-vi.mock("../../../src/frontend/ui/terminal-front", () => ({ terminalFrontAvailable: vi.fn(() => false) }));
 
 import { SessionHead, type SessionHeadHost } from "../../../src/frontend/ui/session-head";
 import { CONFIG_KEY_OWNERS } from "../../../src/frontend/ui/config";
 import { DEFAULT_HEAD_BUTTONS, dropHeadButton, headButtonsThatFit, headEditRows, nudgeHeadButton, sanitizeHeadButtons, toggleHeadButton } from "../../../src/frontend/ui/session-head-buttons";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
+import { applyFacts } from "../../../src/frontend/ui/tab-session-facts";
+import type { SessionFacts } from "../../../src/frontend/ui/session-reads";
 import type { MenuItem } from "../../../src/frontend/ui/kit/menu";
 import { closeMenu } from "../../../src/frontend/ui/kit/menu";
 import { closePopover } from "../../../src/frontend/ui/kit/popover";
 import { undoToast } from "../../../src/frontend/ui/kit/toast";
 import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import { goldenFace, liveFace } from "../../test-support/session-faces";
-import { terminalFrontAvailable } from "../../../src/frontend/ui/terminal-front";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { dispatcher } from "../../../src/frontend/ui/keybindings/registry";
 
@@ -46,7 +46,7 @@ dispatcher.start(); // Esc 走弹层栈（window 上那一个监听）
 function tab(sid: string, over: Partial<Tab> = {}): Tab {
   return {
     sessionId: sid, title: sid, background: false, bgName: null, label: null, projectDir: `/w/${sid}`, face: liveFace("working"), line: null, pinned: false, group: null,
-    origin: LOCAL, activity: null, forkedFromSessionId: null, writersLine: null, whereLine: null, unread: 0, needs: null, backgroundWork: null, pending: [], lastSay: null, ...over,
+    origin: LOCAL, activity: null, forkedLine: null, whereLine: null, unread: 0, needs: null, backgroundWork: null, pending: [], lastSay: null, ...over,
   } as unknown as Tab;
 }
 
@@ -62,7 +62,7 @@ function rig(t: Tab | null = tab("a")): { h: SessionHead; host: { more: ReturnTy
   const item = (id: string, label: string, extra: Partial<MenuItem> = {}): MenuItem => ({ id, label, onClick: () => clicked.push(id), ...extra });
   const host = {
     active: () => current,
-    viewTerminal: vi.fn(), openCwd: vi.fn(), front: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), attach: vi.fn(), reconnect: vi.fn(), planMark: () => null,
+    openCwd: vi.fn(), terminal: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), reconnect: vi.fn(), planMark: () => null,
     menuItem: vi.fn((_sid: string, id: string): MenuItem | null => {
       switch (id) {
         case "popOut": return item("popOut", copyText("history.menu.openWindow"));
@@ -106,7 +106,6 @@ beforeEach(() => {
   shown = { proc: false, injected: false };
   clicked.length = 0;
   vi.mocked(undoToast).mockClear();
-  vi.mocked(terminalFrontAvailable).mockReturnValue(false);
 });
 afterEach(() => {
   closeMenu();
@@ -121,16 +120,19 @@ describe("纯函数：读盘 · 清单 · 勾 · 挪 · 拖 · 放不下", () =>
     expect(sanitizeHeadButtons([])).toEqual([]);
   });
 
-  it("默认 ＝ 方案①那一排；「结束会话」与「更多」都不在全集里", () => {
-    expect(DEFAULT_HEAD_BUTTONS).toEqual(["cwd", "front", "terminal", "popOut", "account", "display", "find"]);
+  it("默认只「终端」与「在会话里找」两颗；「结束会话」与「更多」都不在全集里；「切到终端」「显示 ▾」两颗删了（存过的读时跳过）", () => {
+    expect(DEFAULT_HEAD_BUTTONS).toEqual(["terminal", "find"]);
     const ids = headEditRows([]).map((r) => r.id);
     expect(ids).not.toContain("kill");
     expect(ids).not.toContain("more");
-    expect(ids).toHaveLength(11);
+    expect(ids).not.toContain("front");
+    expect(ids).not.toContain("display");
+    expect(ids).toHaveLength(9);
+    expect(sanitizeHeadButtons(["front", "display", "find"]), "盘上存过的旧 id 读时跳过，不迁移").toEqual(["find"]);
   });
 
   it("清单：上段按顺序勾着，下段按全集顺序；勾上放末尾、取消回下段；Alt+↑↓ 挪一格到头不动", () => {
-    expect(headEditRows(["find", "cwd"]).slice(0, 3)).toEqual([{ id: "find", on: true }, { id: "cwd", on: true }, { id: "front", on: false }]);
+    expect(headEditRows(["find", "cwd"]).slice(0, 3)).toEqual([{ id: "find", on: true }, { id: "cwd", on: true }, { id: "terminal", on: false }]);
     expect(toggleHeadButton(["find"], "pin")).toEqual(["find", "pin"]);
     expect(toggleHeadButton(["find", "pin"], "find")).toEqual(["pin"]);
     expect(nudgeHeadButton(["a", "b", "c"] as never, "b" as never, -1)).toEqual(["b", "a", "c"]);
@@ -139,7 +141,7 @@ describe("纯函数：读盘 · 清单 · 勾 · 挪 · 拖 · 放不下", () =>
   });
 
   it("拖：上段之间换位；没勾的拖进上段 ＝ 勾上；勾着的拖进下段 ＝ 取消", () => {
-    // 行：find cwd | front terminal popOut account display pin group resume close
+    // 行：find cwd | terminal popOut account pin group resume close
     expect(dropHeadButton(["find", "cwd"], "cwd", 0)).toEqual(["cwd", "find"]);
     expect(dropHeadButton(["find", "cwd"], "pin", 1)).toEqual(["find", "pin", "cwd"]);
     expect(dropHeadButton(["find", "cwd"], "find", 2), "紧跟上段最后一颗 ⇒ 还在会话头上").toEqual(["cwd", "find"]);
@@ -155,30 +157,60 @@ describe("纯函数：读盘 · 清单 · 勾 · 挪 · 拖 · 放不下", () =>
   });
 });
 
-describe("会话头那一排", () => {
-  it("★ 默认：目录 · 切到终端 · 看它的终端 · 在新窗口打开 · 账号 · 显示 · 查找 · ⋯；这台认不出终端窗口 ⇒ ↗ 在、灰着、点了不做事（A2-17-12-1）", () => {
-    const { h, host } = rig();
-    expect(heads(h)).toEqual(["cwd", "front", "terminal", "popOut", "account", "display", "find", "more"]);
-    expect(btn(h, "front").getAttribute("aria-disabled"), "做不了只灰着一种样子").toBe("true");
-    btn(h, "front").click();
-    expect((host as unknown as { front: ReturnType<typeof vi.fn> }).front).not.toHaveBeenCalled();
-    vi.mocked(terminalFrontAvailable).mockReturnValue(true);
-    const w = rig(tab("w"));
-    expect(heads(w.h)).toEqual(["cwd", "front", "terminal", "popOut", "account", "display", "find", "more"]);
-    expect(btn(w.h, "front").hasAttribute("aria-disabled")).toBe(false);
+// 会话头目录行照会话事实的 `cwdShown`（那台按自己家目录写好的 `~/…`），不显原样 `projectDir`；还没有 ⇒ 藏着。
+describe("会话头目录行", () => {
+  const dirOf = (h: SessionHead): HTMLElement => h.el.children[3] as HTMLElement;
+  const facts = (extra: Record<string, unknown>): SessionFacts =>
+    ({ forkedFrom: null, touchedFiles: [], usage: null, projectDir: "/home/me/w", agent: null, writers: [], needs: null, pending: [], lastSay: null, background: null, retries: [], startedBy: null, children: [], startedByText: null, childrenText: null, ...extra }) as unknown as SessionFacts;
+  const shownOf = (t: Tab): unknown => (t as unknown as { cwdShown: unknown }).cwdShown;
+
+  it("★ 显 `cwdShown`；`cwdShown` 为 null ⇒ 藏着，不退回 `projectDir`", () => {
+    const { h } = rig(tab("a", { projectDir: "/home/me/w", cwdShown: "~/w" } as Partial<Tab>));
+    expect([dirOf(h).textContent, dirOf(h).style.display]).toEqual(["~/w", ""]);
+    const bare = rig(tab("b", { projectDir: "/home/me/w", cwdShown: null } as Partial<Tab>));
+    expect(dirOf(bare.h).style.display).toBe("none");
   });
 
-  it("★ 远端会话也有「打开工作目录」那一颗（文件窗口落在那台那个目录，A2-17-7-5）；没有目录 ⇒ 不出", () => {
+  it("★ `applyFacts` 落 `cwdShown`、算进目录那一格变化；事实里没给 ⇒ 不清 tab 上那一份", () => {
+    const t = tab("a", { projectDir: "/home/me/w", cwdShown: null, touchedFiles: new Set() } as Partial<Tab>);
+    expect(applyFacts(t, facts({ cwdShown: "~/w" })).projectDir).toBe(true);
+    expect(shownOf(t)).toBe("~/w");
+    expect(applyFacts(t, facts({})).projectDir).toBe(false);
+    expect(shownOf(t)).toBe("~/w");
+  });
+});
+
+describe("会话头那一排", () => {
+  it("★ 默认：终端 · 在会话里找 · ⋯；「终端」做得了 ⇒ 点了交宿主那一条，悬停是那台写好的去做什么；做不了 ⇒ 在、灰着、点了不做事", () => {
+    const { h, host } = rig(tab("a", { face: liveFace("working", true) }));
+    expect(heads(h)).toEqual(["terminal", "find", "more"]);
+    expect(btn(h, "terminal").hasAttribute("aria-disabled")).toBe(false);
+    expect(btn(h, "terminal").getAttribute("aria-label")).toBe(copyText("mobDrawer.item.terminal"));
+    btn(h, "terminal").click();
+    expect((host as unknown as { terminal: ReturnType<typeof vi.fn> }).terminal).toHaveBeenCalledWith("a");
+    btn(h, "find").click();
+    expect((host as unknown as { find: ReturnType<typeof vi.fn> }).find).toHaveBeenCalled();
+    // 远端、不在任何宿主里 ⇒ 那台说别处没有终端可接：灰着。
+    const off = rig(tab("r", { origin: "devbox", face: liveFace("working", false) }));
+    expect(btn(off.h, "terminal").getAttribute("aria-disabled"), "做不了只灰着一种样子").toBe("true");
+    btn(off.h, "terminal").click();
+    expect((off.host as unknown as { terminal: ReturnType<typeof vi.fn> }).terminal).not.toHaveBeenCalled();
+  });
+
+  it("★ 摆上来的「打开工作目录」远端会话也有（文件窗口落在那台那个目录，A2-17-7-5）；没有目录 ⇒ 不出", async () => {
+    store.cfg = { sessionHead: { buttons: ["terminal", "cwd", "find"] } };
     const { h, host } = rig(tab("r", { origin: "devbox" }));
+    await h.loadButtons();
     expect(heads(h)).toContain("cwd");
     btn(h, "cwd").click();
     expect((host as unknown as { openCwd: ReturnType<typeof vi.fn> }).openCwd).toHaveBeenCalledWith("r");
     const bare = rig(tab("n", { origin: "devbox", projectDir: null }));
+    await bare.h.loadButtons();
     expect(heads(bare.h)).not.toContain("cwd");
   });
 
   it("★ 照盘上那一格排（读盘时跳过认不出的）；「⋯」永远在最右", async () => {
-    store.cfg = { sessionHead: { buttons: ["find", "pin", "bogus", "cwd"] } };
+    store.cfg = { sessionHead: { buttons: ["find", "pin", "bogus", "front", "display", "cwd"] } };
     const { h } = rig();
     await h.loadButtons();
     expect(heads(h)).toEqual(["find", "pin", "cwd", "more"]);
@@ -208,18 +240,6 @@ describe("会话头那一排", () => {
     expect(heads(h)).toEqual(["find", "more"]);
   });
 
-  it("「显示 ▾」：两个流开关在它的下拉里；有一个开着 ⇒ 按钮是「开」样（aria-pressed）", () => {
-    shown.proc = true;
-    const { h } = rig();
-    expect(btn(h, "display").getAttribute("aria-pressed")).toBe("true");
-    btn(h, "display").click();
-    menuItemEl(copyText("stream.proc.toggle")).click();
-    expect(clicked).toEqual(["proc"]);
-    shown.proc = false;
-    const off = rig(tab("b"));
-    expect(btn(off.h, "display").getAttribute("aria-pressed")).toBe("false");
-  });
-
   it("「⋯」：交出去的菜单末尾一组是「调整会话头按钮…」，最上面一组是收进去的（没收 ⇒ 空）", () => {
     const { h, host } = rig();
     btn(h, "more").click();
@@ -233,7 +253,7 @@ describe("按钮那一排右键 · 编辑浮层", () => {
   it("★ 右键某一颗：「调整会话头按钮…」·「从会话头移走「x」」；移走 ⇒ 当场落盘、会话头跟着变、toast 可撤", async () => {
     const { h } = rig();
     btn(h, "terminal").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
-    const name = copyText("sessionHead.act.terminal");
+    const name = copyText("mobDrawer.item.terminal");
     expect(menuLabels().map((l) => l.trim())).toEqual([copyText("sessionHead.edit.open"), copyText("sessionHead.edit.remove", { name })]);
     menuItemEl(copyText("sessionHead.edit.remove", { name })).click();
     await flush();
@@ -261,19 +281,19 @@ describe("按钮那一排右键 · 编辑浮层", () => {
     expect(pop.textContent).toContain(copyText("sessionHead.edit.hint"));
     expect(pop.textContent).toContain(copyText("sessionHead.edit.overflow"));
     const rows = (): HTMLElement[] => [...pop.querySelectorAll<HTMLElement>("[data-row]")];
-    expect(rows().map((r) => r.dataset.row)).toEqual(["cwd", "front", "terminal", "popOut", "account", "display", "find", "pin", "group", "resume", "close", "more"]);
+    expect(rows().map((r) => r.dataset.row)).toEqual(["terminal", "find", "cwd", "popOut", "account", "pin", "group", "resume", "close", "more"]);
     const box = (id: string): HTMLInputElement => pop.querySelector<HTMLInputElement>(`[data-row="${id}"] input[type=checkbox]`)!;
-    expect(box("cwd").checked).toBe(true);
+    expect(box("terminal").checked).toBe(true);
+    expect(box("cwd").checked).toBe(false);
     expect(box("pin").checked).toBe(false);
     expect(box("more").disabled, "「更多」不能取消").toBe(true);
     expect(pop.querySelector(`[data-row="more"]`)!.textContent).toContain(copyText("sessionHead.edit.fixedMore"));
-    expect(pop.querySelector(`[data-row="front"]`)!.textContent).toContain(copyText("sessionHead.edit.onlyWindows"));
     expect(pop.querySelector(`[data-row="resume"]`)!.textContent).toContain(copyText("sessionState.headEdit.onlyEnded"));
     box("pin").click();
     await flush();
     expect(lastButtonsWrite()).toEqual([{ op: "set", path: ["sessionHead", "buttons"], value: [...DEFAULT_HEAD_BUTTONS, "pin"] }]);
-    expect(heads(h)).toEqual(["cwd", "front", "terminal", "popOut", "account", "display", "find", "pin", "more"]);
-    expect(rows().map((r) => r.dataset.row).slice(0, 8), "清单跟着重排：勾上的进上段末尾").toEqual([...DEFAULT_HEAD_BUTTONS, "pin"]);
+    expect(heads(h)).toEqual(["terminal", "find", "pin", "more"]);
+    expect(rows().map((r) => r.dataset.row).slice(0, 3), "清单跟着重排：勾上的进上段末尾").toEqual([...DEFAULT_HEAD_BUTTONS, "pin"]);
   });
 
   it("浮层键盘：Alt+↓ 挪一格（焦点跟着那一行）· 空格勾 / 不勾 · Esc 关、焦点回「⋯」", async () => {
@@ -281,17 +301,17 @@ describe("按钮那一排右键 · 编辑浮层", () => {
     h.openEditor();
     const pop = document.body.querySelector<HTMLElement>("[role=dialog]")!;
     const row = (id: string): HTMLElement => pop.querySelector<HTMLElement>(`[data-row="${id}"]`)!;
-    row("cwd").focus();
-    row("cwd").dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", code: "ArrowDown", altKey: true, bubbles: true }));
+    row("terminal").focus();
+    row("terminal").dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", code: "ArrowDown", altKey: true, bubbles: true }));
     await flush();
     const written = (): string[] => (lastButtonsWrite() as { value: string[] }[])[0]!.value;
-    expect(written().slice(0, 2)).toEqual(["front", "cwd"]);
-    expect(document.activeElement).toBe(row("cwd"));
-    row("cwd").dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", code: "ArrowDown", bubbles: true }));
-    expect(document.activeElement, "↓ 走到下一行").toBe(row("terminal"));
-    row("terminal").dispatchEvent(new KeyboardEvent("keydown", { key: " ", code: "Space", bubbles: true }));
+    expect(written().slice(0, 2)).toEqual(["find", "terminal"]);
+    expect(document.activeElement).toBe(row("terminal"));
+    row("terminal").dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", code: "ArrowDown", bubbles: true }));
+    expect(document.activeElement, "↓ 走到下一行").toBe(row("cwd"));
+    row("cwd").dispatchEvent(new KeyboardEvent("keydown", { key: " ", code: "Space", bubbles: true }));
     await flush();
-    expect(written()).not.toContain("terminal");
+    expect(written()).toContain("cwd");
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true }));
     expect(document.body.querySelector("[role=dialog]")).toBeNull();
     expect(document.activeElement).toBe(btn(h, "more"));
@@ -306,7 +326,7 @@ describe("按钮那一排右键 · 编辑浮层", () => {
     reset.click();
     await flush();
     expect(lastButtonsWrite()).toEqual([{ op: "remove", path: ["sessionHead"] }]);
-    expect(heads(h)).toEqual(["cwd", "front", "terminal", "popOut", "account", "display", "find", "more"]);
+    expect(heads(h)).toEqual(["terminal", "find", "more"]);
     expect(vi.mocked(undoToast).mock.calls[0][0]).toBe(copyText("sessionHead.edit.resetDone"));
     vi.mocked(undoToast).mock.calls[0][1]();
     await flush();
@@ -315,18 +335,20 @@ describe("按钮那一排右键 · 编辑浮层", () => {
 });
 
 describe("放不下：从最后一颗起收进「⋯」最上面一组", () => {
-  it("★ 标题挤到 160 以下 ⇒ 收；收进去的排在「⋯」最上面（顺序同会话头）；不改用户的设置", () => {
+  it("★ 标题挤到 160 以下 ⇒ 收；收进去的排在「⋯」最上面（顺序同会话头）；不改用户的设置", async () => {
+    store.cfg = { sessionHead: { buttons: ["terminal", "find", "cwd", "popOut", "account", "pin"] } };
     const { h, host } = rig();
+    await h.loadButtons();
     const title = h.el.querySelector<HTMLElement>("[data-head-title]")!;
     const visible = (): number => heads(h).filter((x) => x !== "more").length;
     Object.defineProperty(title, "clientWidth", { configurable: true, get: () => 300 - 28 * visible() });
     Object.defineProperty(title, "scrollWidth", { configurable: true, get: () => 400 });
     h.fit();
-    expect(heads(h)).toEqual(["cwd", "front", "terminal", "popOut", "account", "more"]); // 300-140=160（↗ 灰着也占一颗）
+    expect(heads(h)).toEqual(["terminal", "find", "cwd", "popOut", "account", "more"]); // 300-140=160
     btn(h, "more").click();
     const extra = host.more.mock.calls[0][2] as { top: MenuItem[]; bottom: MenuItem[] };
-    expect(extra.top.map((i) => i.label)).toEqual([copyText("sessionHead.act.display"), copyText("sessionHead.act.find"), ""]);
-    expect(store.edits, "收进去不改设置").toEqual([]);
+    expect(extra.top.map((i) => i.label)).toEqual([copyText("tabMenu.pin.pin"), ""]);
+    expect(store.edits.filter((e) => JSON.stringify(e).includes("buttons")), "收进去不改设置").toEqual([]);
   });
 });
 

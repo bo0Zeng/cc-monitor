@@ -11,17 +11,17 @@ class ChatSayTest {
     private fun can(face: String) = Faces.of(face).can
 
     @Test
-    fun `说不了 ⇒ 框灰着、占位就是那台那一句；还有终端可去才给切到终端`() {
+    fun `说不了 ⇒ 框灰着、占位就是那台那一句（去终端只有顶栏那一颗，框旁不另放）`() {
         val plain = can("live-working-plain")
-        assertEquals(SayLook((plain.say as CanSay.No).why, open = false, toTerminal = true), sayLook(down = false, can = plain))
+        assertEquals(SayLook((plain.say as CanSay.No).why, open = false), sayLook(down = false, can = plain))
         val gone = can("gone")
-        assertEquals(SayLook((gone.say as CanSay.No).why, open = false, toTerminal = false), sayLook(down = false, can = gone))
+        assertEquals(SayLook((gone.say as CanSay.No).why, open = false), sayLook(down = false, can = gone))
     }
 
     @Test
     fun `说得了 ⇒ 占位是那台写的 hint、框照常`() {
         val ended = can("ended")
-        assertEquals(SayLook((ended.say as CanSay.Yes).hint, open = true, toTerminal = false), sayLook(down = false, can = ended))
+        assertEquals(SayLook((ended.say as CanSay.Yes).hint, open = true), sayLook(down = false, can = ended))
     }
 
     @Test

@@ -46,4 +46,12 @@ class HostRowLookTest {
         assertFalse(code.contains("mobHosts.list.tabs"))
         assertFalse("不再按 SSH 那层的状态推点", code.contains("linkDots"))
     }
+
+    @Test
+    fun `主机行第二行只照成品，不拼用户 · 地址 · 端口与备用地址数`() {
+        val root = generateSequence(File(".").absoluteFile.normalize()) { it.parentFile }.first { File(it, "settings.gradle.kts").isFile }
+        val code = KotlinSourceScanner.codeOnlyKeepingLiterals(File(root, "app/src/main/kotlin/com/ccmonitor/mobile/ui/host/HostScreens.kt").readText())
+        assertFalse(code.contains("host.username}@"))
+        assertFalse(code.contains("host.addresses.size"))
+    }
 }

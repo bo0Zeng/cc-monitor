@@ -43,9 +43,9 @@ pub(crate) fn capture_full(
             // 两根管子上各是一行 JSON（答话 · 失败信封）⇒ 上限同帧行那一道；超了余下的读掉、不存（不读完它会卡在写上）。
             let cap = crate::stream_source::BACKEND_FRAME_LINE_CAP;
             match pipe {
-                Some(mut s) => match relay_route_core::read_capped_from(&mut s, cap) {
-                    Ok(relay_route_core::CappedAll::All(buf)) => (buf, None),
-                    Ok(relay_route_core::CappedAll::OverCap) => {
+                Some(mut s) => match cap_core::read_capped_from(&mut s, cap) {
+                    Ok(cap_core::CappedAll::All(buf)) => (buf, None),
+                    Ok(cap_core::CappedAll::OverCap) => {
                         std::io::copy(&mut s, &mut std::io::sink()).discard(Why::Drain);
                         (
                             Vec::new(),

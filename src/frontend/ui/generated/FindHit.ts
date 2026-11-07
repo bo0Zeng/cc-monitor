@@ -25,10 +25,6 @@ before: string, matched: string, after: string,
  */
 turn: number, 
 /**
- * 那条记录的时刻（毫秒；读不出 ＝ 0）。
- */
-tsMs: number, 
-/**
  * `tsMs` 按看的那一台的时区写好（今天 `HH:MM` · 昨天 · 更早带日期；读不出 ⇒ 空串）：出口那一下添（[`with_hit_text`]）。
  */
 tsText: string, 

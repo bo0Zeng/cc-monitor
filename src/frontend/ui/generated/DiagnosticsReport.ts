@@ -2,7 +2,7 @@
 import type { UnknownOnMachine } from "./UnknownOnMachine";
 
 /**
- * 整份答复。
+ * `diagnostics-report` 的回包。
  */
 export type DiagnosticsReport = { 
 /**

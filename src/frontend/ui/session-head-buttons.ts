@@ -1,22 +1,22 @@
 /**
- * **会话头上放哪几颗按钮**（用户自己排，默认 ＝ 打开工作目录起那一排）—— 纯函数那一半。
+ * **会话头上放哪几颗按钮**（用户自己排，默认 ＝ 终端 · 在会话里找）—— 纯函数那一半。
  *
- * - 能放上去的：「⋯」里除「结束会话…」以外的每一项（下面 [`HEAD_BUTTONS`]）。按状态那一颗（恢复 ▾ · 在终端里打开 · 重新连接）
+ * - 能放上去的：「⋯」里除「结束会话…」以外的每一项（下面 [`HEAD_BUTTONS`]）。按状态那一颗（恢复 ▾）
  *   照今天自己出、永远在最左，不进清单；「更多 ⋯」固定在最右，也不进清单。
  * - 存的是「会话头上那几颗、按顺序」；不在表里 ＝ 只在「⋯」里。没存过 ＝ 默认（[`DEFAULT_HEAD_BUTTONS`]，默认值只在这一处）。
- * - 认不出的 id（以后删了某项）读时跳过、不报错；重复的只留第一个。
+ * - 认不出的 id（删了的项：`front` · `display` …）读时跳过、不报错，不迁移；重复的只留第一个。
  *
  * 读写盘（`config.json` 的 `sessionHead.buttons`）在 `session-head.ts`；编辑浮层在 `session-head-edit.ts`。
  */
 
 /** 一颗能放到会话头上的按钮。 */
-export type HeadButtonId = "cwd" | "front" | "terminal" | "popOut" | "find" | "account" | "display" | "pin" | "group" | "resume" | "close";
+export type HeadButtonId = "cwd" | "terminal" | "popOut" | "find" | "account" | "pin" | "group" | "resume" | "close";
 
 /** 全集（编辑浮层下段「只在「⋯」里的」按这个顺序列）。 */
-export const HEAD_BUTTONS: readonly HeadButtonId[] = ["cwd", "front", "terminal", "popOut", "find", "account", "display", "pin", "group", "resume", "close"];
+export const HEAD_BUTTONS: readonly HeadButtonId[] = ["terminal", "find", "cwd", "popOut", "account", "pin", "group", "resume", "close"];
 
-/** 默认那一排（方案①）。 */
-export const DEFAULT_HEAD_BUTTONS: readonly HeadButtonId[] = ["cwd", "front", "terminal", "popOut", "account", "display", "find"];
+/** 默认那一排：只「终端」与「在会话里找」两颗（其余都在「⋯」里，用户可自己摆上来）。 */
+export const DEFAULT_HEAD_BUTTONS: readonly HeadButtonId[] = ["terminal", "find"];
 
 const KNOWN = new Set<string>(HEAD_BUTTONS);
 

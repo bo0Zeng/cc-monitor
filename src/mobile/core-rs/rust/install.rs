@@ -11,11 +11,11 @@
 
 use std::sync::{Arc, Mutex, OnceLock};
 
+use cap_core::{Cap, Over, Regular};
 use cmd_wire::phone::{DeployAct, DeployEnd};
 use copy_core::copy_text;
 use copy_core::said::Said;
 use deploy_contract::DeployAction;
-use relay_route_core::{Cap, Over, Regular};
 
 use crate::resident::{self, OnEvent};
 
@@ -90,15 +90,13 @@ fn load(p: &std::path::Path) -> Result<Vec<u8>, Said> {
     read_capped(p, BACKEND_BYTES_CAP)
 }
 
-/// 带上限地整份读一份本机文件（跟链接），经 `relay_route_core::read_capped_regular`：只认普通文件、长度已过上限 ⇒ 不读。
+/// 带上限地整份读一份本机文件（跟链接），经 `cap_core::read_capped_regular`：只认普通文件、长度已过上限 ⇒ 不读。
 /// 读不了的那一句只是原因，系统原话进 `raw`。
 fn read_capped(p: &std::path::Path, cap: Cap) -> Result<Vec<u8>, Said> {
     let io = |e: std::io::Error| Said::with_raw(copy_core::io_reason(e.kind()), e);
     let meta = std::fs::metadata(p).map_err(io)?;
     let c = cap.bytes.to_string();
-    match relay_route_core::read_capped_regular(&meta, || std::fs::File::open(p), cap)
-        .map_err(io)?
-    {
+    match cap_core::read_capped_regular(&meta, || std::fs::File::open(p), cap).map_err(io)? {
         Regular::Whole(buf) => Ok(buf),
         Regular::NotRegular => Err(Said::from(copy_text("reason.fs.notRegular", &[]))),
         Regular::OverCap(Some(size)) => Err(Said::from(copy_text(

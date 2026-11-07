@@ -9,8 +9,8 @@
 //! 「这台那份读不出来」不许合成一句。
 
 use crate::platform::fs::Ro;
+use cap_core::{Cap, Over};
 use copy_core::copy_text;
-use relay_route_core::{Cap, Over};
 use std::path::{Path, PathBuf};
 
 use super::accounts::{config_path_in, CONFIG_CAP};

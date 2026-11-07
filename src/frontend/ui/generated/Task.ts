@@ -25,10 +25,6 @@ statusText: string,
  */
 blocks: Array<string>, 
 /**
- * 同上。
- */
-blockedBy: Array<string>, 
-/**
  * 可缺（原文缺或 `null` ⇒ 这一格不出现），出现就是串。
  */
 description?: string, 

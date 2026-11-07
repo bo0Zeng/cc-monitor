@@ -339,6 +339,9 @@ impl Facts {
         if let Some(req) = base.and_then(|b| PhoneLink::new(b).request(serde_json::json!({})).ok())
         {
             ssh_dial::pool::way_of(snap, &req).put(&mut machine);
+            // 这一条连接用的是不是密码：那一跳的钥匙编号在钥匙表里是密码（判在 `deploy::machine::signed_in`）。
+            let password = req.key_path.as_deref().is_some_and(crate::is_password);
+            deploy::machine::signed_in(&mut machine, password);
         }
         let line = match &self.last {
             None | Some(State::Connecting) => LinkLine::Connecting { machine },
@@ -1333,6 +1336,43 @@ mod tests {
         }
         assert_eq!(stranger.route, None, "没交过拨号请求的那台带上了 route");
         assert_eq!(stranger.detail, None, "没交过拨号请求的那台带上了连接");
+    }
+
+    /// 这一条连接用的是密码（那一跳的钥匙编号在钥匙表里是密码）、那台连着 ⇒ 成品带［换成密钥］；是钥匙 ⇒ 不带。
+    #[test]
+    fn a_machine_signed_in_by_password_is_offered_a_key() {
+        use cmd_wire::machine::MachineFix;
+        let pw = crate::put_key(crate::Key::Password("pw-for-use-key".into()));
+        let pem = crate::put_key(crate::Key::Pem("not-read-here".into(), None));
+        let fixes_with = |key: &str, h: i64| {
+            bases().lock().unwrap_or_else(|e| e.into_inner()).insert(
+                h,
+                serde_json::json!({ "host": "box.test", "port": 22, "user": "u", "key_path": key }),
+            );
+            let mut mine = Facts {
+                id: h,
+                ..Facts::named("box")
+            };
+            let line = mine.round(
+                State::Up {
+                    epoch: 1,
+                    relation: cmd_wire::attach::Relation::Same,
+                    differs: Vec::new(),
+                },
+                "box",
+            );
+            bases().lock().unwrap_or_else(|e| e.into_inner()).remove(&h);
+            match serde_json::from_str::<LinkLine>(&line).expect("那一行读不动") {
+                LinkLine::Up { machine, .. } => {
+                    machine.fixes.iter().map(|f| f.fix).collect::<Vec<_>>()
+                }
+                other => panic!("连着却不是 up：{other:?}"),
+            }
+        };
+        assert_eq!(fixes_with(&pw, -1_030), vec![MachineFix::UseKey]);
+        assert_eq!(fixes_with(&pem, -1_031), Vec::<MachineFix>::new());
+        crate::hold_key(&pw, false);
+        crate::hold_key(&pem, false);
     }
 
     /// 首屏那一句：手上看着的每台照桌面那一份合（`deploy::machine::fleet`）—— 一台报完、一台还在连 ⇒ 不说「无会话」；

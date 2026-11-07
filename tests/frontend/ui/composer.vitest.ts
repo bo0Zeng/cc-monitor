@@ -23,7 +23,7 @@ const flush = async (): Promise<void> => {
   for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 0));
 };
 
-const item = (id: string, place: number): QueueItem => ({ seq: place, id, end: "mobile", text: `text of ${id}`, state: "queued", said: `place-${place}`, from: "phone-word" });
+const item = (id: string, place: number): QueueItem => ({ seq: place, id, end: "mobile", text: `text of ${id}`, state: "queued", said: `place-${place}` });
 const list = (...items: QueueItem[]): QueueList => ({ items, sent: [] });
 const tabOf = (face: SessionFace, sid = "s-1"): Tab => ({ origin: "devbox", sessionId: sid, face, label: "t", labelProject: null, background: false, forkedFromSessionId: null }) as unknown as Tab;
 const down = (): ChanError => new ChanError({ layer: "hop", at: { idx: 0, tag: "wait" }, reach: "Sent", why: "Overrun" }, "no-answer");
@@ -39,7 +39,7 @@ function rig(
 ) {
   let tab: Tab | null = tabOf(opts.face ?? liveFace("idle", true));
   let push: (m: QueueMoved) => void = () => {};
-  const put = vi.fn(opts.put ?? (async (): Promise<QueuePut> => ({ outcome: "queued", seq: 9, place: 1, said: "q-1" })));
+  const put = vi.fn(opts.put ?? (async (): Promise<QueuePut> => ({ outcome: "queued", seq: 9, said: "q-1" })));
   const reads: ComposerReads = {
     io: () => ({}) as AttachIo,
     read: vi.fn(async () => opts.first ?? list()),
@@ -52,7 +52,7 @@ function rig(
   const interrupt = vi.fn(opts.interrupt ?? (async (): Promise<TerminalSent> => ({ result: "delivered", note: "S-delivered", acts: [] })));
   const resume = vi.fn(opts.resume ?? (async () => true));
   const outbox = new Outbox(put);
-  const c = new Composer({ active: () => tab, resume, front: () => {}, focusStream: () => {} }, outbox, reads, interrupt);
+  const c = new Composer({ active: () => tab, resume, focusStream: () => {} }, outbox, reads, interrupt);
   document.body.replaceChildren(c.el);
   c.render(); // 第一次画由宿主叫（构造里不画，A2-17-10-1-2）
   return {
@@ -156,17 +156,48 @@ describe("消息流底下的输入框", () => {
     expect(box(failed.c).value).toBe("keep");
   });
 
-  it("那台看不见 ⇒ 照常可写可发；没回执 ⇒ 上方那一排「发送中」、可撤；重开还在", async () => {
+  it("★ 那台看不见 ⇒ 照常可写可发；没回执 ⇒ 连着时那一行「排队 · 无应答」、那台离线时照它成品的 heldSaid，框下不另起一行；重开还在", async () => {
     const { c } = rig({ face: goldenFace("unseen"), put: async () => Promise.reject(down()) });
+    c.machineChanged("devbox", { offline: false, offlineSaid: "devbox 离线", heldSaid: "devbox held-said" });
     expect(box(c).disabled).toBe(false);
     enter(c, "later");
     await flush();
     expect(box(c).value).toBe("later");
     expect(rows(c).length).toBe(1);
-    expect(rows(c)[0]).toContain(copyText("mobChat.delivery.sending"));
+    expect(rows(c)[0], "连着时不说离线").toContain(copyText("beQueue.said.noAnswer"));
+    expect(rows(c)[0]).not.toContain("devbox held-said");
+    c.machineChanged("devbox", { offline: true, offlineSaid: "devbox 离线", heldSaid: "devbox held-said" });
+    expect(rows(c)[0]).toContain("devbox held-said");
+    expect(rows(c)[0]).not.toContain(copyText("mobChat.delivery.sending"));
     expect(rows(c)[0]).toContain("later");
+    expect(c.el.textContent, "没回执那一句不在框下再说一遍").not.toContain("no-answer");
     const again = new Outbox(async () => Promise.reject(down()));
     expect(again.of("devbox", "s-1").map((o) => o.text)).toEqual(["later"]);
+  });
+
+  it("★ 交出去、回执还没到 ⇒ 那一行「发送中 · 等确认」（不是无应答 · 离线那两句）", async () => {
+    const { c } = rig({ put: () => new Promise<QueuePut>(() => {}) });
+    enter(c, "flying");
+    await flush();
+    expect(rows(c).length).toBe(1);
+    expect(rows(c)[0]).toContain(copyText("beQueue.said.confirming"));
+    expect(rows(c)[0]).not.toContain(copyText("beQueue.said.noAnswer"));
+  });
+
+  it("★［撤回］待发那一句 ⇒ 字回到输入框：框里已有别的字 ⇒ 另起一行接在后面；还是那一句 ⇒ 不重一遍", async () => {
+    const r = rig({ put: async () => Promise.reject(down()) });
+    enter(r.c, "later");
+    await flush();
+    box(r.c).value = "other";
+    (r.c.el.querySelector('[data-role="queue-line"] button') as HTMLButtonElement).click();
+    await flush();
+    expect(box(r.c).value).toBe("other\nlater");
+    const same = rig({ put: async () => Promise.reject(down()) });
+    enter(same.c, "kept");
+    await flush();
+    (same.c.el.querySelector('[data-role="queue-line"] button') as HTMLButtonElement).click();
+    await flush();
+    expect(box(same.c).value).toBe("kept");
   });
 
   it("那台拒了 ⇒ 字留着、写那台那一句", async () => {
@@ -208,6 +239,7 @@ describe("消息流底下的输入框", () => {
     await flush();
     expect(reads.cancel).toHaveBeenCalledWith("devbox", "s-1", "a");
     expect(rows(c)).toEqual([]);
+    expect(box(c).value, "撤掉的那一句回到输入框").toBe("text of a");
   });
 
   it("撤待发那一问回拒 ⇒ 写那台那一句（不吞）", async () => {

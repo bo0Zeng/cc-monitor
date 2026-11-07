@@ -26,9 +26,9 @@ use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
+use cap_core::{Cap, Over};
 use comms_inward::line::{read_capped_line, CappedLine};
 use copy_core::copy_text;
-use relay_route_core::{Cap, Over};
 use serde_json::{json, Value};
 use tokio::io::{BufReader, DuplexStream};
 

@@ -22,7 +22,7 @@
  * 壳的旁路快照交同一份）；按记录 id 取回那一行不交（展开那一下要的就是全文）。
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
-import { LOCAL, type Machine } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import type { JsonlLinePayload } from "./generated/JsonlLinePayload";
 import type { LineRecord } from "./generated/LineRecord";
 import type { RecordAt } from "./cards/index";
@@ -32,10 +32,8 @@ import type { HistoryPage } from "./generated/HistoryPage";
 import type { HistoryRun } from "./generated/HistoryRun";
 import type { RecordLine } from "./generated/RecordLine";
 import type { DriftFaceReport } from "./generated/DriftFaceReport";
-import type { DriftMerge } from "./generated/DriftMerge";
 import { copyText } from "./copy-table";
 import FOLDED from "../../shared/views/folded-record.json";
-import { saidOf } from "./kit/detail";
 
 /** 一页子运行记录（后端 `faces/history_face.rs` 的 `history-run`，类型从后端生成）。 */
 export type RunPage = HistoryRun;
@@ -53,9 +51,6 @@ export type BranchOff = Branch;
 
 /** 那台后端漂移账的一个面（各家的面并在一起；面名 · 后果那一句都是那一家写好的）。 */
 export type RecordDriftFace = DriftFaceReport;
-
-/** 本机与各台的漂移账（后端 `drift-merge`）：一台一行，本机在前；那台问不到 ⇒ `report` 为 `null`。 */
-export type DriftOfAll = DriftMerge["machines"];
 
 /** 按偏移取一段 · 子 agent 那一份：同它上一个住址（一次性远端那一趟的天花板，120 秒）。 */
 const PIECE_BUDGET_MS = 120_000;
@@ -77,15 +72,6 @@ export function pageOf(origin: Machine, v: HistoryPage): { payloads: JsonlLinePa
 /** `history-lines` 的一段 ⇒ [`SessionLinesPage`]。 */
 export function linesOf(origin: Machine, v: HistoryLines): SessionLinesPage {
   return { from: v.from, next: v.next, eof: v.eof, payloads: v.lines.map((l) => payloadOf(origin, l)) };
-}
-
-/** typed 那几条的一问：回包按类型用（形状由握手指纹管）；失败 ⇒ 抛一个给人看的 `Error`（那一句 monitor 写好，`kit/detail.ts::saidOf` 取）。 */
-async function asked<T>(reply: Promise<T>): Promise<T> {
-  try {
-    return await reply;
-  } catch (e) {
-    throw new Error(saidOf(e));
-  }
 }
 
 /** **按偏移取一段** `[offset, until)`（两端、`seqBase` 取自骨架索引）：一段可能跨页，取到这一段的末尾。交折起那一行的声明。 */
@@ -113,7 +99,7 @@ async function readRangeAs(
   let at = offset;
   let seq = seqBase;
   for (;;) {
-    const page = pageOf(origin, await asked(callTyped(origin, "history-page", { path: jsonlPath, offset: at, until, seq }, budget, view)));
+    const page = pageOf(origin, await callTyped(origin, "history-page", { path: jsonlPath, offset: at, until, seq }, budget, view));
     // 逐条接，不展开成实参：一页按字节算（1 MiB），短行能有几十万行，超过 V8（WebView2）一次调用的实参上限会抛 RangeError。
     for (const p of page.payloads) out.push(p);
     if (page.eof || page.next <= at) return out;
@@ -154,7 +140,7 @@ export async function readLines(
 ): Promise<SessionLinesPage> {
   const budget = budgetWithin(leftMs);
   const req = until === undefined ? { path: jsonlPath, from } : { path: jsonlPath, from, until };
-  return linesOf(origin, await asked(callTyped(origin, "history-lines", req, budget, FOLDED)));
+  return linesOf(origin, await callTyped(origin, "history-lines", req, budget, FOLDED));
 }
 
 /** 一个子运行要读哪一个：子运行本身（运行表里那一格）‖ 派出它的那次工具调用（后端在父记录里找派出链接）。 */
@@ -163,7 +149,7 @@ export type RunWhich = { run: string; tool?: string } | { run?: string; tool: st
 /** **一个子运行的记录，一页**（按运行读，通用命令 `history-run`）：父记录 ＋ 哪一个 ＋ 从哪个字节起。 */
 export async function loadRunPage(origin: Machine, parentJsonlPath: string, which: RunWhich, from = 0): Promise<RunPage> {
   const budget = budgetWithin(PIECE_BUDGET_MS);
-  return await asked(callTyped(origin, "history-run", { parent: parentJsonlPath, ...which, from }, budget));
+  return await callTyped(origin, "history-run", { parent: parentJsonlPath, ...which, from }, budget);
 }
 
 /** **一份记录的主线外清单**（冷读一次；之后的变化由实时帧 `branch` 说）：那台按页给，照 `next` 接着问、拼成一份。 */
@@ -173,7 +159,7 @@ export async function readBranch(origin: Machine, jsonlPath: string): Promise<Br
   let at: number | null = 0;
   let end = 0;
   while (at !== null) {
-    const page: Branch = await asked(callTyped(origin, "history-branch", { path: jsonlPath, from: at }, budgetWithin(PIECE_BUDGET_MS)));
+    const page: Branch = await callTyped(origin, "history-branch", { path: jsonlPath, from: at }, budgetWithin(PIECE_BUDGET_MS));
     off.push(...page.off);
     runs.push(...page.runs);
     end = page.end;
@@ -185,12 +171,6 @@ export async function readBranch(origin: Machine, jsonlPath: string): Promise<Br
 /** **那台后端的漂移账**（看不懂的记录类型）。 */
 export async function readRecordDrift(origin: Machine): Promise<RecordDriftFace[]> {
   const budget = budgetWithin(DRIFT_BUDGET_MS);
-  const { faces } = await asked(callTyped(origin, "drift-report", {}, budget));
+  const { faces } = await callTyped(origin, "drift-report", {}, budget);
   return faces;
-}
-
-/** **本机与各台的漂移账**：只问本机后端一条（它经各台的常驻流问到、并好再答）。 */
-export async function readDriftOfAll(): Promise<DriftOfAll> {
-  const { machines } = await asked(callTyped(LOCAL, "drift-merge", {}, budgetWithin(DRIFT_BUDGET_MS)));
-  return machines;
 }

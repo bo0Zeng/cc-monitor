@@ -4,7 +4,7 @@
 use super::model::Manifest;
 use crate::common::said::IntoNote as _;
 use crate::platform::acct_view::{self, Item};
-use relay_route_core::{Cap, Over};
+use cap_core::{Cap, Over};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 

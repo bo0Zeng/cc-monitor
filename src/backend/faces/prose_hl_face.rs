@@ -4,8 +4,8 @@
 //! 高亮器是进程里常驻的一份（语法表载一次几十毫秒；缓存跨连接、跨会话共用），md-core 自己不持状态。
 
 use crate::wire::typed::{self, Command};
+use cap_core::{Cap, Over};
 use cmd_wire::md::{Doc, HlCode, MdBlock, ProseHlReq, SegHl};
-use relay_route_core::{Cap, Over};
 use std::sync::{LazyLock, Mutex};
 
 /// 一次上行的代码原文上限：一段至多两万字（`md_core::SEG_BYTES`），留足余量；超了 ⇒ 一个字节不算、回 `too_large`。

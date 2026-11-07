@@ -24,7 +24,7 @@ fn knock_text(from: &str) -> String {
 }
 
 /// 敲门：往收件那条会话的输入队（这一台，会话的主人）投一句，发自 `cc-bus`，id 由那一封的 id 来（同一封重投只入队一次）；
-/// 什么时候送进去归投递那一侧（闲着才送 · 在等人不送 · 一次一条）。投不进 ⇒ 记一行、回 `false`：信已在收件箱里，轮末 Stop 钩子照样喂回。
+/// 什么时候送进去归投递那一侧（框开着不送 · 一次一条）。投不进 ⇒ 记一行、回 `false`：信已在收件箱里，轮末 Stop 钩子照样喂回。
 pub(crate) fn knock(own: &crate::platform::Own, env: &BusEnvelope, now_ms: i64) -> bool {
     let Ok(sid) = cmd_wire::Sid::try_from(env.to.clone()) else {
         tracing::info!("cc-bus knock skipped: {} is not a session id", env.to);
@@ -110,9 +110,9 @@ pub(crate) fn list_reply(agents: Vec<BusAgent>) -> BusList {
 /// `bus-inbox` 缺省看几行 / 最多看几行 / 回显最多带多少字节（超了保尾、说 `truncated`）。
 const INBOX_LINES_DEFAULT: u64 = 200;
 const INBOX_LINES_MAX: u64 = 2000;
-const INBOX_CAP: relay_route_core::Cap = relay_route_core::Cap {
+const INBOX_CAP: cap_core::Cap = cap_core::Cap {
     bytes: 4 * 1024 * 1024,
-    over: relay_route_core::Over::TruncateAndSay,
+    over: cap_core::Over::TruncateAndSay,
 };
 
 /// `bus-inbox` 的入参 —— 纯函数。id 先过形状判定（拒码 `bad_id`）。

@@ -44,17 +44,12 @@ export function buildApiErrorCard(args: { timeLabel: string; title: string; text
   body.textContent = typeof args.status === "number" ? `${args.status} · ${original}` : original;
   raw.append(sum, body);
 
-  // 去它的终端那两颗：卡只摆出来，看不看得见由所在消息流根上那两个标记管（宿主按会话头那一道设，`data-can-front` · `data-can-attach`）。
+  // 去它的终端那一颗（同会话头「终端」）：卡只摆出来，看不看得见由所在消息流根上那个标记管（宿主按会话头那一道设，`data-can-terminal`）。
   const acts = document.createElement("span");
   acts.className = "api-error-acts";
-  for (const [act, label] of [
-    ["front", copyText("terminal.head.front")],
-    ["attach", copyText("sessionHead.act.openTerm")],
-  ] as const) {
-    const b = button({ label, size: "compact" });
-    b.dataset.act = act;
-    acts.appendChild(b);
-  }
+  const b = button({ label: copyText("mobDrawer.item.terminal"), size: "compact" });
+  b.dataset.act = "terminal";
+  acts.appendChild(b);
   next.appendChild(acts);
 
   card.append(head, next, raw);

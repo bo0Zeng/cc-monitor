@@ -6,8 +6,4 @@ import type { ExtTarget } from "./ExtTarget";
  * 机器那一行的「装到…」：从哪台拿哪一版（`from` = 来源那台的键，`null` = 本机后端自己，同枢纽的 `from` / `to`）·
  * 建议的落点（与来源同级）· 可选的各处。
  */
-export type ExtBring = { from: string | null, 
-/**
- * 来源给人看的名字（本机 · 别的台 · cc-monitor 自带）。
- */
-fromName: string, scope: ExtScope, targets: Array<ExtTarget>, };
+export type ExtBring = { from: string | null, scope: ExtScope, targets: Array<ExtTarget>, };

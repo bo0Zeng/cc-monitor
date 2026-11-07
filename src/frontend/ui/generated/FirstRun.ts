@@ -6,10 +6,6 @@ import type { FirstRunStep } from "./FirstRunStep";
  */
 export type FirstRun = { steps: Array<FirstRunStep>, 
 /**
- * 必做而还没打勾的几步（主窗口状态栏那一枚只数它）。
- */
-left: number, 
-/**
  * 「开始用」那一块点过「跳过」（`chores-mark` 的 `skipStart` 写）。
  */
 skipped: boolean, };

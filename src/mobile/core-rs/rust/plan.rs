@@ -273,7 +273,7 @@ mod tests {
     /// 一份完整的会话脸（形状照契约；值是中性夹具）。
     fn face_of(name: &str) -> Value {
         json!({ "dot": "idle", "life": { "is": "gone" }, "settled": true, "name": name, "tip": "", "line": "", "tone": "plain", "order": 0,
-                "can": { "close": { "can": "quiet" }, "resume": no(), "term": no(), "reattach": no(), "attach": no(), "model": no(),
+                "can": { "close": { "can": "quiet" }, "resume": no(), "terminal": { "near": { "go": "no", "why": "夹具" }, "far": { "go": "no", "why": "夹具" } }, "reattach": no(), "model": no(),
                          "permission": no(), "stop": no(), "say": no(), "end": no() } })
     }
 
@@ -351,7 +351,7 @@ mod tests {
             "labels": { "A1": "A1 标题A1", "A1-1": "A1-1 标题A1-1", "A2": "A2 标题A2" },
             "cells": [a1, a11, a2], "blocks": blocks,
             "unbuiltBlocks": [], "unowned": { "paths": null, "why": null }, "pendingSets": [],
-            "check": check, "archived": [], "needCount": 2, "returned": null, "needs": needs,
+            "check": check, "archived": [], "audits": [], "needCount": 2, "returned": null, "needs": needs,
             "said": { "strip": "后端·读不成 · 过期", "bare": null, "readAt": "后端·读到", "top": "后端·顶层", "root": "后端·几/几" },
         });
         let by_session = json!({

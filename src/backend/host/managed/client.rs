@@ -118,21 +118,20 @@ pub fn clients(sock: &Path) -> std::io::Result<Vec<ClientRow>> {
     })
 }
 
-/// 往会话说一句（会话输入队投递那一下）：不持有输入，托管进程照写、不换持有者。
-/// 回 `true` ＝ 写进去了；`false` ＝ 持有者输入行里有没交的字、没写（投递照排着）。
+/// 往会话说一句（会话输入队投递那一下）：不持有输入，托管进程照写、不换持有者，写进去了回 `said`。
 /// 先读 `welcome`：托管进程是不认 `say` 的旧版本（proto 低于 [`wire::SAY_SINCE`]）⇒ 不说、报 `Unsupported`（那个托管终端要重开）。
-pub fn say(sock: &Path, bytes: &[u8]) -> std::io::Result<bool> {
+pub fn say(sock: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let text = String::from_utf8(bytes.to_vec()).map_err(|_| bad("say: not utf-8"))?;
     let s = open(sock, None)?;
     let mut buf = Vec::new();
     speaks(&s, &mut buf, wire::SAY_SINCE, "say")?;
     send(&s, &Frame::Ctl(Ctl::Say { text }))?;
-    let put = upto(&s, &mut buf, |c| match c {
-        Ctl::Said { pending } => Some(!pending),
+    upto(&s, &mut buf, |c| match c {
+        Ctl::Said => Some(()),
         _ => None,
     })?;
     bye(&s);
-    Ok(put)
+    Ok(())
 }
 
 /// 读 `welcome`：托管进程的 proto 不到 `since`（认 `verb` 之前的旧版）⇒ 说再见、报 `Unsupported`（结束后恢复即进新版）。

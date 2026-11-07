@@ -152,7 +152,6 @@ pub fn record_of(rec: JsonlRecord, start: u64) -> Option<Record> {
                         &message.content,
                         &mut images,
                     )),
-                    model: message.model.filter(|m| m != AUTO_REPLY_MODEL),
                     auto_reply,
                     cards: tool_cards,
                     steps: tool_steps,

@@ -4,7 +4,7 @@
  * 那台回了「起好了 / 开窗」⇒ 标签页栏末尾长出一行「正在启动」（转圈、机器 ＋ 项目名），主区换成它那一页；
  * 问那台等它报到（`session-arrive`，期限 [`SLOT_MISS_MS`]）：报到了 ⇒ 这一行摘掉、换成真的标签页（还看着它 ⇒ 切过去）；
  * 没见到 ⇒ 红点「未报到」，那一页是一张报错卡：那台写的那一句（起在 tmux 里的带画面末几行）＋ 那个终端还在 ⇒
- *［终端画面］（开抽屉的终端页看那个终端）［在终端里打开］（远端）［结束 tmux 会话］·［关闭标签页］。
+ *［终端画面］（开抽屉的终端页看那个终端）［终端］（远端：接进那个 tmux 会话）［结束 tmux 会话］·［关闭标签页］。
  *
  * 认不认得出 · 那一句 · 那一屏都是那台的；这里只照回包排版。
  */
@@ -281,7 +281,7 @@ export class LaunchSlots {
       shot.dataset.act = "screen";
       acts.push(shot);
       if (isRemoteOrigin(origin)) {
-        const att = button({ label: copyText("sessionHead.act.openTerm"), size: "compact", onClick: () => this.acts.attach(origin, tmuxName) });
+        const att = button({ label: copyText("mobDrawer.item.terminal"), size: "compact", onClick: () => this.acts.attach(origin, tmuxName) });
         att.dataset.act = "attach";
         acts.push(att);
       }

@@ -167,7 +167,7 @@ async fn a_lossy_pull_reads_the_remote_by_bytes_and_lands_it_through_the_local_b
 fn the_chunk_is_the_backend_cap() {
     let backend = guard_core::production_code(include_str!("../../../src/backend/files/mod.rs"));
     let needle = format!(
-        "pub const READ_CHUNK_MAX_BYTES: relay_route_core::Cap = relay_route_core::Cap {{\n    bytes: {} * 1024,",
+        "pub const READ_CHUNK_MAX_BYTES: cap_core::Cap = cap_core::Cap {{\n    bytes: {} * 1024,",
         chunk_core::CHUNK / 1024
     );
     assert_eq!(

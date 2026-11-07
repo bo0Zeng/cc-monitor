@@ -188,46 +188,32 @@ pub async fn run() {
     //   （monitor 起本机后端时交；远端由 `--resident-ensure` 起常驻子进程时交；测试连接探针那一趟没人交 ⇒ 不开）。
     //   放在起载体之前：两条载体（stdio / 常驻监听口）一样要。起不来只出声、不拖垮后端
     //   —— 理由与形状住 `relay::listen::host` 的头注。中转线程随本进程生、随本进程死。
-    // 〔升级那一跳，跨过 4.1.x 之后删〕常驻载体：先停掉还在跑的旧版（它占着中转口），再接中转。
-    //   停它要等（至多宽限期），那一趟放进一条线程，不挡套接字开门；没有旧版 ⇒ 当场接中转。
-    let legacy = listening
-        .as_ref()
-        .and_then(|_| control::resident::here())
-        .filter(|dh| control::resident::legacy_listen_pid_in(dh).is_some());
-    let off_thread = legacy.is_some();
-    let relay_own = own.clone();
-    let legacy_own = own.clone();
+    tracing::info!(
+        "{}",
+        faces::rotation_face::host_relay(tap::port(), own.clone())
+    );
     // 占着常驻的那一个（常驻监听口在本进程）：账号库补号色只由它写。
     let resident = listening.is_some();
-    let start_relay = move || {
-        if let Some(said) = legacy
-            .as_ref()
-            .and_then(|_| control::resident::retire_legacy(&legacy_own))
-        {
-            tracing::info!("{said}");
-        }
-        tracing::info!(
-            "{}",
-            faces::rotation_face::host_relay(tap::port(), relay_own)
-        );
-        if resident {
-            inbound::fill_account_colors();
-            inbound::share_on_demand_dirs();
-        }
-    };
-    if off_thread {
-        std::thread::spawn(start_relay);
-    } else {
-        start_relay();
+    if resident {
+        inbound::fill_account_colors();
+        inbound::share_on_demand_dirs();
     }
     // 历史清单的缓存起来就后台热（低优先级的一次性线程）：第一次打开历史页 / 按 sid 开查看窗不再现扫整台。
     history::listing::warm_listing_in_background(agent_home.clone());
     // 照这台的配置文件 `profiles.toml` 把别名文件与链接对齐一次（写法变了的那一份当场换）。
     inbound::align_aliases();
+    // 各台常驻流上每一行先过资产同步用的写句柄（见下面那一段）。
+    let sync_own = own.clone();
     if resident {
         // 各台的常驻流归常驻这一位（机器表里要连的那几台各起一条，`control/feeds.rs`）；那台流上的事交每一份 watcher，
         //   投给连着这一位的每条流连接（控制面与观测面互不引用，由这里接上）。
-        control::feeds::start(std::sync::Arc::new(observe::watcher::relay));
+        //   每一行先过资产同步：那台这一条连接的第一行（hello）⇒ 认得资产目录就后台同步一趟（`assets/asset_sync.rs::on_relayed`）。
+        control::feeds::start(std::sync::Arc::new(move |f: Frame| {
+            if let Frame::Relayed(r) = &f {
+                crate::assets::asset_sync::on_relayed(r, &sync_own);
+            }
+            observe::watcher::relay(f);
+        }));
     }
 
     // ★★ **同一个流模式，两种载体**。

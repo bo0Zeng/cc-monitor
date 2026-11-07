@@ -163,7 +163,6 @@ pub fn copy(
                     size_text: size.map(copy_core::size_text),
                     mtime_text: moment_text(mtime, tz),
                     there,
-                    there_size,
                     there_size_text: there_size.map(copy_core::size_text),
                     there_mtime_text: moment_text(there_mtime, tz),
                     answers: crate::common::batch_book::answers_of(dir_into, true),

@@ -1,4 +1,4 @@
-//! `drift-merge` 并好再答那一层（[`super::drift_hub`]）的判据：界面只问本机后端一条，
+//! 各台漂移账并成一份那一层（[`super::drift_hub`]，诊断信息用）的判据：
 //! 各台的记录账由本机后端问到（这里喂假的「问那台」，记下问了谁）。
 
 use super::drift_hub;
@@ -11,9 +11,7 @@ fn report(face: &str) -> DriftReport {
     DriftReport {
         faces: vec![DriftFaceReport {
             face: face.to_string(),
-            consequence: "不显示".to_string(),
             entries: Vec::new(),
-            overflowed: false,
         }],
     }
 }

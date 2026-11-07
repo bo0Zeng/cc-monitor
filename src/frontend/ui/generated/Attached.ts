@@ -11,8 +11,4 @@ kind: "terminal-window",
 /**
  * 连上的时刻（秒）。
  */
-since: number, 
-/**
- * 最近动静（秒）。
- */
-last_activity: number, };
+since: number, };

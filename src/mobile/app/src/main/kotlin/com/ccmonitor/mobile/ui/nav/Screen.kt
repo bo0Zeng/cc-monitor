@@ -69,6 +69,11 @@ sealed class Screen(
         const val ARG_TOOL = "tool"
     }
 
+    /** 终端名单（抽屉「终端名单」进）：这台的终端，点「附着」才开终端标签页。 */
+    data object Terminals : Screen("terminals/{hostId}") {
+        fun of(hostId: String): String = "terminals/$hostId"
+    }
+
     /** 需手动屏（会话列表 · 聊天屏顶栏「需手动 n」进）：跨会话、各台的需手动；[hostId] 是进来时的那台（排在最前）。 */
     data object Overview : Screen("overview/{hostId}") {
         fun of(hostId: String): String = "overview/$hostId"

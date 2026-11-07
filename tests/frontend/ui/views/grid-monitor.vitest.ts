@@ -25,7 +25,7 @@ const snap = (over: Partial<GridSessionSnapshot>): GridSessionSnapshot => ({
   sessionId: "s",
   title: "t",
   origin: LOCAL,
-  cwd: null,
+  cwdShown: null,
   face: liveFace("working"),
   needs: null,
   running: null,
@@ -213,9 +213,23 @@ describe("F91 GridMonitorView", () => {
     view.close();
   });
 
+  it("★ 目录照快照的 `cwdShown`（那台写好的 `~/…`）：格子目录行与选中那一格的事实行都显它；null ⇒ 两处都不画目录", async () => {
+    document.body.replaceChildren();
+    const view = new GridMonitorView(fixed([snap({ sessionId: "l1", title: "a", cwdShown: "~/proj" }), snap({ sessionId: "l2", title: "b", cwdShown: null })]));
+    await openSettled(view);
+    const cell = (sid: string) => document.querySelector<HTMLElement>(`.grid-monitor-cell[data-sid="${sid}"]`)!;
+    expect(cell("l1").querySelector(".grid-monitor-cell-cwd")?.textContent).toBe("~/proj");
+    expect(cell("l2").querySelector(".grid-monitor-cell-cwd")).toBeNull();
+    cell("l1").click();
+    expect(document.querySelector(".grid-monitor-peek-facts")?.textContent ?? "").toContain("~/proj");
+    cell("l2").click();
+    expect(document.querySelector(".grid-monitor-peek-facts")?.textContent ?? "").not.toContain(copyText("gridMonitor.fact.dir"));
+    view.close();
+  });
+
   it("F91b peekSession 缺省（旧桩）→ peek 仍显 snapshot 字段、不报错", async () => {
     document.body.replaceChildren();
-    const view = new GridMonitorView(fixed([snap({ sessionId: "l1", title: "a", cwd: "/x/y", context: { text: "42%", tone: "plain", percent: 42 } })]));
+    const view = new GridMonitorView(fixed([snap({ sessionId: "l1", title: "a", cwdShown: "/x/y", context: { text: "42%", tone: "plain", percent: 42 } })]));
     await openSettled(view);
     document.querySelector<HTMLElement>(".grid-monitor-cell")!.click();
     const facts = document.querySelector(".grid-monitor-peek-facts")?.textContent ?? "";
@@ -608,12 +622,12 @@ describe("F91 GridMonitorView 问版面的时机 · interval 生命周期", () =
 describe("UP1 机器总览按行更新", () => {
   /** 三台机器、七个会话；`snapshotSessions` 每拍都返回**新对象**（与 `TabManager.snapshotSessions` 同形）。 */
   const base = (): GridSessionSnapshot[] => [
-    snap({ sessionId: "l1", title: "本机一", cwd: "/w/a", running: "核心·在跑 2", agents: "agent 3 · 2 在跑", face: ordered(liveFace("working"), 1) }),
-    snap({ sessionId: "l2", title: "本机二", cwd: "/w/b", context: { text: "85%", tone: "warn", percent: 85 }, unread: 4 }),
+    snap({ sessionId: "l1", title: "本机一", cwdShown: "/w/a", running: "核心·在跑 2", agents: "agent 3 · 2 在跑", face: ordered(liveFace("working"), 1) }),
+    snap({ sessionId: "l2", title: "本机二", cwdShown: "/w/b", context: { text: "85%", tone: "warn", percent: 85 }, unread: 4 }),
     snap({ sessionId: "l3", title: "本机三", face: goldenFace("ended") }),
     snap({ sessionId: "p1", title: "派一", origin: "pi", needs: "核心·等批准", face: ordered(liveFace("needs_you"), 0) }),
     snap({ sessionId: "p2", title: "派二", origin: "pi", background: true, face: goldenFace("reconnectable") }),
-    snap({ sessionId: "n1", title: "诺一", origin: "nano", cwd: "/srv", unread: 120 }),
+    snap({ sessionId: "n1", title: "诺一", origin: "nano", cwdShown: "/srv", unread: 120 }),
     snap({ sessionId: "n2", title: "诺二", origin: "nano", context: { text: "12%", tone: "plain", percent: 12 } }),
   ];
   const sourceOf = (mutate: () => (s: GridSessionSnapshot[]) => void): GridSource => {
@@ -701,7 +715,7 @@ describe("UP1 机器总览按行更新", () => {
         s[1].needs = "核心·等批准";
         s[3].face = ordered(liveFace("working"), 1); // p1 不再等
         s[3].needs = null;
-        s[5].cwd = null; // n1 的 cwd 行摘掉
+        s[5].cwdShown = null; // n1 的目录行摘掉
         s[6].unread = 1;
       });
       await repoll(t.view);
@@ -727,12 +741,12 @@ describe("UP1 机器总览按行更新", () => {
         (s) => {
           s.splice(4, 1); // p2 没了
           s[1].context = null;
-          s.push(snap({ sessionId: "z1", title: "新机", origin: "zeta", cwd: "/z", unread: 2 }));
+          s.push(snap({ sessionId: "z1", title: "新机", origin: "zeta", cwdShown: "/z", unread: 2 }));
         },
         (s) => {
           s.splice(3, 2); // pi 整组没了
           s[0].title = "改名了";
-          s[0].cwd = null;
+          s[0].cwdShown = null;
         },
         (s) => {
           s.length = 0; // 空态

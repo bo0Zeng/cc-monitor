@@ -10,7 +10,7 @@
 import type { TasksList } from "./generated/TasksList";
 import type { SessionFace } from "./generated/SessionFace";
 import type { Tab, TabsSummary } from "./tab-model";
-import { hasTerminal, isLive } from "./face-can";
+import { isLive, terminalAlive } from "./face-can";
 import { Slice } from "./app-store";
 import { dotOf, needsOf } from "./session-face";
 import { barRows } from "./tab-drop";
@@ -176,7 +176,7 @@ export class TabStore {
   hiddenRow(): string[] {
     return this.orderedIds.filter((sid) => {
       const t = this.tabs.get(sid);
-      return t !== undefined && t.hidden != null && (hasTerminal(t.face) || sid === this.activeId);
+      return t !== undefined && t.hidden != null && (terminalAlive(t.face) || sid === this.activeId);
     });
   }
 

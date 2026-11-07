@@ -4,4 +4,4 @@ import type { Words } from "./Words";
 /**
  * 全会话花费：记录里那一家自己记的数（微美元）· 它说有没有定不了价的型号 · 写好的串（币种、精度、「约」都在里面）。
  */
-export type FactsCost = { micros: number, partial: boolean, text: Words, };
+export type FactsCost = { partial: boolean, text: Words, };

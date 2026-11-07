@@ -51,7 +51,7 @@ function tab(sid: string, over: Partial<Tab> = {}): Tab {
     hidden: null,
     lineage: NO_LINEAGE,
     origin: LOCAL,
-    forkedFromSessionId: null,
+    forkedLine: null,
     writers: [],
     unread: 0,
     needs: null,
@@ -78,8 +78,6 @@ function bar(tabs: Tab[]) {
   const host = {
     refreshTabBar: vi.fn(),
     closeEndedIn: vi.fn(),
-    openTabCwd: vi.fn().mockResolvedValue(undefined),
-    bringTerminalToFront: vi.fn().mockResolvedValue(undefined),
     closeTab: vi.fn(),
     switchTo: vi.fn(),
     answerAt: vi.fn(),
@@ -92,7 +90,6 @@ function bar(tabs: Tab[]) {
     openMenu: vi.fn(),
     toggleSelect: vi.fn(),
     openMenuAt: vi.fn(),
-    rereadAll: vi.fn().mockResolvedValue(undefined),
     fixMachine: vi.fn(),
   } satisfies TabBarViewHost;
   const el = document.createElement("div");
@@ -183,8 +180,7 @@ describe("标签页改名：写那台注解里的 customTitle", () => {
       hide: vi.fn(),
       unhide: vi.fn(),
       openCwd: vi.fn(),
-      front: vi.fn(),
-      viewTerminal: vi.fn(),
+      terminal: vi.fn(),
     } satisfies TabMenuHost;
     new TabMenu(host, {} as TabSessionActions).open(new MouseEvent("contextmenu"), "a");
     const item = [...document.querySelectorAll<HTMLElement>("[role=menuitem]")].find((e) => e.textContent?.includes(copyText("history.menu.rename")));

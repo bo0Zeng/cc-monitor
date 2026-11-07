@@ -9,8 +9,6 @@ import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.db.Identity
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
-import com.ccmonitor.mobile.core.data.repo.MovedLaunch
-import com.ccmonitor.mobile.core.data.repo.MovedLaunchRepository
 import com.ccmonitor.mobile.core.ssh.HostKeyChangedException
 import com.ccmonitor.mobile.core.ssh.SessionStatus
 import com.ccmonitor.mobile.core.ssh.ShellChannel
@@ -23,6 +21,7 @@ import com.ccmonitor.mobile.core.wire.gen.CaptureEnd
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ssh.HostConnector
 import com.ccmonitor.mobile.ssh.JumpBroken
+import com.ccmonitor.mobile.ssh.login
 import com.ccmonitor.mobile.ui.theme.AppTerminalPalette
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -100,7 +99,8 @@ data class Reach(
  * 连接成功路径要建 termlib 原生 [TerminalSession]，纯 JVM 测不了，靠设备上的端到端验。
  */
 class SessionViewModel(
-    private val hostId: String,
+    /** 这一屏连的那台（机器条照它找那台的成品）。 */
+    val hostId: String,
     cdArg: String?,
     tmuxArg: String?, // 进终端 tab 首连即接回的会话名（敲那台渲出的那一行）；普通 tab 为 null
     resumeArg: String?, // 终端没了的那条会话（sid）：首连先让那台恢复、再接回它落在的那个会话；普通 tab 为 null
@@ -108,7 +108,6 @@ class SessionViewModel(
     private val manager: SshConnectionManager,
     private val hostRepo: HostRepository,
     private val identityRepo: IdentityRepository,
-    private val movedRepo: MovedLaunchRepository, // 迁移说明那一格：手机原来存的启动配置，这一台的列一次
     private val hostConnector: HostConnector, // 建连编排，retain / release / connection 也经它
     backends: HostBackends, // 这台的常驻流：列会话 · 进终端那一行 · 送字 · 抓屏 · 结束 · 推公钥都问那台核心
     private val io: CoroutineDispatcher = Dispatchers.IO,
@@ -197,7 +196,7 @@ class SessionViewModel(
     val tmuxSession: StateFlow<String?> = _tmuxSession.asStateFlow()
 
     /** 要那台核心做的终端那几件（tmux 管理窗 · 切模型 · 抓屏 · 进终端那一行 · 推公钥）。 */
-    val terminals = TerminalOps(backends.of(hostId), { hostRepo.get(hostId)?.label ?: hostId })
+    val terminals = backends.terminals(hostId)
 
     /** 链上交的离线那一句（掉线条幅照摆；核心恒给）。 */
     val offline: StateFlow<String> = backends.of(hostId).offline
@@ -211,7 +210,7 @@ class SessionViewModel(
 
     /**
      * 一次性提示（进终端那一行要不到等）。用缓冲 Channel：connect 早于界面订阅时发的也不丢；
-     * 只有一个收集方（终端屏收了弹 Toast）。
+     * 只有一个收集方（终端屏收了交底部条）。
      */
     private val _notices = Channel<String>(Channel.BUFFERED)
     val notices: Flow<String> = _notices.receiveAsFlow()
@@ -226,10 +225,6 @@ class SessionViewModel(
     private val _aliasPicked = MutableStateFlow(false)
     val aliasPicked: StateFlow<Boolean> = _aliasPicked.asStateFlow()
 
-    /** 这一台的迁移说明（手机原来存的启动配置，原样）；没有 ⇒ 空。关掉之后这一台的就没了（[ackMoved]）。 */
-    private val _moved = MutableStateFlow<List<MovedLaunch>>(emptyList())
-    val moved: StateFlow<List<MovedLaunch>> = _moved.asStateFlow()
-
     private fun loadAliases() {
         if (!picksLaunch || _aliasPicked.value) return
         viewModelScope.launch { terminals.aliases().onSuccess { _aliases.value = it } }
@@ -242,32 +237,11 @@ class SessionViewModel(
         _aliasPicked.value = true
     }
 
-    /** 迁移说明里「建这条」：在这台建同名别名（别名页那条写命令），成败都说一句；建好了那一排重读。 */
-    fun makeAlias(m: MovedLaunch) {
-        if (m.command.isNullOrBlank()) return
-        viewModelScope.launch {
-            val machine = hostRepo.get(hostId)?.label ?: hostId
-            terminals
-                .makeAlias(m)
-                .onSuccess { reload ->
-                    _notices.trySend(listOfNotNull(copyText("mobLaunch.migrate.made", "machine" to machine, "name" to m.label), reload).joinToString("\n"))
-                    loadAliases()
-                }.onFailure { _notices.trySend(it.message.orEmpty()) }
-        }
-    }
-
-    /** 迁移说明关掉：这一台的不再出。 */
-    fun ackMoved() {
-        _moved.value = emptyList()
-        viewModelScope.launch(io) { movedRepo.ack(hostId) }
-    }
-
     // 本 tab 的持有者 token。retain / release 按 token 记账，强制断开清空持有者后重连可幂等地重新 retain。
     private val holderToken = UUID.randomUUID().toString()
 
     init {
         connect()
-        viewModelScope.launch(io) { _moved.value = movedRepo.forHost(hostId) }
         // 停在出错页、SSH 那层跟着共用循环换上了一条 ⇒ 记一下，终端屏在前台时重挂（[rejoinedWhileErrored]）。
         viewModelScope.launch {
             var prev = manager.sessions.value[hostId]?.status
@@ -419,7 +393,7 @@ class SessionViewModel(
      */
     private suspend fun ensureIdentityBound(): Boolean {
         val host = withContext(io) { hostRepo.get(hostId) } ?: return true // 交给主流程报「未找到主机」
-        if (host.authRef != null || host.passwordEnc != null) return true // 已绑身份或用密码认证
+        if (host.login() != null) return true // 已绑身份或用密码认证
         val ids = withContext(io) { identityRepo.observeAll().first() }
         return when {
             ids.isEmpty() -> {
@@ -446,7 +420,7 @@ class SessionViewModel(
     /** 认证成功后把本次选定的身份写进 host.authRef；失败不写，重试可重选。 */
     private suspend fun persistPickedIdentity(host: Host) {
         // 只在「用身份认证、且这次是新选的身份」时持久化；密码认证不涉及身份。
-        if (host.passwordEnc == null && host.authRef == null && pendingIdentityId != null) {
+        if (host.login() == null && pendingIdentityId != null) {
             runCatching { hostRepo.save(host.copy(authRef = pendingIdentityId)) }
             pendingIdentityId = null
         }

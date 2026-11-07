@@ -23,7 +23,6 @@ import com.ccmonitor.mobile.core.claude.model.SaidImage
 import com.ccmonitor.mobile.core.claude.model.StreamItem
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Draft
-import com.ccmonitor.mobile.core.data.db.PendingOutcome
 import com.ccmonitor.mobile.core.wire.gen.AgentPick
 import com.ccmonitor.mobile.core.wire.gen.ArriveEnd
 import com.ccmonitor.mobile.core.wire.gen.Changed
@@ -39,6 +38,7 @@ import com.ccmonitor.mobile.core.wire.gen.SegHl
 import com.ccmonitor.mobile.core.wire.gen.SentAct
 import com.ccmonitor.mobile.core.wire.gen.SessionCommands
 import com.ccmonitor.mobile.core.wire.gen.SessionFace
+import com.ccmonitor.mobile.core.wire.gen.TermWay
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
 import com.ccmonitor.mobile.ui.chat.attach.AttachTray
@@ -67,12 +67,20 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.UUID
 
+/** 撤回的那一句回输入框：[n] 每次递增，同一句撤两次也各填一次。 */
+data class Recall(
+    val text: String,
+    val n: Long,
+)
+
 /** 聊天面的一帧 UI 状态。 */
 data class ChatUiState(
     /** 记录（回执到了的那几句不另画：在名单那一排 · 记录里）。 */
     val units: List<RenderUnit> = emptyList(),
-    /** 输入框上方那一排：交出去了、会话那台还没回执的那几句（「发送中」· 撤）。 */
+    /** 输入框上方那一排：交出去了、会话那台还没回执的那几句（那一句此刻的样子 · 撤）。 */
     val outbox: List<OutboxLine> = emptyList(),
+    /** ［撤回］撤掉的那一句：字回到输入框（框里已有字 ⇒ 另起一行接在后面）；每撤一次换一份（[Recall.n]）。 */
+    val recall: Recall? = null,
     /** 输入框上方那一排的名单：会话那台那份输入队（哪一端投的都在；自己的回执到了就只在这里）· 每条可撤。 */
     val queue: List<QueueLine> = emptyList(),
     /** 会话那台断着时那台离线那一句（[CoreLink.offline]）；没断 ⇒ `null`：那一排照它淡着、说名单是上次所知。 */
@@ -99,6 +107,8 @@ data class ChatUiState(
     val note: String? = null,
     /** 输入框照脸上 `can.say` 的样子（[sayLook]）；`null` ＝ 照常。 */
     val say: SayLook? = null,
+    /** 顶栏「终端」那一颗照的那一格（脸上 `can.terminal.far`：手机从不在会话住的那台上看）；流上还没有它的脸 ⇒ `null`（照画、灰着）。 */
+    val terminal: TermWay? = null,
     /** 两个 chip 抽屉里列的（那台那一家给的）；还没问 ⇒ `null`。 */
     val picks: Picks? = null,
     /** ［+］面板里的命令与 Skill（那台给的这条会话那一份）。 */
@@ -285,7 +295,13 @@ class ChatSession(
             // 那台推来的输入队名单（这一条的）照画。
             queue.watch(queueMoved) { sid }
             // 那台离线那一句（连着 ⇒ 没有）：输入队那一排照它说是上次所知。
-            scope.launch { combine(link.state, link.offline) { st, off -> off.takeIf { st is LinkLine.Down } }.collect { off -> _state.value = _state.value.copy(offline = off) } }
+            scope.launch {
+                combine(link.state, link.offline) { st, off -> off.takeIf { st is LinkLine.Down } }.collect { off ->
+                    _state.value = _state.value.copy(offline = off)
+                    // 待发没回执那一行照那台成品的 heldSaid：成品换了跟着重画。
+                    publish()
+                }
+            }
             // 输入队名单：接上的每一回问一次（核心那一格，断着时漏了的推送补上）。
             scope.launch { link.seen.collect { sid?.let { s -> queue.read(s) } } }
             // 每次接上那台：待发里还没回执的那几句照同一个编号再交一遍（那台按编号去重，只进一条）。
@@ -396,35 +412,24 @@ class ChatSession(
         draftSave =
             scope.launch {
                 delay(DRAFT_SAVE_MS)
-                val c = picker?.takeIf { sid == null }?.chosen()
-                cache.saveDraft(key, text, c?.cwd, c?.account)
+                cache.saveDraft(key, text)
             }
     }
 
     /**
-     * ➤：那一句先进待发（编号 ＝ 投进队的 id，落库之后才交出去）；回执到之前不进消息流，在输入框上方「发送中」、可撤。
+     * ➤：那一句先进待发（编号 ＝ 投进队的 id，落库之后才交出去）；回执到之前不进消息流，在输入框上方那一排、可撤。
      * 没回执（断线 · 期限到了 · App 被杀）⇒ 留在待发，接上那台照同一个编号再交（[resend]）。
      */
     fun send(text: String) {
         val (localId, ids) = attach.handOver(text, "local-${UUID.randomUUID()}") ?: return
         draftSave?.cancel()
-        val o = Outgoing(localId, text, DeliveryState.SENDING, copyText("mobChat.delivery.sending"), attachments = ids)
+        val o = Outgoing(localId, text, DeliveryState.SENDING, null, attachments = ids)
         outgoing += o
         publish()
         val key = draftKey()
         scope.launch {
             // 草稿变待发：删草稿与落待发同一个事务。
             box.keep(key, o, sid)
-            deliver(o)
-        }
-    }
-
-    /** 再发一次那台拒了的那一句（只有能改的原因才有这颗）：同一个编号。 */
-    fun retry(localId: String) {
-        val o = box.retrying(localId) ?: return
-        publish()
-        scope.launch {
-            cache.settle(o.localId, PendingOutcome.PENDING, o.attempts)
             deliver(o)
         }
     }
@@ -440,11 +445,29 @@ class ChatSession(
             resend()
         }) { _state.value = _state.value.copy(editDrafts = it) }
 
-    /** 撤待发里一句（见 [ChatOutbox.cancel]）；是编辑的那一句 ⇒ 它的编辑草稿留着字、不再带待发编号。 */
-    fun cancel(localId: String) = box.cancel(localId, sid).also { edits.unsent(localId) }
+    /**
+     * 撤待发里一句（见 [ChatOutbox.cancel]）：字回到输入框（那台拒了的那一句也走这一颗：改了再送）；
+     * 是编辑的那一句 ⇒ 它的编辑草稿留着字、不再带待发编号，不回输入框。
+     */
+    fun cancel(localId: String) {
+        val edit = edits.owns(localId)
+        val text = box.cancel(localId, sid)
+        edits.unsent(localId)
+        if (!edit && text != null) recall(text)
+    }
 
-    /** 撤输入队名单里一条（哪一端投的都撤得了；照编号请会话那台撤，见 [ChatQueue.cancel]）；编辑的那一句同上。 */
-    fun cancelQueued(id: String) = sid?.let { queue.cancel(id, it) }.also { edits.unsent(id) }
+    /** 撤输入队名单里一条（哪一端投的都撤得了；照编号请会话那台撤，见 [ChatQueue.cancel]）：撤成了字回到输入框；编辑的那一句同上。 */
+    fun cancelQueued(id: String) {
+        val edit = edits.owns(id)
+        sid?.let { queue.cancel(id, it) { text -> if (!edit) recall(text) } }
+        edits.unsent(id)
+    }
+
+    /** 撤回的那一句回输入框（输入框那一侧接在原字后面另起一行，见 `ChatInput.kt`）。 */
+    private fun recall(text: String) {
+        val n = (_state.value.recall?.n ?: 0L) + 1
+        _state.value = _state.value.copy(recall = Recall(text, n))
+    }
 
     /** 待发里该再交的那几句照同一个编号再交一遍。 */
     private fun resend() {
@@ -465,7 +488,7 @@ class ChatSession(
     /** ［+］面板里的一次性动作（压缩上下文 · 清空会话 · Skill）：同 ➤ 那一句一样进待发、投进那条会话的输入队。 */
     fun say(text: String) {
         if (sid == null) return
-        val o = Outgoing("local-${UUID.randomUUID()}", text, DeliveryState.SENDING, copyText("mobChat.delivery.sending"))
+        val o = Outgoing("local-${UUID.randomUUID()}", text, DeliveryState.SENDING, null)
         outgoing += o
         publish()
         scope.launch {

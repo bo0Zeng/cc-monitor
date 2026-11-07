@@ -10,7 +10,6 @@ import com.ccmonitor.mobile.core.claude.link.HistoryRead
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.model.RecordUnits
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
-import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.PendingOutcome
 import com.ccmonitor.mobile.ui.Wires
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink.Companion.human
@@ -109,8 +108,6 @@ class ChatCacheTest {
         override suspend fun saveDraft(
             sid: String,
             text: String,
-            cwd: String?,
-            account: String?,
         ) {
             if (text.isEmpty()) drafts.remove(sid) else drafts[sid] = text
         }
@@ -263,7 +260,7 @@ class ChatCacheTest {
         runTest {
             val link = FakeCoreLink()
             val file = FakeCoreLink.File()
-            link.answer = { cmd, args -> if (cmd == "session-queue-put") Reply.Ok(mapOf("outcome" to "queued", "seq" to 1L, "place" to 1L, "said" to "q-1")) else file.answer(cmd, args) ?: Reply.LinkDown }
+            link.answer = { cmd, args -> if (cmd == "session-queue-put") Reply.Ok(mapOf("outcome" to "queued", "seq" to 1L, "said" to "q-1")) else file.answer(cmd, args) ?: Reply.LinkDown }
             link.report("s1", "/w")
             val cache = MemCache().apply { drafts["s1"] = "没发的" }
             val s = open(link, cache)
@@ -303,7 +300,7 @@ class ChatCacheTest {
                     val id = args!!["id"] as String
                     queue.putIfAbsent(id, args["text"] as String)
                     val place = queue.keys.indexOf(id) + 1L
-                    Reply.Ok(mapOf("outcome" to "queued", "seq" to place, "place" to place, "said" to "q-$place"))
+                    Reply.Ok(mapOf("outcome" to "queued", "seq" to place, "said" to "q-$place"))
                 } else {
                     file.answer(cmd, args) ?: Reply.LinkDown
                 }
@@ -318,7 +315,7 @@ class ChatCacheTest {
             runCurrent()
             val box = s.box().single()
             assertEquals("local-x" to "半路的", box.id to box.text)
-            assertEquals(copyText("mobChat.delivery.sending"), box.said)
+            assertEquals("上次没等到回执 ⇒ 交了没回执那一句（那台的 heldSaid）", FakeCoreLink.HELD, box.said)
             assertTrue("回执到之前不进流", s.said().isEmpty())
             assertEquals("后台交到了的不挂、删掉", listOf("local-x"), cache.pend.map { it.id })
             assertTrue("断着不交", link.calls("session-queue-put").isEmpty())

@@ -126,8 +126,7 @@ fn session_row(
         custom_title: None,
         launch_tab: None,
         parent: None,
-        forked_from_session_id: fork.as_ref().map(|f| f.0.clone()),
-        forked_from_message_uuid: fork.map(|f| f.1),
+        forked_from_session_id: fork.map(|f| f.0),
         project_dir: project_dir.to_string(),
         last_account: None,
     })
@@ -156,7 +155,6 @@ fn synth_row(kind: &str, s: &crate::agents::SynthSession, excerpt: String) -> Ra
         launch_tab: None,
         parent: None,
         forked_from_session_id: None,
-        forked_from_message_uuid: None,
         project_dir: format!("{kind}:{}", s.cwd),
         group: group_key(kind, &s.cwd),
         last_account: None,
@@ -550,7 +548,6 @@ fn row_of(
         custom_title: r.custom_title,
         hidden: f.hidden,
         forked_from_session_id: r.forked_from_session_id,
-        forked_from_message_uuid: r.forked_from_message_uuid,
         forked_from,
         project_dir: r.project_dir,
         group: r.group,
@@ -843,7 +840,6 @@ pub fn specimen() -> Patch<HistoryHead, HistoryRow> {
             ..Default::default()
         }),
         forked_from_session_id: Some(s("f")),
-        forked_from_message_uuid: Some(s("u")),
         forked_from: Some(cmd_wire::listing::ForkedFrom { label: w("f") }),
         project_dir: s("-w"),
         group: s("agent:/w"),

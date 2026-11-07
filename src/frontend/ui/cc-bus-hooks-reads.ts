@@ -11,7 +11,6 @@ import { copyText } from "./copy-table";
 import type { HookState } from "./generated/HookState";
 import type { HooksDiagnosis } from "./generated/HooksDiagnosis";
 import type { HooksReport } from "./generated/HooksReport";
-import { saidOf } from "./kit/detail";
 
 export type { HookState, HooksDiagnosis, HooksReport };
 
@@ -20,11 +19,7 @@ const HOOKS_DIAG_BUDGET_MS = 30_000;
 
 /** 问 `origin` 那台后端要一份成品（本机逐字 `LOCAL`）。问不出来 ⇒ 抛（带那台的原话）。 */
 export async function fetchHooksReport(origin: Machine): Promise<HooksReport> {
-  try {
-    return await callTyped(origin, "hooks-diag", {}, budgetWithin(HOOKS_DIAG_BUDGET_MS));
-  } catch (e) {
-    throw new Error(saidOf(e));
-  }
+  return await callTyped(origin, "hooks-diag", {}, budgetWithin(HOOKS_DIAG_BUDGET_MS));
 }
 
 /** 一态 → 那句话 ＋ 语气。**`path-missing` 绝不能说成「已装」**；`unknown` 要中性（既不说已装也不说未装）。 */

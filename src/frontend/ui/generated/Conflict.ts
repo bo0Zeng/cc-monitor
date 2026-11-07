@@ -36,11 +36,7 @@ mtime_text?: string,
  */
 there: FileKind, 
 /**
- * 已在那儿的那一项的大小（文件）。
- */
-there_size?: number, 
-/**
- * `there_size` 写好的字。
+ * 已在那儿的那一项的大小（文件）写好的字。
  */
 there_size_text?: string, 
 /**

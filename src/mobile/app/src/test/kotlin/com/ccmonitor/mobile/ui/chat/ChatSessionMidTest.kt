@@ -253,7 +253,7 @@ class ChatSessionMidTest {
     fun `面板里的动作同 ➤ 那一句：进待发、投进那条会话的输入队；没回执 ⇒ 在输入框上方发送中，回执到了离开待发`() =
         runTest {
             val link = FakeCoreLink()
-            val replies = ArrayDeque(listOf<Reply>(Reply.Ok(mapOf("outcome" to "queued", "seq" to 1L, "place" to 1L, "said" to "q-1")), Reply.TimedOut("t-said", "")))
+            val replies = ArrayDeque(listOf<Reply>(Reply.Ok(mapOf("outcome" to "queued", "seq" to 1L, "said" to "q-1")), Reply.TimedOut("t-said", "")))
             val s = existing(link) { cmd, _ -> if (cmd == "session-queue-put") replies.removeFirst() else null }
             runCurrent()
             s.say("/compact")
@@ -269,7 +269,7 @@ class ChatSessionMidTest {
                     .isEmpty(),
             )
             val box = s.state.value.outbox
-            assertEquals(listOf("/clear" to copyText("mobChat.delivery.sending")), box.map { it.text to it.said })
+            assertEquals("连着、没回执 ⇒「排队 · 无应答」，不借 heldSaid", listOf("/clear" to copyText("beQueue.said.noAnswer")), box.map { it.text to it.said })
         }
 
     /** 核心交来的一处整份：[texts] 每一项一张卡（一块正文）。 */

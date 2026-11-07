@@ -488,7 +488,7 @@ fn the_save_line_cap_is_the_backend_line_cap() {
     let backend =
         guard_core::production_code(include_str!("../../../src/backend/stream/inbound/mod.rs"));
     let at = backend
-        .find("pub const MAX_LINE_BYTES: relay_route_core::Cap = relay_route_core::Cap {")
+        .find("pub const MAX_LINE_BYTES: cap_core::Cap = cap_core::Cap {")
         .expect("后端入方向一行的上限认不出了（改了写法就把这里一起改）");
     let bytes = backend[at..]
         .lines()

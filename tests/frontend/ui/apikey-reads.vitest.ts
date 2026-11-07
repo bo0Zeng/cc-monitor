@@ -27,11 +27,10 @@ beforeEach(() => {
 // （`creds.apikey` 经 `chan.call`）；表「`creds.apikey` 写 … 等 HX2 落了再迁」；
 // `KH2C1`（前端一个字都不推账号 id：请求体里只有 `configDir`）。
 describe("〔HX2〕W2 写 key：经通道交那台机器的后端", () => {
-  const WRITTEN = { masked: "sk-****" };
-  it("op 对、请求体恰是 {configDir, key}（带 Base URL 那一路多 baseUrl）、origin 原样、一发", async () => {
-    invokeMock.mockResolvedValue(chanReply(WRITTEN));
-    expect(await writeApikeyKey("devbox", "/h/.claude-alt/work", "sk-FIXTURE")).toEqual(WRITTEN);
-    invokeMock.mockResolvedValue(chanReply(WRITTEN));
+  it("op 对、请求体恰是 {configDir, key}（带 Base URL 那一路多 baseUrl）、origin 原样、一发；回包是空回执，不往外交东西", async () => {
+    invokeMock.mockResolvedValue(chanReply(null));
+    expect(await writeApikeyKey("devbox", "/h/.claude-alt/work", "sk-FIXTURE")).toBeUndefined();
+    invokeMock.mockResolvedValue(chanReply(null));
     await writeApikeyKey("<local>", "/h/.claude-alt/work", "sk-FIXTURE", "https://up.example/v1");
     const calls = invokeMock.mock.calls;
     expect(calls.map((c) => c[0])).toEqual(["chan_call", "chan_call"]);

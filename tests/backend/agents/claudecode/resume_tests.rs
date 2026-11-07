@@ -51,7 +51,7 @@ fn stdout_line(said: &str) -> serde_json::Value {
 }
 
 /// ★ 换模型读回：认 `/model` 之后那条本地命令输出里的 `Set model to …` / `Kept model as …`，取反引号里的显示名（带括号的照原样），
-/// effort 那一词有就取；别的记录、别的输出 ⇒ 认不出（不猜）。原文照 Claude Code 实际写的那几句。
+/// 后面接的 effort 那一截不进显示名；别的记录、别的输出 ⇒ 认不出（不猜）。原文照 Claude Code 实际写的那几句。
 #[test]
 fn the_model_is_read_back_from_the_local_command_output() {
     let read = super::model_said;
@@ -59,18 +59,12 @@ fn the_model_is_read_back_from_the_local_command_output() {
         "Set model to `Opus 5.5` and saved as your default for new sessions",
     ))
     .unwrap();
-    assert_eq!(
-        (set.name.as_str(), set.kept, set.effort.as_deref()),
-        ("Opus 5.5", false, None)
-    );
+    assert_eq!((set.name.as_str(), set.kept), ("Opus 5.5", false));
     let set = read(&stdout_line(
         "Set model to `Opus 5.5 (1M context)` and saved as your default for new sessions with `xhigh` effort",
     ))
     .unwrap();
-    assert_eq!(
-        (set.name.as_str(), set.effort.as_deref()),
-        ("Opus 5.5 (1M context)", Some("xhigh"))
-    );
+    assert_eq!(set.name, "Opus 5.5 (1M context)");
     let set = read(&stdout_line(
         "Set model to `Opus 5.5 (1M context) (default)` and saved as your default for new sessions with `high` effort",
     ))

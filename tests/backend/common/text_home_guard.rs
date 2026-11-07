@@ -22,11 +22,6 @@ const ELLIPSIS_EXEMPT: &[(&str, usize, &str)] = &[
         "命令概要里省掉后半截（`cd …`），不按字数截",
     ),
     (
-        "backend/agents/claudecode/drift.rs",
-        1,
-        "样例按线上摘录的字节上限截（`cmd_wire::record::excerpt_of`）",
-    ),
-    (
         "common/relay-route-core/src/lib.rs",
         1,
         "上游地址里的密钥那一段换成省略号（遮，不截）",

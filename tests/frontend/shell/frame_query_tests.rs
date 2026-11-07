@@ -40,8 +40,6 @@ const BORN_ON_FRAME: &[&str] = &[
     // 记录解释进后端之后生在帧面上的两条（界面经通道直接问；monitor 这一侧从不发它们）。
     "history-page",
     "drift-report",
-    // 本机与各台的漂移账（本机后端经各台的常驻流问到、并好再答；界面经通道直接问，monitor 这一侧从不发它）。
-    "drift-merge",
     // 问到各台搜一遍、合一份（本机后端自己扇出 · 合并排序；界面经通道直接问，monitor 这一侧从不发它）。
     "history-search-merge",
     // 按运行读一个子运行的记录（替掉按目录 ＋ 描述 ＋ 时间戳挑的那一条与它的列候选子命令；界面经通道直接问）。
@@ -534,11 +532,6 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
          前端 `needs-book.ts` 问本机后端（入口 · 浮层 · `Ctrl+J` · 窗口标题走它），monitor 这一侧零发送点",
     ),
     (
-        "drift-merge",
-        "`BORN_ON_FRAME` 那一条：本机后端问到各台的漂移账（`read_face.rs::drift_hub`，经各台常驻流问 `drift-report`）、本机在前照机器表排；\
-         前端 `src/frontend/ui/record-reads.ts::readDriftOfAll` 只问本机后端、原样交壳 `diagnostics_report`，monitor 这一侧零发送点",
-    ),
-    (
         "machine-interrupts",
         "`BORN_ON_FRAME` 那一条：后端出成品 `{relayedSessions, relayedMaybe, liveStreams, forwards}`（`accounts_query.rs::machine_product`）；\
          前端 `src/frontend/ui/settings/interrupts.ts::askInterrupts` 只问本机后端（它经那台常驻流问到、并好再答）、按生成类型收，monitor 这一侧零发送点",
@@ -790,12 +783,6 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
          monitor 自己要不要跟着收那台后端 —— 它的答案不给界面",
     ),
     (
-        "assets-sync",
-        1,
-        "流握手那一刻（`asset_sync.rs::on_remote_ready`）交「怎么够到那台」并顺手同步一趟 —— 宿主交事实，\
-         应答只记日志、不给界面（界面那一问经通道直问本机后端）",
-    ),
-    (
         "machines-read",
         1,
         "机器表的最近一答（`machine_table.rs::refresh`）：本机通道登记上那一刻 ＋ 本机流每帧 `changed {machines}` 各问一次，\
@@ -803,9 +790,8 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
     ),
     (
         "machine-read",
-        2,
-        "诊断信息（`diagnostics_report.rs::remote_machines`）：远端各台此刻的状态与原因码写进那段文本 —— 壳自己写诊断，答案不给界面；\
-         文件窗口（`filewin/source.rs::machine_now`）：那台通不通先问一次此刻的成品，之后照 `changed/machine` 换（窗口自己的断线条）",
+        1,
+        "文件窗口（`filewin/source.rs::machine_now`）：那台通不通先问一次此刻的成品，之后照 `changed/machine` 换（窗口自己的断线条）",
     ),
     // `skill-uninstall-plan` 那一行退役：卸那一趟的删与摘记录进了被卸那台后端（`skill-uninstall-apply`），monitor 零处问它。
     // `tasks-list` 那一行退役：本机任务 notify 删了（监视进后端，`changed {tasks}` 帧 ⇒ 通道 `changed/tasks`），

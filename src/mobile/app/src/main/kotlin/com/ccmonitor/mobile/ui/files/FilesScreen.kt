@@ -49,13 +49,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -81,13 +77,18 @@ import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.core.wire.gen.BatchLine
 import com.ccmonitor.mobile.core.wire.gen.MenuEntry
+import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ui.chat.newsession.DirBrowseScreen
 import com.ccmonitor.mobile.ui.chat.newsession.DirBrowser
 import com.ccmonitor.mobile.ui.claude.highlighted
 import com.ccmonitor.mobile.ui.claude.rememberMdStyle
+import com.ccmonitor.mobile.ui.common.BarLook
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
 import com.ccmonitor.mobile.ui.common.EditHostButton
+import com.ccmonitor.mobile.ui.common.MachineBar
+import com.ccmonitor.mobile.ui.common.MachineBarView
+import com.ccmonitor.mobile.ui.common.barOf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -352,7 +353,7 @@ private fun ReadyContent(
             Toolbar(dir, sortBySize, vm, onOpenTerminal, onShowTabs, onDialog)
             BookmarkBar(bookmarks, bookmarkSaid, vm, shelf)
         }
-        if (!online) OfflineBand(vm)
+        FilesBar(vm, hostId, online)
         val p = progress
         when {
             p != null -> LinearProgressIndicator(progress = { p }, modifier = Modifier.fillMaxWidth())
@@ -430,24 +431,22 @@ private fun picked(
     }
 }
 
-/** 那台断着：列表顶一条淡色虚线框（选中照留，能做的那几件由核心灰掉）；字照链上交的离线那一句。 */
+/**
+ * 列表顶那一条机器条（选中照留，能做的那几件由核心灰掉）：那台有事 ⇒ 核心那一条；那台没事、只是文件这一层断着
+ * （手机这一侧的事实）⇒ 同一个组件画链上交的离线那一句。
+ */
 @Composable
-private fun OfflineBand(vm: FilesViewModel) {
-    val tokens = LocalAppTokens.current
+private fun FilesBar(
+    vm: FilesViewModel,
+    hostId: String,
+    online: Boolean,
+) {
+    val link by koinInject<HostBackends>().of(hostId).state.collectAsState()
     val offline by vm.offline.collectAsState()
-    val line = tokens.borderStrong
-    Text(
-        offline,
-        style = monoSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.sm)
-                .drawBehind {
-                    drawRoundRect(line, style = Stroke(1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(DASH, GAP))), cornerRadius = CornerRadius(tokens.radius.m.toPx()))
-                }.padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.sm),
-    )
+    when {
+        barOf(link) != null -> MachineBar(hostId)
+        !online -> MachineBarView(BarLook(offline, Tone.OFFLINE), null)
+    }
 }
 
 /** 工具条：tab 面板 · 搜索（当前目录以下，那台搜）· 新建目录 · 新建空文件 · 排序 · 在此打开终端。 */
@@ -851,7 +850,3 @@ private fun nameOf(
 
 /** 面包屑至多排几段（含「…」那一段）。 */
 private const val CRUMBS_SHOWN = 4
-
-/** 离线那一条虚线的划与空（px）。 */
-private const val DASH = 6f
-private const val GAP = 4f

@@ -49,7 +49,6 @@
     "kind": "approve",
     "questions": [],
     "run": null,
-    "sinceMs": 1000,
     "tool": "Bash",
     "what": "touch a.txt"
   },
@@ -89,7 +88,6 @@
     "kind": "plan",
     "questions": [],
     "run": null,
-    "sinceMs": 1000,
     "tool": "ExitPlanMode",
     "what": null
   },
@@ -154,7 +152,6 @@
       }
     ],
     "run": null,
-    "sinceMs": 1000,
     "tool": "AskUserQuestion",
     "what": "Which color?"
   },
@@ -218,7 +215,6 @@
       "id": "a1",
       "text": "agent · general-purpose"
     },
-    "sinceMs": 1000,
     "tool": "Bash",
     "what": "touch a.txt"
   }

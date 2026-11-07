@@ -356,10 +356,15 @@ pub struct AccountsList {
 pub struct ListMeta {
     /// 这台建了账号库（清单读得出）。
     pub enabled: bool,
+    /// 账号库目录（后端认进程是哪个号用，不上线）。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub accts_dir: String,
     pub manifest_path: String,
     pub updated_at: Option<String>,
-    /// 账号 0 的配置目录（清单里写了才有）。
+    /// 账号 0 的配置目录（清单里写了才有；后端用，不上线）。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub shared_store: Option<String>,
     /// 清单里认得的号数。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]

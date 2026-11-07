@@ -157,10 +157,10 @@ describe("没见到", () => {
         TITLE +
         "已等 18s 未报到 · tmux 会话「billing-2」末几行" +
         "claude: error: unknown option '--modle'\n(Did you mean --model?)" +
-        `${copyText("launch.slot.again")}${copyText("launch.slot.screen")}${copyText("sessionHead.act.openTerm")}${copyText("tabMenu.kill.label")}${copyText("launch.slot.close")}`,
+        `${copyText("launch.slot.again")}${copyText("launch.slot.screen")}${copyText("mobDrawer.item.terminal")}${copyText("tabMenu.kill.label")}${copyText("launch.slot.close")}`,
     );
     expect(root.querySelector("pre")?.textContent).toBe("claude: error: unknown option '--modle'\n(Did you mean --model?)");
-    expect(actsOnCard()).toEqual([`again:${copyText("launch.slot.again")}`, `screen:${copyText("launch.slot.screen")}`, `attach:${copyText("sessionHead.act.openTerm")}`, `end:${copyText("tabMenu.kill.label")}`, `close:${copyText("launch.slot.close")}`]);
+    expect(actsOnCard()).toEqual([`again:${copyText("launch.slot.again")}`, `screen:${copyText("launch.slot.screen")}`, `attach:${copyText("mobDrawer.item.terminal")}`, `end:${copyText("tabMenu.kill.label")}`, `close:${copyText("launch.slot.close")}`]);
     expect(vi.mocked(toast), "不再另弹一句").not.toHaveBeenCalled();
   });
 

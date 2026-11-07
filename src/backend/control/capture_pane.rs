@@ -34,11 +34,7 @@
 //! 文本级（生产段里不出现任何会改 tmux 状态的动词）＋ 反向自检（合成样本必须被逮到）。
 
 use crate::common::tmux_utf8::UTF8_CLIENT_FLAG;
-use crate::platform::child::Deadline;
 use copy_core::copy_text;
-
-/// 抓一屏那一发的期限：界面等 `terminal-preview` 的预算是 20 s（抓屏 ＋ 问尺寸两发），tmux 一发 5 s（同 watcher 探测 tmux 的期限）。
-const CAPTURE_WITHIN: Deadline = Deadline::secs(5);
 
 /// 命令级错误：码 ＋ 那一句（只带原因词）＋ tmux 的原话（stderr · 退出码，进复制详情）。
 use crate::common::said::Said;
@@ -172,7 +168,7 @@ fn spawn_tmux(socket: Option<&str>, argv: &[&str]) -> Result<RawCapture, Said> {
     )]
     let out = crate::host::tmux::child(socket)
         .args(argv)
-        .run(CAPTURE_WITHIN)
+        .run(crate::host::tmux::TMUX_WITHIN)
         .map_err(tmux_unavailable)?;
     Ok(RawCapture {
         code: out.status.code(),

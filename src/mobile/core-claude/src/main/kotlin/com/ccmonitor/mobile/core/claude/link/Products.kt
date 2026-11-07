@@ -1,7 +1,6 @@
 package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.claude.link.wire.RawPatch
-import com.ccmonitor.mobile.core.claude.link.wire.SyncHand
 import com.ccmonitor.mobile.core.claude.link.wire.rawPatch
 import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.Allow
@@ -80,22 +79,21 @@ object SessionsNeeds {
 /**
  * `history-list` 的一行与整份。手机只连一台、直接问那台的常驻：`origin` 交 [LOCAL]（那台眼里的这台）⇒
  * 那台自己的清单、并上那台的注解、筛、排（`history/history_list.rs` 头注；`origin` 必填，缺了那台答 `bad_args`）。
- * 回包是带键集合那一形（[SyncPatch]）：带着上次的记号问 ⇒ 没变 / 只给变了的那几行，手上那一份照它换（[SyncHand.apply]）。
+ * 回包是带键集合那一形（`SyncPatch`）：不带筛选那一问带着上次的记号问 ⇒ 没变 / 只给变了的那几行，照答换手上那一份在嵌的核心里
+ * （`Core.listingKeep`，桌面同一份 `Hand::apply`），换好交回整份那一形；带筛选的不带记号、那台答整份。两样都交 [page]。
  */
 object HistoryList {
     const val COMMAND: String = "history-list"
 
-    /** 回包（核心按 `cmd-wire` 那一份解过）；不是那一形（`raw` 那一形手机不问）⇒ `null`。 */
-    fun patch(data: Any?): RawPatch? = rawPatch(data)
+    /** 整份那一形（那台不带记号的回包 · 核心交回的手上那一份）⇒ 一份清单；不是整份 · 解不开 ⇒ `null`。 */
+    fun of(data: Any?): HistoryListPage? = rawPatch(data)?.let(::page)
 
-    /** 不带记号那一问的回包（整份）⇒ 一份清单；不是整份 · 解不开 ⇒ `null`。 */
-    fun of(data: Any?): HistoryListPage? = patch(data)?.takeIf { it.whole }?.let { page(SyncHand().apply(it)) }
-
-    /** 手上那一份 ⇒ 要画的清单：行照先后、每行与头交给同一个解码器；窗外还有 ⇒ [HistoryListPage.truncated]。有一格解不开 ⇒ `null`。 */
-    fun page(hand: SyncHand): HistoryListPage? {
-        val rows = hand.order.map { k -> hand.items[k]?.let { Wire.bind<HistoryRow>(it) } ?: return null }
-        val info = hand.head?.let { Wire.bind<HistoryHead>(it.info) ?: return null }
-        return HistoryListPage(rows, info?.groups.orEmpty(), info?.notice, (hand.head?.total ?: 0) > rows.size)
+    /** 整份那一答 ⇒ 要画的清单：行照先后、每行与头交给同一个解码器；窗外还有 ⇒ [HistoryListPage.truncated]。不是整份 · 有一格解不开 ⇒ `null`。 */
+    fun page(whole: RawPatch): HistoryListPage? {
+        if (!whole.whole) return null
+        val rows = whole.order.orEmpty().map { k -> whole.up[k]?.let { Wire.bind<HistoryRow>(it) } ?: return null }
+        val info = whole.head?.let { Wire.bind<HistoryHead>(it.info) ?: return null }
+        return HistoryListPage(rows, info?.groups.orEmpty(), info?.notice, (whole.head?.total ?: 0) > rows.size)
     }
 
     /** 入参：`origin` ＝ [LOCAL]；设了的筛选各带一格（与桌面历史同几个参数），没设的不带（那台照缺省）；带着上次的记号 [held] ⇒ 交回。 */

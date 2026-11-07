@@ -11,43 +11,24 @@
 // 状态性警告不许只活在 hover / 日志里）。
 import { commands } from "./ipc/commands";
 import type { ConfigEdit } from "./generated/ConfigEdit";
+import OWNERS from "../../shared/config-keys.json";
 
 export type { ConfigEdit };
 
 export type Config = Record<string, unknown>;
 
 /**
- * 🔴 **config.json 顶层键的唯一登记。**
+ * 🔴 **config.json 顶层键的唯一登记**：住 `src/shared/config-keys.json`，界面（这里）与本机后端（诊断信息里「config 认不出几项」，
+ * `faces/diagnostics_face.rs`）共读那一份。
  *
- * 每一行后面那个模块是它**今天的主人** —— 键的语义只在那一个文件里解释
- *（`config.rs` 是 schema-agnostic 的，Rust 侧只透传）。
+ * 每一行的值是它**今天的主人** —— 键的语义只在那一个文件里解释（`config.rs` 是 schema-agnostic 的，Rust 侧只透传）。
+ * `diagnostics` 是 Rust 写的那一格（`logging.rs`，设置页「诊断」经 `set_diagnostics_config`）：漏登记就会被提示条点名（假警报）。
  *
- * ⚠ **加了新键却忘了加在这里**，后果不是静默：app 会当它是未知键，
- * 在设置里指名道姓地喊出来。吵，但不瞎 —— 这正是本表要的失效方向。
+ * ⚠ **加了新键却忘了加在那里**，后果不是静默：app 会当它是未知键，在设置里指名道姓地喊出来。吵，但不瞎 —— 这正是本表要的失效方向。
  *
- * ⚠ 射程：只管**顶层**。子对象里的键（`remote.hosts[].keyPath`、`theme.bg` …）
- * 由各自的主人自己解释，本表一个都不认、也不该认。
+ * ⚠ 射程：只管**顶层**。子对象里的键（`remote.hosts[].keyPath`、`theme.bg` …）由各自的主人自己解释，本表一个都不认、也不该认。
  */
-export const CONFIG_KEY_OWNERS = {
-  // src/frontend/ui/theme.ts
-  theme: "src/frontend/ui/theme.ts",
-  // src/frontend/ui/keybindings/store.ts
-  keybindings: "src/frontend/ui/keybindings/store.ts",
-  // src/frontend/ui/tab-bar-state.ts
-  tabBar: "src/frontend/ui/tab-bar-state.ts",
-  // src/frontend/ui/session-head.ts：会话头上放哪几颗按钮（`sessionHead.buttons`，这扇界面自己的偏好；没有 ＝ 默认）。
-  sessionHead: "src/frontend/ui/session-head.ts",
-  // ── src/frontend/ui/behavior.ts 那一族 ─────────────────────────────────────────────
-  autoFollowUserActive: "src/frontend/ui/behavior.ts",
-  bringMonitorToFrontOnUserActive: "src/frontend/ui/behavior.ts",
-  // 用过的恢复命令（只是这扇界面的输入历史；生效值住各台后端）。
-  resumeCommandPresets: "src/frontend/ui/behavior.ts",
-  // src/frontend/ui/settings/terminal-row.ts 写（设置 → 通用 → 终端）；壳的平台层 `platform/terminal.rs` 开终端时读（只读）。
-  terminal: "src/frontend/ui/settings/terminal-row.ts",
-  // src/frontend/shell/src/logging.rs —— **Rust 写的**顶层键（设置页「诊断」经 `set_diagnostics_config`）。
-  // 漏登记的话，用户存过一次诊断设置，「认不出的键」提示条就会把 `diagnostics` 点名（假警报）。
-  diagnostics: "src/frontend/shell/src/logging.rs",
-} as const satisfies Readonly<Record<string, string>>;
+export const CONFIG_KEY_OWNERS: Readonly<typeof OWNERS> = OWNERS;
 
 /** config.json 的顶层键。写口的路径首段只收这些 ⇒ 写一个没登记的顶层键**编不过**。 */
 export type ConfigKey = keyof typeof CONFIG_KEY_OWNERS;

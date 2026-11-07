@@ -1,6 +1,5 @@
 package com.ccmonitor.mobile.ui.identity
 
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,7 +32,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboard
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -42,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Identity
 import com.ccmonitor.mobile.core.data.db.isKeystoreBacked
+import com.ccmonitor.mobile.core.rs.Core
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.dialog.DangerConfirmDialog
 import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
@@ -56,6 +55,7 @@ import com.ccmonitor.mobile.core.ui.sheet.SheetAction
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
+import com.ccmonitor.mobile.ui.common.CopyDetailButton
 import com.ccmonitor.mobile.ui.copyPlainText
 import com.ccmonitor.mobile.ui.host.IDENTITY_SCREEN_TITLE
 import com.ccmonitor.mobile.ui.nav.settingsGroupScreenInsets
@@ -69,7 +69,6 @@ fun IdentityScreen(onBack: () -> Unit = {}) {
     val identities by vm.identities.collectAsState()
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
     val snackbar = LocalAppSnackbar.current
 
     // 身份生成/导入反馈：成功/失败弹提示，Working 时盖 loading。
@@ -77,7 +76,7 @@ fun IdentityScreen(onBack: () -> Unit = {}) {
     LaunchedEffect(op) {
         when (val o = op) {
             is IdentityOp.Done -> {
-                Toast.makeText(context, o.message, Toast.LENGTH_SHORT).show()
+                snackbar.show(o.message)
                 vm.ackOp()
             }
             is IdentityOp.Failed -> {
@@ -222,16 +221,18 @@ private fun IdentityRow(
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             PhIcon(Ph.Key, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(identity.label, style = MaterialTheme.typography.titleSmall)
-            Text(identity.keyType, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        // 第二行：核心照公钥写好的「算法 · 指纹短形」；整串指纹进复制详情。
+        val keyLine = remember(identity.publicKeyOpenSsh) { Core.keyLine(identity.publicKeyOpenSsh) }
         Text(
-            text = identity.fingerprintSha256,
+            text = keyLine,
             style = monoSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = Touch.iconBar + 12.dp, top = 4.dp),
         )
-        Row(Modifier.padding(start = Touch.iconBar), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.padding(start = Touch.iconBar), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             IconTextButton(Ph.Copy, copyText("mobIdentity.row.copyKey"), onClick = onCopy)
+            CopyDetailButton(keyLine, identity.fingerprintSha256)
             IconTextButton(Ph.Trash, copyText("rsFilewinWriteops.label.delete"), onClick = { showDeleteConfirm = true }, danger = true)
         }
     }

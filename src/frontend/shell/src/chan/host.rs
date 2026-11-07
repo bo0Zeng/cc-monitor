@@ -29,9 +29,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 /// 帧头 / 帧体各自的上限：一屏目录（`filewin::source::LS_LIMIT` 条）的 JSON 在兆字节级，给 64 MiB。两端同一个数（随种子交给窗口进程）。
-pub const FRAME_MAX_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+pub const FRAME_MAX_BYTES: cap_core::Cap = cap_core::Cap {
     bytes: 64 << 20,
-    over: relay_route_core::Over::Reject,
+    over: cap_core::Over::Reject,
 };
 
 /// 把一个窗口进程的那一对管子交给路由器（`rd` = 它的 stdout，`wr` = 它的 stdin），直到它走了。要在 tokio 运行时里调。

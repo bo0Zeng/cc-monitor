@@ -19,8 +19,6 @@ pub(crate) enum Delivery {
     In { resumed: bool },
     /// 那台说这条会话在等人（批准 · 回答）：一个字没送，照排着、等它答完。
     Waiting,
-    /// 托管终端里持有者输入行有没交的字（回车或清空之后才送）：一个字没送，照排着；名单那一条说为什么在等。
-    HalfTyped,
     /// 送不进去：那一条标未送达（为什么记日志）。
     No(Undeliverable),
 }
@@ -41,13 +39,10 @@ pub(crate) enum Undeliverable {
 }
 
 impl Delivery {
-    /// 送字那一侧的回话 ⇒ 投递的结局：送到 · 不知道 ⇒ 送进去了；被拒成 `waiting`（送字那一侧只有托管终端的持有者敲了半句没回车这一种）⇒
-    /// 照排着等那一行交掉；别的被拒 ⇒ 送不进去（那一份原样）。
+    /// 送字那一侧的回话 ⇒ 投递的结局：送到 · 不知道 ⇒ 送进去了；被拒 ⇒ 送不进去（那一份原样）。
     pub(crate) fn of(sent: Sent) -> Delivery {
-        use crate::control::terminals::Refused as Why;
         match sent.result {
             SentResult::Delivered | SentResult::Unsure => Delivery::In { resumed: false },
-            SentResult::Refused if sent.why == Some(Why::Waiting) => Delivery::HalfTyped,
             SentResult::Refused => Delivery::No(Undeliverable::Refused(sent)),
         }
     }

@@ -22,7 +22,7 @@
 
 import { copyText } from "../copy-table";
 
-export type Category = "Tab" | "Term" | "App" | "Beh" | "Panel" | "Acct";
+export type Category = "Tab" | "Term" | "App" | "Beh" | "Panel";
 
 /**
  * 何时生效（作用范围）。带修饰键的那一档（Ctrl / Alt / ⌘）由 dispatcher 现判，这里写的是默认键的那一档：
@@ -112,7 +112,7 @@ export const ACTIONS: ReadonlyArray<Action> = [
   { id: "tabBar.focus-cycle", label: copyText("keybindingActions.tabBar.focusCycle"), category: "Tab", default: "F6", available: true, scope: "any" },
 
   // ===== Terminal =====
-  { id: "terminal.bring-front", label: copyText("terminal.head.front"), category: "Term", default: "Backquote", available: true, scope: "bare" },
+  { id: "session.terminal", label: copyText("mobDrawer.item.terminal"), category: "Term", default: "Backquote", available: true, scope: "bare" },
 
   // ===== App =====
   { id: "app.open-settings", label: copyText("mobDrawer.settings.aria"), category: "App", default: "Comma", available: true, scope: "bare" },
@@ -133,10 +133,6 @@ export const ACTIONS: ReadonlyArray<Action> = [
   // 撤销刚才那一步（最近一条还开着的撤销提示）。输入框里的 Ctrl+Z 归输入框。
   { id: "app.undo", label: copyText("kit.toast.undo"), category: "App", default: "Ctrl+KeyZ", available: true, scope: "idle" },
 
-  // ===== 账号 =====
-  // 默认不绑：键位表已经很满，这不是高频操作。想要的人自己在设置里绑。
-  { id: "account.switch-default", label: copyText("keybindingActions.account.menu"), category: "Acct", default: null, available: true, scope: "any" },
-
   // ===== Behavior toggles =====
   { id: "behavior.toggle-auto-follow", label: copyText("keybindingActions.behavior.autoFollow"), category: "Beh", default: null, available: true, scope: "any" },
   { id: "behavior.toggle-bring-monitor", label: copyText("keybindingActions.behavior.autoFront"), category: "Beh", default: null, available: true, scope: "any" },
@@ -144,7 +140,6 @@ export const ACTIONS: ReadonlyArray<Action> = [
   // ===== Panel =====
   { id: "panel.toggle-tasks", label: copyText("tasksPanel.page.title"), category: "Panel", default: "KeyT", available: true, scope: "bare" },
   { id: "panel.toggle-agents", label: copyText("beProfile.slot.agent"), category: "Panel", default: "KeyA", available: true, scope: "bare" },
-  { id: "panel.toggle-terminal", label: copyText("sessionHead.act.terminal"), category: "Panel", default: "Ctrl+Backquote", available: true, scope: "any" },
 ] as const;
 
 /** 全部已注册 action 的 id 联合类型；调用方 `bind(id, ...)` 时 TS 检查拼写 */
@@ -173,7 +168,6 @@ export const CATEGORY_LABEL: Record<Category, string> = {
   App: copyText("keybindingActions.category.app"),
   Beh: copyText("settingsPanel.group.behavior"),
   Panel: copyText("keybindingActions.category.panel"),
-  Acct: copyText("beProfile.slot.account"),
 };
 
 /**
@@ -185,7 +179,6 @@ export const CATEGORY_ORDER: ReadonlyArray<Category> = [
   "Tab",
   "Term",
   "App",
-  "Acct",
   "Beh",
   "Panel",
 ];

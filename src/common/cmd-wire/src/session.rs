@@ -153,8 +153,9 @@ pub struct TerminalItem {
     pub input: TermInput,
     /// 此刻的样子。
     pub state: TermState,
-    /// 最近动静（秒）。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    /// 最近动静（秒；后端排先后用，不上线）。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub last_activity: u64,
     /// 这个调用方能做什么（抓屏不过身份门、恒可用，不在这里）。
     pub can: TerminalCan,
@@ -276,8 +277,9 @@ pub struct Attached {
     /// 连上的时刻（秒）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub since: u64,
-    /// 最近动静（秒）。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    /// 最近动静（秒；后端排先后用，不上线）。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub last_activity: u64,
 }
 
@@ -383,9 +385,6 @@ pub struct Preview {
     pub scrollback_lines: usize,
     /// 要的比上限多、截到了上限。
     pub capped: bool,
-    /// 抓屏时刻（秒）。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-    pub captured_at: u64,
     /// 抓屏时刻在看的那一台钟上的（请求的 `tz`）`HH:MM:SS`（界面照抄、不换算）。
     pub captured_at_text: String,
 }
@@ -755,8 +754,9 @@ pub struct RecentDir {
     pub cwd: String,
     /// 那台按自己的家目录写好的显示形（`~/…`），两端照抄。
     pub shown: String,
-    /// 那个目录最近一次会话的修改时刻（毫秒）。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    /// 那个目录最近一次会话的修改时刻（毫秒；后端排先后用，不上线）。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub last_ms: i64,
     /// 同一刻按请求的 `tz` 写给人看的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
@@ -974,10 +974,6 @@ pub struct ModelSwitched {
     pub result: SwitchResult,
     /// 读回的显示名（那一家写的原样，例如 `Opus 5.5 (1M context)`）；没读到 ⇒ `null`。
     pub model: Option<String>,
-    /// 读回时那一家顺带说的思考档（原样）；没说 ⇒ 不出。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub effort: Option<String>,
     /// `refused` 的原因（同 `terminal-input`）。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]

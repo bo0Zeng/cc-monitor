@@ -2,20 +2,19 @@ package com.ccmonitor.mobile.cache
 
 import com.ccmonitor.mobile.core.claude.link.KeptBatches
 import com.ccmonitor.mobile.core.claude.link.RawJson
-import com.ccmonitor.mobile.core.claude.link.wire.SyncHand
-import com.ccmonitor.mobile.core.claude.link.wire.rawHead
+import com.ccmonitor.mobile.core.claude.link.wire.RawPatch
+import com.ccmonitor.mobile.core.claude.link.wire.rawPatch
 import com.ccmonitor.mobile.core.data.db.CacheDao
-import com.ccmonitor.mobile.core.data.db.CachedSession
 import com.ccmonitor.mobile.core.data.db.Draft
 import com.ccmonitor.mobile.core.data.db.HandDao
-import com.ccmonitor.mobile.core.data.db.ListHold
 import com.ccmonitor.mobile.core.data.db.PendingBatch
 import com.ccmonitor.mobile.core.data.db.PendingSend
 import com.ccmonitor.mobile.core.data.db.RecordPage
 import com.ccmonitor.mobile.core.data.db.SyncAnchor
+import com.ccmonitor.mobile.core.rs.Core
 
 /**
- * 手机落在 Room 的那几样：缓存（会话列表 · 记录页 · 续读点，住缓存库，`CacheDao`）与这一端手上的（待发 · 草稿 · 在做的一组，住状态库，`HandDao`）。
+ * 手机落盘的那几样：缓存（记录页 · 续读点 · 看过哪几条，住缓存库，`CacheDao`；会话列表副本住嵌的核心）与这一端手上的（待发 · 草稿 · 在做的一组，住状态库，`HandDao`）。
  * 一台一份，成品原样写成 JSON 文本存、读回来原样交还。
  */
 class LocalCache(
@@ -25,7 +24,7 @@ class LocalCache(
 ) {
     fun chat(hostId: String): ChatCache = RoomChatCache(dao, hand, hostId, now)
 
-    fun list(hostId: String): ListCache = RoomListCache(dao, hostId)
+    fun list(hostId: String): ListCache = CoreListCache(hostId)
 
     fun batches(hostId: String): KeptBatches = RoomKeptBatches(hand, hostId)
 
@@ -54,41 +53,16 @@ private class RoomKeptBatches(
     override suspend fun drop(ticket: String) = dao.dropBatch(hostId, ticket)
 }
 
-private class RoomListCache(
-    private val dao: CacheDao,
+/** 会话列表副本住嵌的核心（换 · 存盘都在那边）：这里只把回包原样交过去、把核心交回的那一行读成整份。 */
+private class CoreListCache(
     private val hostId: String,
 ) : ListCache {
-    override suspend fun hand(): SyncHand = dao.heldList(hostId).let { (hold, rows) -> handOf(hold, rows) }
+    override suspend fun held(): RawPatch? = fromCore(Core.listingHeld(hostId))
 
-    override suspend fun keep(hand: SyncHand) {
-        val (rows, hold) = storedOf(hostId, hand) ?: return
-        dao.keepList(hostId, rows, hold)
-    }
-}
+    override suspend fun keep(reply: Any?): RawPatch? = fromCore(Core.listingKeep(hostId, RawJson.write(reply)))
 
-/** 库里那一份 ⇒ 手上那一份：行照 `ord` 的先后、原样读回；记号与头在 [ListHold]（没答过 ⇒ 没有记号，下次那台答整份）。 */
-internal fun handOf(
-    hold: ListHold?,
-    rows: List<CachedSession>,
-): SyncHand {
-    val items = rows.mapNotNull { r -> r.listRow?.let(RawJson::read)?.let { r.sid to it } }
-    return SyncHand(
-        held = hold?.held,
-        order = items.map { it.first },
-        items = items.toMap(),
-        head = hold?.head?.let(RawJson::read)?.let(::rawHead),
-    )
-}
-
-/** 手上那一份 ⇒ 库里那几行（sid ＋ 原样，照先后）与记号 · 头；还没有记号（没答过）⇒ 不存。 */
-internal fun storedOf(
-    hostId: String,
-    hand: SyncHand,
-): Pair<List<Pair<String, String>>, ListHold>? {
-    val held = hand.held ?: return null
-    val rows = hand.order.mapNotNull { k -> hand.items[k]?.let { k to RawJson.write(it) } }
-    val head = hand.head?.let { RawJson.write(mapOf("total" to it.total, "info" to it.info)) }
-    return rows to ListHold(hostId, held, head)
+    /** 核心交回的那一行；空串（没有 · 读不动）⇒ `null`。 */
+    private fun fromCore(line: String): RawPatch? = line.takeIf { it.isNotEmpty() }?.let(RawJson::read)?.let(::rawPatch)
 }
 
 private class RoomChatCache(
@@ -99,7 +73,7 @@ private class RoomChatCache(
 ) : ChatCache {
     private fun RecordPage.raw(): RawPage? = (RawJson.read(rows) as? List<*>)?.let { RawPage(start, end, it.toList()) }
 
-    private fun RawPage.row(sid: String) = RecordPage(hostId, sid, start, end, RawJson.write(rows), now())
+    private fun RawPage.row(sid: String) = RecordPage(hostId, sid, start, end, RawJson.write(rows))
 
     private fun Anchor.row(sid: String) = SyncAnchor(hostId, sid, path, offset, seq, mark)
 
@@ -136,7 +110,7 @@ private class RoomChatCache(
     override suspend fun promote(
         draftSid: String,
         p: Pending,
-    ) = hand.promote(hostId, draftSid, PendingSend(p.id, hostId, p.sid, p.text, null, now(), p.outcome, p.attempts))
+    ) = hand.promote(hostId, draftSid, PendingSend(p.id, hostId, p.sid, p.text, now(), p.outcome, p.attempts))
 
     override suspend fun settle(
         id: String,
@@ -156,7 +130,5 @@ private class RoomChatCache(
     override suspend fun saveDraft(
         sid: String,
         text: String,
-        cwd: String?,
-        account: String?,
-    ) = if (text.isEmpty()) hand.dropDraft(hostId, sid) else hand.putDraft(Draft(hostId, sid, text, cwd, account, null, null, now()))
+    ) = if (text.isEmpty()) hand.dropDraft(hostId, sid) else hand.putDraft(Draft(hostId, sid, text, now()))
 }

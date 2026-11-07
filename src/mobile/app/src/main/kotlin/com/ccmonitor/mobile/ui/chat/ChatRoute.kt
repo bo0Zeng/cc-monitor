@@ -12,11 +12,15 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
+import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -40,8 +44,8 @@ import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.wire.gen.Changed
-import com.ccmonitor.mobile.core.wire.gen.StandingWord
-import com.ccmonitor.mobile.core.wire.gen.Whereabout
+import com.ccmonitor.mobile.core.wire.gen.TermOpen
+import com.ccmonitor.mobile.core.wire.gen.TermWay
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ui.agents.agentsEntry
 import com.ccmonitor.mobile.ui.chat.attach.AttachStore
@@ -61,7 +65,6 @@ import com.ccmonitor.mobile.ui.drawer.DRAWER_OPEN_DESCRIPTION
 import com.ccmonitor.mobile.ui.drawer.DrawerAction
 import com.ccmonitor.mobile.ui.needs.NeedsEntry
 import com.ccmonitor.mobile.ui.session.SessionTabManager
-import com.ccmonitor.mobile.ui.session.TerminalOps
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
@@ -99,11 +102,9 @@ fun ChatRoute(
     onOpenRotation: (String) -> Unit = {},
     /** 顶栏「⋯」→ agent：这条会话（sid）的 agent 列表。 */
     onOpenAgents: (String) -> Unit = {},
-    /** 顶栏「⋯」→ 计划：这台的计划页（sid 带过去认此会话接手的块）。 */
-    onOpenPlan: (String) -> Unit = {},
     /** 顶栏「⋯」→ 打开工作目录：文件屏开一个标签、落在这条会话的项目目录（那台上的全路径）。 */
     onOpenDir: (String) -> Unit = {},
-    /** 顶栏「⋯」→ 在终端里打开：终端屏开一个标签，附着它所在的 tmux 会话（名字是那台名单上的），终端已经不在 ⇒ 先让那台恢复再附着。 */
+    /** 顶栏「终端」：终端屏开一个标签，附着它住的那个终端（句柄是那台写在脸上的），终端已经不在 ⇒ 先让那台恢复再附着。 */
     onOpenTerminal: (SessionTabManager.TabTarget.Terminal) -> Unit = {},
     /** 顶栏右上「需手动 n」：需手动屏。 */
     onOpenOverview: () -> Unit = {},
@@ -130,10 +131,6 @@ fun ChatRoute(
         onDrawerAction(if (action == DrawerAction.NewConversation && cwd != null) DrawerAction.NewDraft(hostId, cwd) else action)
     }
     val needs = rememberChatNeeds(open.key, hostId, backends.of(hostId), remember(vm) { vm.state.map { it.sid } }, host.machine)
-    val terminals = remember(hostId) { TerminalOps(backends.of(hostId), { host.machine }) }
-    val findTerminal: suspend (String) -> TermEntry? = { s -> termEntry(terminals, s) }
-    // 说不了时框旁［切到终端］：同 ⋯「在终端里打开」那一个去处。
-    val toTerminal: () -> Unit = { state.sid?.let { s -> scope.launch { findTerminal(s)?.let { onOpenTerminal(it.target(s)) } } } }
     // ⋯ 里的会话里找 · 大纲 · 结束会话 · 无人答时自动答（判定都在那台，见 [ChatMore]）。
     val more = remember(open.key) { ChatMore(backends.of(hostId), host.machine, scope, { vm.state.value.sid }, vm::jump) }
     // 点标题出的「会话信息」（只读，字都是那台写的，见 [ChatInfo]）。
@@ -148,15 +145,15 @@ fun ChatRoute(
                     onTitle = info::open,
                     onOpenDrawer = { scope.launch { drawerState.open() } },
                     sid = state.sid?.takeIf { !state.drafting },
-                    findTerminal = findTerminal,
+                    terminal = state.terminal,
                     onTerminal = onOpenTerminal,
                     onRotation = onOpenRotation,
-                    onPlan = onOpenPlan,
                     openDir = state.cwd?.let { dir -> { onOpenDir(dir) } },
                     rename = Renaming(state.label, vm::rename),
                     agents = rememberAgentsEntry(hostId, state.sid)?.let { MoreAgents(it, onOpenAgents) },
                     needs = { NeedsEntry(onOpenOverview) },
-                    more = { close -> ChatMoreItems(more, state.label.orEmpty(), close) },
+                    more = more,
+                    endTitle = state.label.orEmpty(),
                 )
             },
         ) { inner ->
@@ -172,7 +169,7 @@ fun ChatRoute(
                 ChatHead(hostId, host.machine, vm.picker?.takeIf { state.drafting }) { id -> onDrawerAction(DrawerAction.NewDraft(id, null)) }
                 ChatMorePanes(more)
                 ChatInfoPane(info, host.machine) { sid -> onDrawerAction(DrawerAction.OpenRecent(sid)) }
-                ChatBody(vm, state, needs, toTerminal, Modifier.weight(1f))
+                ChatBody(vm, state, needs, Modifier.weight(1f))
             }
         }
     }
@@ -198,15 +195,13 @@ private fun ChatBody(
     vm: ChatViewModel,
     state: ChatUiState,
     needs: NeedsViewModel,
-    toTerminal: () -> Unit,
     modifier: Modifier,
 ) {
     val needsUi by needs.desk.state.collectAsStateWithLifecycle()
     val attach = vm.attach?.collectAsStateWithLifecycle()?.value
     ChatScreen(
         state = state,
-        actions = vm.actions.copy(toTerminal = toTerminal),
-        onRetrySend = vm::retry,
+        actions = vm.actions,
         onLoadOlder = vm::loadOlder,
         process = ProcessActions(toggle = vm::toggle, jumpFail = vm::jumpFail),
         onBranch = vm::toggleBranch,
@@ -295,21 +290,70 @@ private fun rememberChatHost(hostId: String): ChatHost? {
     return got
 }
 
-/** ⋯「在终端里打开」那一项：第二行是它所在的 tmux 会话名（终端已经不在 ⇒「恢复后在新终端中显示」）。 */
+/**
+ * 顶栏常驻的「终端」那一颗：照脸上 `can.terminal.far` 画（手机从不在会话住的那台上看，挑 `far`）——点得了 ⇒ 开终端屏；
+ * 做不了（或还没收到脸）⇒ 灰着。长按出那台写好的那一句（悬停那一句 · 做不了的原因）。不异步长出来、不问那台在哪。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TerminalItem(
-    t: TermEntry,
-    onClick: () -> Unit,
-) = DropdownMenuItem(
-    text = {
-        Column {
-            Text(copyText("sessionHead.act.openTerm"))
-            Text(t.second, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    },
-    modifier = Modifier.testTag(ChatTestTags.MORE_TERMINAL),
-    onClick = onClick,
-)
+private fun TerminalButton(
+    sid: String,
+    way: TermWay?,
+    onTerminal: (SessionTabManager.TabTarget.Terminal) -> Unit,
+) {
+    val target = terminalTarget(way, sid)
+    val label = copyText("mobDrawer.item.terminal")
+    TooltipBox(
+        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+        tooltip = { terminalSaid(way)?.let { PlainTooltip { Text(it) } } },
+        state = rememberTooltipState(),
+    ) {
+        PhIconButton(
+            Ph.TerminalWindow,
+            label,
+            onClick = { target?.let(onTerminal) },
+            modifier = Modifier.testTag(ChatTestTags.TERMINAL),
+            enabled = target != null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** 点「终端」开哪个（纯函数，判据读）：接进它住的那个终端（那台写在脸上的句柄）· 先恢复再附着；做不了 · 句柄判不出 · 还没收到脸 ⇒ `null`（灰着）。 */
+internal fun terminalTarget(
+    way: TermWay?,
+    sid: String,
+): SessionTabManager.TabTarget.Terminal? =
+    when (way) {
+        is TermWay.Here ->
+            when (val open = way.open) {
+                is TermOpen.Attach -> open.terminal?.let { SessionTabManager.TabTarget.Terminal(tmuxSession = it) }
+                TermOpen.Resume -> SessionTabManager.TabTarget.Terminal(resume = sid)
+            }
+        is TermWay.Front, is TermWay.No, null -> null
+    }
+
+/** 长按出的那一句（那台写好的）：做得了 ⇒ 去做什么；做不了 ⇒ 为什么。 */
+internal fun terminalSaid(way: TermWay?): String? =
+    when (way) {
+        is TermWay.Front -> way.said
+        is TermWay.Here -> way.said
+        is TermWay.No -> way.why
+        null -> null
+    }
+
+/** 聊天 ⋯ 里的一项（有哪几项、什么顺序照 [chatMoreItems]）。只放对这条会话本身做的事；计划是全局去处，在抽屉里。 */
+enum class ChatMoreItem {
+    Agents,
+    Rename,
+    Rotation,
+    OpenDir,
+
+    /** 「查找 · 大纲」一项（同桌面那一个框的两种看法）：先开查找，框里一颗切到大纲。 */
+    FindOutline,
+    AutoAnswer,
+    End,
+}
 
 /** ⋯「改标题」：此刻的名字（框里的初值；还没有 ⇒ 空框）· 交那台（名字等会话簿那一格换）。 */
 private class Renaming(
@@ -318,9 +362,9 @@ private class Renaming(
 )
 
 /**
- * 聊天屏的顶栏：左上 ☰ 拉出抽屉，标题是这条会话叫什么（那台定的）；右上 ⋯ 只放对这条会话本身做的事：在终端里打开（点了终端屏先让那台恢复再附着；
- * 名单问不到 ⇒ 不画；答不了的需手动从这里进终端）· agent · 改标题 · 轮换 · 计划 · 打开工作目录 · [ChatMoreItems] 那几项。
- * 还没起好的新建会话（[sid] 为 `null`）不画 ⋯。
+ * 聊天屏的顶栏：左上 ☰ 拉出抽屉，标题是这条会话叫什么（那台定的）；右上常驻「终端」那一颗（[TerminalButton]；答不了的需手动从这里进终端），
+ * ⋯ 里那几项照 [chatMoreItems]（只放对这条会话本身做的事；计划是全局去处，在抽屉里）。
+ * 还没起好的新建会话（[sid] 为 `null`）不画终端与 ⋯。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -333,11 +377,10 @@ private fun ChatTopBar(
     onTitle: () -> Unit,
     onOpenDrawer: () -> Unit,
     sid: String?,
-    /** 那条会话在终端里的样子（问那台的终端名单）；问不到 ⇒ `null`。 */
-    findTerminal: suspend (String) -> TermEntry?,
+    /** 脸上「终端」那一格（`can.terminal.far`）；还没收到脸 ⇒ `null`（那一颗照画、灰着）。 */
+    terminal: TermWay?,
     onTerminal: (SessionTabManager.TabTarget.Terminal) -> Unit,
     onRotation: (String) -> Unit,
-    onPlan: (String) -> Unit,
     /** ⋯「打开工作目录」；这条会话的目录还不知道 ⇒ `null`、不出这一项。 */
     openDir: (() -> Unit)?,
     rename: Renaming,
@@ -345,13 +388,13 @@ private fun ChatTopBar(
     agents: MoreAgents?,
     /** ⋯ 左边那颗「需手动 n」（0 不画；空的新建会话里同样有）。 */
     needs: @Composable () -> Unit,
-    /** ⋯ 里会话里找 · 大纲 · 无人答时自动答 · 结束会话那几项（[ChatMoreItems]；参数是收起菜单）。 */
-    more: @Composable (close: () -> Unit) -> Unit,
+    /** ⋯ 里查找与大纲 · 无人答时自动答 · 结束会话那几项做事的那一头。 */
+    more: ChatMore,
+    /** 这条会话的名字（「结束会话…」确认框里列它）。 */
+    endTitle: String,
 ) {
     var menu by remember { mutableStateOf(false) }
     var renaming by remember(sid) { mutableStateOf(false) }
-    var terminal by remember(sid) { mutableStateOf<TermEntry?>(null) }
-    val scope = rememberCoroutineScope()
     TopAppBar(
         navigationIcon = {
             PhIconButton(
@@ -367,40 +410,38 @@ private fun ChatTopBar(
         actions = {
             needs()
             if (sid != null) {
+                TerminalButton(sid, terminal, onTerminal)
                 IconButton(
-                    onClick = {
-                        menu = true
-                        scope.launch { terminal = findTerminal(sid) }
-                    },
+                    onClick = { menu = true },
                     modifier = Modifier.semantics { contentDescription = copyText("history.row.more") }.testTag(ChatTestTags.MORE),
                 ) { Text(MORE_GLYPH, style = MaterialTheme.typography.titleLarge) }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    terminal?.let { t ->
-                        TerminalItem(t) {
-                            menu = false
-                            onTerminal(t.target(sid))
+                    val close = { menu = false }
+                    for (item in chatMoreItems(agents = agents != null, openDir = openDir != null, more = more)) {
+                        when (item) {
+                            ChatMoreItem.Agents ->
+                                agents?.let { a ->
+                                    DropdownMenuItem(text = { Text(a.text) }, onClick = {
+                                        close()
+                                        a.open(sid)
+                                    })
+                                }
+                            ChatMoreItem.Rename ->
+                                DropdownMenuItem(text = { Text(copyText("history.menu.rename")) }, onClick = {
+                                    close()
+                                    renaming = true
+                                })
+                            ChatMoreItem.Rotation ->
+                                DropdownMenuItem(text = { Text(copyText("machinePage.tab.rot")) }, onClick = {
+                                    close()
+                                    onRotation(sid)
+                                })
+                            ChatMoreItem.OpenDir -> openDir?.let { OpenDirItem(it, close) }
+                            ChatMoreItem.FindOutline -> FindOutlineItem(more, close)
+                            ChatMoreItem.AutoAnswer -> AutoAnswerItem(more, close)
+                            ChatMoreItem.End -> EndItem(more, endTitle, close)
                         }
                     }
-                    agents?.let { a ->
-                        DropdownMenuItem(text = { Text(a.text) }, onClick = {
-                            menu = false
-                            a.open(sid)
-                        })
-                    }
-                    DropdownMenuItem(text = { Text(copyText("history.menu.rename")) }, onClick = {
-                        menu = false
-                        renaming = true
-                    })
-                    DropdownMenuItem(text = { Text(copyText("machinePage.tab.rot")) }, onClick = {
-                        menu = false
-                        onRotation(sid)
-                    })
-                    DropdownMenuItem(text = { Text(copyText("plan.page.title")) }, onClick = {
-                        menu = false
-                        onPlan(sid)
-                    })
-                    openDir?.let { OpenDirItem(it) { menu = false } }
-                    more { menu = false }
                 }
                 if (renaming) RenameDialog(rename.label.orEmpty(), onDismiss = { renaming = false }, onRename = rename.commit)
             }
@@ -466,40 +507,3 @@ fun chatKey(
  * 会话起好之后的 sid 是那台报到时说的，不是它。
  */
 fun newConversationId(): String = UUID.randomUUID().toString()
-
-/** 那条会话在终端里的样子（问那台 `sessions-where`，那台判）；问不到 ⇒ `null`。 */
-private suspend fun termEntry(
-    terminals: TerminalOps,
-    sid: String,
-): TermEntry? = terminals.where(sid).getOrNull()?.let(TermEntry::of)
-
-/** ⋯「在终端里打开」那一项：它所在的终端还在 ⇒ 附着那个；已经不在 ⇒ 先让那台恢复再附着。 */
-internal sealed interface TermEntry {
-    val second: String
-
-    fun target(sid: String): SessionTabManager.TabTarget.Terminal
-
-    /** 附着名叫 [name] 的终端（第二行是它的名字）。 */
-    data class Attach(
-        val name: String,
-    ) : TermEntry {
-        override val second: String get() = name
-
-        override fun target(sid: String) = SessionTabManager.TabTarget.Terminal(tmuxSession = name)
-    }
-
-    data object Resume : TermEntry {
-        override val second: String get() = copyText("terminal.empty.endedHint")
-
-        override fun target(sid: String) = SessionTabManager.TabTarget.Terminal(resume = sid)
-    }
-
-    companion object {
-        /** 那台的答 ⇒ 这一项：在跑 · 空着 · 不止一个 ⇒ 附着那台排第一的；没有终端带着它 · 那台没 tmux ⇒ 恢复。 */
-        fun of(w: Whereabout): TermEntry =
-            when (w.standing) {
-                StandingWord.RUNNING, StandingWord.IDLE, StandingWord.AMBIGUOUS -> w.names.firstOrNull()?.let(::Attach) ?: Resume
-                StandingWord.NONE, StandingWord.NO_TMUX -> Resume
-            }
-    }
-}

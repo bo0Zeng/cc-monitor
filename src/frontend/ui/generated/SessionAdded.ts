@@ -23,10 +23,6 @@ agent_kind: string,
  */
 background?: boolean, 
 /**
- * **E73（additive）：attach 进去对人有没有意义。** `false` = 别给 attach / ↗ / 「杀死空 tmux」这几个动作；**省略 = `true`**。
- */
-attachable?: boolean, 
-/**
  * pidfile 记的 `cwd`：进程起在哪个目录（客户端认「我刚起的那条起来了」用）。
  */
 cwd?: string, 

@@ -11,8 +11,4 @@ key: string,
 /**
  * 见过多少次（本进程内的计数，不落盘）。
  */
-count: number, 
-/**
- * **首见**的一条样例（截断）。后来的不再覆盖 —— 第一条最接近「它刚出现时长什么样」。
- */
-first_sample: string | null, };
+count: number, };

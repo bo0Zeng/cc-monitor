@@ -38,7 +38,6 @@ import com.ccmonitor.mobile.BuildConfig
 import com.ccmonitor.mobile.core.claude.link.TabKind
 import com.ccmonitor.mobile.core.claude.link.deployFix
 import com.ccmonitor.mobile.core.copy.copyText
-import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
 import com.ccmonitor.mobile.core.ui.icon.BackButton
 import com.ccmonitor.mobile.core.ui.icon.Ph
@@ -117,14 +116,12 @@ private fun Body(
     readable: Boolean?,
     onNavigate: (String) -> Unit,
 ) {
-    val hosts by koinInject<HostRepository>().observeAll().collectAsState(initial = emptyList())
     val keys by koinInject<IdentityRepository>().observeAll().collectAsState(initial = emptyList())
     SectionHead(copyText("mobSettings.section.machine"))
     settingsEntries().forEach { e ->
         if (e.readsMachine && here == null) return@forEach
         val n =
             when (e.count) {
-                EntryCount.MACHINES -> hosts.size
                 EntryCount.KEYS -> keys.size
                 null -> null
             }

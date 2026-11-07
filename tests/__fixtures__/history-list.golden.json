@@ -9,7 +9,6 @@
           "failed": null,
           "hasLive": true,
           "key": "claude:/w/alpha",
-          "lastActivity": 900,
           "order": 210000000000900,
           "origin": "dev",
           "projectDir": "-w-alpha",
@@ -24,7 +23,6 @@
           "failed": null,
           "hasLive": null,
           "key": "codex:/w/delta",
-          "lastActivity": 650,
           "order": 100000000000650,
           "origin": "dev",
           "projectDir": "codex:/w/delta",
@@ -39,7 +37,6 @@
           "failed": null,
           "hasLive": false,
           "key": "claude:/w/beta",
-          "lastActivity": 1000,
           "order": 1000,
           "origin": "dev",
           "projectDir": "-w-beta",
@@ -54,7 +51,6 @@
           "failed": null,
           "hasLive": false,
           "key": "claude:/w/alpha-二",
-          "lastActivity": 700,
           "order": 700,
           "origin": "dev",
           "projectDir": "-w-alpha",
@@ -69,7 +65,6 @@
           "failed": "读不了 /h/.claude/projects/-w-gamma",
           "hasLive": null,
           "key": "dir:-w-gamma",
-          "lastActivity": 0,
           "order": 0,
           "origin": "dev",
           "projectDir": "-w-gamma",
@@ -108,10 +103,6 @@
       "deleteAsk": "删除：dev 上的会话记录 · 不可恢复",
       "face": {
         "can": {
-          "attach": {
-            "can": "yes",
-            "from": "elsewhere"
-          },
           "close": {
             "can": "no",
             "why": "运行中"
@@ -141,9 +132,18 @@
           "stop": {
             "can": "yes"
           },
-          "term": {
-            "can": "yes",
-            "host": "direct"
+          "terminal": {
+            "far": {
+              "go": "here",
+              "open": {
+                "kind": "attach"
+              },
+              "said": "在 cc-monitor 里打开它的终端"
+            },
+            "near": {
+              "go": "front",
+              "said": "切到它的终端窗口"
+            }
           }
         },
         "dot": "running",
@@ -196,10 +196,6 @@
       "deleteAsk": "删除：dev 上的会话记录 · 不可恢复",
       "face": {
         "can": {
-          "attach": {
-            "can": "no",
-            "why": "会话已结束"
-          },
           "close": {
             "can": "quiet"
           },
@@ -228,9 +224,21 @@
             "can": "no",
             "why": "会话已结束"
           },
-          "term": {
-            "can": "no",
-            "why": "会话已结束"
+          "terminal": {
+            "far": {
+              "go": "here",
+              "open": {
+                "kind": "resume"
+              },
+              "said": "恢复后在 cc-monitor 里打开终端"
+            },
+            "near": {
+              "go": "here",
+              "open": {
+                "kind": "resume"
+              },
+              "said": "恢复后在 cc-monitor 里打开终端"
+            }
           }
         },
         "dot": "ended",
@@ -283,10 +291,6 @@
       "deleteAsk": "删除：dev 上的会话记录 · 不可恢复",
       "face": {
         "can": {
-          "attach": {
-            "can": "no",
-            "why": "会话已结束"
-          },
           "close": {
             "can": "quiet"
           },
@@ -315,9 +319,21 @@
             "can": "no",
             "why": "会话已结束"
           },
-          "term": {
-            "can": "no",
-            "why": "会话已结束"
+          "terminal": {
+            "far": {
+              "go": "here",
+              "open": {
+                "kind": "resume"
+              },
+              "said": "恢复后在 cc-monitor 里打开终端"
+            },
+            "near": {
+              "go": "here",
+              "open": {
+                "kind": "resume"
+              },
+              "said": "恢复后在 cc-monitor 里打开终端"
+            }
           }
         },
         "dot": "ended",
@@ -371,10 +387,6 @@
       "deleteAsk": "删除：dev 上的会话记录 · 不可恢复",
       "face": {
         "can": {
-          "attach": {
-            "can": "no",
-            "why": "会话已结束"
-          },
           "close": {
             "can": "quiet"
           },
@@ -403,9 +415,21 @@
             "can": "no",
             "why": "会话已结束"
           },
-          "term": {
-            "can": "no",
-            "why": "会话已结束"
+          "terminal": {
+            "far": {
+              "go": "here",
+              "open": {
+                "kind": "resume"
+              },
+              "said": "恢复后在 cc-monitor 里打开终端"
+            },
+            "near": {
+              "go": "here",
+              "open": {
+                "kind": "resume"
+              },
+              "said": "恢复后在 cc-monitor 里打开终端"
+            }
           }
         },
         "dot": "ended",
@@ -423,7 +447,6 @@
       "forkedFrom": {
         "label": "分叉的父会话"
       },
-      "forkedFromMessageUuid": "m-1",
       "forkedFromSessionId": "0000aaaa-0000-4000-8000-000000000004",
       "group": "claude:/w/beta",
       "hidden": null,
@@ -461,10 +484,6 @@
       "deleteAsk": "删除：dev 上的会话记录 · 不可恢复\n未确认是否在运行",
       "face": {
         "can": {
-          "attach": {
-            "can": "no",
-            "why": "状态不明"
-          },
           "close": {
             "can": "no",
             "why": "状态不明"
@@ -497,9 +516,15 @@
             "can": "no",
             "why": "状态不明"
           },
-          "term": {
-            "can": "no",
-            "why": "状态不明"
+          "terminal": {
+            "far": {
+              "go": "no",
+              "why": "状态不明"
+            },
+            "near": {
+              "go": "no",
+              "why": "状态不明"
+            }
           }
         },
         "dot": "unknown",

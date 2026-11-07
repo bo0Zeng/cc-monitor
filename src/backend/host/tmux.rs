@@ -27,8 +27,10 @@ pub fn child(socket: Option<&str>) -> Child {
     }
 }
 
-/// 列名单 · 问尺寸那几发只读 tmux 的期限：tmux 一发 5 s（同 watcher 探测 tmux 的期限）。
-const READ_TMUX_WITHIN: Deadline = Deadline::secs(5);
+/// 对 tmux 下一发的期限（列名单 · 问尺寸 · 抓屏 · 打标 · 建会话 · 送键 · 装钩子 · 停会话 · 观测探测）：一发 5 s。
+/// 健康机器上 tmux 一发是毫秒级；5 s 容忍一次慢盘 / 高负载，又远短于界面等这些命令的预算与「面板不更新」被注意到的时间。
+/// 起 tmux 的各处一律取它，不另写字面量；整条命令的总预算（各命令的 `*_CAP`）是几发加起来的上限，另算。
+pub const TMUX_WITHIN: Deadline = Deadline::secs(5);
 
 /// 句柄前缀（不透明：前端不拼、不解析；后端只按名单对）。
 const HANDLE_PREFIX: &str = "tmux-";
@@ -57,7 +59,7 @@ impl On<'_> {
         reason = "只读 tmux：终端名单两发、调用方问尺寸光标 · 问版本；不许经它发改状态的子命令"
     )]
     pub fn read(&self, args: &[&str]) -> Result<std::process::Output, ChildFail> {
-        child(self.socket).args(args).run(READ_TMUX_WITHIN)
+        child(self.socket).args(args).run(TMUX_WITHIN)
     }
 }
 
@@ -250,9 +252,6 @@ pub fn tmux_unavailable(e: ChildFail) -> Said {
 /// 列数 `LIST_FMT_FIELDS` 住快照那一侧（切行在那里）。
 pub(crate) const LIST_FMT: &str = "#{session_name}\t#{@ccm_sid}\t#{W:#{P:#{@ccm_sid} }}";
 
-/// 期限：tmux 一发 5 s（同 watcher 探测 tmux 的期限；界面等它的命令预算都在 10 s 以上）。
-const LIST_SESSIONS_WITHIN: Deadline = Deadline::secs(5);
-
 /// 全 crate 唯一一处「一次列全部 tmux 会话」的起进程点：一次调用列全部，不是每个成员探一次。
 /// 不看退出码（同 `control/gate.rs::probe`）：没有任何会话时 `tmux ls` 是非零 + 空输出，那是「一个都没有」。
 /// `-u` 必须排在子命令之前：放到后面是 `rc=1 + unknown flag -u`，会被压成「一个会话都没有」（`host_tests` 那条判据钉住次序）。
@@ -263,7 +262,7 @@ const LIST_SESSIONS_WITHIN: Deadline = Deadline::secs(5);
 pub(crate) fn list_sessions() -> Result<Vec<SessionRow>, Said> {
     let out = child(None)
         .args([UTF8_CLIENT_FLAG, "list-sessions", "-F", LIST_FMT])
-        .run(LIST_SESSIONS_WITHIN)
+        .run(TMUX_WITHIN)
         .map_err(|e| {
             // 句子只说原因词；系统原话记一行日志（快照的失败只交码与那一句，原话不随它走）。
             let (c, s) = e.into_cmd_said("no_tmux", |why| {
@@ -314,3 +313,7 @@ pub fn via_shell(
             .run(within),
     )
 }
+
+#[cfg(test)]
+#[path = "../../../tests/backend/host/tmux_within_tests.rs"]
+mod within_tests;

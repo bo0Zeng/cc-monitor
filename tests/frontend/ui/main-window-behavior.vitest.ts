@@ -98,7 +98,7 @@ import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import { announced, goldenFace } from "../../test-support/session-faces";
 import type { TabStore } from "../../../src/frontend/ui/tab-store";
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import { toggleSftpFromTopbar } from "../../../src/frontend/ui/sftp-host-picker";
+import { openSftpFromTopbar } from "../../../src/frontend/ui/sftp-host-picker";
 import { sessionCommands } from "../../../src/frontend/ui/session-commands";
 import { renderMessage, type RenderContext } from "../../../src/frontend/ui/cards/index";
 import type { LineRecord } from "../../../src/frontend/ui/generated/LineRecord";
@@ -138,7 +138,7 @@ beforeEach(() => {
   dispatcher.start();
 });
 
-const task = (id: string): TaskEntry => ({ id, subject: `任务 ${id}`, status: "pending", statusText: "甲态", blocks: [], blockedBy: [] });
+const task = (id: string): TaskEntry => ({ id, subject: `任务 ${id}`, status: "pending", statusText: "甲态", blocks: [] });
 /** 任务清单那一份：chip 的字是后端写好的（这里只造一句占位，界面照摆）。 */
 const tasksOf = (tasks: TaskEntry[], chip = "任务枚"): TasksList => ({ tasks, chip, hint: "" });
 const run = (id: string): RunInfo => ({ run: id, state: "running", label: `子 ${id}`, kind: null, tool: null, last: null }) as unknown as RunInfo;
@@ -154,7 +154,7 @@ const NO_TERMINALS: TerminalReads = { list: async () => [], shot: async () => ({
 function mountPanels(): { tasks: TasksPanel; agents: AgentsPanel; drawer: MainDrawer } {
   const tasks = new TasksPanel();
   const agents = new AgentsPanel();
-  const term = new TerminalPage({ active: () => null, front: () => {}, focusStream: () => {} }, NO_TERMINALS);
+  const term = new TerminalPage({ active: () => null, focusStream: () => {} }, NO_TERMINALS);
   const drawer = new MainDrawer(tasks, agents, term, () => 800);
   document.body.append(tasks.summaryElement, agents.summaryElement, drawer.dock.el);
   return { tasks, agents, drawer };
@@ -406,22 +406,18 @@ describe("说不清（那台暂时看不见）不当已结束：tab 上是另一
   });
 });
 
-describe("顶栏远端文件的多机选单：再点按钮收起；Esc 只关它", () => {
+describe("远端文件的多机选单：点外面收起；Esc 只关它", () => {
   afterEach(() => closeMenu());
 
   const press = (el: Element): void => {
     el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
   };
 
-  it("开着时再点按钮 ⇒ 收起（不是先关又开）；点外面也收起", async () => {
+  it("多台 ⇒ 一个选单；点外面收起", async () => {
     const btn = document.createElement("button");
     document.body.appendChild(btn);
-    await toggleSftpFromTopbar(btn);
+    await openSftpFromTopbar(btn);
     expect(document.querySelectorAll("[role=menu]")).toHaveLength(1);
-    press(btn);
-    await toggleSftpFromTopbar(btn);
-    expect(document.querySelectorAll("[role=menu]")).toHaveLength(0);
-    await toggleSftpFromTopbar(btn);
     press(document.body);
     expect(document.querySelectorAll("[role=menu]")).toHaveLength(0);
   });
@@ -430,7 +426,7 @@ describe("顶栏远端文件的多机选单：再点按钮收起；Esc 只关它
     const below = floor();
     const btn = document.createElement("button");
     document.body.appendChild(btn);
-    await toggleSftpFromTopbar(btn);
+    await openSftpFromTopbar(btn);
     esc();
     expect([document.querySelectorAll("[role=menu]").length, below.hits]).toEqual([0, 0]);
     esc();

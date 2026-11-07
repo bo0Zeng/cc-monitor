@@ -10,14 +10,6 @@ export type DriftFaceReport = {
  */
 face: string, 
 /**
- * 这个面「看不懂时会发生什么」（那一家写好的那一句）。
+ * 按 `count` 降序、同数按键名升序（键数触顶后新键并进那一家的溢出键）。
  */
-consequence: string, 
-/**
- * 按 `count` 降序、同数按键名升序。
- */
-entries: Array<DriftEntry>, 
-/**
- * 该面是否已经溢出（键数触顶）。溢出后新键并进那一家的溢出键。
- */
-overflowed: boolean, };
+entries: Array<DriftEntry>, };

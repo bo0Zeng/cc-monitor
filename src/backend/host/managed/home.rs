@@ -39,6 +39,12 @@ pub struct Facts {
     /// 后端写来的会话 id。
     #[serde(default)]
     pub sid: String,
+    /// 起它时点名的号（`--account`；空 ＝ 没点名，照缺省号）。
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub account: String,
+    /// 此刻有没有真终端接着（瘦客户端接上 · 断开时托管进程改写）。
+    #[serde(default)]
+    pub attached: bool,
 }
 
 /// 句柄 · 名只许这些字（进路径、进名单、进命令行都不用转义）。
@@ -235,6 +241,39 @@ pub(crate) fn sweep_stale(own: &Own) {
             Err(e) => tracing::warn!("托管终端：陈旧的 {} 没删成：{e}", dir.as_path().display()),
         }
     }
+}
+
+/// `ccm -- --hosts`（`cch ls`）印的那几行：[`alive`] 的一个一行（名字 · 目录 · 账号 · 起的时刻 · 有没有人接着）；一个都没有 ⇒ 一句。
+/// `now` 是此刻（unix 秒），时刻按 `tz` 写（`common::time::fmt_at`）。
+pub fn listing(all: &[Facts], now: i64, tz: &crate::common::time::Tz) -> String {
+    if all.is_empty() {
+        return copy_text("beHost.hosts.none", &[]) + "\n";
+    }
+    let default_account = copy_text("beHost.hosts.defaultAccount", &[]);
+    let (on, off) = (
+        copy_text("beHost.hosts.attached", &[]),
+        copy_text("beHost.hosts.detached", &[]),
+    );
+    all.iter()
+        .map(|f| {
+            let at = crate::common::time::fmt_at(f.started_ms.div_euclid(1_000), now, tz);
+            let account = if f.account.is_empty() {
+                &default_account
+            } else {
+                &f.account
+            };
+            copy_text(
+                "beHost.hosts.row",
+                &[
+                    ("name", &f.name),
+                    ("cwd", &f.cwd),
+                    ("account", account),
+                    ("at", &at),
+                    ("attached", if f.attached { &on } else { &off }),
+                ],
+            ) + "\n"
+        })
+        .collect()
 }
 
 /// 按名或句柄认一个活着的托管终端（`ccm --attach <名|句柄>`）。

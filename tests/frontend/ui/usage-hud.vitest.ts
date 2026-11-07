@@ -12,11 +12,8 @@ const panel = (): HTMLElement | null => document.querySelector<HTMLElement>(`[ro
 
 /** 一份后端成品（字是核心写的；这里只是夹具，界面不许自己算它们）。 */
 const usage = (over: Partial<UsageFact> = {}): UsageFact => ({
-  promptTokens: 350_000,
   model: "claude-opus-5-5",
-  peakPromptTokens: 350_000,
   limit: 1_000_000,
-  limitFrom: "model",
   percent: 35,
   contextText: "核心·35",
   contextTone: "plain",
@@ -25,7 +22,7 @@ const usage = (over: Partial<UsageFact> = {}): UsageFact => ({
   limitFromText: "核心·模型名",
   ...over,
 });
-const blind = (): UsageFact => usage({ limitFrom: "assumed", percent: null, contextText: "核心·350k", limitFromText: null });
+const blind = (): UsageFact => usage({ percent: null, contextText: "核心·350k", limitFromText: null });
 
 beforeEach(() => {
   closePopover();
@@ -75,7 +72,7 @@ describe("状态栏「上下文」chip", () => {
     const hud = new UsageHud();
     hud.host = { openSettings: () => settings++, retry: () => {} };
     document.body.appendChild(hud.summaryElement);
-    hud.setActive(usage({ model: "claude-opus-5-5[1m]", limitFrom: "setting", limitFromText: "核心·设置" }), "核心·Opus 5.5");
+    hud.setActive(usage({ model: "claude-opus-5-5[1m]", limitFromText: "核心·设置" }), "核心·Opus 5.5");
     hud.summaryElement.click();
     const p = panel();
     expect(p?.textContent).toContain(copyText("usageHud.chip.ctx", { ctx: "核心·35" }));

@@ -15,9 +15,9 @@ use std::time::Duration;
 
 /// stdin 上限（兜 DoS，不是兜格式）。超限是拒收，不是截断：
 /// 截半的 JSON 会报成「解析失败」，真实原因却是「太大了」⇒ 多读一个字节，超了就说超了。
-pub const MAX_CLI_STDIN: relay_route_core::Cap = relay_route_core::Cap {
+pub const MAX_CLI_STDIN: cap_core::Cap = cap_core::Cap {
     bytes: 1024 * 1024,
-    over: relay_route_core::Over::Reject,
+    over: cap_core::Over::Reject,
 };
 
 /// 「只读一行 stdin」那个修饰词住 [`crate::wire::cli_words::STDIN_LINE_FLAG`]（argv 三分表那一家；理由见那里的头注）。
@@ -30,9 +30,9 @@ pub use crate::wire::cli_words::STDIN_LINE_FLAG;
 /// 超过系统那一道，本后端根本起不来（exec 回 E2BIG，调用方看到的是 shell / sshd 那一层的错），轮不到这里回码 ——
 /// 所以这道放在系统那一道**之内**：系统放得进来、这里嫌大的，回 `args_too_large`。4 的倍数：刚好到上限的合法 base64 不被拒。
 /// 要交更大的载荷走 stdin（[`MAX_CLI_STDIN`]）。
-pub const MAX_ARGS_B64_LEN: relay_route_core::Cap = relay_route_core::Cap {
+pub const MAX_ARGS_B64_LEN: cap_core::Cap = cap_core::Cap {
     bytes: 131_068,
-    over: relay_route_core::Over::Reject,
+    over: cap_core::Over::Reject,
 };
 
 /// stdin 开着、却这么久一个字节都没来 ⇒ 当「没给入参」立即回 `no_input`，不陪着挂。
@@ -194,9 +194,9 @@ pub fn read_input<R: std::io::BufRead>(
             .map_err(read_failed)?;
         (buf.len() as u64 <= MAX_CLI_STDIN.bytes).then_some(buf)
     } else {
-        match relay_route_core::read_capped_from(r, MAX_CLI_STDIN).map_err(read_failed)? {
-            relay_route_core::CappedAll::All(buf) => Some(buf),
-            relay_route_core::CappedAll::OverCap => None,
+        match cap_core::read_capped_from(r, MAX_CLI_STDIN).map_err(read_failed)? {
+            cap_core::CappedAll::All(buf) => Some(buf),
+            cap_core::CappedAll::OverCap => None,
         }
     };
     let Some(buf) = within else {

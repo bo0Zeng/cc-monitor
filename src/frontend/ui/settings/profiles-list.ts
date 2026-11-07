@@ -21,6 +21,7 @@ import { toast, undoToast, failToast } from "../kit/toast";
 import { confirmDialog, type ConfirmFn } from "../kit/dialog";
 import { sayWithDetail } from "../kit/detail";
 import type { Machine } from "../generated/Machine";
+import type { ProfileTmuxMode } from "../generated/ProfileTmuxMode";
 import type { ClashWins } from "../alias-reads";
 import { subscribeTopics } from "../events";
 import {
@@ -201,6 +202,17 @@ function startSlot(f: ProfileForm, s: SlotId, accounts: readonly string[]): Prof
 }
 
 /** 表单上直接露出来的几格；其余收在「更多」里。 */
+/** 「在哪起」里要填名字的那两种（tmux · 就用这个名 / 以名为底）。 */
+const NAMED_MODES: ReadonlySet<string> = new Set(["fixed", "base"]);
+/** 「在哪起」下拉的几项（值 · 字）。 */
+function placePicks(): readonly (readonly [ProfileTmuxMode, string])[] {
+  return [
+    ["auto", copyText("beProfile.val.tmuxAuto")],
+    ["fixed", copyText("profilesPage.form.tmuxNamed")],
+    ["base", copyText("profilesPage.form.tmuxBase")],
+    ["hosted", copyText("newSession.place.managed")],
+  ];
+}
 const MAIN_SLOTS: readonly SlotId[] = ["account", "tmux", "cwdIf", "cwd"];
 const MORE_SLOTS: readonly SlotId[] = ["agent", "args", "launcher", "tmuxSize", "detach", "tabGroup", "say"];
 
@@ -465,7 +477,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
   const emptyState = (b: ProfilesBook): HTMLElement => {
     const box = el("div", "prof-empty-state");
     box.dataset.role = "seed";
-    // 说明与按钮的字随首建几条（没有 tmux 的那台只一条），由后端给。
+    // 说明与按钮的字由后端给（首建几条随那台有没有 tmux）。
     box.appendChild(el("div", "cfg-hint", b.seedHint));
     const tree = el("div", "prof-tree");
     for (const t of treeOf(b.seed)) {
@@ -842,11 +854,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       // 每种取名撞名时怎样：后端写好的那句（退不退让住 `plan.rs`），这里照摆。
       const naming = (m: typeof t.mode): string => book?.tmuxNaming.find((x) => x.mode === m)?.text ?? "";
       const sel = el("select", "settings-input");
-      for (const [v, label] of [
-        ["auto", copyText("beProfile.val.tmuxAuto")],
-        ["fixed", copyText("profilesPage.form.tmuxNamed")],
-        ["base", copyText("profilesPage.form.tmuxBase")],
-      ] as const) {
+      for (const [v, label] of placePicks()) {
         const o = el("option", "", label);
         o.value = v;
         o.title = naming(v);
@@ -857,7 +865,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       sel.addEventListener("change", () => changed({ ...f, tmux: { ...t, mode: sel.value as typeof t.mode } }));
       const row = el("div", "prof-inhrow");
       row.append(sel);
-      if (t.mode !== "auto") row.append(text(t.name, copyText("newSession.label.tmuxName"), (v) => changed({ ...f, tmux: { ...t, name: v } })));
+      if (NAMED_MODES.has(t.mode)) row.append(text(t.name, copyText("newSession.label.tmuxName"), (v) => changed({ ...f, tmux: { ...t, name: v } })));
       row.append(back);
       const said = el("div", "cfg-hint", naming(t.mode));
       said.dataset.role = "tmux-naming";

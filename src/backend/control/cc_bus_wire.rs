@@ -200,13 +200,12 @@ pub struct BusEnvelopeReq {
     pub(crate) text: Option<String>,
 }
 
-/// `bus-send` 的应答：收进收件箱的那一封 ＋ 敲了门没有（tier 1、这条会话去抖窗里没敲过、投进了它的输入队；敲门是收件那台的后端投的）。
+/// `bus-send` 的应答：收进收件箱的那一封的消息 id（`cc-bus send` 只印它；敲不敲门由收件那台的后端判、自己投）。
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct BusSent {
-    pub(crate) envelope: BusEnvelope,
-    pub(crate) knock: bool,
+    pub(crate) id: String,
 }
 
 /// `bus-peek` 的入参。
@@ -412,7 +411,7 @@ impl crate::wire::typed::Handle for BusUnreadCmd {
     }
 }
 
-/// `bus-send`：核信封 · 判范围（组，`cc_bus_scope`）· 盖上 id 与时间 · 照规矩收进收件人的收件箱，回那一封与敲不敲。
+/// `bus-send`：核信封 · 判范围（组，`cc_bus_scope`）· 盖上 id 与时间 · 照规矩收进收件人的收件箱，回那一封的 id。
 pub struct BusSendCmd;
 impl Command for BusSendCmd {
     const NAME: &'static str = "bus-send";
@@ -459,11 +458,8 @@ pub(crate) fn send_here(
 ) -> Result<BusSent, Said> {
     let env = cc_bus_envelope::envelope_now(req)?;
     super::cc_bus_scope::scope(&env.from, &env.to, roster)?;
-    let knock = cc_bus::store::deliver(own, &env, now_ms)?;
-    Ok(BusSent {
-        envelope: env,
-        knock,
-    })
+    cc_bus::store::deliver(own, &env, now_ms)?;
+    Ok(BusSent { id: env.id })
 }
 
 /// `bus-send` 的本体：照 `req.machine` 分。
