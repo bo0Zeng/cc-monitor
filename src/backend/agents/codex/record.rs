@@ -370,8 +370,8 @@ fn mail_said(text: &str, author: Option<&str>, recipient: Option<&str>) -> UserT
     match (from_above, m.kind) {
         (true, Some("NEW_TASK")) => UserText {
             speaker: Speaker::AgentTask,
+            parts: face_core::record::brief_parts(m.payload),
             text: m.payload.to_string(),
-            pasted: Vec::new(),
         },
         (true, _) => UserText::of(Speaker::Coordinator {
             body: Some(m.payload.trim().to_string()).filter(|b| !b.is_empty()),
@@ -392,7 +392,7 @@ fn said_as(says: KindSays, text: &str, human_text: String) -> UserText {
         KindSays::Human | KindSays::Unknown => UserText {
             speaker: Speaker::Human,
             text: human_text,
-            pasted: Vec::new(),
+            parts: Vec::new(),
         },
         KindSays::Interrupt => UserText::of(Speaker::Interrupt),
         KindSays::Shell => UserText::of(shell(text)),
@@ -401,7 +401,7 @@ fn said_as(says: KindSays, text: &str, human_text: String) -> UserText {
         KindSays::Compact => UserText {
             speaker: Speaker::compact(text.trim()),
             text: text.trim().to_string(),
-            pasted: Vec::new(),
+            parts: Vec::new(),
         },
         KindSays::System => UserText::of(Speaker::System { body: None }),
     }
@@ -553,6 +553,7 @@ pub fn record_of(v: &Value, start: u64) -> Option<Record> {
                     of.clone(),
                     text_blocks(flatten_text(payload.get("output").unwrap_or(&Value::Null))),
                     false,
+                    copy_core::size_text,
                 )],
                 results: std::iter::once((of, result)).collect(),
                 cwd: None,

@@ -447,7 +447,7 @@ pub fn fence_lexical(
     let rel = rel.trim_end_matches('/');
     // 普通段那一道是共用的；远端这一层另拒空段与 NUL（远端路径是串，`a//b` 不替调用方归一）。
     let plain =
-        crate::plain_path::plain_segments(rel.as_bytes(), false, crate::plain_path::Dots::Reject);
+        plain_path_core::plain_segments(rel.as_bytes(), false, plain_path_core::Dots::Reject);
     if plain.is_err() || rel.is_empty() || rel.contains("//") || rel.contains('\0') {
         return Err(copy_text("beSftp.fence.irregular", &[("path", p)]));
     }

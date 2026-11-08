@@ -51,8 +51,6 @@ pub enum UiError {
         then: Then,
         ledger_line: String,
     },
-    /// 设置里的机器表认不出 ⇒ 远端一台都不连。
-    MachinesUnreadable { path: String, why: String },
     /// 那台一条连接上来了解不开的一种帧（每条连接每种一次；帧门拦下的只进日志）。`why` 只进复制详情。
     FrameUnreadable {
         host: String,
@@ -120,10 +118,6 @@ impl UiError {
                     reconnect,
                 });
             }
-            UiError::MachinesUnreadable { path, why } => (
-                copy_text("rsUiError.machines.unreadable", &[]),
-                detail_head().item(Label::Path, path).item(Label::Raw, why),
-            ),
             UiError::FrameUnreadable { host, kind, why } => (
                 copy_text(
                     "rsSshSource.health.badFrame",

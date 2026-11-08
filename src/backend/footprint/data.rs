@@ -1,6 +1,6 @@
 //! 「文件与数据」那一份成品（帧面 `data-report`）：同一份足迹（[`super::rows`]）按设置窗那一页要的三样重排 —— 只读。
 //!
-//! - `changedFiles`：cc-monitor 写进**你的**文件的那几处（今天在、cc-monitor 装口放的、不在 `~/.cc-monitor/` 里），
+//! - `changedFiles`：cc-monitor 写进**你的**文件的那几处（今天在、cc-monitor 装口放的、不在 `~/.cc-monitor/` 里；Windows 那一台还有用户级 `PATH` 里那一段），
 //!   每处说改了什么、撤回在哪一页（页 · 栏 · 锚点，界面照它跳）。
 //! - `todo`：「待办」各件（[`super::chores`]）；其中「要装」那一类来自 [`needs_install`]：你自己装、cc-monitor 只查的那几样里，
 //!   这台**确实缺**的（查不动的不算缺，不报；tmux 一律可选、不进这里）；`required` ＝ 缺了起不了会话。
@@ -47,6 +47,15 @@ impl UndoAt {
         }
     }
 
+    /// 页 · 栏（那一栏里没有单独的锚点）。
+    pub(crate) const fn tab(page: &'static str, tab: &'static str) -> UndoAt {
+        UndoAt {
+            page: Cow::Borrowed(page),
+            tab: Some(Cow::Borrowed(tab)),
+            anchor: None,
+        }
+    }
+
     /// 页 · 栏 · 锚点。
     pub(crate) const fn at(page: &'static str, tab: &'static str, anchor: &'static str) -> UndoAt {
         UndoAt {
@@ -64,6 +73,8 @@ fn undo_of(tool_id: &str) -> Option<UndoAt> {
         "ccm" => Some(UndoAt::at("machine", "config", "connect-terminal")),
         // 扩展装进 `~/.claude/skills/` 的：扩展页卸载。
         "cc-bus" | "skill-install" => Some(UndoAt::page("ext")),
+        // 用户级 `PATH` 那一段：机器设置「配置」栏里那个开关（`ccm-user-path` 撤）。
+        "ccm-user-path" => Some(UndoAt::tab("machine", "config")),
         _ => None,
     }
 }
@@ -156,7 +167,9 @@ fn changed(r: &SurfaceRow) -> Option<ChangedFile> {
         return None;
     }
     let p = r.path_declared;
-    if !p.starts_with("~/") || p == OWN_HOME || p.starts_with(&format!("{OWN_HOME}/")) {
+    // 家目录底下的文件，或用户级 `PATH` 那一格（不是文件，申报写它在注册表里的位置）。
+    let yours = p.starts_with("~/") || p == crate::agents::footprint_decl::USER_PATH_TOKEN;
+    if !yours || p == OWN_HOME || p.starts_with(&format!("{OWN_HOME}/")) {
         return None;
     }
     Some(ChangedFile {

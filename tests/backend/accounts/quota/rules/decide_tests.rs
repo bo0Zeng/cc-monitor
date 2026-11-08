@@ -1351,3 +1351,72 @@ fn consistency_500_groups() {
     let (t36, k36) = s36_groups(500);
     eprintln!("#22：比过 {t22} 次、挤的 {k22} 次 · #26：比过 {t26} 次、挤的 {k26} 次、强制切换 {x26} 次 · #36：比过 {t36} 次、挤的 {k36} 次");
 }
+
+/// ★ 开窗那一判只这一处（策略交的 `warm` 照它收，`quota-read` 每号的 `warm` 照它写）：
+/// 按量号不发；发不出去的等到又发得出去；在计时的等到 5h 重置；没在计时（没见过窗 · 窗已过）⇒ 发。
+#[test]
+fn warm_verdict_is_judged_once_from_the_facts() {
+    let open = |mut a: Acct, r: u64| {
+        a.resets[0] = Some(r);
+        a
+    };
+    assert_eq!(
+        warm_verdict(&acct("a", 0.0), T),
+        WarmVerdict::Send(WarmWhy::NoWindow)
+    );
+    assert_eq!(
+        warm_verdict(&open(acct("a", 0.0), T - 1), T),
+        WarmVerdict::Send(WarmWhy::NoWindow)
+    );
+    assert_eq!(
+        warm_verdict(&open(acct("a", 40.0), T + 600), T),
+        WarmVerdict::Wait {
+            until: Some(T + 600),
+            why: WarmWhy::Ticking
+        }
+    );
+    let mut api = acct("k", 0.0);
+    api.api = true;
+    assert_eq!(
+        warm_verdict(&api, T),
+        WarmVerdict::Wait {
+            until: None,
+            why: WarmWhy::Api
+        }
+    );
+    assert_eq!(
+        warm_verdict(&refused(open(acct("a", 20.0), T + 7200), T + 300), T),
+        WarmVerdict::Wait {
+            until: Some(T + 300),
+            why: WarmWhy::Refused
+        },
+        "被拒着 ⇒ 等到被拒到期，不等 5h 重置"
+    );
+    let mut week = open(acct("a", 1.0), T + 60);
+    week.used[1] = 100.0;
+    week.resets[1] = Some(T + 9000);
+    assert_eq!(
+        warm_verdict(&week, T),
+        WarmVerdict::Wait {
+            until: Some(T + 9000),
+            why: WarmWhy::Full(1)
+        }
+    );
+}
+
+/// ★ 会话的顺序：第一格在用的号；往下拖出来的 · 策略交的先后里用得了的；再照号的先后；用不了的与这个会话先不用的沉底。
+#[test]
+fn the_session_lineup_puts_the_unusable_last() {
+    let facts = [
+        acct("a", 10.0),
+        refused(acct("b", 10.0), T + 600),
+        acct("c", 10.0),
+        acct("d", 10.0),
+    ];
+    let off = vec!["d".to_string()];
+    assert_eq!(plain_lineup("c", &off, &facts, T), ["c", "a", "b", "d"]);
+    assert!(usable(&off, &facts, "a", T));
+    assert!(!usable(&off, &facts, "b", T), "被拒着");
+    assert!(!usable(&off, &facts, "d", T), "这个会话先不用");
+    assert!(!usable(&off, &facts, "x", T), "号列表里没有");
+}

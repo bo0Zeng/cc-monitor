@@ -254,6 +254,7 @@ fn start_one(machine: &str, ssh: &Arc<dyn Ssh>, relay: &Relay) -> Arc<Feed<Link>
             let machine = name.clone();
             match e {
                 Event::Attached { hello, .. } => {
+                    let hello = name_gaps(&hello, &machine);
                     let mut s = lock(&seen);
                     s.version = serde_json::from_str::<cmd_wire::frame::Hello>(&hello)
                         .ok()
@@ -315,6 +316,49 @@ fn start_one(machine: &str, ssh: &Arc<dyn Ssh>, relay: &Relay) -> Arc<Feed<Link>
             }
         }),
     )
+}
+
+/// 那台的 hello 转出去之前：做不到的每一项，置灰那一句按那台的名字重写（那台自己写的是它称呼自己的那一句）。
+/// 没有做不到的 · 解不开（那一格不是这一版的形状）⇒ 原样（字节不动）。
+pub(crate) fn name_gaps(hello: &str, machine: &str) -> String {
+    let Ok(mut v) = serde_json::from_str::<serde_json::Value>(hello) else {
+        return hello.to_string();
+    };
+    if !name_in(&mut v, machine) {
+        return hello.to_string();
+    }
+    serde_json::to_string(&v).unwrap_or_else(|_| hello.to_string())
+}
+
+/// 那台 `resync` 的回包转回来之前（它带那台当下的 `unavailable`，与 hello 同形）：同 [`name_gaps`] 按那台的名字重写；别的命令的回包不碰。
+pub(crate) fn name_reply(cmd: &str, data: &mut Option<serde_json::Value>, machine: &str) {
+    if cmd == resident_client::client::RESYNC_OP {
+        if let Some(v) = data {
+            name_in(v, machine);
+        }
+    }
+}
+
+/// `v.unavailable` 每一项的置灰句按 `machine` 重写；没有那一格 · 空 · 不是这一版的形状 ⇒ 不动、回 `false`。
+fn name_in(v: &mut serde_json::Value, machine: &str) -> bool {
+    let Some(slot) = v.get_mut("unavailable") else {
+        return false;
+    };
+    let Ok(mut gaps) = serde_json::from_value::<Vec<cmd_wire::frame::Unavailable>>(slot.clone())
+    else {
+        return false;
+    };
+    if gaps.is_empty() {
+        return false;
+    }
+    for g in &mut gaps {
+        g.said = copy_core::unavailable(&g.code, machine);
+    }
+    let Ok(named) = serde_json::to_value(gaps) else {
+        return false;
+    };
+    *slot = named;
+    true
 }
 
 /// 此刻接着的各台那一条连接的 hello（那台换连接就换，断了就摘）。
@@ -597,13 +641,30 @@ pub(crate) fn wake_in(
 }
 
 crate::wire::typed::codes! {
-    /// `machine-stop` 的码：在那台上停没成（够不到 · 那台说的那一句）。
+    /// `machine-stop` 的码：机器表里没有那台（同 `machine-wake` 那一码那一句）· 在那台上停没成（够不到 · 那台说的那一句）。
     pub enum MachineStopErr {
+        UnknownMachine = "unknown_machine",
         StopFailed = "stop_failed",
     }
 }
 
-/// `machine-stop`：机器页「停」—— 先停这一端那一条（不然转眼又 ensure 起来），再在那台跑一次 `--resident-stop`、回它的结局。
+/// [`MachineStop`] 先查表的那一步（各台此刻的成品与「hold」由调用方给）：表里没有 · 是本机 ⇒ 拒、不 hold；有（停用的也算）⇒ hold。
+pub(crate) fn stop_in(
+    machine: &str,
+    states: &std::collections::BTreeMap<String, MachineState>,
+    hold: impl FnOnce(&str),
+) -> Result<(), MachineStopErr> {
+    if machine == cmd_wire::machine::LOCAL || !states.contains_key(machine) {
+        return Err(MachineStopErr::UnknownMachine(copy_core::copy_text(
+            "beMachineWake.refuse.unknown",
+            &[("machine", machine)],
+        )));
+    }
+    hold(machine);
+    Ok(())
+}
+
+/// `machine-stop`：机器页「停」—— 先查表（[`stop_in`]），再停这一端那一条（不然转眼又 ensure 起来），再在那台跑一次 `--resident-stop`、回它的结局。
 pub struct MachineStop;
 
 impl crate::wire::typed::Command for MachineStop {
@@ -620,7 +681,7 @@ impl crate::wire::typed::Handle for MachineStop {
         let machine = named(&req.machine)
             .map_err(MachineStopErr::BadArgs)?
             .to_string();
-        hold(&machine);
+        stop_in(&machine, &crate::control::machine_state::read(), hold)?;
         stop_with(&Pool, &machine)
             .await
             .map_err(|f| crate::wire::typed::of_fail(f, MachineStopErr::StopFailed))
@@ -682,7 +743,11 @@ pub async fn forward(machine: String, req: crate::wire::Request) -> crate::wire:
     let view = (!req.view.is_null()).then_some(&req.view);
     let got = client
         .relay_until(&req.cmd, req.args, view, &req.tz.iana_name(), deadline)
-        .await;
+        .await
+        .map(|mut data| {
+            name_reply(&req.cmd, &mut data, &machine);
+            data
+        });
     got.map_err(|e| match e {
         CallError::Remote(r) => {
             let f = crate::wire::spec::fail(&r.code, r.said).and_raw(Some(&r.detail));

@@ -524,7 +524,7 @@ pub fn who(id: &str) -> crate::plan::Whose {
     use crate::plan::{Live, Whose};
     let live = Some(Live {
         activity: Some(crate::agents::SessionActivity::NeedsYou),
-        needs: Some(crate::observe::recognize::facts::NeedsKind::Approve),
+        needs: Some(cmd_wire::needs::NeedsKind::Approve),
     });
     match id {
         MAIN => Whose::Session {

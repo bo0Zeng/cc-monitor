@@ -25,7 +25,7 @@ fn there(
     move |m, q| {
         asked.lock().unwrap().push((
             m.clone(),
-            serde_json::json!({"machine": q.machine, "appExit": q.app_exit, "machines": q.machines.map(|v| v.len())}),
+            serde_json::json!({"machine": q.machine, "appExit": q.app_exit, "fleet": q.fleet}),
         ));
         let got = answers.iter().find(|(n, _)| *n == m).map(|(_, a)| *a);
         Box::pin(async move { got })
@@ -47,6 +47,7 @@ async fn stopping_another_machine_takes_its_sessions_and_this_machines_forwards(
     };
     let got = interrupts_hub(
         req(serde_json::json!({"machine": "devbox"})),
+        &[],
         here.clone(),
         there(&[("devbox", r(Some(1), 1, 3, 0))], &asked),
     )
@@ -60,7 +61,7 @@ async fn stopping_another_machine_takes_its_sessions_and_this_machines_forwards(
         *asked.lock().unwrap(),
         vec![(
             "devbox".to_string(),
-            serde_json::json!({"machine": null, "appExit": null, "machines": null})
+            serde_json::json!({"machine": null, "appExit": null, "fleet": null})
         )],
         "问那台只带空的那一形（它只答它自己）"
     );
@@ -69,6 +70,7 @@ async fn stopping_another_machine_takes_its_sessions_and_this_machines_forwards(
     let asked: Asked = Arc::default();
     let got = interrupts_hub(
         req(serde_json::json!({"machine": "devbox"})),
+        &[],
         here,
         there(&[], &asked),
     )
@@ -85,6 +87,7 @@ async fn without_another_machine_only_this_machine_answers() {
         let asked: Asked = Arc::default();
         let got = interrupts_hub(
             req(q),
+            &[],
             |q: Q| async move {
                 assert_eq!(q.machine, None);
                 r(Some(1), 0, 1, 0)
@@ -99,12 +102,23 @@ async fn without_another_machine_only_this_machine_answers() {
 
 #[tokio::test]
 async fn app_exit_adds_this_machine_and_each_listed_one_without_fanning_further() {
+    let fleet = ["<local>", "devbox", "gpu"].map(cmd_wire::Machine::named);
     let asked: Asked = Arc::default();
+    let alone = interrupts_hub(
+        req(serde_json::json!({"appExit": true})),
+        &fleet,
+        |_q: Q| async move { r(Some(0), 0, 1, 2) },
+        there(&[("devbox", r(Some(2), 1, 3, 1))], &asked),
+    )
+    .await;
+    assert_eq!(alone, r(Some(0), 0, 1, 2), "不带 fleet ⇒ 只答这台");
+    assert!(asked.lock().unwrap().is_empty());
     let got = interrupts_hub(
-        req(serde_json::json!({"appExit": true, "machines": ["devbox", "gpu", "devbox", "<local>"]})),
+        req(serde_json::json!({"appExit": true, "fleet": true})),
+        &fleet,
         |q: Q| async move {
             assert_eq!(q.app_exit, Some(true));
-            assert!(q.machines.is_none());
+            assert_eq!(q.fleet, None);
             r(Some(0), 0, 1, 2)
         },
         there(&[("devbox", r(Some(2), 1, 3, 1))], &asked),
@@ -118,11 +132,11 @@ async fn app_exit_adds_this_machine_and_each_listed_one_without_fanning_further(
         vec![
             (
                 "devbox".to_string(),
-                serde_json::json!({"machine": null, "appExit": true, "machines": null})
+                serde_json::json!({"machine": null, "appExit": true, "fleet": null})
             ),
             (
                 "gpu".to_string(),
-                serde_json::json!({"machine": null, "appExit": true, "machines": null})
+                serde_json::json!({"machine": null, "appExit": true, "fleet": null})
             ),
         ],
         "各台只问一次、只带 appExit（不带名单 ⇒ 不往下扇）；本机不经常驻流问"

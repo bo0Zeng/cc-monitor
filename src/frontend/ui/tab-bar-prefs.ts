@@ -440,7 +440,7 @@ export class TabBarPrefs {
   private failed(e: unknown, title: string = copyText("tabBar.persist.collectionsFailed")): void {
     console.warn("[tab-bar] 分组 / 固定没交成：", e);
     failToast(title, e);
-    if (this.book) void this.book.refreshAll([]);
+    if (this.book) void this.book.again();
   }
 
   /** 分组那一问没成：同 [`failed`]，回「没收下」。 */
@@ -513,7 +513,7 @@ export class TabBarPrefs {
     for (const sid of sids) {
       const tab = this.store.tabs.get(sid);
       if (!tab) continue;
-      this.book?.poke(tab.origin);
+      this.book?.poke();
       if (tab.pinned === on) continue;
       tab.pinned = on;
       moved = true;

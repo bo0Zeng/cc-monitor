@@ -19,6 +19,7 @@
 //! 上游那一发原样交下去（claude 自己退避）。429 而限流器说没拒 ⇒ 照常读数。`status = rejected` 但回的是 200（超额兜着）不算被拒。
 
 use crate::agents::{LimitReply, QuotaOverage, QuotaReading, QuotaStatus, QuotaWindow};
+use cmd_wire::quota::{SLOT_5H, SLOT_7D};
 
 const PREFIX: &str = "anthropic-ratelimit-unified-";
 
@@ -38,8 +39,8 @@ pub(crate) const REFUSED_BRIEFLY: u64 = 60;
 /// 窗口名 → 语义位：5 小时那一个是 `5h`；7 天那几个（含分模型的）是 `7d`；超额那一档没有语义位。
 pub fn slot_of(name: &str) -> Option<&'static str> {
     match name {
-        "five_hour" => Some("5h"),
-        n if n.starts_with("seven_day") => Some("7d"),
+        "five_hour" => Some(SLOT_5H),
+        n if n.starts_with("seven_day") => Some(SLOT_7D),
         _ => None,
     }
 }
@@ -51,8 +52,8 @@ const SEVEN_DAY_OF: &str = "seven_day_";
 /// `seven_day_<档>` ⇒ `7d:<档>`（如 `seven_day_opus` ⇒ `7d:opus`）；超额那一档没有键（不算用量窗口）。
 pub fn key_of(name: &str) -> Option<String> {
     match name {
-        "five_hour" => Some("5h".into()),
-        "seven_day" => Some("7d".into()),
+        "five_hour" => Some(SLOT_5H.into()),
+        "seven_day" => Some(SLOT_7D.into()),
         n => n
             .strip_prefix(SEVEN_DAY_OF)
             .filter(|m| !m.is_empty())
@@ -63,8 +64,8 @@ pub fn key_of(name: &str) -> Option<String> {
 /// [`key_of`] 反过来：窗口键 → 窗口名（硬上限的回包照它标卡在哪）。认不得 ⇒ `None`。
 fn name_of_key(key: &str) -> Option<String> {
     match key {
-        "5h" => Some("five_hour".into()),
-        "7d" => Some("seven_day".into()),
+        SLOT_5H => Some("five_hour".into()),
+        SLOT_7D => Some("seven_day".into()),
         k => k
             .strip_prefix("7d:")
             .filter(|m| !m.is_empty())
@@ -175,7 +176,7 @@ const FIVE_HOURS: u64 = 5 * 3600;
 pub(crate) fn limit_reply(reset_at: u64, now: u64, key: Option<&str>) -> LimitReply {
     let at = reset_at.to_string();
     let wait = reset_at.saturating_sub(now).max(1);
-    let by_distance = if wait <= FIVE_HOURS { "5h" } else { "7d" };
+    let by_distance = if wait <= FIVE_HOURS { SLOT_5H } else { SLOT_7D };
     let mut headers = vec![
         ("content-type".to_string(), "application/json".to_string()),
         (format!("{PREFIX}status"), "rejected".to_string()),

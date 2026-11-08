@@ -31,7 +31,7 @@ describe("启动时记住的那一格", () => {
     expect(log.filter((l) => l === "switch want")).toHaveLength(1);
   });
 
-  it("壳说各台都报完了、它没出现 ⇒ 明说一句、放下等待（不静默换）", () => {
+  it("本机后端说各台都报完了、它没出现 ⇒ 明说一句、放下等待（不静默换）", () => {
     const { log, io } = rig();
     const s = new StartupActive("want", false, io);
     expect(log).toEqual(["hold true"]);
@@ -64,8 +64,8 @@ describe("启动时记住的那一格", () => {
 });
 
 /**
- * 每台一条会话流；壳说「各台都报完」（`listed.all`）落在某一台那条流上，别的台那条流上它自己的宣告可能还在路上
- * （就绪点重放一条订阅接一条交：本机那条的终局带着 `all`，远端那条的骨架排在它后面）。
+ * 每台一条会话流；本机后端说「各台都报完」（`FleetLines.allListed`）与会话流不同路，别的台那条流上它自己的宣告可能还在路上
+ * （就绪点重放一条订阅接一条交：远端那条的骨架可能排在后端那一句后面）。
  * 记住的那一格在远端 ⇒ 本机那条先说完不算，每台都在自己那条流上报完了才判「未出现」。
  */
 describe("「各台都报完」那一刻：每台都在自己那条流上报完了才算", () => {
@@ -76,10 +76,10 @@ describe("「各台都报完」那一刻：每台都在自己那条流上报完�
     book.setMachines(machines);
     return { log, s, book };
   }
-  /** 那台那条流上来了一格 `listed`（同 main.ts 的接法：先记这台报完，带 `all` 再记壳那一句）。 */
-  function listed(book: AllListed, origin: string, all: boolean): void {
+  /** 那台那条流上来了一格 `listed`；`backend` ⇒ 紧跟着本机后端那一句（`FleetLines.allListed`）也到了（判据里照到达先后喂）。 */
+  function listed(book: AllListed, origin: string, backend: boolean): void {
     book.reported(origin);
-    if (all) book.shellSays();
+    if (backend) book.backendSays();
   }
 
   it("★ 本机那条先到「报完了 ＋ 各台都报完」、记住的在 box-b 那台 ⇒ 不说未出现；box-b 的宣告到了 ⇒ 切过去", () => {
@@ -100,7 +100,7 @@ describe("「各台都报完」那一刻：每台都在自己那条流上报完�
     expect(log).toEqual(["hold true", "hold false", "gone far"]);
   });
 
-  it("壳还没说各台都报完 ⇒ 每台自己报完了也不算；机器表摘掉唯一没报完的那台 ⇒ 当场算", () => {
+  it("本机后端还没说各台都报完 ⇒ 每台自己报完了也不算；机器表摘掉唯一没报完的那台 ⇒ 当场算", () => {
     const a = wired(["<local>", "box-b"]);
     listed(a.book, "<local>", false);
     listed(a.book, "box-b", false);

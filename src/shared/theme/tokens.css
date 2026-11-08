@@ -5,11 +5,11 @@
  * （`src/mobile/core-ui/build.gradle.kts` 的 `genThemeTokens`，读第一块 `:root`；读不懂的值 ⇒ 手机构建失败），
  * 哪个槽取哪个令牌只写在手机的映射里（判据 `src/mobile/app/…/ThemeLedgerTest.kt` 两向对账）。
  *
- * 文件窗口（egui）读同一份：开窗那一刻按 `file-window.ts::FILE_WINDOW_THEME_TOKENS` 取 `:root` 的计算值交过去，
+ * 文件窗口（egui）读同一份：开窗那一刻按契约名单 `filewin_contract::THEME_TOKENS`（界面读它的生成物 `generated/filewin-theme-tokens.ts`）取 `:root` 的计算值交过去，
  * 它照着映射，自己不另写数。名单上的令牌值只许写字面量（`#…` · `rgb()` · `px` · 阴影三段），不许 `var()` / `color-mix()`。
  *
  * 判据：自定义属性两向对账 · 过渡只许五个属性（`css-conventions.vitest.ts`）· 对比度实算（`token-contrast.vitest.ts`）·
- * 两边名单相等与缺省主题解得出（文件窗口 `theme_tests.rs`）。
+ * 缺省主题解得出（文件窗口 `theme_tests.rs`）。
  *
  * # 命名
  *

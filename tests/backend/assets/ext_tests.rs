@@ -545,10 +545,12 @@ fn two_with(tag: &str, prep: impl FnOnce(&mut M)) -> (PathBuf, Two) {
     let mut b = machine(&base, "b");
     prep(&mut b);
     let b = Arc::new(b);
-    let reach = Table::of(vec![crate::dial::machine::loose(
-        &json!({"label": "laptop", "host": "h", "port": 22, "user": "u", "keyPath": "/k"}),
-    )
-    .unwrap()]);
+    let reach = Table::of(vec![
+        <crate::dial::Host as serde::Deserialize>::deserialize(
+            &json!({"label": "laptop", "host": "h", "port": 22, "user": "u", "keyPath": "/k"}),
+        )
+        .unwrap(),
+    ]);
     let here: Arc<dyn Here> = Arc::new(HereM(a.clone()));
     let remote = RemoteM(b.clone(), Mutex::new(Vec::new()));
     (

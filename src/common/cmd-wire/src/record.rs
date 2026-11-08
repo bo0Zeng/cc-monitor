@@ -34,7 +34,7 @@ pub struct Record {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub at: Option<String>,
-    /// `at` 在看的那一台钟上的钟面 `HH:MM`（出口那一下按请求 / 流带来的时区写，[`Record::stamp`]；界面照抄、不换算）；没有时刻 / 解不出 ⇒ 缺。
+    /// `at` 在看的那一台钟上的钟面 `HH:MM`（出口那一下按请求 / 流带来的时区写，后端 `wire::stamp::RecordExt::stamp`；界面照抄、不换算）；没有时刻 / 解不出 ⇒ 缺。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<String>"))]
     pub time_text: Option<Words>,
@@ -257,9 +257,12 @@ pub enum Block {
         content: Vec<Block>,
         #[serde(rename = "isError")]
         is_error: bool,
-        /// 内容多少字节（各正文块的 UTF-8 字节 ＋ 各图的原图字节）：出口省掉内容之后照样有，界面写大小照它。
+        /// 内容多少字节（各正文块的 UTF-8 字节 ＋ 各图的原图字节）：出口省掉内容之后照样有。
         #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
         bytes: u64,
+        /// `bytes` 写成给人看的一格（`3.0 KB`）：后端照字节写好，两端照抄、不自己换算。
+        #[serde(rename = "sizeText")]
+        size_text: crate::cells::Words,
     },
     /// 一张内联图（来源认得出的那一形才有这一块）：上线只交引用，图的字节按 `at` · `n` 另取（`history-image`）。
     Image {
@@ -293,14 +296,21 @@ impl Block {
         Block::Prose { doc, more }
     }
 
-    /// 一个工具结果块（字节数在这里算：正文块与图块的字节之和）。
-    pub fn tool_result(of: String, content: Vec<Block>, is_error: bool) -> Block {
+    /// 一个工具结果块（字节数在这里算：正文块与图块的字节之和）。大小那一格由 `size` 照字节写（cmd-wire 不取文，
+    /// 调用方交 `copy_core::size_text`）。
+    pub fn tool_result(
+        of: String,
+        content: Vec<Block>,
+        is_error: bool,
+        size: impl FnOnce(u64) -> String,
+    ) -> Block {
         let bytes = content.iter().map(Block::bytes).sum();
         Block::ToolResult {
             of,
             content,
             is_error,
             bytes,
+            size_text: crate::cells::Words(size(bytes)),
         }
     }
 
@@ -560,6 +570,10 @@ pub struct StepResult {
     #[serde(rename = "exitCode", skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub exit_code: Option<i32>,
+    /// 失败那一步的尾巴（「退出码 N」/「出错」，后端 `StepResult::written` 写）：结果块抬头照摆；没失败 ⇒ 缺。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<String>"))]
+    pub error: Option<Words>,
     /// 这次改动说的是哪个文件（结果里写着的路径，原样）。只有改文件那几类结果有。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
@@ -651,7 +665,18 @@ pub enum Speaker {
     /// 人敲的 `!` 命令。
     BashInput { command: String },
     /// `!` 命令的输出回显。
-    BashOutput { stdout: String, stderr: String },
+    #[serde(rename_all = "camelCase")]
+    BashOutput {
+        stdout: String,
+        stderr: String,
+        /// 两份输出各自折不折（[`TextFold`]，按去掉两头空白之后的行数）；不折 ⇒ 缺。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        stdout_fold: Option<TextFold>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        stderr_fold: Option<TextFold>,
+    },
     /// 本地命令（斜杠命令）的输出回显。
     CommandOutput,
     /// 后台任务（子 agent / 后台命令）的收场通知。
@@ -757,30 +782,37 @@ pub enum Speaker {
 pub struct UserText {
     pub speaker: Speaker,
     /// 要显示的正文（剥过注入、trim 过）：人说的话 · 压缩摘要 · 派给子 agent 的活；别的来源是空串。
+    /// 粘贴块的标记原样留着（改这一句那一下照它）；上屏照 `parts`。
     pub text: String,
-    /// `text` 里人粘贴进来的块（UTF-16 下标，含两头的标记）。
+    /// `text` 切好的段（`face_core::record` 切）：有 ⇒ 两端一段一段照排、不再看 `text`；缺 ⇒ `text` 整段照排、不折。
+    /// 人粘贴进来的块单成一段（标记与两头的换行已去）；派活那段太长 ⇒ 一段带折法。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<Vec<Pasted>>"))]
-    pub pasted: Vec<Pasted>,
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<Vec<SaidPart>>"))]
+    pub parts: Vec<SaidPart>,
 }
 
-/// 人粘贴进来的一块在 `text` 里的位置（`[start, end)`，UTF-16 下标，含两头的标记）＋ 正文那一截（`[bodyStart, bodyEnd)`）。
-/// 界面只露正文（不认标记的写法）；折不折照 `fold`，不自己数行。
+/// 正文切好的一段（[`UserText::parts`]）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct Pasted {
-    pub start: u32,
-    pub end: u32,
-    pub body_start: u32,
-    pub body_end: u32,
-    /// 这一块要折成一行「粘贴的内容 · N 行」（点开就地展开）；否则照排。阈值只住产出那一处。
-    pub fold: bool,
-    /// 折起那一行写好的字（「粘贴的内容 · N 行」，产出那一处写）；不折 ⇒ 缺。
+pub struct SaidPart {
+    pub text: String,
+    /// 这一段折着（[`TextFold`]）；照排 ⇒ 缺。
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<String>"))]
-    pub fold_text: Option<Words>,
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub fold: Option<TextFold>,
+}
+
+/// 一段字怎么折（阈值与那一句只住 `face_core::record`；两端照它露、不自己数行）：
+/// 先露 `shown` 行（0 ⇒ 整段收成 `more` 那一行，点开就地展开），共 `total` 行，展开那一颗写 `more`。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct TextFold {
+    pub shown: u32,
+    pub total: u32,
+    #[cfg_attr(any(test, feature = "ts"), ts(as = "String"))]
+    pub more: Words,
 }
 
 /// 行摘要的一条（`history-read.rows[]`；成品 `read_row`，格目录里登记、冻结）。
@@ -932,7 +964,7 @@ impl UserText {
         Self {
             speaker,
             text: String::new(),
-            pasted: Vec::new(),
+            parts: Vec::new(),
         }
     }
 }

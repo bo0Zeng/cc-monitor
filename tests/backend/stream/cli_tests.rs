@@ -266,6 +266,10 @@ const NOT_ON_CLI: &[(&str, &str)] = &[
 /// [`STREAM_ONLY`] 每一条的理由（一次性进程里结构上答不了）。与生产那张表两向相等（`the_withheld_tables_…`）。
 const STREAM_ONLY_WHY: &[(&str, &str)] = &[
     (
+        "quota-warm",
+        "「同一个号 15 分钟只发一次」那一本只住常驻进程的内存（轮换判完开窗也记在那里）；一次性进程每次是新的一本，答的 `sent` 是假话、还会重发。",
+    ),
+    (
         "session-arrive",
         "它等的是常驻进程那份 watcher 报出来的会话；一次性进程里没有 watcher，只能当场答「没见到」—— 那是假话。",
     ),
@@ -1075,6 +1079,16 @@ fn the_withheld_tables_do_not_overlap_and_each_holds_its_own_kind() {
             "UI_ONLY 里 {name} 的理由是「直接敲 ccm」那一种 —— 那不是理由"
         );
     }
+}
+
+/// ★ 开窗只经常驻：命令行面上没有 `--quota-warm`（quota-warm 脚本走 `--resident-call`）。
+#[test]
+fn quota_warm_is_not_on_the_cli() {
+    assert!(
+        spec_for("--quota-warm").is_none(),
+        "--quota-warm 还在 CLI 面上"
+    );
+    assert!(!handles("--quota-warm"));
 }
 
 /// ★ 审计 §4 复核后放出的那几条（理由原是「只有界面用得着」，一次性进程里答得出真话）今天在 CLI 面上。

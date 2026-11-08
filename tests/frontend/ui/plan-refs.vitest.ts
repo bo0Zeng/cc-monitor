@@ -175,16 +175,11 @@ describe("回复正文：后端回标好引用的树，照它重排", () => {
 
 // 人说的话（用户气泡）：同一个口子 —— 与回复正文同一批送；气泡照原文排（不过 markdown），折起的粘贴块不送。
 describe("用户气泡里的编号", () => {
-  const said = (text: string, pasted: object[] = []): HTMLElement => {
-    const rec = { agent: "claude", t: "said", id: "u", at: "2026-01-01T14:02:00.000Z", blocks: [{ type: "text", text }], who: { speaker: { kind: "human" }, text, pasted } };
+  const said = (text: string, parts?: object[]): HTMLElement => {
+    const rec = { agent: "claude", t: "said", id: "u", at: "2026-01-01T14:02:00.000Z", blocks: [{ type: "text", text }], who: { speaker: { kind: "human" }, text, ...(parts ? { parts } : {}) } };
     const r = renderMessage(rec as never as LineRecord, ctx());
     if (r.kind !== "card") throw new Error(r.kind);
     return r.element;
-  };
-  const span = (text: string, open: string, body: string, close: string, fold = false) => {
-    const start = text.indexOf(open);
-    const bodyStart = start + open.length;
-    return { start, end: bodyStart + body.length + close.length, bodyStart, bodyEnd: bodyStart + body.length, fold };
   };
 
   it("气泡与回复同一批问一次；编号原样跟标题，星号照原文不变粗，点了开计划页", async () => {
@@ -216,7 +211,8 @@ describe("用户气泡里的编号", () => {
     const long = Array.from({ length: 13 }, (_, i) => `A9-${i}`).join("\n");
     const short = "见 A2";
     const text = `先 A1：<P1>${long}</P1>再<P2>${short}</P2>完`;
-    const u = said(text, [span(text, "<P1>", long, "</P1>", true), span(text, "<P2>", short, "</P2>")]);
+    // 段是后端切好的（标记已去、折起的那一块带折法）。
+    const u = said(text, [{ text: "先 A1：" }, { text: long, fold: { shown: 0, total: 13, more: "粘贴的内容 · 13 行" } }, { text: `再${short}完` }]);
     fetchMock.mockImplementationOnce(async (_o: string, _s: string, texts: string[]) => ({
       workspace: "/w",
       slice: "alpha",

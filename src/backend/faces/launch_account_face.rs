@@ -30,26 +30,42 @@ pub(crate) fn pretrust_with(files: Option<Files>, agent: &str, dir: &str, cwd: &
     }
 }
 
-/// 这台的账号清单成品（就是 `accounts-list` 那一份：并上这台的 API key 表），起会话挑号直接读它。
+/// 这台的账号清单成品（就是 `accounts-list` 那一份：并上这台的 API key 表），起会话挑号 · 登录 · 账号页都读它。
+/// 账号库与上游选择互不认识：key 表那两样（有哪几行 · 每行的掩码与端点）由这里读来交给账号库。
 pub(crate) fn list_of(agent: &str) -> AccountsList {
-    let rows = crate::accounts::upstream_select::file_face::machine_rows();
-    crate::observe::accounts_query::list_product(
-        &rows,
+    let keys = crate::accounts::upstream_select::file_face::machine_key_facts();
+    let key_of = key_of(&keys);
+    crate::accounts::manage::library::list_product(
+        &crate::accounts::upstream_select::file_face::machine_rows(),
+        &key_of,
         agent,
         crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT,
         crate::relay::our_relay_listening(relay_route_core::PORT),
     )
 }
 
+/// key 表里照账号 id 找那一行的（掩码，端点地址）（[`crate::accounts::manage::library::KeyOf`]）。
+fn key_of(
+    keys: &[crate::accounts::upstream_select::file_face::KeyFact],
+) -> impl Fn(&str) -> Option<(Option<String>, Option<String>)> + '_ {
+    |id| {
+        keys.iter()
+            .find(|k| k.id == id)
+            .map(|k| (k.masked.clone(), k.base_url.clone()))
+    }
+}
+
 /// [`list_of`]，账号库照家目录 `home` 那一份（`ccm` 的计划按它自己的家算：别名预览可以是另一个家）——
 /// 交给 ccm 的计划那一边当「读这台账号清单成品」（`AccountsScan`；控制面不读观测层，由入口交）。
 pub fn list_at(home: &str, agent: &str) -> AccountsList {
     let home = std::path::Path::new(home);
-    crate::observe::accounts_query::list_product_with(
+    let keys = crate::accounts::upstream_select::file_face::machine_key_facts();
+    let key_of = key_of(&keys);
+    crate::accounts::manage::library::list_product_with(
         &crate::platform::paths::home_join(home, relay_route_core::ACCOUNTS_DIR_REL),
         Some(home),
         &crate::accounts::upstream_select::file_face::machine_rows(),
-        &crate::accounts::upstream_select::file_face::machine_key_facts(),
+        &key_of,
         agent,
         crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT,
         crate::relay::our_relay_listening(relay_route_core::PORT),

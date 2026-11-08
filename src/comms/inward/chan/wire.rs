@@ -389,9 +389,9 @@ pub const WITHDRAW_REFUSED: &str = "not_cancellable";
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Offer {
     ops: Vec<String>,
-    /// `(op, 码)`：接得下、这台做不到；码与对端事后会回的同一个。
+    /// 接得下、这台做不到的那几条：码与对端事后会回的同一个，那一句是本机后端写好的（原样交出去）。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    unavailable: Vec<(String, String)>,
+    unavailable: Vec<cmd_wire::frame::Unavailable>,
     /// typed 命令的形状指纹 `(op, 指纹)`（`hello.shapes`）：跟本侧编进来的那一张（`cmd_wire::SHAPES`）比，对不上的 op 不发（[`Offer::shape_differs`]）。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     shapes: Vec<(String, String)>,
@@ -414,7 +414,7 @@ pub enum Withdraw {
 
 impl Offer {
     /// 对端握手时交出的两格，原样收下。
-    pub fn new(ops: Vec<String>, unavailable: Vec<(String, String)>) -> Self {
+    pub fn new(ops: Vec<String>, unavailable: Vec<cmd_wire::frame::Unavailable>) -> Self {
         Self {
             ops,
             unavailable,
@@ -425,7 +425,7 @@ impl Offer {
 
     /// 对端那一帧 hello 交的全部能力事实：接哪些命令 · 做不到的 · 命令与帧两张形状表（帧那一张当场跟本侧比出对不上的那几种）。
     pub fn of(hello: &cmd_wire::frame::Hello) -> Self {
-        let mut o = Self::new(hello.commands.clone(), facts(&hello.unavailable)).with_shapes(
+        let mut o = Self::new(hello.commands.clone(), hello.unavailable.clone()).with_shapes(
             hello
                 .shapes
                 .iter()
@@ -485,15 +485,17 @@ impl Offer {
 
     /// 这台做不到的那几个 op。
     pub fn unavailable_ops(&self) -> Vec<String> {
-        self.unavailable.iter().map(|(o, _)| o.clone()).collect()
+        self.unavailable.iter().map(|u| u.command.clone()).collect()
     }
 
     /// 这台做不到这个 op ⇒ 那个码（与对端事后会回的同一个）；做得到 / 没把握 ⇒ `None`。
     pub fn unavailable(&self, op: &str) -> Option<&str> {
-        self.unavailable
-            .iter()
-            .find(|(o, _)| o == op)
-            .map(|(_, code)| code.as_str())
+        self.gap(op).map(|u| u.code.as_str())
+    }
+
+    /// 这台做不到这个 op ⇒ 那一项（码 ＋ 本机后端写好的那一句）；做得到 / 没把握 ⇒ `None`。
+    pub fn gap(&self, op: &str) -> Option<&cmd_wire::frame::Unavailable> {
+        self.unavailable.iter().find(|u| u.command == op)
     }
 
     /// 这个 op 的请求**已发出**、被本地撤掉之后，对端那一半的处置。
@@ -510,16 +512,8 @@ impl Offer {
     /// 「重新对齐」时那台交回的**当下**能力事实换掉握手那一刻的（例：握手后才装上 tmux）。
     /// 接哪些 op 不变（还是同一个二进制、同一条连接）。
     pub fn refresh_facts(&mut self, unavailable: &[cmd_wire::frame::Unavailable]) {
-        self.unavailable = facts(unavailable);
+        self.unavailable = unavailable.to_vec();
     }
-}
-
-/// `unavailable` 那一格（hello 与 `resync` 应答同形）⇒ `(命令, 码)`。
-fn facts(unavailable: &[cmd_wire::frame::Unavailable]) -> Vec<(String, String)> {
-    unavailable
-        .iter()
-        .map(|u| (u.command.clone(), u.code.clone()))
-        .collect()
 }
 
 // ════════════════════════════════════════════════════════════════════════════

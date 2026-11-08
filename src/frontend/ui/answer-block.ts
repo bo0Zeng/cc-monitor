@@ -2,10 +2,10 @@
  * **答题块**（消息流末尾、贴着聊天线底部）：当前会话在等批准 / 回答 / 批计划时，说清等什么、在这里就地答。
  * 不是模态框：不挡读聊天、出现时不抢焦点；从「需手动」的入口跳过来时焦点才进块（[`AnswerBlock.focusFor`]）。
  *
- * 只排版 —— 字、语气、要不要附话、题目全照核心那一份 `needs.ask`（后端 `agents/asks.rs`），一个字不在这里拼：
+ * 只排版 —— 字、样子、段、要不要附话、题目全照核心那一份 `needs.ask`（后端 `agents/asks.rs`），一个字不在这里拼：
  * - 头一行 `needs.head`（「等批准 · Bash」）＋ 子 agent 那一趟的种类 ＋ 已等多久；要批的全文（命令 · 计划原文）进等宽块，长了块内滚；
- * - 选项按核心排好的序分三行：允许那一族（第一颗是主按钮，批准一步的标数字键）· 拒绝那一族（只有「拒绝并停下」红字）·
- *   改到终端里答（幽灵、排末尾）。哪一项进哪一行照核心给的 `row`、红字照 `tone: fail`，不认选项 id、不按字；
+ * - 选项按核心排好的序、照核心给的 `row` 分行（批准分三行，批计划 · 有题的提问一行；批准那一行标数字键），
+ *   每颗长什么样照核心给的 `look`（主 · 红字 · 普通 · 幽灵），带不带每题的答照 `picks`：不认选项 id、不按次序、不按字；
  * - 要附话的（`note` 不是 none）点了原地换一行输入框：Enter 交、Esc 回；必附的空着不交；
  * - 提问：每题照原样排（单选圆点 · 多选方块 · 末尾一格自由文本），每题都答了「提交答案」才可点，按题 id 交 picks；
  * - 没挂上请求（`ask: null`：信任框 · 别处起的会话 · 放行联网 … 每一种 needs.kind 都走这一支）⇒ 只写核心写好的那一句（只能在终端里答 / 答题口没接上），
@@ -25,12 +25,16 @@
 import type { Tab } from "./tab-model";
 import type { Ask, AskChoice, AskQuestionItem, Needs } from "./session-reads";
 import { copyText } from "./copy-table";
-import { button, setBusy, setButtonLabel, setDisabled } from "./kit/button";
+import { button, setBusy, setButtonLabel, setDisabled, type ButtonKind } from "./kit/button";
 import { kbd } from "./kit/badge";
 import { needsOf } from "./session-face";
 import { waitedNow } from "./duration-format";
 import type { AnswerReq } from "./generated/AnswerReq";
+import type { NeedsChoiceLook } from "./generated/NeedsChoiceLook";
 import s from "./answer-block.module.css";
+
+/** 核心给的样子 ⇒ 这一套按钮的那一种（只是对照，不判）。 */
+const KIND: Record<NeedsChoiceLook, ButtonKind> = { main: "primary", danger: "danger-text", plain: "secondary", ghost: "ghost" };
 
 /** 交给 `needs-answer` 的那一份（`sid` 由宿主按 tab 补上）。 */
 export type AnswerRequest = Omit<AnswerReq, "sid">;
@@ -306,25 +310,19 @@ export class AnswerBlock {
     const parts: HTMLElement[] = ask.questions.map((q) => this.question(q));
     if (ask.questions.length > 0 && !ask.questions.some((q) => q.id === this.current)) this.current = this.nextOpen(null);
     const rows = new Map<string, HTMLElement>();
-    // 段照核心给的 `row`；批计划那几项并成一行，有题时「不回答」与「提交答案」同一行。
-    const oneRow = ask.kind === "plan" || ask.questions.length > 0;
     let key = 0;
-    let first = true;
     for (const c of ask.choices) {
-      const where = c.row;
-      const line = oneRow ? "main" : where;
-      let row = rows.get(line);
+      let row = rows.get(c.row);
       if (!row) {
         row = document.createElement("div");
         row.className = s.abRow;
-        row.dataset.row = line;
-        rows.set(line, row);
+        row.dataset.row = c.row;
+        rows.set(c.row, row);
       }
-      const kind = where === "release" ? "ghost" : c.tone === "fail" ? "danger-text" : first ? "primary" : "secondary";
-      first = false;
-      const b = button({ label: c.note === "none" ? c.text : copyText("askBlock.choice.more", { label: c.text }), kind, onClick: () => this.pick(tab, ask, c, b) });
+      const b = button({ label: c.note === "none" ? c.text : copyText("askBlock.choice.more", { label: c.text }), kind: KIND[c.look], onClick: () => this.pick(tab, ask, c, b) });
       b.dataset.choice = c.id;
-      if (ask.kind === "approve" && where === "main" && key < 9) {
+      if (c.picks) b.dataset.picks = "true";
+      if (ask.kind === "approve" && c.row === "main" && key < 9) {
         b.dataset.key = String(++key);
         b.append(kbd(b.dataset.key));
       }
@@ -354,7 +352,7 @@ export class AnswerBlock {
       }
     });
     box.append(line);
-    const qhead = q.multi ? (q.header ? copyText("askBlock.question.multi", { header: q.header }) : copyText("askBlock.question.multiBare")) : q.header;
+    const qhead = q.head;
     if (qhead) {
       const h = document.createElement("span");
       h.className = s.abQHead;
@@ -504,7 +502,7 @@ export class AnswerBlock {
   /** 「提交答案」那一颗：每题都答了才可点；收着的那几行跟着换字。 */
   private refreshSubmit(): void {
     this.paintQuestions();
-    const submit = this.el.querySelector<HTMLButtonElement>("button[data-choice=answer]");
+    const submit = this.el.querySelector<HTMLButtonElement>("button[data-picks]");
     if (!submit) return;
     const all = [...this.picks.keys()].every((id) => this.answered(id));
     setDisabled(submit, all ? null : copyText("askBlock.question.needAll"));
@@ -517,7 +515,7 @@ export class AnswerBlock {
       return;
     }
     const req: AnswerRequest = { ask: ask.id, choice: c.id };
-    if (c.id === "answer" && ask.questions.length > 0) {
+    if (c.picks) {
       req.picks = Object.fromEntries([...this.picks].map(([id, p]) => [id, { options: [...p.options], text: p.text.trim() }]));
     }
     void this.send(tab, req, b);

@@ -1,8 +1,9 @@
 //! 账号清单成品（`accounts-list` 那一份）的夹具：照类型造。一个号的缺省是能起会话的订阅号（隔离 · 目录在 · 已就绪），账号目录 `/h/<名>`。
 //! 另有盘上一份账号库的造法（清单 · 照跨三处金样那一格造号目录与凭据）。本包的判据与上层判据经 `test-support` 共用。
 
-use super::{AccountRow, AccountsList, Badge, ListMeta, ScannedAccount, CREDENTIALS_FILE};
+use super::{AccountRow, AccountsList, Badge, ListMeta, ScannedAccount};
 use crate::common::cells::Words;
+use acct_core::CREDENTIALS_NAME;
 use std::path::{Path, PathBuf};
 
 /// 判据用的一份空临时目录（`tag` 各条判据各取各的）。
@@ -24,7 +25,7 @@ pub fn write_manifest(accts: &Path, body: &str) {
 /// 跨三处金样（`tests/__fixtures__/account-default.golden.json`）：能不能选 · 默认号是谁。
 pub fn account_default_golden() -> serde_json::Value {
     serde_json::from_str(include_str!(
-        "../../__fixtures__/account-default.golden.json"
+        "../../../__fixtures__/account-default.golden.json"
     ))
     .unwrap()
 }
@@ -51,14 +52,14 @@ pub fn golden_library(tag: &str, case: &serde_json::Value) -> (PathBuf, PathBuf)
             if exists {
                 std::fs::create_dir_all(&dir).unwrap();
                 if ready {
-                    std::fs::write(dir.join(CREDENTIALS_FILE), "{}").unwrap();
+                    std::fs::write(dir.join(CREDENTIALS_NAME), "{}").unwrap();
                 }
             } else if ready {
                 row["authKind"] = serde_json::json!("api-key");
             }
             row["configDir"] = serde_json::json!(dir.to_string_lossy());
         } else if ready {
-            std::fs::write(shared.join(CREDENTIALS_FILE), "{}").unwrap();
+            std::fs::write(shared.join(CREDENTIALS_NAME), "{}").unwrap();
         }
         rows.push(row);
     }
@@ -109,9 +110,8 @@ pub fn row_with(name: &str, f: impl FnOnce(&mut ScannedAccount)) -> AccountRow {
         badge: Badge {
             text: Words::default(),
             warn: false,
-            title: Words::default(),
         },
-        quota: None,
+        slots: Vec::new(),
         unselectable: None,
         login: false,
         new_session,

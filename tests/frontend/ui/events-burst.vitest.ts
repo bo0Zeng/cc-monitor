@@ -169,21 +169,18 @@ describe("〔GP1〕说不清那一格 left 进 queue、照脸交出", () => {
     expect(order).toEqual(["line-1", "unclear-s1"]);
   });
 
-  it("★ listed 格把壳给的「各台都报完」（`all`）原样交给处理器，界面不自己数", async () => {
-    const got: [string, boolean][] = [];
+  it("★ listed 格只交哪台报完了（「各台都报完」由本机后端算，不走这一格）", async () => {
+    const got: string[] = [];
     await bindEvents({
       onLine: vi.fn(),
       onSessionFace: vi.fn(),
-      onOriginSessionsListed: (origin: string, all: boolean) => got.push([origin, all]),
+      onOriginSessionsListed: (origin: string) => got.push(origin),
       onBatchStart: vi.fn(),
       onBatchEnd: vi.fn(),
     } as never, STREAMS);
-    streamFake.lifecycle([{ listed: { origin: "<local>", all: false } }, { listed: { origin: "pi", all: true } }]);
+    streamFake.lifecycle([{ listed: { origin: "<local>" } }, { listed: { origin: "pi" } }]);
     await vi.runAllTimersAsync();
-    expect(got).toEqual([
-      ["<local>", false],
-      ["pi", true],
-    ]);
+    expect(got).toEqual(["<local>", "pi"]);
   });
 });
 

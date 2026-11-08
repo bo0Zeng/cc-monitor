@@ -9,7 +9,8 @@
 //!
 //! ⚠ 走得到 `serve()` 的判据一律带读期限（风险 `5x`：把挂住换成红，同 `server_tests::send_request`）。
 
-use crate::relay::{host, our_relay_listening, Hosted, ENV_PORT};
+use crate::platform::child_env::RELAY_PORT;
+use crate::relay::{host, our_relay_listening, Hosted};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::mpsc;
@@ -105,7 +106,7 @@ fn env_of(
     // 凭据住家里：家指到夹具那一份所在的目录（文件名就是 `apikey-credentials.json`）。
     let creds = creds.parent().expect("夹具目录").display().to_string();
     move |k: &str| match k {
-        ENV_PORT => port.clone(),
+        RELAY_PORT => port.clone(),
         "CCM_AGENT_UPSTREAM_CLAUDE_CODE" => upstream.clone(),
         "CCM_DATA_DIR" => Some(creds.clone()),
         "HOME" => Some(home.clone()),
@@ -363,7 +364,7 @@ fn the_production_wiring_hosts_the_relay_and_never_writes_tee_lines_to_stdout() 
             "--test-threads=1",
         ])
         .env(CHILD_MARK, "1")
-        .env(ENV_PORT, "0")
+        .env(RELAY_PORT, "0")
         .env(
             "CCM_AGENT_UPSTREAM_CLAUDE_CODE",
             format!("http://127.0.0.1:{}", up.port()),

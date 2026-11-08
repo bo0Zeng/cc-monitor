@@ -32,11 +32,10 @@ vi.mock("../../../src/comms/inward/chan", async (importOriginal) => {
     },
   };
 });
-const term = vi.hoisted(() => ({ openTerminal: vi.fn(), openLocalTerminal: vi.fn() }));
+const term = vi.hoisted(() => ({ openTerminal: vi.fn() }));
 vi.mock("../../../src/frontend/ui/terminal-open", async (orig) => ({
   ...(await orig<typeof import("../../../src/frontend/ui/terminal-open")>()),
   openTerminal: term.openTerminal,
-  openLocalTerminal: term.openLocalTerminal,
 }));
 const clip = vi.hoisted(() => ({ writeClipboard: vi.fn() }));
 vi.mock("../../../src/frontend/ui/clipboard", () => clip);
@@ -91,7 +90,6 @@ beforeEach(() => {
   refusal = null;
   gate = null;
   term.openTerminal.mockResolvedValue(undefined);
-  term.openLocalTerminal.mockResolvedValue(undefined);
   clip.writeClipboard.mockResolvedValue(undefined);
 });
 
@@ -185,7 +183,7 @@ describe("照 landed 开不开 · 报到交那台等", () => {
     reply = opened("window");
     await openSession("<local>", { ...RESUME, local: true });
     await flush();
-    expect(term.openLocalTerminal).toHaveBeenCalledWith("line:window", "/p");
+    expect(term.openTerminal).toHaveBeenCalledWith("<local>", "line:window", "s-1", "/p");
     expect(slot.mock.calls[0]).toEqual([{ origin: "<local>", cwd: "/p", tmuxName: "t-1", arrival: ASK }]);
     expect(arrives()).toEqual([]);
   });
@@ -269,7 +267,7 @@ describe("开窗失败 · 在飞", () => {
 
   it("这台找不到终端（按壳回的结局判）⇒ 照实说 ＋［设置］［复制命令］，不自动写剪贴板；只是话里带着那一句的真失败 ⇒ 也只给［复制命令］", async () => {
     reply = opened("window");
-    term.openLocalTerminal.mockRejectedValueOnce(new NoTerminalWindow("line:window", { said: "壳·一句", title: "壳·标题", detail: "壳·说明" }));
+    term.openTerminal.mockRejectedValueOnce(new NoTerminalWindow("line:window", { said: "壳·一句", title: "壳·标题", detail: "壳·说明" }));
     await openSession("<local>", { ...RESUME, local: true });
     expect(clip.writeClipboard, "不许自动写剪贴板").not.toHaveBeenCalled();
     const [title, detail, opts] = toasts.toast.mock.calls[0] as [string, string, { action?: { label: string; run: () => void }[] }];
@@ -277,7 +275,7 @@ describe("开窗失败 · 在飞", () => {
     expect((opts.action ?? []).map((x) => x.label)).toEqual([copyText("mobDrawer.settings.aria"), copyText("terminalOpen.noTerminal.copy")]);
     vi.clearAllMocks();
     clip.writeClipboard.mockResolvedValue(undefined);
-    term.openLocalTerminal.mockRejectedValueOnce(new Error(copyText("rsLaunch.posix.noTerminalWindow")));
+    term.openTerminal.mockRejectedValueOnce(new Error(copyText("rsLaunch.posix.noTerminalWindow")));
     await openSession("<local>", { ...RESUME, local: true });
     expect(clip.writeClipboard).not.toHaveBeenCalled();
     expect(toasts.toast.mock.calls[0][0]).toBe(copyText("sessionOpen.terminal.notOpened"));

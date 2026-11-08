@@ -4,10 +4,11 @@ use crate::wire::spec::CommandSpec;
 
 pub(super) const SPECS: &[CommandSpec] = &[
     // 〔「待迁」最后一行〕**开终端那一串**：`{machine, saved?, jump?, prefer?, command}` ⇒ `{command}`（按本机终端方言的一行：
-    //   Windows `& '<ssh 全路径>' -t[ -J …] -p … [-i …] user@host -- '<bash -lic …>'`，别处同一组参数的 POSIX shell 一行）。只收那台的名字，组请求照本机后端的机器表（`dial/mod.rs::dial_named`），本体 `dial/terminal.rs`。
+    //   远端 Windows `& '<ssh 全路径>' -t[ -J …] -p … [-i …] user@host -- '<bash -lic …>'`、别处同一组参数的 POSIX shell 一行；本机就是那一串本身）。
+    //   只收那台的名字，组请求照本机后端的机器表（`dial/mod.rs::dial_named`），本体 `dial/terminal.rs`。
     //   查几个文件找 ssh 客户端（`platform/ssh_client.rs`）⇒ 阻塞档；不拨号、不起进程。
     super::typed::blocking::<crate::dial::terminal::TerminalSsh>(
-        "给一台远端开终端要跑的那一串",
+        "给一台机器开终端要跑的那一串",
     ),
     // ↗ 那一问：这条会话在这台电脑上的哪儿：`{machine, sid}` ⇒ `{labels, chain:[{pid, name, start}…], why?, addr?}`
     //   （`faces/session_window_face.rs`）。异步档：远端会话经 `--resident-call` 问那台的 `session-terminals`；

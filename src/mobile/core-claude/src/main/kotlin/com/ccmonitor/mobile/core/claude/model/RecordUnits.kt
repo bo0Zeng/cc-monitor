@@ -7,6 +7,7 @@ import com.ccmonitor.mobile.core.wire.gen.LineRecord
 import com.ccmonitor.mobile.core.wire.gen.Speaker
 import com.ccmonitor.mobile.core.wire.gen.StepBody
 import com.ccmonitor.mobile.core.wire.gen.TaskEnd
+import com.ccmonitor.mobile.core.wire.gen.TextFold
 import com.ccmonitor.mobile.core.wire.gen.ToolCard
 
 /**
@@ -39,15 +40,12 @@ class RecordUnits {
 
     /**
      * 此刻的整张单元表（只拼，不排）；没变 ⇒ 上次那一份原样（同一个实例）。拼是 O(手上的行数)：手上留多少由持有者截（见手机端按页丢）。
-     * 紧挨着上一张重试细条的那一条重试不另起一条（并进上一条：那一串的整句是会话事实那一格）。
+     * 一串重试只画首条（后面那几条那台出 `draw: none`，不成单元；那一串的整句是会话事实那一格）。
      */
     fun units(): List<RenderUnit> =
         last ?: ArrayList<RenderUnit>(rows.size * 2)
-            .also { out ->
-                for (row in rows) {
-                    for (u in row.units) if (!(u is RenderUnit.Retry && out.lastOrNull() is RenderUnit.Retry)) out += u
-                }
-            }.also { last = it }
+            .also { out -> for (row in rows) out += row.units }
+            .also { last = it }
 
     /** 丢最前面 [n] 条（往上翻读进来、离视口远了的那几页）：它们的调用卡与结果一并忘掉；后面那几条原样留着。 */
     fun dropFirst(n: Int) {
@@ -149,6 +147,12 @@ class RecordUnits {
             else -> emptyList()
         }
 
+    /** 派活那段的折法：那台切成一段带折法交来（`who.parts[0].fold`）；不折 ⇒ `null`。 */
+    private fun briefFold(r: LineRecord.Said): TextFold? =
+        r.who.parts
+            ?.firstOrNull()
+            ?.fold
+
     private fun said(r: LineRecord.Said): RenderUnit? {
         val id = r.id
         val text = r.who.text
@@ -160,14 +164,17 @@ class RecordUnits {
                     id,
                     images = imagesOf(r.blocks, id),
                     attachments = r.attachments.orEmpty(),
-                    parts = saidParts(text, r.who.pasted.orEmpty()),
+                    parts =
+                        r.who.parts
+                            .orEmpty()
+                            .map(SaidPart::of),
                 )
             is Speaker.SlashCommand -> RenderUnit.SlashCommand(id, s.name, s.args, id)
             is Speaker.BashInput -> RenderUnit.BashInput(id, s.command, id)
-            is Speaker.BashOutput -> RenderUnit.BashOutput(id, s.stdout, s.stderr, id)
+            is Speaker.BashOutput -> RenderUnit.BashOutput(id, s.stdout, s.stderr, id, s.stdoutFold, s.stderrFold)
             is Speaker.CompactSummary -> RenderUnit.CompactSummary(id, text, id)
             Speaker.Interrupt -> RenderUnit.Interrupt(id, r.timeText, id)
-            Speaker.AgentTask -> RenderUnit.Brief(id, text, r.timeText, id)
+            Speaker.AgentTask -> RenderUnit.Brief(id, text, r.timeText, id, briefFold(r))
             is Speaker.PeerSession -> RenderUnit.Peer(id, s.title, r.timeText, s.doc, id)
             is Speaker.TaskNotification -> s.row?.let { RenderUnit.Notice(id, it, s.end == TaskEnd.FAILED, id) }
             else -> null

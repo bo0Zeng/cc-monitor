@@ -8,17 +8,15 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("../../../src/frontend/ui/account-reads", () => ({ fetchAccounts: vi.fn() }));
-vi.mock("../../../src/frontend/ui/acct-center", () => ({ refreshQuota: vi.fn() }));
 
 import { defaultPick, pickAsk, resumeAccounts, resumeHint, resumeMenuItems, type ResumeAccounts, type ResumePick } from "../../../src/frontend/ui/resume-menu";
 import { fetchAccounts } from "../../../src/frontend/ui/account-reads";
-import { refreshQuota } from "../../../src/frontend/ui/acct-center";
-import { appStore, putIn } from "../../../src/frontend/ui/app-store";
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import type { QuotaRead } from "../../../src/frontend/ui/acct-words";
 
-const acct = (name: string, selectable = true): Record<string, unknown> => ({
+/** 那台 `accounts-list` 的一行：号名（`label`）与额度格（`slots`）都是那台写好的。 */
+const acct = (name: string, selectable = true, over: Record<string, unknown> = {}): Record<string, unknown> => ({
   name,
+  label: name,
   email: `${name}@x`,
   configDir: `/h/${name}`,
   isDefault: false,
@@ -28,68 +26,37 @@ const acct = (name: string, selectable = true): Record<string, unknown> => ({
   authKind: "subscription",
   authReady: true,
   selectable,
+  slots: [],
+  ...over,
 });
-
-const quota = (accounts: { account: string; pct?: number; state?: string; kind?: string }[]): QuotaRead =>
-  ({
-    state: "present",
-    reason: null,
-    path: null,
-    now: 1_800_000_000,
-    accounts: accounts.map((a) => ({
-      agent: "claude",
-      account: a.account,
-      seenAt: 1_800_000_000,
-      kind: a.kind ?? "sub",
-      state: a.state ?? "ok",
-      stale: false,
-      limiting: "5h",
-      // 那一格的字是核心写好的（被拒没标用满 ⇒「{pct}% · 被拒」），界面照抄。
-      slots: a.pct === undefined ? [] : [{ slot: "5h", pct: a.pct, text: a.state === "refused" ? copyText("acct.val.refusedPct", { pct: a.pct }) : `${a.pct}%`, tone: "plain" }],
-      login: "ok",
-      // 「5h 那一格」是核心写好的字（`faces/quota_rows.rs::with_rows`）；夹具照成品给。
-      fiveHour:
-        (a.kind ?? "sub") === "api"
-          ? null
-          : copyText("resumeMenu.account.quota", {
-              slot: copyText("acct.slot.fiveHour"),
-              value: a.pct === undefined ? copyText("acct.val.none") : a.state === "refused" ? copyText("acct.val.refusedPct", { pct: a.pct }) : `${a.pct}%`,
-            }),
-    })),
-    unseen: [],
-    fiveHour: null,
-  }) as unknown as QuotaRead;
 
 beforeEach(() => {
   vi.mocked(fetchAccounts).mockReset();
-  vi.mocked(refreshQuota).mockReset();
-  appStore.quota.set(new Map());
 });
 
 describe("账号组的事实", () => {
-  it("那台可选的号 ＋ 基座；上次的号标出来；5h 读额度账（被拒照显示态换字；没出过数 ⇒ 不出）", async () => {
-    vi.mocked(fetchAccounts).mockResolvedValue({ available: true, accounts: [acct("work"), acct("home"), acct("old", false)] } as never);
-    putIn(appStore.quota, "devbox", quota([{ account: "work", pct: 41 }, { account: "_", state: "refused", pct: 100 }]));
+  it("★ 那台可选的号 ＋ 基座；号名与号旁那一格照那一行（label · 第一格）；上次的号标出来；基座不带格", async () => {
+    vi.mocked(fetchAccounts).mockResolvedValue({
+      available: true,
+      accounts: [acct("work", true, { label: "后端·work", slots: [{ slot: "5h", text: "后端·5h 41% ↻13:00", tone: "plain" }, { slot: "7d", text: "后端·7d", tone: "plain" }] }), acct("home"), acct("old", false)],
+    } as never);
     const got = await resumeAccounts("devbox", "claude", { hasAccounts: true, agentName: "claude", last: "work" });
     expect(got).toEqual({
       kind: "list",
       items: [
-        { name: "work", label: "work", quota: "5h 41%", last: true },
+        { name: "work", label: "后端·work", quota: "后端·5h 41% ↻13:00", last: true },
         { name: "home", label: "home", quota: null, last: false },
-        { name: null, label: copyText("resumeMenu.account.base"), quota: `5h ${copyText("acct.val.refusedPct", { pct: 100 })}`, last: false },
+        { name: null, label: copyText("resumeMenu.account.base"), quota: null, last: false },
       ],
       origin: "devbox",
     });
-    expect(refreshQuota, "那台的额度账已在 ⇒ 不再问").not.toHaveBeenCalled();
   });
 
-  it("那台额度账还没读过 ⇒ 先读一次；只有一个可选号也照出（不整组藏）", async () => {
-    vi.mocked(fetchAccounts).mockResolvedValue({ available: true, accounts: [acct("solo")] } as never);
-    vi.mocked(refreshQuota).mockImplementation(async (o) => putIn(appStore.quota, o, quota([{ account: "solo", pct: 7 }])));
+  it("只有一个可选号也照出（不整组藏）", async () => {
+    vi.mocked(fetchAccounts).mockResolvedValue({ available: true, accounts: [acct("solo", true, { slots: [{ slot: "5h", text: "后端·5h 7%", tone: "plain" }] })] } as never);
     const got = await resumeAccounts("dev", "claude", { hasAccounts: true, agentName: "claude" });
-    expect(refreshQuota).toHaveBeenCalledWith("dev");
     expect(got.kind === "list" && got.items.map((a) => [a.name, a.quota])).toEqual([
-      ["solo", "5h 7%"],
+      ["solo", "后端·5h 7%"],
       [null, null],
     ]);
   });

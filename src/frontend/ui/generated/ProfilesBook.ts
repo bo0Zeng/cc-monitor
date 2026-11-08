@@ -18,10 +18,6 @@ path: string,
  */
 pathShown: string, 
 /**
- * 配置文件在不在。
- */
-exists: boolean, 
-/**
  * 盘上那份的版本（不在 ⇒ `null`），存的时候当 `ifRev` 交回 `profiles-write`。
  */
 rev: string | null, 
@@ -37,14 +33,6 @@ fileProblem: ProfileProblem | null, profiles: Array<ProfileRow>,
  * 这台存好的几组会话（`[set."组名"]`，照写下的先后）；一组写错只那一组带 `problems`。
  */
 sets: Array<SetOut>, 
-/**
- * 配置文件不在时首建那几条的预览（在 ⇒ 空）：两条（`cc` · `cct`），没有 tmux 的那台只一条。
- */
-seed: Array<ProfileRow>, 
-/**
- * 空态那一块的说明与按钮字，随 `seed` 的条数（没有 tmux 的那台只建一条）；`seed` 空 ⇒ 空串。
- */
-seedHint: string, seedCreate: string, 
 /**
  * 链接住的目录（`~/.cc-monitor/bin`）。
  */

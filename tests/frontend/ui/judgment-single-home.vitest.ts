@@ -125,6 +125,12 @@ interface Judgment {
 /** `mirror` 的 `why` 必须点出它守的要求：`INVARIANTS §N`，或逐字引那一句「…」。 */
 const DESIGN_ADDRESS = /INVARIANTS §\d+|「[^」]{4,}」/;
 
+/**
+ * 许登 `mirror` 的那几行（R1 / R4 那条例外：webview 同步调不到 Rust，生在界面里或逐秒变的字界面各留一份读口、对同一份金样）：
+ * 取文插值 · 合流复制的整段 · 一件失败复制的那一段 · 会走的钟。登记表里 `mirror` 的行与它两向相等，只许减。
+ */
+const MIRROR_EXCEPTIONS: readonly JudgmentId[] = ["J11", "J26", "J27", "J28"];
+
 const LAUNCH_RS = "src/backend/control/launch_render/ccm_invocation.rs"; // 起会话那一行的渲染（载荷那份删了，最可能长回来的地方跟着挪）
 
 /**
@@ -412,7 +418,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     },
     parity: {
       via: "tests/__fixtures__/accounts.golden.json",
-      tests: ["tests/backend/observe/accounts_query_tests.rs"],
+      tests: ["tests/backend/accounts/manage/library_tests.rs"],
     },
   },
   J20: {
@@ -442,18 +448,13 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J22: {
     what: "因对方版本说不成的两个码（版本旧 / 回的认不出）各取哪一句、本机怎么称呼",
-    // 版本旧那一句只有 Rust 写（monitor 交在 `ChanError.message`）；回的认不出是界面自己知道的事，两侧各一个取句口，
-    // 取的是表里同一条键（`peerVersion.said.unreadable`）；那台叫什么，Rust 取 `detail.label.local`，界面照成品的 `name`。
+    // 版本旧那一句只有 Rust 写（monitor 交在 `ChanError.message`）。回的认不出是界面解码失败时自己才知道的事：
+    //   界面 `chan-caller.ts::unreadableSaid` 只是取表里那一把键（`peerVersion.said.unreadable`）填成品的 `name`，不是第二份规则 ⇒ 不算孪生。
     homes: ["copy-core::backend_old", "copy-core::reply_unreadable", "copy-core::local_machine", "copy-core::peer_machine"],
-    status: "mirror",
-    defs: ["unreadableSaid"],
+    status: "zero",
+    defs: [],
     gone: ["peerVersionSaid"],
     needles: [],
-    parity: {
-      via: "src/shared/copy/table.json",
-      tests: ["tests/common/copy-core/lib_tests.rs", "tests/frontend/ui/ipc/peer-version.vitest.ts"],
-    },
-    why: "「各命令因对方版本拒绝时回一个统一码（不各自拼句）」—— 界面与 Rust 两侧都出这两句，取的是同一张表",
   },
   J23: {
     what: "自 1970-01-01 起第几天 ⇒ 公历年月日",
@@ -479,7 +480,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     // 后端按那台本地钟写好（记录的 `timeText` · 轮次的 `startText` ·子运行的 `started_text` · 分叉的 `startText` ·
     //   终端快照的 `captured_at_text` · 历史清单行的 `atText`/`sectionText`/`spanText` · 搜索合并行的 `atText`/`spanText` · 查找命中的 `tsText`），界面照抄。
     //   删的是 `format.ts::formatTimestampShort` · `views/history-time.ts` 整份 · 终端页 / 起会话框各自那一个钟面换算。
-    // 钟面 `HH:MM` 那一格另立一行（J30）：界面自己出的事（状态栏提示）没有后端写好的字可照抄，留一个镜像读口。
+    // 钟面 `HH:MM` 那一格另立一行（J30）。
     homes: [
       "src/backend/common/time.rs::hms",
       "src/backend/common/time.rs::row_time",
@@ -532,51 +533,32 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     why: "ARCHITECTURE §2.9「会走的钟」：桌面秒级走的那几处只留一个时长读口，与 Rust 那一份对同一份金样",
   },
   J30: {
-    what: "钟面 `HH:MM`（核心写所有「几点」那一处 · 界面自己出的事——状态栏提示——那一个读口）",
+    what: "钟面 `HH:MM`（核心写所有「几点」那一处）",
     homes: ["src/backend/common/time.rs::hm"],
-    // 认可的双读口（同 J24 / J28）：提示是界面自己出的事，不经后端、没有 `…Text` 可照抄，而看的人就在这一台 ⇒ 按这一台的钟本来就对；
-    //   排法与核心那一处对同一份金样。时 · 分由平台按这一台的时区给（`getHours` · `getMinutes` 各恰好一处，在 `clock-face.ts::clockFaceHere`）。
-    status: "mirror",
+    // 界面那一个读口（状态栏提示是几点出的，`clock-face.ts`）随「状态栏提示不写几点」删了：界面里没有钟面换算。
+    status: "zero",
     defs: ["clockFace", "clockFaceHere"],
     needles: [
-      { text: "getHours", count: 1 },
-      { text: "getMinutes", count: 1 },
+      { text: "getHours", count: 0 },
+      { text: "getMinutes", count: 0 },
     ],
-    parity: {
-      via: "tests/__fixtures__/clock-face.golden.json",
-      tests: ["tests/backend/common/time_tests.rs", "tests/copy/clock-face.vitest.ts"],
-    },
-    why: "「时刻按看的人这台的钟」：界面自己出的事生在看的那一台，钟面写法与核心同一套",
   },
   J31: {
     what: "大小（字节 ⇒ 给人看的一格：B · KB · MB · GB · TB，一位小数）",
     homes: ["copy-core::size_text"],
-    // 认可的双读口（同 J28）：后端 · 壳 · 文件窗口写大小都调核心这一处；界面那一个读口 `format.ts::sizeText` 写回包里只有字节数的那几格
-    //   （日志 · 自有文件 · 诊断 · 卡片里一段正文多长），同一份金样；界面 · 文件窗口 · 卡片不各写一份。
-    status: "mirror",
+    // 后端 · 壳 · 文件窗口写大小都调核心这一处；记录的工具结果块带写好的 `sizeText`，界面照抄（`format.ts::sizeText` 删了）。
+    status: "zero",
     defs: ["sizeText"],
     gone: ["formatBytes"],
     needles: [],
-    parity: {
-      via: "tests/__fixtures__/size-text.golden.json",
-      tests: ["tests/common/copy-core/lib_tests.rs", "tests/copy/size-text.vitest.ts"],
-    },
-    why: "「实现只一处」：同一种值只许一种样子",
   },
   J32: {
     what: "计数（几个字 · 几条 ⇒ 给人看的一格：每三位一个逗号）",
     homes: ["copy-core::count_text"],
-    // 认可的双读口（同 J31）：成品里的计数核心写好（压缩摘要的字数）；界面那一个读口 `format.ts::countText` 只给现数现写的那几处
-    //   （终端页输入框的字数），同一份金样；不各用 `toLocaleString`（不指定语言与 en-US 结果不同）。
-    status: "mirror",
+    // 成品里的计数核心写好（压缩摘要的字数）；界面那一个读口（`format.ts::countText`，终端输入框现数）随「输入框不写字数」删了。
+    status: "zero",
     defs: ["countText"],
-    gone: [],
     needles: [],
-    parity: {
-      via: "tests/__fixtures__/count-text.golden.json",
-      tests: ["tests/common/copy-core/lib_tests.rs", "tests/copy/count-text.vitest.ts"],
-    },
-    why: "「实现只一处」：同一种值只许一种样子",
   },
   J33: {
     what: "这台本来那一份登录（不设配置目录）的号名 / 路由段是哪个",
@@ -625,16 +607,21 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J36: {
     what: "这一趟问的是不是本机（本机 ＝ 具名的 `\"<local>\"`，不是「没说」）",
     // 类型的家从 `comms-inward` 挪进契约 crate `cmd-wire`（`Machine`，第 8 批）；界面那一侧是 `ipc/origin.ts` 的两个判法。
-    //   哨兵值：界面的 `LOCAL` 出自生成物 `generated/judgment-rules.ts`，与 `cmd_wire::LOCAL` 逐字节相等由 `origin_tests.rs` 钉。
+    //   哨兵值：界面的 `LOCAL` 出自生成物 `generated/judgment-rules.ts`，与 `cmd_wire::LOCAL` 逐字节相等由 `origin_tests.rs` 钉；
+    //   两个判法只是拿它比一下的薄壳（`origin === LOCAL`），读生成物的只有 `origin.ts` 一份。
     homes: ["cmd-wire::LOCAL", "cmd-wire::is_local", "cmd-wire::is_remote"],
-    status: "mirror",
+    status: "generated",
     defs: ["isLocalOrigin", "isRemoteOrigin"],
     needles: [],
+    gen: {
+      file: "src/frontend/ui/generated/judgment-rules.ts",
+      exports: ["LOCAL"],
+      importers: ["src/frontend/ui/ipc/origin.ts"],
+    },
     parity: {
       via: "src/frontend/ui/generated/judgment-rules.ts",
       tests: ["tests/comms/inward/origin_tests.rs"],
     },
-    why: "INVARIANTS §40「本地 ＝ 不走 ssh 的远端」：两侧都要在读进来之后分本机与远端；线上同一个串，判法各在本侧唯一一处",
   },
   J37: {
     what: "每台机器此刻是什么样 · 名字旁那个词 · 问题行那一句 · 给哪几颗修法",
@@ -838,8 +825,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     BARE_ACCOUNT: "J33",
     AUTH_KIND_API_KEY: NONE,
     auth_kind_from_manifest: "J1",
-    AUTH_KIND_PARITY_CASES: NONE,
-    auth_kind_parity_manifest: NONE,
     AUTH_KIND_SUBSCRIPTION: NONE,
     auth_kind_with_apikey_table: NONE,
     auth_ready: "J1",
@@ -869,6 +854,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     put: NONE,
     stage: "J46",
     pull: NONE,
+    pull_capped: NONE,
   },
   // 一组一条命令的全过程与它的字：后端 · 文件窗口 · 手机嵌的核心照它；界面（TS）不做文件的一组，没有孪生。
   "batch-core": {
@@ -929,6 +915,10 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     pick: NONE,
   },
   "cmd-wire": {
+    // 两个语义位名（显示态 `slot` · 窗口键 · 策略设置与叫醒的 `w`）只住 `cmd_wire::quota`；后端生产段零字面量由 `quota_rows_tests::slot_names_live_only_in_cmd_wire` 钉。
+    //   TS 没有同名常量；界面拿 `"5h"` 当键去取后端成品的那几处（`rot-board.ts` · `settings/accounts-section.ts`）随「界面照成品画」那几块收。
+    SLOT_5H: NONE,
+    SLOT_7D: NONE,
     LOCAL: "J36",
     KEYS_NOT_NAMES: "J39",
     // 失败信封的唯一一份（`failed.rs`）：`Failed` 的造法 · 取码兜底 · 拒绝那一形；后端 · 壳 · 文件窗口 · 手机核心都用它，界面读生成的 `Failed` 照摆，TS 侧没有孪生。
@@ -957,7 +947,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     bare: NONE,
     is_local: "J36",
     is_remote: "J36",
-    // 块的三个构造函数（`record.rs`）：字节数跟着正文 / 内容算，界面照 `bytes` 写大小，TS 侧没有孪生。
+    // 块的三个构造函数（`record.rs`）：字节数跟着正文 / 内容算、大小那一格由后端照字节写好（`sizeText`），界面照抄，TS 侧没有孪生。
     text: NONE,
     prose: NONE,
     tool_result: NONE,
@@ -1060,6 +1050,12 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     unread_body: NONE,
     of: NONE,
     mend_records: NONE,
+    // 人说的话怎么切段 · 派活那段 · 命令输出先露几行 · 接在一串后面的重试画不画（同在 `face-core/src/record.rs`）：
+    //   后端适配层写进记录、手机核心同一份；界面照记录上的 `parts` · `*_fold` · 画法摆，TS 侧没有孪生。
+    said_parts: NONE,
+    brief_parts: NONE,
+    output_fold: NONE,
+    retry_draw: NONE,
     // 几台的搜索结果合一份、写结果头那一句（`face-core/src/search.rs`；本机后端扇出完 · 手机核心逐台问完都调它）：界面只照抄合好的那一份。
     merge: "J15",
     // 最近优先那一条排法 · 几台并一列（`face-core/src/column.rs`；后端每台花片段预算 · 合搜索结果 · 历史页 · 手机会话屏同一份）：
@@ -1172,6 +1168,10 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     with_data: NONE,
     with_raw: NONE,
     wrap: NONE,
+    // 契约错那一串（那一句 ＋ 隔一个控制字符的英文诊断）的拼 · 拆：后端 · 拨号核心写、失败信封那一处拆；界面只收拆好的那一句与原话，TS 侧没有孪生。
+    malformed_said: NONE,
+    parts: NONE,
+    joined: NONE,
     many: "J26",
     one: "J27",
     // 读回别处写好的一份详情（后端读装后端那一步的详情）；界面不取。
@@ -1288,7 +1288,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     plan_open_args: NONE,
     plan_open_target: NONE,
     // 窗口的样子：令牌解成数只在这里（主界面那一侧只按名单读计算值、原样交过来，不解析；
-    //   名单两边相等由 `theme_tests::the_token_list_is_the_same_on_both_sides` 钉）。
+    //   名单只住契约 `THEME_TOKENS`，界面读生成物 `generated/filewin-theme-tokens.ts`（`theme_tokens_export.rs` 写））。
     THEME_TOKENS: NONE,
     from_tokens: NONE,
     parse_css_color: NONE,
@@ -1355,6 +1355,10 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     SYNCHRONIZE: NONE,
     open: NONE,
   },
+  // 相对路径拆成普通段的词法判定（本机写面 · 远端写围栏 · 解压条目同一道）：后端 · 拨号核心同一份；TS 侧没有孪生。
+  "plain-path-core": {
+    plain_segments: NONE,
+  },
   // 平台原语（目录锁 · 只给本人的目录 · 自家状态的原子写 · /proc stat · 进程表 · CREATE_NO_WINDOW）：后端 · 壳 · host-core 同一份；TS 侧没有孪生。
   "platform-core": {
     create_new_private: NONE,
@@ -1392,6 +1396,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     as_len: NONE,
   },
   "relay-route-core": {
+    // 能当一个号的 id（过段闸 ＋ 不是「没说是哪个号」那一段 `_`）：轮换 · quota-probe · quota-warm 同问这一处；界面不判号 id，没有孪生。
+    account_ok: NONE,
+    UNDECLARED_ACCOUNT_SEGMENT: NONE,
     // 落盘文件的声明表：每份一行（落点 · 状态还是缓存 · 格式与版本 · 读上限），后端读写口按它读写；TS 侧没有孪生。
     ACCOUNT_CREDS_FILE: NONE,
     ANSWER_PLUGIN_FILE: NONE,
@@ -1798,6 +1805,14 @@ describe("DUP1 判定只有一个家", () => {
       bad,
       "zero 行出红 ⇒ TS 里又长出了那条判定的一份；open 行出红 ⇒ 孪生已经没了（翻成 zero）或多了一份。",
     ).toEqual([]);
+  });
+
+  it("③b mirror 行 ＝ 规矩那条例外登的名单（两向相等）", () => {
+    const mirrors = (Object.entries(JUDGMENTS) as [JudgmentId, Judgment][])
+      .filter(([, j]) => j.status === "mirror")
+      .map(([id]) => id)
+      .sort();
+    expect(mirrors, "多出来的 ⇒ 不在例外里的孪生（删掉它，或翻 zero / generated）；少了的 ⇒ 名单跟着减").toEqual([...MIRROR_EXCEPTIONS].sort());
   });
 
   it("⑤ generated 行：生成物真的导出那几个名字 · 生产 TS 里读它们的文件 == 登记（两向）", () => {

@@ -101,7 +101,7 @@
 
 每一条起会话路径交给终端的都只是一行 `ccm [交给 agent 的…] -- [ccm 自己的…]`：那一行只住后端 `src/backend/control/launch_render/ccm_invocation.rs`（界面经帧命令 `session-open` 要它）。环境、中转地址、身份标记由那台机器上的 `ccm`（`src/backend/control/ccm/`）在最终 exec 那一处定，别在别处渲。外层容器（建 tmux 会话 / 键进已有 pane）只包这一行。前端零命令串字面量（`eslint.config.js` 的 `singleDoors`：`src/` 生产 TS 的串里零 `tmux <动词> -` / `&&`）；后端生产段除 `ccm` 自己的最终 exec 外零处渲直接起 agent 的命令（`ccm_tests.rs::nothing_but_ccm_renders_a_command_that_starts_an_agent`）。
 
-1. 改后端那一份渲染（缺的选项先在 `ccm` 里加：`host/ccm_line/argv.rs` 那张表）；
+1. 改后端那一份渲染（缺的选项先在 `ccm` 里加：`wire/ccm_line/argv.rs` 那张表）；
 2. 改那一行的字节表（手写期望）：`tests/backend/control/launch_render/ccm_invocation_support.rs::cells` —— `every_launch_renders_byte_for_byte` 逐字节比，`every_rendered_ccm_line_is_accepted_by_the_ccm_argv` 断每一行都是 `ccm` 自己认的一行；
 3. 回归：后端 `cargo test -p backend-control --lib launch_render ccm`（在 `src/backend`）＋ 改了 `ccm` 的行为就跑 `tests/e2e/resume-suite.sh` · `tmux-target-acceptance.sh`（单跑前缀 `bash tests/scripts/session-scrub.sh`，见 [DEVELOPMENT.md](DEVELOPMENT.md) §Rust；这几套用真后端二进制当 `ccm`，先 `cargo build`）。
 

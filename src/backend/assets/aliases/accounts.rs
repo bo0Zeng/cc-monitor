@@ -1,11 +1,9 @@
-//! **账号的三条别名**（纯）：每个号 `<名>cc`（`-- --account <号>`）· `<名>cct`（再加 `--ccm-tmux`）· `<名>cch`（再加 `--hosted`）。
-//! 名字怎么起是账号域的规则（`accounts::manage::aliases::alias_name`）；按别名清单算加 / 删 / 认形住这里（它们读的是别名清单那套模型）。
-//!
-//! 只在**建号、删号那一刻**动用户那份配置文件：建号加这三段（基于 `cc` / `cct` / `cch`、只写自己的号；名字被占就跳过、说出来）；
-//! 删号删掉合下来用这个号的全部段（不论名字）。平时不回补 —— 改了名、删掉其中一条，都保持用户改后的样子。账号表不另存别名名字。
-//! 「账号那一形」（[`form_of`]）也住这里：读回口据它给每条归组、说哪个号缺哪一条。
+//! **内置的起法别名**（纯）：三个入口 `cc` · `cct`（再加 `--ccm-tmux`）· `cch`（再加 `--hosted`）与每个号的三条
+//! `<名>cc` · `<名>cct` · `<名>cch`（再加 `--account <号>`），照这台的账号表现算（[`with_builtins`]），**不写进用户的配置文件**。
+//! 用户那份只放自己改过的段，同名即盖过内置；建号 / 删号不动用户的文件，只照合并后的清单重生成别名文件与链接（`aliases::regenerate_via`）。
+//! 名字怎么起是账号域的规则（`accounts::manage::aliases::alias_name`）。「账号那一形」（[`form_of`]）也住这里：读回口据它给每条归组。
 
-use super::profile::{self, Book, Change, Profile, ProfileEdit};
+use super::profile::{self, Book, Profile, Setting};
 use crate::accounts::manage::aliases::{alias_name, Form};
 use crate::ccm_line::argv::{flag, Parsed};
 
@@ -46,104 +44,113 @@ pub(crate) fn form_of(book: &Book, p: &Profile) -> Option<(String, Form)> {
     }
 }
 
-/// 这一段合下来用的是不是这个号（不论名字、不论号是自己写的还是基于来的）。
-fn uses(book: &Book, p: &Profile, account: &str) -> bool {
-    matches!(
-        profile::resolve(book, &p.name, &[]).map(|r| r.parsed),
-        Ok(Parsed::Opts(o)) if o.account == account
-    )
-}
-
-/// 建号 / 删号那一刻要对配置文件做的改动，与说给人听的那几个名字。
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct Planned {
-    pub changes: Vec<Change>,
-    /// 这一趟加进去的名字。
-    pub added: Vec<String>,
-    /// 名字被别的段占着、没加的那几个名字。
-    pub skipped: Vec<String>,
-    /// 这一趟删掉的名字。
-    pub removed: Vec<String>,
-}
-
-/// 建号：给 `account` 加上 `<名>cc` · `<名>cct`（`tmux` 为真时）· `<名>cch`，各自基于 wrapper 那三段（`cc` / `cct` / `cch`，在的话）、只写自己的号；
-/// 那一形的那一段不在 ⇒ 基于 `cc`（在的话）、自己写上那一形的词。
-/// 已有同一形的（不论名字）⇒ 不再加；名字被占 ⇒ 跳过、记下。`same_name` 是那种 shell 认不认两个名字是同一个。
-pub fn plan_add(
-    book: &Book,
-    account: &str,
-    tmux: bool,
-    same_name: &dyn Fn(&str, &str) -> bool,
-) -> Planned {
-    let mut out = Planned::default();
-    let wrapper =
-        crate::agents::sole_kind(|a| a.accounts.is_some()).and_then(crate::agents::wrapper_alias);
-    let has = |n: &str| book.find(n).is_some();
-    for form in Form::IN_ORDER
+/// 这台起得了的几形（没有 tmux 的不带 tmux 那一形）。
+fn forms(tmux: bool) -> impl Iterator<Item = Form> {
+    Form::IN_ORDER
         .into_iter()
-        .filter(|f| tmux || *f != Form::Tmux)
-    {
-        let Some(name) = alias_name(account, form) else {
-            continue;
-        };
-        if book
-            .profiles
-            .iter()
-            .any(|p| form_of(book, p).is_some_and(|(a, f)| a == account && f == form))
-        {
-            continue;
+        .filter(move |f| tmux || *f != Form::Tmux)
+}
+
+/// 一形的入口叫什么：默认那一家的 wrapper 名（`agents::wrapper_alias`，Claude：`cc`）＋ 那一形的后缀；那一家没有 wrapper ⇒ `None`。
+fn entry(form: Form) -> Option<String> {
+    crate::agents::wrapper_alias(crate::agents::default_kind())
+        .map(|w| format!("{w}{}", form.suffix()))
+}
+
+/// 一段内置的：`words` 是那几项（一项一组命令行词）。
+fn built(name: String, from: Option<String>, words: Vec<Vec<String>>) -> Profile {
+    Profile {
+        name,
+        line: 0,
+        from,
+        from_line: 0,
+        agent: Vec::new(),
+        items: words
+            .into_iter()
+            .map(|g| Setting {
+                key: g[0].trim_start_matches('-').to_string(),
+                groups: vec![g],
+                line: 0,
+            })
+            .collect(),
+        builtin: true,
+    }
+}
+
+/// 内置那几段：三个入口（直路那一个不基于谁，另两形基于它、自己写上那一形的词）；再每个号三条，各基于同一形的入口、只写自己的号
+/// （入口没有 ⇒ 不基于谁、自己写上那一形的词）。
+fn builtins(accounts: &[String], tmux: bool) -> Vec<Profile> {
+    let word = |form: Form| word_of(form).map(|w| vec![w.to_string()]);
+    let mut out = Vec::new();
+    for form in forms(tmux) {
+        let Some(name) = entry(form) else { continue };
+        let from = (form != Form::Plain).then(|| entry(Form::Plain)).flatten();
+        out.push(built(name, from, word(form).into_iter().collect()));
+    }
+    for account in accounts {
+        for form in forms(tmux) {
+            let Some(name) = alias_name(account, form) else {
+                continue;
+            };
+            let from = entry(form);
+            let mut words = vec![vec![flag::ACCOUNT.to_string(), account.clone()]];
+            if from.is_none() {
+                words.extend(word(form));
+            }
+            out.push(built(name, from, words));
         }
-        if book.profiles.iter().any(|p| same_name(&p.name, &name))
-            || out.added.iter().any(|a| same_name(a, &name))
-        {
-            out.skipped.push(name);
-            continue;
-        }
-        let mut ccm = vec![flag::ACCOUNT.to_string(), account.to_string()];
-        let own_base = wrapper
-            .map(|w| format!("{w}{}", form.suffix()))
-            .filter(|b| has(b));
-        let from = own_base.or_else(|| {
-            ccm.extend(word_of(form).map(str::to_string));
-            wrapper.filter(|w| has(w)).map(str::to_string)
-        });
-        out.changes.push(Change::Set(ProfileEdit {
-            name: name.clone(),
-            from,
-            agent: Vec::new(),
-            ccm,
-        }));
-        out.added.push(name);
     }
     out
 }
 
-/// 删号：删掉合下来用这个号的全部段（不论名字）；剩下的段里基于被删那一段的，改成基于它基于的那一段（往上找到第一个没删的）。
-pub fn plan_remove(book: &Book, account: &str) -> Planned {
-    let mut out = Planned::default();
-    let gone: Vec<&str> = book
-        .profiles
-        .iter()
-        .filter(|p| uses(book, p, account))
-        .map(|p| p.name.as_str())
-        .collect();
-    let up = |mut f: Option<String>| {
-        while let Some(n) = f.as_deref().filter(|n| gone.contains(n)) {
-            f = book.find(n).and_then(|p| p.from.clone());
-        }
-        f
+/// **合并后的清单**：用户那份 ＋ 内置那几段（照这台的账号表 `accounts` 现算）。用户文件里写了同名的一段（写错了的也算）⇒
+/// 用用户那段、内置那条不出。先后：内置那几个位子在前（三个入口，再按账号表的先后每号三条；被盖着的那一位放用户那段），其余用户的照文件里的先后。
+/// 整份文件写坏了（TOML 解不开）⇒ 原样交回（一段都不认，内置的也不出：哪一段盖着内置此刻说不清）。
+/// 「同名」照那种 shell 认名字的规矩（`same`；PowerShell 不分大小写）。
+/// 读清单的每一处都经 `aliases::book_in`，不另合。
+pub fn with_builtins(
+    user: Book,
+    accounts: &[String],
+    tmux: bool,
+    same: &dyn Fn(&str, &str) -> bool,
+) -> Book {
+    if user.file_problem().is_some() {
+        return user;
+    }
+    let own = |n: &str| user.profiles.iter().find(|p| same(&p.name, n));
+    let broken = |n: &str| {
+        user.problems
+            .iter()
+            .any(|p| p.profile.as_deref().is_some_and(|x| same(x, n)))
     };
-    for p in &book.profiles {
-        if gone.contains(&p.name.as_str()) {
-            out.changes.push(Change::Remove(p.name.clone()));
-            out.removed.push(p.name.clone());
-        } else if p.from.as_deref().is_some_and(|f| gone.contains(&f)) {
-            let mut e = profile::edit_of(p);
-            e.from = up(p.from.clone());
-            out.changes.push(Change::Set(e));
+    let builtin = builtins(accounts, tmux);
+    let mut profiles: Vec<Profile> = Vec::new();
+    for b in &builtin {
+        match own(&b.name) {
+            Some(p) => profiles.push(p.clone()),
+            None if !broken(&b.name) => {
+                // 基于的那一位被用户那段（名字写法可不同，如 PowerShell 上的 `CC`）盖着 ⇒ 照用户那段的名字基于它。
+                let mut b = b.clone();
+                if let Some(f) = b.from.as_deref().and_then(|f| own(f)) {
+                    b.from = Some(f.name.clone());
+                }
+                profiles.push(b);
+            }
+            None => {}
         }
     }
-    out
+    profiles.extend(
+        user.profiles
+            .iter()
+            .filter(|p| !builtin.iter().any(|b| same(&b.name, &p.name)))
+            .cloned(),
+    );
+    Book { profiles, ..user }
+}
+
+/// 一个号那几条内置的名字（照内置的先后）：建号 / 删号那一刻说「多了 / 少了哪几条」用。
+pub fn names_of(account: &str, tmux: bool) -> Vec<String> {
+    forms(tmux).filter_map(|f| alias_name(account, f)).collect()
 }
 
 #[cfg(test)]

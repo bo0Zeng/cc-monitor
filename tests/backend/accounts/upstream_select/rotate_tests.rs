@@ -146,7 +146,7 @@ fn prep(
     row: &dyn Fn(&str) -> Option<bool>,
     to: &str,
 ) -> Result<Go, Unready> {
-    let lib = hop.library();
+    let lib = hop.book();
     hop.prepare(
         own,
         &Turn {
@@ -439,7 +439,7 @@ fn account_zero_is_not_a_rotation_account() {
     assert_eq!(
         hop.fact_one(
             AGENT,
-            &hop.library(),
+            &hop.book(),
             acct_core::BARE_ACCOUNT,
             &no_row,
             now(),

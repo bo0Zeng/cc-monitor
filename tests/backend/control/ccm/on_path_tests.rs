@@ -1,6 +1,7 @@
 //! 终端里敲 `ccm` 走到哪一份：四形各判一次（同名文件逐个放在沙箱目录里），那句话按形各一句、互不相同。
 
 use super::*;
+use crate::platform::shell::{reach, Reach};
 use std::path::PathBuf;
 
 fn file(p: &std::path::Path) -> bool {

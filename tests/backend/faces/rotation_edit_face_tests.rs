@@ -263,7 +263,7 @@ fn a_new_strategy_is_the_editor_one_with_every_account() {
     assert!(setup::editor::made_by(&f));
     let ids: Vec<Value> = ctx
         .hop
-        .library()
+        .book()
         .accounts
         .iter()
         .filter_map(acct_core::ManifestAccount::route_id)

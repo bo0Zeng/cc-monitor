@@ -335,3 +335,8 @@ mod tests;
 #[cfg(test)]
 #[path = "../../../../tests/frontend/filewin/theme_testing.rs"]
 pub(crate) mod testing;
+
+// 契约那份令牌名单生成进 `src/frontend/ui/generated/filewin-theme-tokens.ts`（界面开窗时读那一份）。
+#[cfg(test)]
+#[path = "../../../../tests/frontend/filewin/theme_tokens_export.rs"]
+mod theme_tokens_export;

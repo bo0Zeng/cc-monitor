@@ -204,17 +204,17 @@ impl Upstreams {
 /// `tap`：tee 的落点（生产 ＝ 进程级那一个 tap 口 `crate::stream::tap::port`，宿主交进来）—— 本函数只递，上游选择不碰它交出去的任何一件事
 /// （② 不碰响应体）。
 ///
-/// `library`：这台的号表怎么读（宿主交进来 —— 上游选择不认识账号库管理）；换号要它找各号的配置目录。
+/// `book`：这台的号表怎么读（宿主交进来 —— 上游选择不认识账号库管理）；换号要它找各号的配置目录。
 /// `own`：写自家状态的句柄（启动时造的那一份）；额度账 · 轮换 · 血缘 · 中转钥匙的写都经它。
 pub fn host_relay(
-    library: rotate::BookAt,
+    book: rotate::BookAt,
     adoptions: crate::accounts::quota::rules::AdoptionsAt,
     tap: std::sync::Arc<dyn crate::relay::TapPort>,
     own: crate::platform::fs::Own,
 ) -> String {
     crate::relay::host(
         &|k| std::env::var(k).ok(),
-        &Rotating(library, own.clone(), adoptions),
+        &Rotating(book, own.clone(), adoptions),
         tap,
         &own,
         // 中转开上游那一口按来处取那条会话的出网描述（`ccm` 起会话时留的那一份）。
@@ -241,7 +241,7 @@ impl Startup for Rotating {
         Upstreams::from_env(get).map(|upstreams| {
             Box::new(Booted {
                 upstreams,
-                library: std::sync::Arc::clone(&self.0),
+                book: std::sync::Arc::clone(&self.0),
                 own: self.1.clone(),
                 adoptions: std::sync::Arc::clone(&self.2),
             }) as Box<dyn Ready>
@@ -252,7 +252,7 @@ impl Startup for Rotating {
 /// 起监听之前验过的那一份：默认上游 ＋（生产）账号库怎么读。
 pub(crate) struct Booted {
     upstreams: Upstreams,
-    library: rotate::BookAt,
+    book: rotate::BookAt,
     own: crate::platform::fs::Own,
     adoptions: crate::accounts::quota::rules::AdoptionsAt,
 }
@@ -268,7 +268,7 @@ impl Ready for Booted {
     ) -> std::sync::Arc<dyn Destinations> {
         let Booted {
             upstreams,
-            library,
+            book,
             own,
             adoptions,
         } = *self;
@@ -294,7 +294,7 @@ impl Ready for Booted {
                 &adoptions,
                 quota,
                 home,
-                library,
+                book,
                 std::sync::Arc::new(crate::history::live_table::live_here),
                 None,
             ))
@@ -403,7 +403,8 @@ impl Accounts {
     /// 而请求体里的账号身份恰好对上账号库里一个号（[`rotate::Hop::recognize`]）⇒ 当作地址里写的就是那个号 ——
     /// 轮换的起始号、额度账记在谁名下、换号记录都跟着它。认不出 ⇒ 原样（`_`）。只认 `/t/`（`_` 只出现在那一种地址里）。
     fn recognized(&self, mode: Mode, key: &RouteKey, ask: &Ask<'_>) -> RouteKey {
-        let seen = (mode == Mode::Passthrough && key.seg2 == endpoint::UNDECLARED_ACCOUNT_SEGMENT)
+        let seen = (mode == Mode::Passthrough
+            && key.seg2 == relay_route_core::UNDECLARED_ACCOUNT_SEGMENT)
             .then(|| self.hop.as_ref()?.recognize(&key.seg1, ask.body))
             .flatten();
         match seen {

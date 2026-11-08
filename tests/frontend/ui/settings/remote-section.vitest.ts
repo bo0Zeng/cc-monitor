@@ -704,7 +704,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     const p = fakePages();
     const sec = await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2"), mkH("c", "3.3.3.3")], p.host);
     const count = () => sec.element.querySelector<HTMLElement>(".remote-machine-count")!.textContent;
-    const fleet = (count: string): FleetLines => ({ line: "核心·首屏", hint: "核心·下一行", count });
+    const fleet = (count: string): FleetLines => ({ line: "核心·首屏", hint: "核心·下一行", count, allListed: false });
     const ms = (over: Partial<MachineState>): MachineState => ({
       name: "m",
       state: "up",

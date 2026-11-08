@@ -14,8 +14,8 @@
 //! - [`cc_bus_scope`]：cc-bus 的范围（组）：同组才送得到，名单读不到就拒。
 //! - [`deploy_plan`]：给那台装 / 升级后端（帧命令 `deploy-install`；编排住 `deploy` crate）。
 //!
-//! 独立的包 `backend-control`：只引 `assets` · `accounts` · `agents` · `dial` · `history` · `host`（含 `ccm_line`）· `stderr_log` ·
-//! `wire` · `common` · `platform`，不引观测面，引了上层就编不过。上层只够得到这里的 `pub` 项。
+//! 独立的包 `backend-control`：只引 `assets` · `accounts` · `agents` · `dial` · `history` · `host` · `stderr_log` ·
+//! `wire`（含 `ccm_line`）· `common` · `platform`，不引观测面，引了上层就编不过。上层只够得到这里的 `pub` 项。
 //! 通用的安全读文件住 `platform/fs/ro.rs`，不靠给反向边开例外。
 
 // 测试段可以直接问系统钟（量具、夹具的时刻）；生产段只许纯工具那一层的 `time::now`（`clippy.toml`）。
@@ -42,10 +42,10 @@ use backend_common as common;
 use backend_dial as dial;
 use backend_history as history;
 use backend_host as host;
-use backend_host::ccm_line;
 use backend_platform as platform;
 use backend_stderr_log as stderr_log;
 use backend_wire as wire;
+use backend_wire::ccm_line;
 
 // 测试档的家一开始就是沙箱（`src/common/test-home`）：这一行让链接器把它的启动段带进本包的测试二进制。
 #[cfg(test)]

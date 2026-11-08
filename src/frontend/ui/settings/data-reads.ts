@@ -57,13 +57,13 @@ export async function recallDataReport(origin: Machine): Promise<{ report: DataR
 }
 
 /**
- * 问本机后端：它自己问到这几台的 `data-report`（本机那一台带 monitor 那几条事实，别的台经它的连接问那台的常驻）、件数合成一份；
+ * 问本机后端：它照自己的机器表问到各台的 `data-report`（本机那一台带 monitor 那几条事实，别的台经它的连接问那台的常驻）、件数合成一份；
  * 每台读成的那一份记成那台「上次的」。没问到的那台带那一句（`said`）。本机后端问不到 ⇒ 抛一句人话。
  * 期限：各台同时问，一台一次 stat 一批、读几份小文件 ＋ 回程，30 秒。
  */
-export async function readChores(machines: Machine[]): Promise<ChoresMerged> {
-  const client = machines.some(isLocalOrigin) ? ((await commands.footprint_client_facts()) as unknown as FootprintClient) : null;
-  const got = await callTyped(LOCAL, "chores-merge", { machines, client }, budgetWithin(DATA_BUDGET_MS));
+export async function readChores(): Promise<ChoresMerged> {
+  const client = (await commands.footprint_client_facts()) as unknown as FootprintClient;
+  const got = await callTyped(LOCAL, "chores-merge", { client }, budgetWithin(DATA_BUDGET_MS));
   for (const m of got.machines) if (m.report) void rememberSeen(m.origin, "data", m.report);
   return got;
 }

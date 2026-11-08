@@ -88,10 +88,12 @@ fn here(answers: &[(&'static str, Value)]) -> (Arc<FakeHere>, Arc<dyn Here>) {
 }
 
 fn table_with(origin: &str) -> Table {
-    Table::of(vec![crate::dial::machine::loose(
-        &json!({"label": origin, "host": "h", "port": 22, "user": "u", "keyPath": "/k"}),
-    )
-    .unwrap()])
+    Table::of(vec![
+        <crate::dial::Host as serde::Deserialize>::deserialize(
+            &json!({"label": origin, "host": "h", "port": 22, "user": "u", "keyPath": "/k"}),
+        )
+        .unwrap(),
+    ])
 }
 
 fn remote(outs: &[Value]) -> FakeRemote {

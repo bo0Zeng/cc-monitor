@@ -1,4 +1,4 @@
-# 帧面的协议零件：帧 · typed 命令 · 登记形状 · 复制详情 · 主题表 · 监听判定 · 收场闸。只引 agents · relay · 纯工具 · 平台四层。
+# 帧面的协议零件：帧 · typed 命令 · 登记形状 · 复制详情 · 主题表 · 监听判定 · 收场闸 · ccm 这一行的词。只引 agents · 纯工具 · 平台三层。
 [package]
 name = "backend-wire"
 version = "0.0.0"
@@ -19,7 +19,6 @@ ts = ["dep:ts-rs", "cmd-wire/ts"]
 
 [dependencies]
 backend-agents = { path = "../agents" }
-backend-relay = { path = "../relay" }
 backend-common = { path = "../common" }
 backend-platform = { path = "../platform" }
 # 帧的线上形（客户端按同一份解）。
@@ -32,6 +31,9 @@ deploy-contract = { path = "../../common/deploy-contract" }
 relay-route-core = { path = "../../common/relay-route-core" }
 # 有上限读（读上限 `Cap` · 同步整读）的唯一一份；零依赖。
 cap-core = { path = "../../common/cap-core" }
+# ccm 这一行：`--account-dir` 那一格认不认（账号目录的形）· 拼回那一行时的 shell 引号。
+acct-core = { path = "../../common/acct-core" }
+shell-quote-core = { path = "../../common/shell-quote-core" }
 serde.workspace = true
 serde_json.workspace = true
 # attach 之后那条流按帧 full flush 的压缩（客户端要了 deflate 才压）。

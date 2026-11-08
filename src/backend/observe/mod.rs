@@ -5,7 +5,7 @@
 //! 读一份记录分四层，只许往下引：读行 [`lines`] → 认行 [`recognize`] → 扫描图与骨架（[`record_scan`] · [`skeleton`]）→ 查询 [`query`]；
 //! 跟读（[`watcher`]）在查询之上。方向由本包的判据 `layers_guard` 钉住。
 //!
-//! 独立的包 `backend-observe`：只引 `assets` · `accounts` · `agents` · `history` · `host` · `wire` · `common` · `platform`，
+//! 独立的包 `backend-observe`：只引 `accounts` · `agents` · `history` · `host` · `wire` · `common` · `platform`，
 //! 引了上层就编不过。上层只够得到这里的 `pub` 项。
 //!
 //! # 与控制面的关系：互不引用
@@ -28,12 +28,11 @@
     )
 )]
 
-// 包里照旧写 `crate::observe::…` · `crate::assets::…` · `crate::accounts::…` · `crate::agents::…` · `crate::history::…` ·
+// 包里照旧写 `crate::observe::…` · `crate::accounts::…` · `crate::agents::…` · `crate::history::…` ·
 // `crate::host::…` · `crate::wire::…` · `crate::common::…` · `crate::platform::…`。
 extern crate self as observe;
 use backend_accounts as accounts;
 use backend_agents as agents;
-use backend_assets as assets;
 use backend_common as common;
 use backend_history as history;
 use backend_host as host;
@@ -50,8 +49,6 @@ static TEST_HOME: fn() = test_home::linked;
 use test_meters::{alloc_probe, golden};
 
 pub mod accounts_query;
-// cc-bus 钩子诊断（`hooks-diag` 帧命令的本体，只读；帧面宿主在顶层 `feature_face`）。
-pub mod cc_bus_hooks;
 // 续算会话事实的那份累加器表（`history-facts` 的续点令牌）。
 // 读行：一行行读到最后一个完整行 · 算不算一行 · 一行怎么解析（读记录的各处都经它）。
 pub mod lines;

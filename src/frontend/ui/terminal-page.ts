@@ -18,7 +18,6 @@
  *   Esc 只把焦点还给消息流（不清字、不收抽屉）。没送的字按会话各记一份，切回来还在。常用键一律往终端里送。
  *   说一句（投进会话的输入队 · 附件 · 待发 · 队列名单）只在消息流底下那个输入框（`composer.ts`），这里不兼做。
  */
-import { countText } from "./format";
 import type { Tab } from "./tab-model";
 import { copyText } from "./copy-table";
 import { machineName } from "./control-said";
@@ -102,8 +101,6 @@ export interface TerminalPageHost {
 export const RECAPTURE_AFTER_MS = [500, 1500, 3000] as const;
 /** 「已送达」停留多久。 */
 const DELIVERED_MS = 2000;
-/** 超过这么多字，送出键写出字数。 */
-const LONG_TEXT = 2000;
 /** 输入框最多长到几行（再多框内滚）。 */
 const MAX_INPUT_ROWS = 6;
 
@@ -606,8 +603,6 @@ export class TerminalPage {
   private onBoxInput(): void {
     const lines = this.box.value.split("\n").length;
     this.box.rows = Math.min(MAX_INPUT_ROWS, Math.max(1, lines));
-    const n = [...this.box.value].length;
-    setButtonLabel(this.sendBtn, n > LONG_TEXT ? copyText("terminal.input.sendLong", { n: countText(n) }) : copyText("terminal.input.send"));
   }
 
   /** 输入框里按 Esc：焦点还给消息流（不清字、不收抽屉）。是这一下就回 `true`。 */

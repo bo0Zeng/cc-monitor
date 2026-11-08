@@ -34,12 +34,6 @@ class SentRequestsTest {
             AccountsSetDefault.COMMAND to listOf(AccountsSetDefault.args("a")),
             Bookmarks.READ to listOf(emptyMap()),
             Bookmarks.EDIT to listOf(Bookmarks.edit("toggle", listOf("/w")), Bookmarks.edit("remove", listOf("/w")), Bookmarks.edit("add", listOf("/w", "/v"))),
-            FilesCommitUpload.COMMAND to
-                listOf(
-                    FilesCommitUpload.args(dir, "up.bin", Staged("k", 3L, 9L, SHA)),
-                    FilesCommitUpload.args(dir, "up.bin", Staged("k", 3L, 9L, SHA), "overwrite"),
-                    FilesCommitUpload.args(dir, "up.bin", Staged("k", 3L, 9L, SHA), "keep_both"),
-                ),
             FilesCreate.COMMAND to listOf(FilesCreate.args(dir, "a.txt")),
             FilesDeleteSession.COMMAND to listOf(FilesDeleteSession.args("s")),
             FilesFind.COMMAND to listOf(FilesFind.args(dir, "main")),

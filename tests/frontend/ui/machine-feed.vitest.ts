@@ -10,8 +10,10 @@ import type { MachineState } from "../../../src/frontend/ui/generated/MachineSta
 type Listener = (e: { payload: unknown }) => void;
 const listeners = new Map<string, Listener>();
 let sink: ((items: unknown[]) => void) | null = null;
+/** 每一种订阅（`changed/<主题>`）那一条的入口：机器表那一条单拿。 */
+const sinks = new Map<string, (items: unknown[]) => void>();
 const reads: string[] = [];
-let readReply: { machines: Record<string, MachineState> } = { machines: {} };
+let readReply: { machines: Record<string, MachineState>; empty?: unknown } = { machines: {} };
 
 // 壳的 `backend_status`（订上之后问一次本机后端那一格）：默认不回（不影响别的几条）；要它回的那一条自己定。
 const status = vi.hoisted(() => ({ reply: null as Promise<unknown> | null, asked: [] as unknown[] }));
@@ -29,7 +31,8 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 vi.mock("../../../src/comms/inward/chan", () => ({
   chan: {
-    subscribe: vi.fn((_origin: string, _kind: string, _from: unknown, _want: number, s: (items: unknown[]) => void) => {
+    subscribe: vi.fn((_origin: string, kind: string, _from: unknown, _want: number, s: (items: unknown[]) => void) => {
+      sinks.set(kind, s);
       sink = s;
       return Promise.resolve({ want: () => {}, stop: () => {} });
     }),
@@ -61,6 +64,7 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 beforeEach(() => {
   listeners.clear();
   sink = null;
+  sinks.clear();
   reads.length = 0;
   readReply = { machines: {} };
 });
@@ -147,6 +151,22 @@ describe("机器状态成品的推送", () => {
       ["box", up],
       ["lab", installing],
     ]);
+  });
+
+  it("★ 机器表本身变了（`changed {machines}`）⇒ 整份重问、那几句跟着换：摘掉的正是唯一没报完的那台，它不会再推一帧，「各台都报完」照样到", async () => {
+    const lines = (allListed: boolean) => ({ line: "核心·首屏", hint: "", count: "核心·计数", allListed });
+    readReply = { machines: { box: up }, empty: lines(false) };
+    const fleets: boolean[] = [];
+    onMachineState(
+      () => {},
+      (f) => fleets.push(f.allListed),
+    );
+    await vi.waitFor(() => expect(fleets).toEqual([false]), { timeout: WALL_CEILING_MS });
+    reads.length = 0;
+    readReply = { machines: {}, empty: lines(true) };
+    sinks.get("changed/machines")!([frame(0, {})]);
+    await vi.waitFor(() => expect(fleets).toEqual([false, true]), { timeout: WALL_CEILING_MS });
+    expect(reads).toEqual(["machine-read"]);
   });
 });
 

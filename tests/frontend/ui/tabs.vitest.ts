@@ -380,7 +380,7 @@ function groupBackend(): {
     refuse,
     connect: async (tm) => {
       tm.attachGroups(book);
-      await book.refreshAll([LOCAL]);
+      await book.again();
     },
   };
 }
@@ -623,6 +623,19 @@ describe("TabManager 生命周期", () => {
     expect(light()).toBe("idle");
     tm.onFace("lt", liveFace("working"));
     expect(light()).toBeUndefined();
+  });
+
+  it("★ 离开在等 ⇒ 手上那份需手动当场清掉（流里在等的那一步直接读它）；进程退了也清", () => {
+    const tab = tm.ensureTab("nw", "/x", "p", LOCAL);
+    const approve = { kind: "approve" } as unknown as NonNullable<typeof tab.needs>;
+    tm.onFace("nw", liveFace("needs_you"));
+    tab.needs = approve;
+    tm.onFace("nw", liveFace("working"));
+    expect(tab.needs, "答完了").toBeNull();
+    tm.onFace("nw", liveFace("needs_you"));
+    tab.needs = approve;
+    tm.onFace("nw", goldenFace("ended"));
+    expect(tab.needs, "在等时进程退了").toBeNull();
   });
 
   it("★ 能不能换模型 · 权限档照脸上那两格", () => {
@@ -2958,7 +2971,7 @@ describe("步 17·B 固定：交那台 · 复活 · 正交", () => {
     be.note(LOCAL, "写进去的").pinned = true;
     await be.connect(tm);
     expect(home(tm).store.tabs.has("写进去的"), "账上的东西没被读进来 ⇒ 下面的复活判据全是空转").toBe(true);
-    await be.book.refreshAll([]); // 幂等：再读一次不该多出东西
+    await be.book.again(); // 幂等：再读一次不该多出东西
     expect(home(tm).store.orderedIds).toEqual(["写进去的"]);
   });
 
@@ -4342,8 +4355,8 @@ describe("〔U4b〕main.ts 接线", () => {
     const n = (needle: string): number => main.split(needle).length - 1;
     expect([
       n("      tabs.onFace(sessionId, face);"),
-      n("      tabs.markOriginSeen(origin);\n      if (!all) return;"), // 同一格带壳那一刻「各台都报完」
-      n("      tabs.markAllListed();\n    },"), // 只记下、不在这里判：落在某一台的流上，别的台可能还没报完
+      n("    onOriginSessionsListed: (origin) => tabs.markOriginSeen(origin),"), // 那一格只说哪台报完了
+      n("      if (f.allListed) tabs.markAllListed();"), // 本机后端那一句「各台都报完」只记下、不在这里判：别的台可能还没在自己那条流上报完
       n("  tabs.onAllListed = () => startup?.onAllListed();"), // 那一刻由 TabManager 认（每台都在自己那条流上报完了）：交「启动时记住的那一格」
       n("startup?.onAllListed()"), // 不许别处绕过那一刻直接判
     ]).toEqual([1, 1, 1, 1, 1]);
@@ -4787,8 +4800,6 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     children: [],
     startedByText: null,
     childrenText: null,
-    line: null,
-    forkedFrom: null,
     touchedFiles: [],
     usage: null,
     projectDir: null,
@@ -4803,7 +4814,6 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     modelText: null,
     modelPick: null,
     tokens: null,
-    cost: null,
     background: null,
     mcp: [],
     autoAnswer: null,
@@ -4852,7 +4862,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
 
   it("#63① 成品带分叉来的那一句 ⇒ 悬停卡照摆那一句（字是那台照父会话起名写好的，界面不拼编号；标题里的 ↳ 是核心写进整行的，界面不加）", async () => {
     const said = "那台写的分叉自那一句";
-    answerFacts(() => facts({ forkedFrom: "abcd1234-parent", forkedLine: said }));
+    answerFacts(() => facts({ forkedLine: said }));
     tm.onLine(line("fork-sid", 0));
     await settle();
     const tab = home(tm).store.tabs.get("fork-sid")!;
@@ -4938,7 +4948,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
   });
 
   it("#63① 分叉 ＋ 后到的名字 ⇒ 标题就是核心那一行（恰一个 ↳，界面不叠加）", async () => {
-    answerFacts(() => facts({ forkedFrom: "parent-x" }));
+    answerFacts(() => facts({ forkedLine: "分叉自「parent-x」" }));
     tm.createSkeletonTab("f3", "/home/u/proj", LOCAL); // 项目目录由会话宣告给
     tm.onLine(line("f3", 0));
     await settle();
@@ -4950,8 +4960,8 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
 
   it("又长了再问：每一问只交路径；成品整份替换（后端说什么就是什么）", async () => {
     let n = 0;
-    const first = facts({ forkedFrom: "p1", touchedFiles: ["/a"] });
-    const second = facts({ forkedFrom: "p1", touchedFiles: ["/b", "/a"] });
+    const first = facts({ touchedFiles: ["/a"] });
+    const second = facts({ touchedFiles: ["/b", "/a"] });
     answerFacts(() => (n++ === 0 ? first : second));
     tm.onLine(line("s", 0));
     await settle();
@@ -4963,7 +4973,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
   });
 
   it("批期不问；批结束当前 tab 当场问，后台 tab 空闲时轮到再问（不只 active，一个一个）", async () => {
-    answerFacts((path) => facts(path.includes("b1") ? { forkedFrom: "src", forkedLine: "分叉自「src」" } : { forkedFrom: null }));
+    answerFacts((path) => facts(path.includes("b1") ? { forkedLine: "分叉自「src」" } : {}));
     tm.onBatchStart();
     tm.onLine(line("b1", 0));
     tm.onLine(line("b1", 1));
@@ -6400,8 +6410,6 @@ describe("〔8a ④〕冷起只先问当前 tab：后台的冷读排在当前 ta
     children: [],
     startedByText: null,
     childrenText: null,
-    line: null,
-    forkedFrom: null,
     touchedFiles: [],
     usage: null,
     projectDir: null,
@@ -6416,7 +6424,6 @@ describe("〔8a ④〕冷起只先问当前 tab：后台的冷读排在当前 ta
     modelText: null,
     modelPick: null,
     tokens: null,
-    cost: null,
     background: null,
     mcp: [],
     autoAnswer: null,

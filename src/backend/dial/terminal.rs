@@ -1,4 +1,4 @@
-//! 〔「待迁」最后一行〕**给一台远端开终端要跑的那一串** —— `ssh -t[ -J …] …` 外壳，按这台电脑的终端方言渲
+//! 〔「待迁」最后一行〕**给一台机器开终端要跑的那一串** —— 远端是 `ssh -t[ -J …] …` 外壳，本机是那一串本身（[`local_line`]），按这台电脑的终端方言渲
 //! （Windows：PowerShell 窗口载荷；别处：一行 POSIX shell），在本机常驻后端里渲。
 //!
 //! 界面交来的是那台的名字（怎么拨照这一端的机器表组）＋ 要在那台跑的命令 `command`。组请求走唯一那一份 [`super::machine::request`]
@@ -17,6 +17,7 @@
 //!
 //! ssh 客户端用这台上找到的那一份的全路径（[`crate::platform::ssh_client`]：只查文件、不起子进程）；
 //! 没装 ⇒ 不出那一行、说没装（`no_ssh_client`）；查的时候出了错 ⇒ 说判不了（`unobservable`），不说没装。
+//! 本机（`<local>`）不走 ssh、不查 ssh 客户端：命令原样 · `cwd` 进那个目录的本机 shell · 都不给是本机登录 shell。
 //! 不拨号、不开窗（开窗是 monitor 的事，它只开窗）。
 
 use copy_core::copy_text;
@@ -191,25 +192,15 @@ pub(crate) fn render(
 /// **不拒 shell 元字符**，交给唯一那一处 quote，`INVARIANTS §47` ②）；非 UTF-8 的目录走字节形（`posix_quote_bytes`，`$'…'`）。
 /// ⚠ **不用双引号**：[`check_command`] 会拒掉含双引号的命令（PowerShell 原生传参畸变那道防线）。
 pub(crate) fn command_for_cwd(cwd: &Value) -> Result<String, Said> {
-    let Ok(cmd_wire::files::WirePath(bytes)) = serde_json::from_value(cwd.clone()) else {
-        return Err(crate::common::said::Said::new(
-            "bad_args",
-            crate::common::contract::malformed("`cwd` must be a string or {\"b16\": \"<hex>\"}"),
-        ));
-    };
-    let bad = |shown: &str| {
-        refused(copy_text(
-            "beTerminal.refuse.badCwd",
-            &[("cwd", &format!("{shown:?}"))],
-        ))
-    };
+    let bytes = cwd_bytes(cwd)?;
+
     match std::str::from_utf8(&bytes) {
         Ok(s) => {
             let c = s.trim();
             if c.is_empty() {
                 Ok(posix::cd_then_login_shell(None))
             } else if !shell_quote_core::posix_free_path_ok(c) {
-                Err(bad(c))
+                Err(bad_cwd(c))
             } else {
                 Ok(posix::cd_then_login_shell(Some(
                     &shell_quote_core::posix_quote(c),
@@ -217,12 +208,31 @@ pub(crate) fn command_for_cwd(cwd: &Value) -> Result<String, Said> {
             }
         }
         Err(_) if !shell_quote_core::posix_free_path_bytes_ok(&bytes) => {
-            Err(bad(&String::from_utf8_lossy(&bytes)))
+            Err(bad_cwd(&String::from_utf8_lossy(&bytes)))
         }
         Err(_) => Ok(posix::cd_then_login_shell(Some(
             &shell_quote_core::posix_quote_bytes(&bytes),
         ))),
     }
+}
+
+/// 线上的 `cwd`（字符串或 `{b16}`）⇒ 那串字节；形状不对 ⇒ `bad_args`。
+fn cwd_bytes(cwd: &Value) -> Result<Vec<u8>, Said> {
+    match serde_json::from_value(cwd.clone()) {
+        Ok(cmd_wire::files::WirePath(bytes)) => Ok(bytes),
+        Err(_) => Err(crate::common::said::Said::new(
+            "bad_args",
+            crate::common::contract::malformed("`cwd` must be a string or {\"b16\": \"<hex>\"}"),
+        )),
+    }
+}
+
+/// 进不了的目录那一句（说是哪个目录）。
+fn bad_cwd(shown: &str) -> Said {
+    refused(copy_text(
+        "beTerminal.refuse.badCwd",
+        &[("cwd", &format!("{shown:?}"))],
+    ))
 }
 
 /// `terminal-ssh` 的入参与回包住 cmd-wire（壳经 `ask` 照同一份问）。
@@ -238,7 +248,7 @@ crate::wire::typed::codes! {
     }
 }
 
-/// `terminal-ssh`：给一台远端开终端要跑的那一串。查几个文件找 ssh 客户端 ⇒ 阻塞档；不拨号、不起进程。
+/// `terminal-ssh`：给一台机器（本机也算一台）开终端要跑的那一串。查几个文件找 ssh 客户端 ⇒ 阻塞档；不拨号、不起进程。
 pub struct TerminalSsh;
 
 impl crate::wire::typed::Command for TerminalSsh {
@@ -269,8 +279,9 @@ impl crate::wire::typed::Handle for TerminalSsh {
     }
 }
 
-/// 按给定的机器表 · 本机终端方言 · 找 ssh 客户端的结果 · 这台 `~/.ssh/config` 里非通配的别名渲。`command` · `cwd` 都不给 ⇒ 登录 shell 那一形：
-/// 本机 ⇒ 本机方言的登录 shell（不走 ssh）；机器表里那台 ⇒ `ssh -t …` 外壳、`--` 后面不跟命令；
+/// 按给定的机器表 · 本机终端方言 · 找 ssh 客户端的结果 · 这台 `~/.ssh/config` 里非通配的别名渲。本机那一台三形都在 [`local_line`]。
+/// 远端 `command` · `cwd` 都不给 ⇒ 登录 shell 那一形：
+/// 机器表里那台 ⇒ `ssh -t …` 外壳、`--` 后面不跟命令；
 /// 机器表里没有、别名里恰好有（过别名白名单）⇒ `ssh -t[ -F …] <别名>`，照用户的 ssh 配置连。
 /// `sid` 只跟 `command`；给了、`opened` 那一层目录也在 ⇒ 开窗那一串另带前奏与收尾（`opened_windows::window`：开的那个 shell
 /// 记下窗口标签，那条 ssh 一退就删）；`line` 本身不带它们（开不了窗时复制出去的只有那一行）。
@@ -288,18 +299,21 @@ pub fn answer_with(
             crate::common::contract::malformed("`sid` only goes with `command`"),
         ));
     }
+    if req.command.is_some() && req.cwd.is_some() {
+        return Err(crate::common::said::Said::new(
+            "bad_args",
+            crate::common::contract::malformed(
+                "at most one of `command` (a string) or `cwd` (a path)",
+            ),
+        ));
+    }
+    if req.machine.is_local() {
+        return local_line(req, powershell).map(plain);
+    }
     let command = match (&req.command, &req.cwd) {
-        (Some(c), None) => c.clone(),
+        (Some(c), _) => c.clone(),
         (None, Some(cwd)) => command_for_cwd(cwd)?,
         (None, None) => return login_shell(req, hosts, aliases, powershell, ssh),
-        (Some(_), Some(_)) => {
-            return Err(crate::common::said::Said::new(
-                "bad_args",
-                crate::common::contract::malformed(
-                    "at most one of `command` (a string) or `cwd` (a path)",
-                ),
-            ))
-        }
     };
     let dial = super::dial_named(
         hosts,
@@ -328,7 +342,47 @@ fn plain(line: String) -> SshCommand {
     }
 }
 
-/// 登录 shell 那一形（见 [`answer_with`]）。
+/// 本机那一台的那一行（不走 ssh、不要 ssh 客户端；`sid` 不接前奏：↗ 的本机记录只给远端那条 ssh）：
+/// - `command` ⇒ 那一串本身（本机后端渲好的成品）。只过哪种终端都装不下的（空 · 超长 · 控制符）；双引号那条只管 ssh 那一送法
+///   （PowerShell 5.1 向原生程序传参），本机那一串经 `-EncodedCommand` / argv 交出去，不拒。
+/// - `cwd` ⇒ 进那个目录的本机 shell（[`local_command_for_cwd`]）。
+/// - 都不给 ⇒ 本机登录 shell（[`local_login_shell`]）。
+fn local_line(req: &TerminalSshReq, powershell: bool) -> Result<String, Said> {
+    match (&req.command, &req.cwd) {
+        (Some(c), _) => {
+            check_command(c, false)?;
+            Ok(c.clone())
+        }
+        (None, Some(cwd)) => local_command_for_cwd(cwd, powershell),
+        (None, None) => local_login_shell(powershell),
+    }
+}
+
+/// 本机「在此打开终端」那一行：POSIX 同远端那一形（[`command_for_cwd`]）；PowerShell 窗口本身就是 shell ⇒ 只
+/// `Set-Location -LiteralPath '<目录>'`，目录照 Windows 的绝对形判（`shell_quote_core::windows_free_path_ok`）、说不成 UTF-8 的拒；空 ⇒ 家目录。
+fn local_command_for_cwd(cwd: &Value, powershell: bool) -> Result<String, Said> {
+    if !powershell {
+        return command_for_cwd(cwd);
+    }
+    let bytes = cwd_bytes(cwd)?;
+    let shown = String::from_utf8_lossy(&bytes);
+    let dir = shown.trim();
+    if dir.is_empty() {
+        return local_login_shell(true);
+    }
+    if std::str::from_utf8(&bytes).is_err() || !shell_quote_core::windows_free_path_ok(dir) {
+        return Err(bad_cwd(dir));
+    }
+    Ok(ps_enter(dir))
+}
+
+/// PowerShell 进那个目录那一句（不带收尾的 `; `）。
+fn ps_enter(dir: &str) -> String {
+    let line = crate::platform::shell::powershell::set_location(&ps_literal(dir));
+    line.trim_end().trim_end_matches(';').to_string()
+}
+
+/// 登录 shell 那一形（见 [`answer_with`]；本机那一台在 [`local_line`]）。
 fn login_shell(
     req: &TerminalSshReq,
     hosts: &[Host],
@@ -336,9 +390,6 @@ fn login_shell(
     powershell: bool,
     ssh: &SshClient,
 ) -> Result<SshCommand, Said> {
-    if req.machine.is_local() {
-        return Ok(plain(local_login_shell(powershell)?));
-    }
     let name = req.machine.to_string();
     if !hosts.iter().any(|h| h.name() == name)
         && aliases.contains(&name)
@@ -380,9 +431,7 @@ pub(crate) fn local_login_shell(powershell: bool) -> Result<String, Said> {
             copy_text("beTerminal.login.noHome", &[]),
         ));
     };
-    let line =
-        crate::platform::shell::powershell::set_location(&ps_literal(&home.to_string_lossy()));
-    Ok(line.trim_end().trim_end_matches(';').to_string())
+    Ok(ps_enter(&home.to_string_lossy()))
 }
 
 /// 这台找到的 ssh 客户端全路径；没装 / 判不了 ⇒ 那一句（不说没装）。

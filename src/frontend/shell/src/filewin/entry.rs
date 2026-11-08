@@ -124,17 +124,32 @@ pub fn plan_target(path: &str, reveal_file: Option<&str>) -> Result<Target, Stri
 ///
 /// - `path` 是空的、且远端 home 问不出来 ⇒ 带着原文回错，不开窗。
 /// - 目录列不出来（断开 / 没权限 / 不是目录）⇒ 把窗口进程说的那句原文带回去。
-/// 「复制到另一台」下拉里的机器：本机（`<local>`）＋ 已配的远端（本机后端机器表里算好的名字，与通道寻址同一个名字）。
-/// 来自已有的配置读口，不新建数据源。
-fn machine_names() -> Vec<String> {
-    std::iter::once(cmd_wire::LOCAL.to_string())
-        .chain(
-            crate::machine_table::rows_now()
-                .into_iter()
-                .filter(|r| r.connect)
-                .map(|r| r.name),
-        )
-        .collect()
+/// 「复制到另一台」下拉里的机器：开窗那一刻问本机后端一次（`machine-read`：它机器表里的每台，「连接这台」关着的那几台不列）。
+/// 问不到 ⇒ 下拉是空的（落到本机走「下载」，不经这张表）。
+async fn machine_names() -> Vec<String> {
+    let deadline = crate::frame_query::Deadline::within(std::time::Duration::from_secs(5));
+    let got = crate::frame_query::ask(
+        &crate::origin::Origin::local(),
+        &cmd_wire::machine::MachineReadReq {},
+        None,
+        deadline,
+    )
+    .await;
+    match got {
+        Ok(r) => r
+            .machines
+            .into_iter()
+            .filter(|(_, m)| m.state != cmd_wire::machine::MachineStateKind::Disabled)
+            .map(|(name, _)| name)
+            .collect(),
+        Err(f) => {
+            tracing::info!(
+                "filewin: machine-read not answered, cross-copy list left empty: {}",
+                f.said
+            );
+            Vec::new()
+        }
+    }
 }
 
 #[tauri::command]
@@ -172,7 +187,7 @@ pub(crate) async fn open_with(
     origin: String,
     path: String,
     reveal_file: Option<String>,
-    work_area: Option<host_core::WorkArea>,
+    work_area: Option<filewin_contract::WorkArea>,
     theme: filewin_contract::Theme,
     late: super::proc::LateExit,
 ) -> Result<usize, Said> {
@@ -195,7 +210,7 @@ pub(crate) async fn open_with(
         reveal,
         frame: crate::chan::host::FRAME_MAX_BYTES.as_len(),
         view,
-        machines: machine_names(),
+        machines: machine_names().await,
         work_area,
         theme,
         local_line: crate::detail::local_line(),
@@ -235,15 +250,7 @@ pub(crate) async fn open_from_window(
     let Some(theme) = filewin_contract::filewin_open_theme(args) else {
         return Err(("bad_args", copy_text("rsFilewinEntry.other.badArgs", &[])));
     };
-    if !crate::machine_table::has(machine) {
-        return Err((
-            "no_such_origin",
-            copy_text(
-                "rsFilewinEntry.other.noConfig",
-                &[("machine", &machine.to_string())],
-            ),
-        ));
-    }
+    // 表里有没有那台由本机后端答（窗口第一屏那一问回它那一码）。
     let late: super::proc::LateExit =
         Box::new(|f| tracing::warn!("另开的文件窗口退了：{} {:?} {:?}", f.said, f.code, f.raw));
     open_with(machine.to_string(), String::new(), None, None, theme, late)

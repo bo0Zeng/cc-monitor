@@ -29,11 +29,9 @@ fn answer_annotate_at(own: &Own, args: &Value, now: i64) -> Result<Value, Said> 
     Ok(serde_json::to_value(got).expect("回包总能序列化"))
 }
 
-/// 同 [`answer_annotate_at`]，`history-forget` 那一条。
-fn answer_forget_at(own: &Own, args: &Value) -> Result<Value, Said> {
-    let req = take::<ForgetReq>(args)?;
-    let got = forget_at(own, req).map_err(|e| e.into_said())?;
-    Ok(serde_json::to_value(got).expect("回包总能序列化"))
+/// 删会话连带删注解那一下（[`forget_at`]）：失败照码比（码投成 [`Said`] 那一份）。
+fn answer_forget_at(own: &Own, sid: &str) -> Result<bool, Said> {
+    forget_at(own, sid).map_err(|e| e.into_said())
 }
 
 fn fixture_dir() -> PathBuf {
@@ -167,7 +165,7 @@ fn an_unreadable_file_is_never_overwritten() {
             bad,
             "读不懂那份被动了"
         );
-        let e = answer_forget_at(&own_of(&p), &json!({"sid": "s"})).expect_err("读不懂也删了");
+        let e = answer_forget_at(&own_of(&p), "s").expect_err("读不懂也删了");
         assert_eq!(e.code.as_deref(), Some("annotations_unreadable"));
         assert_eq!(std::fs::read_to_string(&p).unwrap(), bad);
         assert!(
@@ -454,18 +452,12 @@ fn changing_the_auto_answer_cell_pushes_needs_for_that_session() {
 fn forgetting_removes_exactly_that_entry() {
     let p = temp_copy("forget");
     let sid = "0000aaaa-0000-4000-8000-000000000004";
-    assert_eq!(
-        answer_forget_at(&own_of(&p), &json!({"sid": sid})).unwrap(),
-        json!({"removed": true})
-    );
+    assert_eq!(answer_forget_at(&own_of(&p), sid).unwrap(), true);
     let mut want = golden();
     want.as_object_mut().unwrap().remove(sid);
     assert_eq!(norm(&read_table(&p)), want);
     let before = std::fs::read(&p).unwrap();
-    assert_eq!(
-        answer_forget_at(&own_of(&p), &json!({"sid": "nope"})).unwrap(),
-        json!({"removed": false})
-    );
+    assert_eq!(answer_forget_at(&own_of(&p), "nope").unwrap(), false);
     assert_eq!(std::fs::read(&p).unwrap(), before, "不在的那一条也写了一遍");
     let _ = std::fs::remove_dir_all(p.parent().unwrap());
 }
@@ -603,7 +595,7 @@ fn a_newer_file_is_left_as_is_and_an_older_one_is_kept_beside() {
     )
     .expect_err("新版也写了");
     assert_eq!(e.code.as_deref(), Some("annotations_unreadable"), "{e:?}");
-    let e = answer_forget_at(&own_of(&p), &json!({"sid": "s"})).expect_err("新版也删了");
+    let e = answer_forget_at(&own_of(&p), "s").expect_err("新版也删了");
     assert_eq!(e.code.as_deref(), Some("annotations_unreadable"));
     assert_eq!(std::fs::read_to_string(&p).unwrap(), newer, "原文被动了");
 

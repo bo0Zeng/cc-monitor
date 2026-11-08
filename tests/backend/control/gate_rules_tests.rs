@@ -1,12 +1,13 @@
 use super::*;
 
 #[test]
-fn old_cc_prefix_is_still_recognised() {
-    // 删掉这一支 = 把用户正在跑的老会话变成失管会话（见 `is_ccm_tmux_name` 头注）。
-    assert!(is_ccm_tmux_name("cc-abc12345"));
-    assert!(is_ccm_tmux_name("cc-proj"));
-    assert!(is_ccm_tmux_name("cc-abc12345-2")); // pickFreshTmuxName 的 -N 变体
-    assert!(!is_ccm_tmux_name("cc-")); // 只前缀无体
+fn the_old_cc_prefix_is_not_ours_by_name() {
+    // 只认铸的那一形（`<X>-cc` / `<X>-cc-<N>`）；别的形照会话上的 `@ccm_sid` 判（[`gate2`] 的另一半）。
+    assert!(!is_ccm_tmux_name("cc-abc12345"));
+    assert!(!is_ccm_tmux_name("cc-proj"));
+    assert!(!is_ccm_tmux_name("cc-"));
+    assert_eq!(gate2("cc-abc12345", Some("")), Gate2::Rejected);
+    assert_eq!(gate2("cc-abc12345", Some("sid")), Gate2::AllowedByRemoteSid);
 }
 
 #[test]
@@ -29,18 +30,18 @@ fn other_peoples_sessions_are_not_ours() {
 #[test]
 fn shell_metacharacters_never_pass_the_name_half() {
     // 这几条守的是「名字命中 ⇒ 跳过远端核验」那条零 IO 快路。
-    assert!(!is_ccm_tmux_name("cc-a b")); // 空格
-    assert!(!is_ccm_tmux_name("cc-a;rm")); // 分号
-    assert!(!is_ccm_tmux_name("cc-a$x")); // 元字符
-    assert!(!is_ccm_tmux_name("cc-a:b")); // tmux 目标语法
-    assert!(!is_ccm_tmux_name("=cc-a")); // tmux 精确匹配前缀
+    assert!(!is_ccm_tmux_name("a b-cc")); // 空格
+    assert!(!is_ccm_tmux_name("a;rm-cc")); // 分号
+    assert!(!is_ccm_tmux_name("a$x-cc")); // 元字符
+    assert!(!is_ccm_tmux_name("a:b-cc")); // tmux 目标语法
+    assert!(!is_ccm_tmux_name("=a-cc")); // tmux 精确匹配前缀
 }
 
 #[test]
 fn the_union_allows_by_name_without_asking_the_remote() {
     // 名字命中时**连 remote_sid 都不看** —— 三种取值结论必须一致。
     for sid in [None, Some(""), Some("whatever")] {
-        assert_eq!(gate2("cc-abc12345", sid), Gate2::AllowedByName);
+        assert_eq!(gate2("abc12345-cc", sid), Gate2::AllowedByName);
     }
 }
 

@@ -1010,24 +1010,15 @@ fn a_session_the_ledger_calls_reconnectable_is_listed_as_reconnectable() {
     );
 }
 
-/// ★ 分叉来的那一行带父会话的显示标题（同父会话自己那一行的 `label`，父会话被筛掉 / 隐藏也照它）；父会话不在这台的清单里 ⇒ 缺；
-/// 不是分叉来的 ⇒ 缺。按项目看的每一组带最近活动写好的字（同行尾那一格的写法）；读不了的那一组 ⇒ `null`。
+/// ★ 分叉来的那一行只带父会话的 id（`forkedFromSessionId`），父会话的显示标题不上线（没有读者）；
+/// 按项目看的每一组带最近活动写好的字（同行尾那一格的写法）；读不了的那一组 ⇒ `null`。
 #[test]
-fn a_forked_row_names_its_parent_and_groups_say_when() {
-    let tz = crate::common::time::Tz::default();
+fn a_forked_row_carries_only_its_parent_id_and_groups_say_when() {
     let v = answer(json!({"query": "分出来"}));
-    assert_eq!(
-        find(&v, S5)["forkedFrom"],
-        json!({"label": find(&answer(json!({"hidden": true})), S4)["label"]})
-    );
-    assert!(find(&v, S4).get("forkedFrom").is_none(), "不是分叉来的");
-    let mut l = listing();
-    let rows = l["rows"].as_array_mut().unwrap();
-    rows.retain(|r| r["sessionId"] != S4);
-    let orphan = answer_from(&l, None, Ok(&ann()), &ask(json!({})), 1_000, &tz);
+    assert_eq!(find(&v, S5)["forkedFromSessionId"], json!(S4));
     assert!(
-        find(&orphan, S5).get("forkedFrom").is_none(),
-        "父会话不在这台的清单里 ⇒ 缺"
+        find(&v, S5).get("forkedFrom").is_none(),
+        "父会话的标题不上线"
     );
     let all = answer(json!({"hidden": true}));
     for g in all["groups"].as_array().unwrap() {

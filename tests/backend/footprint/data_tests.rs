@@ -413,3 +413,30 @@ fn 自己家里每一样的类与_invariants_那张表一致() {
         "自家那几样与 §2.1 那张表对不上 ⇒ 新加一样要同拍 `OWN_HOME_ENTRIES` 与 §2.1 那张表"
     );
 }
+
+/// 用户级 `PATH` 里那一段（`ccm-user-path` 加的）也是改过你的东西：今天在 ⇒ 列一行，路径写它在注册表里的位置，撤回指到机器设置「配置」栏那个开关。
+#[test]
+fn 用户级_path_那一段算改过你的_撤回在机器设置配置栏() {
+    let token = crate::agents::footprint_decl::USER_PATH_TOKEN;
+    let got = shape_rows(
+        &report(vec![
+            row("ccm-user-path", EnvTier::AppInstalls, token, present()),
+            row(
+                "ccm-user-path",
+                EnvTier::AppInstalls,
+                token,
+                SurfaceState::Absent,
+            ),
+        ]),
+        vec![],
+        None,
+    );
+    let changed = got["changedFiles"].as_array().unwrap();
+    assert_eq!(changed.len(), 1, "只算今天在的那一份：{changed:?}");
+    assert_eq!(changed[0]["path"], json!(token));
+    assert_eq!(
+        changed[0]["undo"],
+        json!({"page": "machine", "tab": "config"}),
+        "撤回在机器设置「配置」栏的用户级 PATH 开关"
+    );
+}

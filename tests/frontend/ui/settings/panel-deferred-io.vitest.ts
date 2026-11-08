@@ -121,7 +121,7 @@ import { nonEmpty } from "../../../test-support/non-empty";
  * 登记表 ①：**落地页（机器）**这一趟该打的命令。
  * 只有 `BackendSection` 那一块 —— 它住落地页，打开就该是新读数（状态是运行期的东西）。
  */
-const LANDING_IPC = ["load_config", "backend_machines", "backend_status"] as const;
+const LANDING_IPC = ["load_config", "chan_call", "backend_status"] as const; // `chan_call` ＝ 机器清单问本机后端 `machine-read`
 
 /**
  * 登记表 ②：点进「应用」才该出现的那几发。

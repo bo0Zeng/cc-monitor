@@ -17,8 +17,9 @@
  * **构造零 I/O**：这一块是个 `<details>`，第一次展开才发第一条 IPC。**绝不在用户没要求时改他的配置**：
  * 接入那一格只有人点了「接入」才写他的启动文件；清单是 cc-monitor 自己那份别名文件，改了立刻存。
  *
- * # 两个平台一份组件 —— 平台是它的一个输入
+ * # 两个平台一份组件 —— 哪种 shell 由那台后端答
  *
+ * 那台说哪种 shell 随 `aliases-read` 的回包到（`shell`）；读回之前与读不回时平台那几格不画（没有 `data-shell`、没有「Windows 终端」那一行）。
  * 差在平台那几格：tmux 那一族在 PowerShell 上不给（Windows 没有 tmux —— 能力，不是方言）；
  * PowerShell 那一侧的握手终端数 · 执行策略 · 用户级 PATH · 自动打开 monitor 收在「终端接入」里。
  */
@@ -39,33 +40,12 @@ import { buildProfilesList, type ProfileClash } from "./profiles-list";
 import type { Machine } from "../generated/Machine";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { cfgRow, type CfgDot, type CfgRow } from "./cfg-row";
-import { hostFacts } from "./host-os";
 import { copyText } from "../copy-table";
 import { sayFailure, sayWithDetail } from "../kit/detail";
 
 /** 界面上怎么叫那一代 PowerShell（两代的执行策略分开存）。 */
 const psName = (h: PsHost): string =>
   h === "pwsh" ? copyText("machineAliases.policy.hostPwsh") : copyText("machineAliases.policy.hostPowershell");
-
-/**
- * 这台机器（monitor 跑在的那台本机）用哪种 shell 的方言。
- * **认不出就不猜**（`null`）：别名那一格明说「认不出这台的系统」、安装入口置灰（[`buildUnknownOsAliasBlock`]）。
- */
-export function localShell(): Shell | null {
-  return hostFacts().shellDialect;
-}
-
-/** 认不出本机系统时别名那一格：说清为什么没有，接入入口在、但置灰（出声不静默）。 */
-export function buildUnknownOsAliasBlock(): HTMLElement {
-  const wrap = el("details", "ccm-alias-gen machine-aliases");
-  wrap.dataset.shell = "unknown";
-  wrap.appendChild(el("summary", "", copyText("newSession.label.alias")));
-  wrap.appendChild(el("p", "settings-hint", copyText("machineAliases.unknownOs.said")));
-  const install = button({ label: copyText("machineAliases.access.connect"), hint: copyText("machineAliases.unknownOs.said") });
-  install.disabled = true;
-  wrap.appendChild(install);
-  return wrap;
-}
 
 /** 这几格的点击不往外冒（外面那一行拿点击去开合）。 */
 const quiet =
@@ -89,10 +69,8 @@ export function rereadAliases(origin: Machine): void {
   }
 }
 
-/** 别名那一组的入参。两个平台同一份，`platform` 是入参；本机远端同一份，`origin` 是入参。 */
+/** 别名那一组的入参。本机远端同一份，`origin` 是入参；说哪种 shell 由那台后端在读回里答。 */
 export interface AliasManagerSpec {
-  /** 这台机器用哪种 shell 的方言（本机 = [`localShell`]；远端恒 `posix`）。 */
-  platform: Shell;
   /** 那台机器（取值函数：远端卡改名后跟着它走）。每一发都带它。 */
   origin: () => Machine;
   /** 改执行策略之前问一句的注入缝（缺省走应用内对话框）。 */
@@ -236,14 +214,14 @@ function accessWarnText(cands: StartupFile[], on: StartupFile[]): string {
 }
 
 export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
-  const shell = opts.platform;
+  /** 那台说哪种 shell（读回口答的；`null` ＝ 还没读回过）。读回失败留着上次的。 */
+  let shell: Shell | null = null;
   // 只本机挂的几格（平台格 · 用系统编辑器打开）问的是 monitor 这台，远端不挂。
   const local = isLocalOrigin(opts.origin());
   const group = el("div", "cfg");
   const row = cfgRow(copyText("newSession.label.alias"), true);
   const wrap = row.element;
   wrap.classList.add("machine-aliases");
-  wrap.dataset.shell = shell;
   wrap.dataset.origin = opts.origin();
   group.appendChild(wrap);
   const body = row.body;
@@ -268,14 +246,21 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
   writes.dataset.role = "writes";
   body.append(profiles.element, writes);
 
-  // ═══ Windows 终端（只本机 PowerShell）═══
-  let winRow: CfgRow | null = null;
+  // ═══ Windows 终端（只本机 PowerShell；那台答了 powershell 才建）═══
   let psExtras: PsExtras | null = null;
-  if (shell === "powershell" && local) {
-    winRow = cfgRow(copyText("machineAliases.win.title"), false);
-    winRow.element.dataset.role = "win-row";
-    group.appendChild(winRow.element);
-  }
+  // 那一行的骨架先建好（零 I/O、不挂）：那台答了 powershell 才挂上、才问它那几格。
+  const winRow = cfgRow(copyText("machineAliases.win.title"), false);
+  winRow.element.dataset.role = "win-row";
+  /** 读回口答了哪种 shell：记下、标在根上；本机 PowerShell 第一次答出来时挂上「Windows 终端」那一行并问它那几格。 */
+  const learnShell = (s: Shell): void => {
+    shell = s;
+    wrap.dataset.shell = s;
+    if (s === "powershell" && local && psExtras === null) {
+      group.appendChild(winRow.element);
+      psExtras = buildPsExtras(winRow, opts.origin);
+      psExtras.loadNow();
+    }
+  };
 
   // ── 状态 ──
   /** 头部那一行（清单读回之后由它给：`N 条 · 规则住 … · 改了下次起会话就生效`）。 */
@@ -340,13 +325,13 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
   };
 
   /** 已接上的每一份一行：现状 ＋ 看加了什么 · 卸载。 */
-  const renderOnRows = (on: StartupFile[]): void => {
+  const renderOnRows = (on: StartupFile[], sh: Shell): void => {
     for (const c of on) {
       const p = c.shown;
       accessRows.appendChild(
         accessLine(
           c.policy?.loads === false ? "warn" : "ok",
-          onLineText(c, p, shell),
+          onLineText(c, p, sh),
           linkBtn(copyText("machineAliases.access.whatAdded"), () => {
             chosen = c.path;
             togglePanel("preview");
@@ -387,10 +372,12 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
 
   /** 接上那一格照读回口的候选画：已接上 ⇒ 一行现状 ＋ 看加了什么 · 卸载 ccm；没接上 ⇒ 醒目的「接上 …」＋ 看一眼 · 换一份文件 · 自己贴。不发 IPC。 */
   const renderAccess = (): void => {
+    // 那台还没答过说哪种 shell（没展开过 · 读不回）⇒ 平台那几格一格不画。
+    if (shell === null) return;
     accessRows.textContent = "";
     const on = cands.filter((c) => c.block.present);
     const t = target();
-    renderOnRows(on);
+    renderOnRows(on, shell);
     if (!on.length && t && selfPaste && selfPaste.state !== "done") {
       const tp = t.path;
       accessRows.appendChild(
@@ -458,13 +445,15 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
   /** 读回口：启动文件候选（接入那一格）。清单那一块自己读配置文件（`profiles-read`）。 */
   const readBack = async (): Promise<void> => {
     try {
-      const got = await readAliases(opts.origin(), shell, otherRc);
+      const got = await readAliases(opts.origin(), otherRc);
+      learnShell(got.shell);
       cands = got.rcCandidates;
+      renderAccess();
     } catch (e) {
+      // 读不回 ⇒ 接入那一格不重画（没答过 ⇒ 平台那几格一格不画；答过 ⇒ 照上次的留着），只说读不了。
       sayFailure(accessWarn, copyText("machineAliases.readBack.failed"), e);
       row.setStatus("warn", copyText("machineAliases.readBack.failed"));
     }
-    renderAccess();
   };
 
   /** 那台终端里敲 `ccm` 走到的是不是 cc-monitor 放的那一份（判词与那一句由那台后端出）。 */
@@ -490,7 +479,8 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
     if (!raw) return;
     otherErr.textContent = "";
     try {
-      const got = await readAliases(opts.origin(), shell, raw);
+      const got = await readAliases(opts.origin(), raw);
+      learnShell(got.shell);
       otherRc = raw;
       cands = got.rcCandidates;
       if (got.otherRc) chosen = got.otherRc;
@@ -513,7 +503,8 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
     }
     await readBack();
     if (failed !== null) sayFailure(accessNote, failed.title, failed.e);
-    else accessNote.textContent = afterRcText(verb, cands.find((c) => c.path === path)?.policy ?? null, shell);
+    // 接上 / 卸载那几颗只在接入那一格画出来之后才点得到 ⇒ 那台已答过 shell。
+    else accessNote.textContent = afterRcText(verb, cands.find((c) => c.path === path)?.policy ?? null, shell!);
   };
 
   /** 「我自己贴」：交那台记下，去「待办」里那一件（要贴的几行、贴在哪、存盘后自己认出都在那里）。 */
@@ -600,10 +591,6 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
     load() {
       if (loadedOnce) return reread();
       loadedOnce = true;
-      if (winRow) {
-        psExtras = buildPsExtras(winRow, opts.origin);
-        psExtras.loadNow();
-      }
       void load();
       loadedManagers.set(wrap, { origin: opts.origin, reread });
     },

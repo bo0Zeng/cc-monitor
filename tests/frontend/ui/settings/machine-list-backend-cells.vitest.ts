@@ -37,8 +37,6 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
       get: (_t, name: string) => (args: unknown) => {
         ipc.calls.push({ name, args });
         switch (name) {
-          case "backend_machines":
-            return Promise.resolve([...ipc.registered]);
           case "backend_status":
             return Promise.resolve({ channel: true, pid: 7, health: HEALTH_GOLDEN.cases[0].face });
           // 「退出行为」那一问改走通道：一发 `chan_call`（op = `exit-policy-read`），回后端那份字节。
@@ -46,7 +44,9 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
             // 机器表住本机后端（`machines-read`）：照 `mount` 摆的那几台答。
             const op = (args as { op?: unknown } | undefined)?.op;
             const body =
-              op === "machines-read"
+              op === "machine-read"
+                ? { machines: Object.fromEntries(ipc.registered.map((o) => [o, { state: "up" }])) }
+                : op === "machines-read"
                 ? { state: "ok", reason: null, detail: null, path: null, hosts: (ipc.hosts as Host[]).map((h) => ({ name: h.label || h.host, host: h })) }
                 : { state: "absent", killOnExit: false, said: "退出时后台照常跑" };
             const u = new TextEncoder().encode(JSON.stringify(body));

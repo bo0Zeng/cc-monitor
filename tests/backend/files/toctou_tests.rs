@@ -215,7 +215,7 @@ fn a_source_swapped_for_a_link_after_resolving_is_not_followed() {
     let src = root.join("src");
     std::os::unix::fs::symlink(&secret, &src).unwrap();
     let perms = std::fs::metadata(&secret).unwrap().permissions();
-    let got = replace_contents(
+    let got = land(
         &Face::issue(),
         &root,
         Path::new("dst"),
@@ -223,7 +223,8 @@ fn a_source_swapped_for_a_link_after_resolving_is_not_followed() {
         Some(perms),
         Was::New,
         &mut || {},
-    );
+    )
+    .map_err(WriteRefusal::from);
     assert!(matches!(&got, Err(e) if e.code() == "io_failed"), "{got:?}");
     assert!(!root.join("dst").exists(), "跟着链接把根外那一份抄进来了");
     assert_eq!(

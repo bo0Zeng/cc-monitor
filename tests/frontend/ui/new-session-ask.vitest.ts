@@ -22,7 +22,6 @@ vi.mock("../../../src/comms/inward/chan", async (importOriginal) => {
 });
 vi.mock("../../../src/frontend/ui/ipc/commands", () => ({
   commands: {
-    backend_machines: vi.fn(async () => ["<local>", "devbox"]),
     backend_status: vi.fn(async () => ({ channel: true })),
     backend_start: vi.fn(async () => ""),
   },

@@ -2,6 +2,6 @@
 import type { Words } from "./Words";
 
 /**
- * 成品上的 `names` 那一格：`accounts` 只列与原名不同的号（今天只有 `_`），`slots` 列每个语义位。
+ * 成品上的 `names` 那一格：每个语义位的名字（号名在每号那一行的 `label`）。
  */
-export type QuotaNames = { accounts: { [key in string]: Words }, slots: { [key in string]: Words }, };
+export type QuotaNames = { slots: { [key in string]: Words }, };

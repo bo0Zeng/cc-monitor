@@ -26,6 +26,7 @@ fn home() -> PathBuf {
 /// 一个什么都没有的文件系统。
 fn empty_probe<'a>() -> FsProbe<'a> {
     FsProbe {
+        user_path: &|| None,
         meta: &|_| None,
         list: &|_| None,
     }
@@ -56,6 +57,7 @@ fn the_ssh_row_uses_the_one_ssh_locator() {
     let sys = Path::new("/sr").join(WINDOWS_OPENSSH_REL);
     let meta = move |p: &Path| (p == sys.as_path()).then_some((false, 1u64));
     let fs = FsProbe {
+        user_path: &|| None,
         meta: &meta,
         list: &|_| None,
     };
@@ -262,6 +264,7 @@ fn unresolvable_here_is_undetermined_not_absent() {
 #[test]
 fn present_absent_and_dir_listing() {
     let f = FsProbe {
+        user_path: &|| None,
         meta: &|p| match p.to_string_lossy().as_ref() {
             "/h/f" => Some((false, 42)),
             "/h/d" => Some((true, 0)),
@@ -293,6 +296,7 @@ fn present_absent_and_dir_listing() {
 #[test]
 fn unlistable_dir_is_undetermined_not_empty() {
     let f = FsProbe {
+        user_path: &|| None,
         meta: &|_| Some((true, 0)),
         list: &|_| None,
     };
@@ -305,6 +309,7 @@ fn unlistable_dir_is_undetermined_not_empty() {
 #[test]
 fn glob_counts_only_real_matches() {
     let f = FsProbe {
+        user_path: &|| None,
         meta: &|_| None,
         list: &|_| {
             Some(vec![
@@ -323,6 +328,7 @@ fn glob_counts_only_real_matches() {
     assert_eq!(observe(&g, &f), SurfaceState::Present);
     // 一个都不匹配（`ccm` 缺连字符）→ 是真的没有，可以说 Absent
     let none = FsProbe {
+        user_path: &|| None,
         meta: &|_| None,
         list: &|_| Some(vec!["ccm".into(), "x".into()]),
     };
@@ -428,6 +434,7 @@ fn prose_paths_are_rejected() {
 /// **这一条是 T04 存在的理由。** `cc-bus` 三条 touches 原先被当纯本机路径，
 /// 于是在**生产平台 Windows** 上审计页会说"不存在"，而同一个 app 的驾驶舱
 /// 正从远端把 inbox 读得好好的——T02 专门要防的假警报，出现在那一页上格外讽刺。
+/// （人群是 `Either` 的**文件**落点；用户级 `PATH` 那一格不是文件，见下面的过滤。）
 #[test]
 fn either_host_never_says_absent() {
     // 审计指出：原先只用 `empty_probe`（meta/list 恒 None），而 bug 的输出恰好就是
@@ -436,6 +443,7 @@ fn either_host_never_says_absent() {
     for f in [
         empty_probe(),
         FsProbe {
+            user_path: &|| None,
             meta: &|_| None,
             list: &|_| Some(vec!["unrelated".to_string()]),
         },
@@ -450,6 +458,10 @@ fn either_never_absent_with(probe: &FsProbe) {
         .iter()
         .flat_map(|t| t.carrier_touches())
         .filter(|(_, f)| f.host == HostScope::Either)
+        // 用户级 `PATH` 那一格也是 `Either`，但它不是文件：探针问的就是答这张表的那台自己，答「不在」就是真不在
+        //（「本机没找到 ≠ 不存在」那条顾虑不落在它身上）⇒ 不在这条的人群里，它说得出「缺」由
+        // `the_user_path_row_is_answered_by_its_own_probe` 钉。
+        .filter(|(c, _)| c.destination != ToolDestination::UserPath)
         .map(|(c, f)| {
             resolve_touched_path(
                 Vantage::Monitor,
@@ -468,7 +480,7 @@ fn either_never_absent_with(probe: &FsProbe) {
                 f,
                 PathResolution::EitherHost { .. } | PathResolution::NeedsProjectDir
             ),
-            "Either 的路径必须解析成 EitherHost（或项目目录相对），实得 {f:?}"
+            "Either 的文件落点必须解析成 EitherHost（或项目目录相对），实得 {f:?}"
         );
         assert_eq!(
             observe(&f, nothing),
@@ -482,6 +494,7 @@ fn either_never_absent_with(probe: &FsProbe) {
 #[test]
 fn either_host_reports_present_when_found_locally() {
     let f = FsProbe {
+        user_path: &|| None,
         meta: &|_| Some((false, 7)),
         list: &|_| None,
     };
@@ -503,6 +516,7 @@ fn either_host_keeps_the_glob_match() {
         .chain(["cc-acct-iso".to_string()])
         .collect();
     let f = FsProbe {
+        user_path: &|| None,
         meta: &|_| None, // 目录本身 stat 不到也不影响 glob 走 list
         list: &|_| Some(names.clone()),
     };
@@ -658,6 +672,8 @@ fn every_host_declaration_is_pinned() {
         // Claude Code 跑在哪台，这份记录就在哪台（`remote_history.rs` 真的从远端读它），
         // 标 `Client` 会让远端会话的用户在这一页上看到一句假话。
         ("claude-code", "~/.claude/projects/", Either),
+        // 用户级 `PATH` 那一段：问的是答这张表的那台后端自己的（本机远端同一条 `ccm-user-path`）⇒ `Either`。
+        ("ccm-user-path", r"HKCU\Environment\Path", Either),
     ];
     let mut actual: Vec<(&str, &str, HostScope)> = TOOLS
         .iter()
@@ -699,6 +715,7 @@ fn host_is_not_a_function_of_destination() {
                 ToolDestination::UserShellProfile(_) => "UserShellProfile",
                 ToolDestination::ProjectRelative(_) => "ProjectRelative",
                 ToolDestination::NotInstalledByUs => "NotInstalledByUs",
+                ToolDestination::UserPath => "UserPath",
             };
             for f in c.touches {
                 by_dest.entry(key.to_string()).or_default().insert(f.host);
@@ -834,14 +851,15 @@ fn declared_destinations_are_pinned_to_the_real_writers() {
     use guard_core::pin_definition;
 
     // ① ccm：真落点只由那台后端自己写（`Own::place_staged` 换进 · `Own::clear_landing` 删掉，都取 `relay_route_core` 那一个常量），
-    //   那一份逐字是 `.cc-monitor/bin/ccm`。
+    //   那一份逐字是 `.cc-monitor/bin/ccm`（字面量只在布局宏 `backend_landing_rel!` 里，常量与足迹申报都由它给）。
     pin_definition(
         include_str!("../../../src/common/relay-route-core/src/lib.rs"),
-        r#"pub const BACKEND_LANDING_REL: &str = ".cc-monitor/bin/ccm";"#,
+        "pub const BACKEND_LANDING_REL: &str = backend_landing_rel!();",
         "pub const BACKEND_LANDING_REL",
         "后端落点",
     )
     .unwrap();
+    assert_eq!(relay_route_core::BACKEND_LANDING_REL, ".cc-monitor/bin/ccm");
     let ccm = TOOLS.iter().find(|t| t.id == "ccm").unwrap();
     // 🔴 `ccm` 现在**两台机器上各一个落点** ⇒ 这一格从
     //    「与 `CCM_CLI_REMOTE_PATH` 相等」变成「**远端那一半**与它相等」。
@@ -1003,6 +1021,7 @@ fn the_prompt_tier_really_looks_before_it_speaks() {
     // `git` 装着、`tmux` 没装 —— 两条都在「你自己装」那一档里。
     let meta = machine_with(&["git"], &[]);
     let fs = FsProbe {
+        user_path: &|| None,
         meta: &meta,
         list: &|_| None,
     };
@@ -1069,6 +1088,7 @@ fn the_same_name_under_three_probes_gives_three_different_cells() {
     let h = home();
     let meta = machine_with(&[], &[]);
     let fs = FsProbe {
+        user_path: &|| None,
         meta: &meta,
         list: &|_| None,
     };
@@ -1276,9 +1296,8 @@ fn this_module_only_reads() {
             "use backend_agents as agents;",
             "use backend_assets as assets;",
             "use backend_common as common;",
-            "use backend_control as control;",
             "use backend_history as history;",
-            "use backend_observe as observe;",
+            "use backend_host as host;",
             "use backend_platform as platform;",
             "use backend_wire as wire;",
             "use crate::common::said::Said;",
@@ -1366,6 +1385,7 @@ fn the_session_shell_finds_each_windows_install_form() {
     for &(what, windows, files, dirs, found) in cases {
         let meta = one_dir_with(dir, files, dirs);
         let fs = FsProbe {
+            user_path: &|| None,
             meta: &meta,
             list: &|_| None,
         };
@@ -1430,6 +1450,7 @@ fn every_path_row_finds_each_windows_install_form() {
     for &(what, named, windows, files, dirs, found) in cases {
         let meta = one_dir_with(dir, files, dirs);
         let fs = FsProbe {
+            user_path: &|| None,
             meta: &meta,
             list: &|_| None,
         };
@@ -1449,4 +1470,50 @@ fn every_path_row_finds_each_windows_install_form() {
             if found { "认得" } else { "说缺" }
         );
     }
+}
+
+/// 用户级 `PATH` 那一格不是文件：申报只许写那一个占位，在不在只照探针答（问不出 ⇒「未确定」，不说缺；
+/// 别的平台那台不说 PowerShell，探针恒答问不出）。表里那一行的状态就是探针那一答。
+#[test]
+fn the_user_path_row_is_answered_by_its_own_probe() {
+    use crate::agents::footprint_decl::USER_PATH_TOKEN;
+    let h = home();
+    let agent = h.join(".claude");
+    for (asked, want) in [
+        (Some(true), SurfaceState::Present),
+        (Some(false), SurfaceState::Absent),
+        (None, SurfaceState::Undetermined),
+    ] {
+        let probe = move || asked;
+        let fs = FsProbe {
+            user_path: &probe,
+            meta: &|_| None,
+            list: &|_| None,
+        };
+        let res = resolve_touched_path(
+            Vantage::Monitor,
+            USER_PATH_TOKEN,
+            &ToolDestination::UserPath,
+            HostScope::Either,
+            &h,
+            &agent,
+        )
+        .expect("占位那一形解析得了");
+        assert_eq!(observe(&res, &fs), want, "探针答 {asked:?}");
+        let rows = build_rows(&env_with(&h, &fs, Some("/usr/bin")), None);
+        let row = rows.iter().find(|r| r.tool_id == "ccm-user-path");
+        assert_eq!(row.map(|r| r.state), Some(want), "表里那一行照探针答");
+    }
+    assert!(
+        resolve_touched_path(
+            Vantage::Monitor,
+            "~/x",
+            &ToolDestination::UserPath,
+            HostScope::Either,
+            &h,
+            &agent,
+        )
+        .is_none(),
+        "用户级 PATH 那一格写成文件路径 ⇒ 申报自相矛盾"
+    );
 }

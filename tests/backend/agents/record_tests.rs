@@ -34,7 +34,7 @@ fn incoming_message_bodies_go_out_as_trees() {
                 who: UserText {
                     speaker,
                     text: String::new(),
-                    pasted: Vec::new(),
+                    parts: Vec::new(),
                 },
                 blocks: Vec::new(),
                 results: Default::default(),
@@ -90,7 +90,7 @@ fn draw_and_human_are_worked_out_once_from_the_body() {
         who: UserText {
             speaker,
             text: text.into(),
-            pasted: Vec::new(),
+            parts: Vec::new(),
         },
         blocks,
         results: BTreeMap::new(),
@@ -112,7 +112,7 @@ fn draw_and_human_are_worked_out_once_from_the_body() {
         name: "X".into(),
         input: serde_json::json!({}),
     };
-    let result = || Block::tool_result("c".into(), vec![], false);
+    let result = || Block::tool_result("c".into(), vec![], false, copy_core::size_text);
     let image = || Block::Image {
         media_type: "image/png".into(),
         bytes: 1,
@@ -206,6 +206,8 @@ fn draw_and_human_are_worked_out_once_from_the_body() {
                 Speaker::BashOutput {
                     stdout: "a".into(),
                     stderr: String::new(),
+                    stdout_fold: None,
+                    stderr_fold: None,
                 },
                 "",
                 vec![],
@@ -328,6 +330,17 @@ fn draw_and_human_are_worked_out_once_from_the_body() {
             false,
         ),
         (
+            "接在一串后面的重试",
+            Body::Retry {
+                reason: cmd_wire::record::ApiReason::Unknown,
+                attempt: Some(2),
+                max: Some(10),
+                text: None,
+            },
+            Draw::None,
+            false,
+        ),
+        (
             "标题",
             Body::Title {
                 text: "x".into(),
@@ -347,68 +360,4 @@ fn draw_and_human_are_worked_out_once_from_the_body() {
         let r = record("a".into(), "i".into(), None, body);
         assert_eq!((r.draw, r.human), (draw, human), "{what}");
     }
-}
-
-/// 收场通知那一行的字由出口写（照看的那一台的时区写钟面）：后台任务 · 做的那件事 · 怎么收场 · 几点；界面照抄。
-#[test]
-fn stamp_writes_the_notice_row() {
-    use cmd_wire::record::{Speaker, TaskEnd, UserText};
-    let notice = |summary: Option<&str>, end: Option<TaskEnd>| {
-        record(
-            "claude".into(),
-            "n1".into(),
-            Some("2026-01-01T06:02:00.000Z".into()),
-            Body::Said {
-                who: UserText {
-                    speaker: Speaker::TaskNotification {
-                        task_id: Some("b7".into()),
-                        status: None,
-                        summary: summary.map(str::to_string),
-                        tool_use_id: None,
-                        end,
-                        row: None,
-                    },
-                    text: String::new(),
-                    pasted: Vec::new(),
-                },
-                blocks: Vec::new(),
-                results: std::collections::BTreeMap::new(),
-                cwd: None,
-                attachments: Vec::new(),
-            },
-        )
-    };
-    let row = |mut r: Record| {
-        r.stamp(&crate::common::time::Tz::named("Asia/Shanghai").unwrap());
-        match r.body {
-            Body::Said { who, .. } => match who.speaker {
-                Speaker::TaskNotification { row, .. } => row.map(|w| w.0),
-                _ => unreachable!(),
-            },
-            _ => unreachable!(),
-        }
-    };
-    let want = |what: &str, state: &str| {
-        copy_core::copy_text(
-            "speaker.notice.row",
-            &[
-                ("what", what),
-                ("state", &copy_core::copy_text(state, &[])),
-                ("time", "14:02"),
-            ],
-        )
-    };
-    assert_eq!(
-        row(notice(Some("扫目录"), Some(TaskEnd::Stopped))),
-        Some(want("扫目录", "runs.state.stopped"))
-    );
-    assert_eq!(
-        row(notice(Some("扫目录"), Some(TaskEnd::Failed))),
-        Some(want("扫目录", "runs.state.failed"))
-    );
-    assert_eq!(
-        row(notice(None, Some(TaskEnd::Done))),
-        Some(want("b7", "runs.state.done")),
-        "没有摘要 ⇒ 写任务号"
-    );
 }

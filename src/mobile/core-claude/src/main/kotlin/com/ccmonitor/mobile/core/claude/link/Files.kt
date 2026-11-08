@@ -5,7 +5,6 @@ import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.Commands
 import com.ccmonitor.mobile.core.wire.gen.FileClass
 import com.ccmonitor.mobile.core.wire.gen.FileKind
-import com.ccmonitor.mobile.core.wire.gen.FilesCommitUploadReq
 import com.ccmonitor.mobile.core.wire.gen.FilesCreateReq
 import com.ccmonitor.mobile.core.wire.gen.FilesDeleteSessionReq
 import com.ccmonitor.mobile.core.wire.gen.FilesMkdirReq
@@ -22,11 +21,9 @@ import com.ccmonitor.mobile.core.wire.gen.LsHead
 import com.ccmonitor.mobile.core.wire.gen.LsReq
 import com.ccmonitor.mobile.core.wire.gen.LsSort
 import com.ccmonitor.mobile.core.wire.gen.LsSortBy
-import com.ccmonitor.mobile.core.wire.gen.OnExists
 import com.ccmonitor.mobile.core.wire.gen.PreviewGate
 import com.ccmonitor.mobile.core.wire.gen.ReadTextReq
 import com.ccmonitor.mobile.core.wire.gen.Sha256Expect
-import com.ccmonitor.mobile.core.wire.gen.Staged
 import com.ccmonitor.mobile.core.wire.gen.StatReq
 import com.ccmonitor.mobile.core.wire.gen.WirePath
 import com.ccmonitor.mobile.core.wire.gen.WirePathObjValue
@@ -35,7 +32,7 @@ import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
 
 /*
- * 那台的文件：列 · 读 · 存回 · 新建 · 改名 · 删 · 改权限 · 上传的提交（分块那一圈在核心里，[CoreLink.transfer]）。都是那台后端的帧命令，
+ * 那台的文件：列 · 读 · 存回 · 新建 · 改名（删 · 改权限 · 上传 · 下载是一组，全过程在核心里，[CoreLink.batch]）。都是那台后端的帧命令，
  * 桌面文件窗口问的同一族；能不能做 · 出错那一句 · 冲突都由那台判、那台写。手机只拼入参，回包由嵌的 Rust 核心按 `cmd-wire` 那一份解过、
  * 照 `core-wire` 生成的类解。写的那几问照桌面的切法：`root` ＝ 当前目录，`rel` ＝ 一段名字（敲的名字带 `single`，合不合法那台判）。
  */
@@ -369,32 +366,4 @@ object FilesDeleteSession {
     const val COMMAND: String = Commands.FilesDeleteSession.NAME
 
     fun args(sid: String): Map<String, Any?> = Commands.FilesDeleteSession.args(FilesDeleteSessionReq(sid))
-}
-
-/**
- * `files-commit-upload`：暂存区里传完的那一份挪进当前目录（整份摘要那台照核；名字带 single，那台判）。同名怎么办 [onExists]：不带 ⇒ 那台问（码 `exists` ＋ 同名清单，
- * 块与暂存件都留着）；`overwrite` · `keep_both` ⇒ 同一份暂存件再交一次。
- */
-object FilesCommitUpload {
-    const val COMMAND: String = Commands.FilesCommitUpload.NAME
-
-    /** [staged]：核心送完的那一份（[CoreLink.transfer] 的 [Transfer.Stage] 回的那一形，`Wire.bind<Staged>` 解）。 */
-    fun args(
-        dir: RemotePath,
-        name: String,
-        staged: Staged,
-        onExists: String? = null,
-    ): Map<String, Any?> =
-        Commands.FilesCommitUpload.args(
-            FilesCommitUploadReq(
-                root = dir.typed,
-                rel = WirePath.Text(name),
-                key = staged.key,
-                onExists = onExists?.let { w -> OnExists.entries.first { it.wire == w } },
-                expect = Sha256Expect(staged.sha256),
-                chunks = staged.chunks,
-                bytes = staged.bytes,
-                single = true,
-            ),
-        )
 }

@@ -31,7 +31,7 @@ beforeEach(() => localStorage.clear());
 describe("输入框上方那一排输入队", () => {
   it("★ 那台离线 ⇒ 排头单独一行「名单为上次所知」、不拼连接层那句，那一排标淡；名单与待发照手上那一份画", () => {
     const row = new QueueRow(noHost);
-    row.paint(five(), [{ id: "p-1", text: "pending one", said: "held", held: true }], true);
+    row.paint(five(), [{ id: "p-1", text: "pending one", said: "held", held: true, refused: false }], true);
     expect(head(row.el)).toBe(copyText("terminal.queue.stale"));
     expect(row.el.dataset.stale).toBe("true");
     const lines = row.el.querySelectorAll('[data-role="queue-lines"] > [data-role="queue-line"]');
@@ -55,16 +55,18 @@ describe("输入框上方那一排输入队", () => {
     expect(spans).toEqual(["said-1", "text 1"]);
   });
 
-  it("★ 待发那一句照交来的那一句摆；没回执的那一行标 held（淡），在飞的不标", () => {
+  it("★ 待发那一句照交来的那一句摆；没回执的那一行标 held（淡），在飞的不标；那台拒了 ⇒ 同没送进会话那一条（错误色）", () => {
     const row = new QueueRow(noHost);
     row.paint(null, [
-      { id: "p-1", text: "in flight", said: "confirming", held: false },
-      { id: "p-2", text: "no receipt", said: "held-said", held: true },
+      { id: "p-1", text: "in flight", said: "confirming", held: false, refused: false },
+      { id: "p-2", text: "no receipt", said: "held-said", held: true, refused: false },
+      { id: "p-3", text: "refused", said: "full-said", held: false, refused: true },
     ], false);
     const lines = Array.from(row.el.querySelectorAll<HTMLElement>('[data-role="queue-line"]'));
     expect(lines.map((l) => [l.dataset.state, l.querySelector("span")?.textContent])).toEqual([
       ["sending", "confirming"],
       ["held", "held-said"],
+      ["undelivered", "full-said"],
     ]);
   });
 
@@ -72,7 +74,7 @@ describe("输入框上方那一排输入队", () => {
     const cancel = vi.fn();
     const cancelPending = vi.fn();
     const row = new QueueRow({ cancel, cancelPending });
-    row.paint({ items: [item(1)], sent: [] }, [{ id: "p-1", text: "mine", said: "s", held: false }], false);
+    row.paint({ items: [item(1)], sent: [] }, [{ id: "p-1", text: "mine", said: "s", held: false, refused: false }], false);
     const buttons = row.el.querySelectorAll<HTMLButtonElement>('[data-role="queue-line"] button');
     buttons[0]?.click();
     buttons[1]?.click();

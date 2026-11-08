@@ -63,6 +63,10 @@ mod tests {
         ),
         ("port", "端口号"),
         (
+            "RELAY_PORT",
+            "环境变量的**名字** `CCM_RELAY_PORT`（`platform::child_env` 的编译期常量）—— 只是名字，不带它的值",
+        ),
+        (
             "INFLIGHT_CONNECTIONS",
             "在途连接数上限，一个编译期常量",
         ),

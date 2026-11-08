@@ -42,7 +42,7 @@ pub struct Spec {
     pub(crate) argv: Vec<String>,
 }
 
-/// `<id> [name=N] [size=列x行] [cwd=D] [agent=A] [account=号] [client=C] -- <argv…>`（`--host-run` 之后那一串；那个词住 `ccm_line::argv::flag`）。
+/// `<id> [name=N] [size=列x行] [cwd=D] [agent=A] [account=号] [client=C] -- <argv…>`（`--host-run` 之后那一串；那个词住 `wire::ccm_line::argv::flag`）。
 /// 选项写成 `键=值`：它们是 ccm 起托管进程时自己拼的，不是给人敲的旗标。
 pub(crate) fn parse(args: &[String]) -> Result<Spec, Said> {
     let bad = |what: &str| -> Said { copy_text("beHost.run.badArgs", &[("what", what)]).into() };
@@ -62,7 +62,7 @@ pub(crate) fn parse(args: &[String]) -> Result<Spec, Said> {
         argv: Vec::new(),
     };
     while let Some(a) = it.next() {
-        if a == crate::ccm_line::argv::flag::END {
+        if a == crate::wire::ccm_line::argv::flag::END {
             spec.argv = it.cloned().collect();
             break;
         }

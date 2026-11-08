@@ -2,7 +2,7 @@
 //! 每个码都有后端写好的那一句（替身记下被调了什么；tmux 一个都不起）。
 
 use crate::common::said::Said;
-use crate::control::launch_account::{self as la, AccountAsk, Settled};
+use crate::control::launch_account::{self as la, AccountAsk};
 use crate::control::session_batch::{Deps, NameBase, TermEntry};
 use crate::control::session_open::*;
 use serde_json::{json, Value};
@@ -203,11 +203,11 @@ impl Rig {
             Ok(true)
         };
         let library = || {
-            crate::observe::accounts_query::test_support::list(
+            crate::accounts::manage::library::test_support::list(
                 self.names
                     .iter()
                     .map(|n| {
-                        crate::observe::accounts_query::test_support::row_with(n, |a| {
+                        crate::accounts::manage::library::test_support::row_with(n, |a| {
                             a.config_dir = Some(format!("/h/.cc/{n}"))
                         })
                     })

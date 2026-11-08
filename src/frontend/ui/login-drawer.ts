@@ -20,7 +20,7 @@ import { attachTooltip } from "./kit/tooltip";
 import { copyText } from "./copy-table";
 import { readClipboard, writeClipboard } from "./clipboard";
 import { accountAvatarEl } from "./account-color";
-import { accountLabel } from "./acct-words";
+import { labelOf } from "./account-line";
 import { machineName } from "./ipc/chan-caller";
 import type { Machine } from "./ipc/origin";
 import { subscribeTopics } from "./events";
@@ -307,7 +307,7 @@ class LoginDrawer {
       row.append(icon("plug", "compact"), server, sep());
     }
     if (t.account !== null) {
-      const acct = el("span", "", accountLabel(t.account));
+      const acct = el("span", "", labelOf(this.spec.origin, t.account));
       if (t.kind === "account") acct.className = s.ldName;
       row.append(accountAvatarEl(t.account, { size: 16, origin: this.spec.origin }), acct);
     }

@@ -15,7 +15,7 @@
 //! 本文件只声明两块，不放任何代码 —— 放了就成了两块共用的第三处。
 //! 底下挂的是中转宿主（独立的包 `backend-relay`）那几条引到账号域的判据：真中转 ＋ 生产段的上游选择。
 //!
-//! 独立的包 `backend-accounts`：只引 `history`（含 `lineage`）· `agents` · `host`（含 `ccm_line`）· `relay` · `wire` · `common` · `platform`，
+//! 独立的包 `backend-accounts`：只引 `history`（含 `lineage`）· `agents` · `relay` · `wire`（含 `ccm_line`）· `common` · `platform`，
 //! 引了上层就编不过。上层只够得到这里的 `pub` 项。
 
 // 测试段可以直接问系统钟（量具、夹具的时刻）；生产段只许纯工具那一层的 `time::now`（`clippy.toml`）。
@@ -39,10 +39,10 @@ use backend_agents as agents;
 use backend_common as common;
 use backend_history as history;
 use backend_history::lineage;
-use backend_host::ccm_line;
 use backend_platform as platform;
 use backend_relay as relay;
 use backend_wire as wire;
+use backend_wire::ccm_line;
 
 // 测试档的家一开始就是沙箱（`src/common/test-home`）：这一行让链接器把它的启动段带进本包的测试二进制。
 #[cfg(test)]

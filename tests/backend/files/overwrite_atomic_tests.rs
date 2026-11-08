@@ -11,9 +11,10 @@
 //! | W1 | 写到一半进程被内核收掉（`ulimit -f` ⇒ `SIGXFSZ`，死在 `write` 中间），目标仍是旧的整份；正控：同一台架换成就地写，目标变成半份 | re-exec 测试二进制当子进程 |
 //! | W2 | 内容换新 · 权限位沿用 · 最后一段是链接 ⇒ 链接还是链接、真文件换新 · 不剩旁名 · inode 换了 | 真文件 |
 //! | W3 | 提交失败撤占位也失败 ⇒ 报错带占位路径与「删不掉」；撤得掉 ⇒ 一个字不加 | 两向 |
-//! | W4 | 后端生产段 `fs::write(` 恰好一处，且在 `swap_in` 的 `cfg(windows)` 臂里 | 文本，零富余 ＋ 正控 |
+//! | W4 | 后端生产段就地写恰好一处，在 `common::staging::land` 「不该原子换」那一支里 | 文本，零富余 ＋ 正控 |
 
 use super::*;
+use crate::common::staging::in_place_reason;
 use crate::platform::fs::Face;
 
 const CHILD_MARK: &str = "CCM_HX1_OW_CHILD";
@@ -162,7 +163,7 @@ fn write_calls(code: &str) -> Vec<usize> {
 }
 
 #[test]
-fn w4_the_only_in_place_write_is_the_in_place_arm_of_replace_contents() {
+fn w4_the_only_in_place_write_is_the_in_place_arm_of_land() {
     let roots = guard_core::addr::backend_code_roots();
     let mut files: Vec<String> = Vec::new();
     let mut prims: Vec<String> = Vec::new();
@@ -193,19 +194,15 @@ fn w4_the_only_in_place_write_is_the_in_place_arm_of_replace_contents() {
     );
     assert_eq!(
         files,
-        vec!["files/write.rs".to_string()],
+        vec!["common/staging.rs".to_string()],
         "后端生产段就地写的集合变了"
     );
-    // 那一处在 `replace_contents` 里、在「该不该原子换」那一问的答案那一支之内。
-    let prod = guard_core::production_code(include_str!("../../../src/backend/files/write.rs"));
-    assert_eq!(prod.matches("fn replace_contents(").count(), 1);
-    let seg = &prod[prod.find("fn replace_contents(").expect("replace_contents")..];
-    let seg = &seg[..seg.find("\n}\n").expect("replace_contents 的尾")];
-    assert_eq!(
-        write_calls(seg).len(),
-        1,
-        "replace_contents 里就地写不是恰好一处"
-    );
+    // 那一处在 `common::staging::land` 里、在「该不该原子换」那一问的答案那一支之内。
+    let prod = guard_core::production_code(include_str!("../../../src/backend/common/staging.rs"));
+    assert_eq!(prod.matches("pub fn land(").count(), 1);
+    let seg = &prod[prod.find("pub fn land(").expect("land")..];
+    let seg = &seg[..seg.find("\n}\n").expect("land 的尾")];
+    assert_eq!(write_calls(seg).len(), 1, "land 里就地写不是恰好一处");
     let asked = seg.find("in_place_reason(").expect("那一问");
     let arm = seg.find("if in_place {").expect("就地那一支");
     let w = write_calls(seg)[0];
@@ -254,7 +251,7 @@ fn h1_a_hardlinked_target_is_written_in_place_so_both_names_see_it() {
 }
 
 /// 「该不该原子换」那一问逐格（属主那一格要 root 才造得出真文件，只在纯函数上量 —— 如实登记）；
-/// 接线：`replace_contents` 问它时交的恰是 `links_and_owner` 与 `current_uid`。
+/// 接线：`land` 问它时交的恰是 `links_and_owner` 与 `current_uid`。
 #[test]
 fn h2_the_in_place_reasons_are_exactly_links_and_owner() {
     assert_eq!(in_place_reason(1, 1000, 1000), None);
@@ -270,12 +267,12 @@ fn h2_the_in_place_reasons_are_exactly_links_and_owner() {
         both.contains("3 个硬链接") && both.contains("属主"),
         "{both}"
     );
-    let prod = guard_core::production_code(include_str!("../../../src/backend/files/write.rs"));
+    let prod = guard_core::production_code(include_str!("../../../src/backend/common/staging.rs"));
     assert_eq!(
         prod.matches("in_place_reason(links, owner, crate::platform::paths::current_uid())")
             .count(),
         1,
-        "replace_contents 问的不是这台进程的 uid"
+        "land 问的不是这台进程的 uid"
     );
     assert_eq!(prod.matches("links_and_owner(&real)").count(), 1);
 }

@@ -228,7 +228,7 @@ describe("agent 窗口", () => {
     }
     vi.stubGlobal("IntersectionObserver", FakeIO);
     try {
-      const m = { w: 900, h: 800, d: 0, items: [{ t: "g" as const, f: "math_italic" as const, u: 0x61, x: 0, y: 800, s: 1000 }] };
+      const m = { w: 900, h: 800, d: 0, items: [{ t: "g" as const, f: "Math-Italic", u: 0x61, x: 0, y: 800, s: 1000 }] };
       h.pages = [{ rows: [brief("查一下"), say("c1", { blocks: [{ t: "p", k: ["改好了："] }, { t: "math", tex: "a^2", m }], segs: [] })] }, { rows: [] }];
       const { root } = await open();
       const block = root.querySelector<HTMLElement>("[data-math=display]");

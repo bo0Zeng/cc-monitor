@@ -134,7 +134,6 @@ enum class AppAction(
     TMUX_SESSIONS("tmux_sessions"),
     SHOW_KEYBOARD("show_keyboard"),
     CAPTURE("capture"),
-    PUSH_KEY("push_key"),
     ;
 
     companion object {

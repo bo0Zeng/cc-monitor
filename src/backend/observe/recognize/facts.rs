@@ -74,7 +74,9 @@ pub(crate) const TOUCHED_FILES_KEEP: usize = 1000;
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct SessionFacts {
-    /// 源会话 sid；不是分叉来的 ⇒ `null`。
+    /// 源会话 sid；不是分叉来的 ⇒ 缺。后端自己用（起 `forkedLine` · 锁定首条），不出帧：两端只摆写好的那一行。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub forked_from: Option<String>,
     /// 写类工具碰过的文件（原样，可能相对 / Windows 路径），近因序：最近碰的在末尾。
     pub touched_files: Vec<String>,
@@ -142,8 +144,6 @@ pub struct SessionFacts {
     pub permission_mode_text: Option<Words>,
     /// 全会话用量（按请求去重）；一条带用量的回复都没有 ⇒ `null`。
     pub tokens: Option<TokenUse>,
-    /// 全会话花费（记录里那一家自己记的花费那一条，最后一条为准）；记录里没有 ⇒ `null`（不按定价自己算）。
-    pub cost: Option<Cost>,
     /// 还没收场的后台命令（文件序）：累加的那一份账，写 `background` 那一句用。不上线，骨架落它（[`skel`]）。
     #[serde(skip)]
     #[cfg_attr(any(test, feature = "ts"), ts(skip))]
@@ -178,10 +178,6 @@ pub struct SessionFacts {
     /// 子会话那一句（「子会话 N」，[`set_kin`] 写）；一个都没有 ⇒ `null`。
     #[serde(default)]
     pub children_text: Option<Words>,
-    /// **状态一句里会走的那一截**：pidfile 此刻说的那一态 ＋ 记录里的事实（在跑的那一步 · 等的种类与起点 · 最后一句的时刻），[`line_of`] 写。
-    /// 不活 ⇒ `null`。不累加，每次现查。
-    #[serde(default)]
-    pub line: Option<FactsLine>,
     /// 认不出、又不成卡的行（那一家的簿记行：没见过的类型、没有链上身份）：照实说几行、哪几种，一行都没有 ⇒ `null`。
     /// 后端接着记账用，不上线，骨架落它（[`skel`]）。
     #[serde(skip)]
@@ -189,42 +185,22 @@ pub struct SessionFacts {
     pub quiet_unread: Option<QuietUnread>,
 }
 
-/// 状态一句（[`SessionFacts::line`]）：写它时 pidfile 说的那一态（`for`）· 此刻的字 · 会走的那一句（`{dur}` 由出口填）· 悬停卡那一句。
-/// 界面只在 `for` 与会话帧上那一态相同时用它（两份是同一刻的），否则用会话帧上那一句。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct FactsLine {
-    #[serde(rename = "for")]
-    pub of: crate::agents::SessionActivity,
-    pub text: Words,
-    pub clock: Option<Clock>,
-    pub peek: Option<Words>,
-}
-
-/// **状态一句会走的那一截的唯一一处**：`activity` ＝ pidfile 此刻说的那一态（不活 ⇒ `None` ⇒ 没有这一句）。
-/// 在等 ⇒ 等的种类 · 已等多久（悬停卡：等的那一句）；在跑 ⇒ 调用的那一步 · 跑了多久（那一步）；闲着 ⇒ 完成多久前（最后一句）；
-/// 后台 ⇒ 后台那一句（最后一句）。拿不到时刻 ⇒ 不带钟。
+/// **状态一句的唯一一处**（填进脸上 `line` · `clock` · `peek`，[`crate::wire::SessionFaceExt::saying`]）：`activity` ＝ 造脸那一处判好的那一态
+/// （不活 ⇒ `None` ⇒ 没有这一句）。字是定格的、不带时长（推出去的帧不因钟走而变）；时长只在会走的那一截里，由出口按此刻填。
+/// 在等 ⇒ 等的种类（会走的：已等多久；悬停句：等的那一步）；在跑 ⇒ 调用的那一步（会走的：跑了多久；悬停句：那一步）；
+/// 闲着 ⇒ 空闲（会走的：完成多久前；悬停句：最后一句）；后台 ⇒ 后台那一句（悬停句：最后一句）。拿不到时刻 ⇒ 不带会走的。
 pub fn line_of(
     activity: Option<crate::agents::SessionActivity>,
     f: &SessionFacts,
-    now_ms: u64,
-) -> Option<FactsLine> {
+) -> Option<crate::wire::StateLine> {
     use crate::agents::SessionActivity as A;
     let a = activity?;
     let since = |ms: Option<i64>| ms.and_then(|m| u64::try_from(m).ok());
-    let ticking = |from: Option<u64>, line: &dyn Fn(&str) -> String, still: String| match from {
-        Some(from) => (
-            Words(line(&copy_core::short_duration(
-                now_ms.saturating_sub(from),
-            ))),
-            Some(Clock {
-                text: Words(line(DUR_SLOT)),
-                from,
-            }),
-        ),
-        None => (Words(still), None),
+    let ticking = |from: Option<u64>, line: &dyn Fn(&str) -> String| {
+        from.map(|from| Clock {
+            text: Words(line(DUR_SLOT)),
+            from,
+        })
     };
     let last = || f.last_say.as_ref().map(|l| Words(l.text.clone()));
     let (text, clock, peek) = match a {
@@ -240,8 +216,12 @@ pub fn line_of(
                     &[("kind", &kind), ("waited", w)],
                 )
             };
-            let (t, c) = ticking(n.and_then(|n| n.since_ms), &line, kind.clone());
-            (t, c, n.and_then(|n| n.what.clone()).map(Words))
+            let c = ticking(n.and_then(|n| n.since_ms), &line);
+            (
+                Words(kind.clone()),
+                c,
+                n.and_then(|n| n.what.clone()).map(Words),
+            )
         }
         A::Working => match f.pending.first() {
             Some(p) => {
@@ -252,8 +232,8 @@ pub fn line_of(
                     )
                 };
                 let still = copy_core::copy_text("sessionFace.state.running", &[("tool", &p.name)]);
-                let (t, c) = ticking(since(p.at_ms), &line, still);
-                (t, c, p.what.clone().map(Words))
+                let c = ticking(since(p.at_ms), &line);
+                (Words(still), c, p.what.clone().map(Words))
             }
             None => (
                 Words(copy_core::copy_text("backend.status.connected", &[])),
@@ -265,31 +245,25 @@ pub fn line_of(
             let line =
                 |ago: &str| copy_core::copy_text("sessionFace.state.idleSeen", &[("ago", ago)]);
             let still = copy_core::copy_text("beSession.activity.idle", &[]);
-            let (t, c) = ticking(
-                f.last_say.as_ref().and_then(|l| since(l.at_ms)),
-                &line,
-                still,
-            );
-            (t, c, last())
+            let c = ticking(f.last_say.as_ref().and_then(|l| since(l.at_ms)), &line);
+            (Words(still), c, last())
         }
-        A::BackgroundWork => match &f.background {
-            Some(b) => (b.text.clone(), b.clock.clone(), last()),
-            None => (
+        A::BackgroundWork => {
+            let word = || {
                 Words(copy_core::copy_text(
                     "beSession.activity.backgroundWork",
                     &[],
-                )),
-                None,
-                last(),
-            ),
-        },
+                ))
+            };
+            match &f.background {
+                // 会走的那一截在 ⇒ 定格的字不带时长（后台那一句本身写着时长）。
+                Some(b) if b.clock.is_some() => (word(), b.clock.clone(), last()),
+                Some(b) => (b.text.clone(), None, last()),
+                None => (word(), None, last()),
+            }
+        }
     };
-    Some(FactsLine {
-        of: a,
-        text,
-        clock,
-        peek,
-    })
+    Some(crate::wire::StateLine { text, clock, peek })
 }
 
 /// 会话血缘里的另一条会话（会话头「由 … 启动」· 「子会话 N」那一列）：编号 · 叫它什么 · 此刻的整份脸 · 隐不隐藏（判定住 `history/session_hidden.rs`）。
@@ -363,23 +337,8 @@ pub struct Background {
     pub tone: crate::common::cells::Tone,
 }
 
-/// 会走的一句：字里的 `{dur}` 填 现在 − `from`（epoch ms）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(
-    any(test, feature = "ts"),
-    ts(
-        export,
-        rename = "FactsClock",
-        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
-    )
-)]
-pub struct Clock {
-    pub text: Words,
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-    pub from: u64,
-}
+/// 会走的一句（型住线上那一处：脸上 `clock` 与会话事实里的这几格是同一个）。
+pub use cmd_wire::frame::Clock;
 
 /// 时长那一截的占位（桌面那一个读口填）。
 const DUR_SLOT: &str = "{dur}";
@@ -531,23 +490,6 @@ pub struct TokenUse {
 pub struct LastRequest {
     pub(crate) id: String,
     pub(crate) tokens: [u64; 5],
-}
-
-/// 全会话花费：记录里那一家自己记的数（微美元）· 它说有没有定不了价的型号 · 写好的串（币种、精度、「约」都在里面）。
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(
-    any(test, feature = "ts"),
-    ts(
-        export,
-        rename = "FactsCost",
-        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
-    )
-)]
-pub struct Cost {
-    pub partial: bool,
-    pub text: Words,
 }
 
 /// 一串相邻的 API 重试。
@@ -1602,9 +1544,6 @@ pub(crate) fn note_record(f: &mut SessionFacts, kind: &str, v: &Value, beat: &Be
         }
         Side::Note => {}
     }
-    if let Some(c) = beat.cost {
-        note_cost(f, c);
-    }
     if let Some(m) = &beat.mode {
         f.permission_mode = Some(m.to_string());
     }
@@ -1712,21 +1651,6 @@ fn note_tokens(f: &mut SessionFacts, beat: &Beat) {
     ));
 }
 
-/// 花费那一条（那一家说的到此刻为止的全会话总数；`partial` ⇒ 有型号定不了价、数只是下限）。
-fn note_cost(f: &mut SessionFacts, c: crate::agents::beat::CostSaid) {
-    let crate::agents::beat::CostSaid { micros, partial } = c;
-    let shown = format!("{:.2}", micros as f64 / 1e6);
-    let text = match (micros, partial) {
-        (1..=4_999, _) => copy_core::copy_text("beSpend.cost.tiny", &[]),
-        (_, false) => copy_core::copy_text("beSpend.cost.exact", &[("usd", &shown)]),
-        (_, true) => copy_core::copy_text("beSpend.cost.about", &[("usd", &shown)]),
-    };
-    f.cost = Some(Cost {
-        partial,
-        text: Words(text),
-    });
-}
-
 /// token 数写成短串（唯一一处：用量那一行 · 上下文那一格）：`800` · `1.2k` · `8k` · `350k` · `1M` · `1.3M`。
 /// 一万以下的 k 与 M 留一位小数（`.0` 不写），一万到一百万的 k 取整。
 fn short_tokens(n: u64) -> String {
@@ -1771,6 +1695,8 @@ pub(crate) mod skel {
         tokens: Option<TokenSide>,
         usage: Option<UsageSide>,
         quiet_unread: Option<QuietUnread>,
+        /// 分叉自哪个会话（线上不出，后端起 `forkedLine` · 锁定首条要它）。
+        forked_from: Option<String>,
     }
 
     #[derive(Serialize)]
@@ -1813,6 +1739,7 @@ pub(crate) mod skel {
                     limit_from: u.limit_from,
                 }),
                 quiet_unread: f.quiet_unread.clone(),
+                forked_from: f.forked_from.clone(),
             },
             notices: &f.notice_log,
             retries: &f.retry_log,
@@ -1836,6 +1763,7 @@ pub(crate) mod skel {
             tokens,
             usage,
             quiet_unread,
+            forked_from,
         } = side;
         facts.retry_log = retries;
         if let Some(t) = facts.tokens.as_mut() {
@@ -1853,6 +1781,7 @@ pub(crate) mod skel {
             u.limit_from = side.limit_from;
         }
         facts.quiet_unread = quiet_unread;
+        facts.forked_from = forked_from;
         facts.notice_log = notices;
         facts.handed_back = handed_back;
         facts.bg_tasks = bg_tasks;

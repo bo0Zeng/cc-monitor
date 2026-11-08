@@ -27,7 +27,6 @@ import { DEFAULT_AGENT, agentHasAccounts, defaultLauncherOf } from "./agent-prof
 import { fetchAccounts } from "./account-reads";
 import type { Account } from "./accounts";
 import { accountAvatarEl } from "./account-color";
-import { accountLabel } from "./acct-words";
 import { readPrefs } from "./machine-prefs";
 import { chosenAccount, type AccountAsk } from "./launch-account";
 import { askOpen, landOpened, type OpenEnd, type OpenHow, type Opened, type SessionOpenReq } from "./session-open";
@@ -37,7 +36,7 @@ import type { AccountUnavailable } from "./generated/AccountUnavailable";
 import type { NewOpen } from "./generated/NewOpen";
 import type { ForkSlot } from "./generated/ForkSlot";
 import type { Launch } from "./generated/Launch";
-import { readMachines } from "./machine-feed";
+import { namesOf, readMachines } from "./machine-feed";
 import type { MachineState } from "./generated/MachineState";
 import { readStrategies } from "./rot-reads";
 import type { RotationStrategiesReply } from "./generated/RotationStrategiesReply";
@@ -88,7 +87,8 @@ interface MachineOpt {
 async function listMachines(): Promise<MachineOpt[]> {
   let got: [string, MachineState][] = [];
   try {
-    got = Object.entries(await readMachines()).filter(([, m]) => m.state !== "disabled");
+    const all = await readMachines();
+    got = namesOf(all).flatMap((o) => (all[o] ? [[o, all[o]] as [string, MachineState]] : []));
   } catch (e) {
     console.warn("[new-session] 问不到各台的状态成品：", e);
   }
@@ -100,10 +100,13 @@ async function listMachines(): Promise<MachineOpt[]> {
 /** 账号那一格的一项。`ready: false` ⇒ 选不了（`why` 是那台写好的那一句，`login` ⇒ 给［登录…］）。 */
 interface AccountOpt {
   name: string;
+  /** 号名（那一行的 `label`）。 */
+  label: string;
   isDefault: boolean;
   ready: boolean;
   why: string | null;
   login: boolean;
+  /** 那一行的第一格额度（`5h 63% ↻18:30`）；没有 ⇒ `null`。 */
   quota: string | null;
   /** 号在哪一台（头像照那台账号库的号色画）。 */
   origin: Machine;
@@ -125,11 +128,12 @@ async function listAccounts(origin: Machine, agent: string): Promise<AccountOpt[
   if (list.length === 0) return null;
   const opts = list.map((a) => ({
     name: a.name,
+    label: a.label ?? a.name,
     isDefault: a.name === def,
     ready: a.selectable,
     why: a.unselectable ?? null,
     login: a.login ?? false,
-    quota: a.quota ?? null,
+    quota: a.slots?.[0]?.text ?? null,
     origin,
   }));
   return [...opts.filter((a) => a.isDefault), ...opts.filter((a) => !a.isDefault)];
@@ -141,7 +145,7 @@ function accountOption(a: AccountOpt): SelectOption {
   if (a.isDefault) note.push(copyText("resumeSelect.option.defaultBare"));
   if (a.quota) note.push(a.quota);
   if (!a.ready && a.why) note.push(a.why);
-  return { value: a.name, label: accountLabel(a.name), note: note.join(copyText("kit.text.sep")), lead: () => accountAvatarEl(a.name, { size: 16, origin: a.origin }) };
+  return { value: a.name, label: a.label, note: note.join(copyText("kit.text.sep")), lead: () => accountAvatarEl(a.name, { size: 16, origin: a.origin }) };
 }
 
 /** 机器那一项：只写名字（这一格本身就是选哪台，不另带同名的机器标记）；断开的灰着、说「离线」（正选着的那台照样列出、可选）。 */
@@ -149,7 +153,7 @@ function machineOption(m: MachineOpt, chosen: Machine): SelectOption {
   const name = machineName(m.origin);
   return {
     value: m.origin,
-    label: accountLabel(name),
+    label: name,
     note: m.up ? undefined : copyText("machinePage.state.down"),
     enabled: m.up || m.origin === chosen,
     why: copyText("machinePage.state.down"),

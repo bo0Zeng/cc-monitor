@@ -82,7 +82,7 @@ import { factsOn } from "../../../test-support/host-facts";
 import { nonEmpty } from "../../../test-support/non-empty";
 
 /** 落地页（机器列表）这一趟该打的命令 —— 与 `panel-deferred-io.vitest.ts` 的 LANDING_IPC 同一件事。 */
-const LANDING_IPC = ["load_config", "backend_machines", "backend_status"] as const;
+const LANDING_IPC = ["load_config", "chan_call", "backend_status"] as const; // `chan_call` ＝ 机器清单问本机后端 `machine-read`
 
 /**
  * 本机子页**第一次可见**时新增的那一批：足迹 1 发 ＋ per-machine 那几块各自的第一发。

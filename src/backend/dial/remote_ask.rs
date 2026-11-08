@@ -18,7 +18,7 @@
 //!
 //! # 那几台（[`Table`]）
 //!
-//! 怎么够到一台只看这一端的机器表（`~/.cc-monitor/machines.json`，读法由 faces 装进拨号层，[`super::machines_now`]）：
+//! 怎么够到一台只看这一端的机器表（`~/.cc-monitor/machines.json`，读法住拨号层 `dial/machines.rs`，[`super::machines_now`]）：
 //! 按名字组请求（[`super::request_named`]），线上没有谁交拨号。拨号请求里只有路径（`key_path`），没有私钥本体（凭据面 `K11`）。
 //! 另记一样：对面的资产目录 id（按名字，只在本进程里，后端重启就空；`assets-sync` 拉过那台才有）。
 
@@ -99,6 +99,14 @@ impl Table {
             .iter()
             .filter(|h| h.connect)
             .map(|h| h.name().to_string())
+            .collect()
+    }
+
+    /// 跨台那几条（`chores-merge` · `sessions-needs-merge` · `history-search-merge` · `groups-read` · 退出前的 `machine-interrupts`）问哪几台：
+    /// 本机 ＋ [`Table::connected`]（照表里的先后）。问的一方不交名单。
+    pub fn asked(&self) -> Vec<cmd_wire::Machine> {
+        std::iter::once(cmd_wire::Machine::local())
+            .chain(self.connected().into_iter().map(cmd_wire::Machine::named))
             .collect()
     }
 

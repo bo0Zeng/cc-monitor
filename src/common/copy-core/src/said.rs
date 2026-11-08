@@ -128,6 +128,44 @@ impl Said {
     }
 }
 
+// ── 契约错那一串（调用方是我们自己的代码、请求格式不对：线上 `bad_args` / `bad_request`）────────────────────────────
+// 那一句只有一句（`beContract.malformed.say`）；`detail` 是给报 bug 的人看的英文诊断，不进表、不上句子，
+// 隔一个 [`DIAG_SEP`] 跟在那一句后面走，由失败信封那一处（[`parts`]）拆进复制详情的「原话」。
+// 记那一行 warn 日志的 `malformed` 在用它的那一层（拨号核心 `ssh_dial::malformed` · 后端 `common/contract.rs`）：本 crate 不链日志库。
+
+/// 句子与跟在它后面的契约诊断之间那一个字符。
+const DIAG_SEP: char = '\u{1f}';
+
+/// 契约错那一串：那一句 ＋ [`DIAG_SEP`] ＋ 诊断。
+pub fn malformed_said(detail: &str) -> String {
+    format!(
+        "{}{DIAG_SEP}{detail}",
+        crate::copy_text("beContract.malformed.say", &[])
+    )
+}
+
+/// 一条失败的那一句 ⇒ (给人看的那一句, 下层原话)：句子后面跟着契约诊断 ⇒ 拆出来、放在原话最前面；没有诊断 ⇒ 原样。
+pub fn parts(message: &str, raw: Option<&str>) -> (String, Option<String>) {
+    match message.split_once(DIAG_SEP) {
+        Some((said, diag)) => (
+            said.to_string(),
+            Some(match raw {
+                Some(r) => format!("{diag}\n{r}"),
+                None => diag.to_string(),
+            }),
+        ),
+        None => (message.to_string(), raw.map(str::to_string)),
+    }
+}
+
+/// [`parts`] 的反方向：那一句 ＋ 原话 ⇒ 一串（原话隔一个 [`DIAG_SEP`] 跟在后面；没有原话 ⇒ 那一句原样）。
+pub fn joined(said: String, raw: Option<String>) -> String {
+    match raw {
+        Some(r) => format!("{said}{DIAG_SEP}{r}"),
+        None => said,
+    }
+}
+
 #[cfg(test)]
 #[path = "../../../../tests/common/copy-core/said_tests.rs"]
 mod tests;

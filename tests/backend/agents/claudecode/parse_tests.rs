@@ -1,5 +1,4 @@
 use super::*;
-use crate::agents::record::RecordExt as _;
 
 /// 在这台后端的漂移账里找一条记账（全局账本，只找「我这条」）。
 fn ledger_entry(
@@ -271,12 +270,11 @@ fn zero_information_loss_over_mixed_fixture() {
     assert_eq!(errored, 1);
 }
 
-/// 钟面 `timeText` 不在解析那一层写（同一份记录可能推给几个时区不同的看的人）：解析出来的一条都不带它；
-/// 出口那一下按看的那一台的时区写（[`crate::agents::record::Record::stamp`]）。没时刻 / 解不出 ⇒ 不上线。
+/// 钟面 `timeText` 不在解析那一层写（同一份记录可能推给几个时区不同的看的人）：解析出来的一条都不带它，
+/// 只带着出口写钟面要的那一格 `at`（原样）。出口那一下怎么写钟面钉在 `wire/stamp_tests.rs`。
 #[test]
-fn every_timed_record_gets_its_clock_face_at_the_exit_not_in_the_parse() {
+fn every_timed_record_carries_its_at_and_no_clock_face_out_of_the_parse() {
     let ts = "2026-10-07T20:30:15.123Z";
-    let sh = crate::common::time::Tz::named("Asia/Shanghai").unwrap();
     let lines = [
         format!(
             r#"{{"type":"user","uuid":"u1","timestamp":"{ts}","message":{{"role":"user","content":"hi"}}}}"#
@@ -294,26 +292,16 @@ fn every_timed_record_gets_its_clock_face_at_the_exit_not_in_the_parse() {
         )
         .unwrap();
         assert!(m.get("timeText").is_none(), "解析那一层不写钟面：{l}");
-        let mut r = super::translated(&crate::agents::Line::new(l, 0))
+        let r = super::translated(&crate::agents::Line::new(l, 0))
             .unwrap()
             .unwrap()
             .record
             .expect("进界面的一条");
-        assert!(r.time_text.is_none(), "{l}");
-        r.stamp(&sh);
-        assert_eq!(
-            r.time_text.as_ref().map(|w| w.0.as_str()),
-            Some("04:30"),
-            "{l}"
-        );
-        r.stamp(&crate::common::time::Tz::default());
-        assert_eq!(
-            r.time_text.as_ref().map(|w| w.0.as_str()),
-            Some("20:30"),
-            "{l}"
-        );
+        assert!(r.time_text.is_none() && r.at_ms.is_none(), "{l}");
+        assert_eq!(r.at.as_deref(), Some(ts), "{l}");
     }
-    let mut bad = super::translated(&crate::agents::Line::new(
+    // 解不出的时刻也原样交给出口（出口照它判「不上线」），解析那一层不替它判。
+    let bad = super::translated(&crate::agents::Line::new(
         r#"{"type":"user","uuid":"t2","timestamp":"soon","message":{"role":"user","content":"x"}}"#,
         0,
     ))
@@ -321,6 +309,6 @@ fn every_timed_record_gets_its_clock_face_at_the_exit_not_in_the_parse() {
     .unwrap()
     .record
     .unwrap();
-    bad.stamp(&sh);
-    assert!(bad.time_text.is_none(), "解不出 ⇒ 不上线");
+    assert_eq!(bad.at.as_deref(), Some("soon"));
+    assert!(bad.time_text.is_none());
 }

@@ -14,11 +14,11 @@ import com.ccmonitor.mobile.core.ui.theme.AppTheme
 import com.ccmonitor.mobile.core.wire.gen.AskKind
 import com.ccmonitor.mobile.core.wire.gen.NeedsAsk
 import com.ccmonitor.mobile.core.wire.gen.NeedsChoice
+import com.ccmonitor.mobile.core.wire.gen.NeedsChoiceLook
 import com.ccmonitor.mobile.core.wire.gen.NeedsChoiceRow
 import com.ccmonitor.mobile.core.wire.gen.NeedsNote
 import com.ccmonitor.mobile.core.wire.gen.NeedsQuestion
 import com.ccmonitor.mobile.core.wire.gen.NeedsQuestionOption
-import com.ccmonitor.mobile.core.wire.gen.Tone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -138,8 +138,9 @@ class NeedsSheetShotTest {
         text: String,
         row: NeedsChoiceRow,
         note: NeedsNote = NeedsNote.NONE,
-        tone: Tone = Tone.PLAIN,
-    ) = NeedsChoice(id, text, tone, note, row)
+        look: NeedsChoiceLook = NeedsChoiceLook.PLAIN,
+        picks: Boolean = false,
+    ) = NeedsChoice(id = id, text = text, look = look, note = note, row = row, picks = picks)
 
     private fun quiz(questions: List<NeedsQuestion>) =
         NeedsAsk(
@@ -149,7 +150,7 @@ class NeedsSheetShotTest {
             run = null,
             what = null,
             detail = "",
-            choices = listOf(choice("answer", "提交答案", NeedsChoiceRow.MAIN), choice("dismiss", "不回答", NeedsChoiceRow.RELEASE)),
+            choices = listOf(choice("answer", "提交答案", NeedsChoiceRow.MAIN, look = NeedsChoiceLook.MAIN, picks = true), choice("dismiss", "不回答", NeedsChoiceRow.MAIN, look = NeedsChoiceLook.GHOST)),
             questions = questions,
         )
 
@@ -163,11 +164,11 @@ class NeedsSheetShotTest {
             detail = script,
             choices =
                 listOf(
-                    choice("allow", "允许", NeedsChoiceRow.MAIN),
+                    choice("allow", "允许", NeedsChoiceRow.MAIN, look = NeedsChoiceLook.MAIN),
                     choice("always-0", "允许，且允许访问 /srv/archive（本次会话）", NeedsChoiceRow.MAIN),
                     choice("deny", "拒绝", NeedsChoiceRow.HOLD),
                     choice("deny-note", "拒绝并说明…", NeedsChoiceRow.HOLD, NeedsNote.REQUIRED),
-                    choice("deny-stop", "拒绝并停下", NeedsChoiceRow.HOLD, tone = Tone.FAIL),
+                    choice("deny-stop", "拒绝并停下", NeedsChoiceRow.HOLD, look = NeedsChoiceLook.DANGER),
                 ),
             questions = emptyList(),
         )
@@ -179,7 +180,7 @@ class NeedsSheetShotTest {
     ) = NeedsQuestion(
         id = id,
         text = "迁移旧数据时，用户表的结构怎么处理？",
-        header = "表结构",
+        head = if (multi) "表结构 · 多选" else "表结构",
         multi = multi,
         other = false,
         options =

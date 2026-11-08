@@ -32,25 +32,6 @@ object TermKeys {
 
     private fun modWords(mods: Collection<String>) = MOD_ORDER.filter { it in mods }.joinToString(",")
 
-    /** 读出来的一下：[kind] 是 `t` · `s` · `c`；[mods] 是修饰的线上名；[value] 是字 · 键名。 */
-    data class Token(
-        val kind: Char,
-        val mods: List<String>,
-        val value: String,
-    )
-
-    /** [text] · [special] · [chord] 的逆；形不对 ⇒ null。 */
-    fun parse(token: String): Token? {
-        val kind = token.firstOrNull()
-        val colon = token.indexOf(':')
-        return when {
-            kind == 't' -> Token(kind, emptyList(), token.substring(1))
-            (kind == 's' || kind == 'c') && colon > 0 ->
-                Token(kind, token.substring(1, colon).split(',').filter { it.isNotEmpty() }, token.substring(colon + 1))
-            else -> null
-        }
-    }
-
     /** 几下（记号）⇒ 送进终端的字节，一下接一下拼起来；有一个记号核心读不出 ⇒ null。 */
     external fun bytes(tokens: Array<String>): ByteArray?
 }

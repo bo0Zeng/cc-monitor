@@ -886,14 +886,12 @@ pub(crate) fn needs_with(
 
 // ───────────────────────── sessions-needs-merge ─────────────────────────
 
-/// `sessions-needs-merge` 的入参：问哪几台（本机逐字 `"<local>"`）。
+/// `sessions-needs-merge` 的入参：空的（问哪几台照本机后端自己的机器表，`Table::asked`）。
 #[derive(Debug, Clone, serde::Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub struct NeedsMergeReq {
-    pub(crate) machines: Vec<cmd_wire::Machine>,
-}
+pub struct NeedsMergeReq {}
 
 codes! {
     /// `sessions-needs-merge` 自己没有别的码（哪台没问到只进回包的 `down`）。
@@ -914,7 +912,7 @@ impl Command for NeedsMergeCmd {
 impl crate::wire::typed::Handle for NeedsMergeCmd {
     type Needs = crate::wire::typed::needs::Nothing;
     async fn run(
-        req: NeedsMergeReq,
+        _req: NeedsMergeReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> Result<cmd_wire::needs::NeedsMerged, NeedsMergeErr> {
         let tz = cx.tz.clone();
@@ -930,7 +928,7 @@ impl crate::wire::typed::Handle for NeedsMergeCmd {
             .map_err(|e| crate::common::said::Said::from(e.to_string()))
         };
         needs_merge_with(
-            &req.machines,
+            &crate::dial::remote_ask::REACH.asked(),
             local,
             &cx.tz,
             cx.until,
@@ -941,7 +939,7 @@ impl crate::wire::typed::Handle for NeedsMergeCmd {
     }
 }
 
-/// [`NeedsMergeCmd`] 的本体（本机那一台怎么答 · 可达表 · 对面由调用方给）。
+/// [`NeedsMergeCmd`] 的本体（问哪几台 · 本机那一台怎么答 · 可达表 · 对面由调用方给；生产问的是 `REACH.asked()`）。
 pub(crate) async fn needs_merge_with(
     machines: &[cmd_wire::Machine],
     local: impl std::future::Future<Output = Result<NeedsList, crate::common::said::Said>> + Send,
@@ -1552,29 +1550,18 @@ pub(crate) fn facts_in(
         crate::history::history_annotations::auto_answer_of(sid).map(|a| a.after_min);
     facts.auto_answer_choices = crate::control::asks::auto_choices(facts.auto_answer);
     facts.ask_end = crate::control::asks::ended(sid);
-    facts.needs = dress_ask(
-        facts::needs_of(
-            crate::agents::record_kind_of(Path::new(path)).unwrap_or_default(),
-            &facts.pending,
-            crate::history::live_table::now(home).wait_of(sid).as_ref(),
-        ),
+    // 需手动的种类 · 后台那一句：照这台活会话表配（与状态一句的读口同一处，`locate::dress_live`）；需手动再配上挂着的待答请求。
+    let live = crate::history::live_table::now(home);
+    locate::dress_live(
+        &mut facts,
+        &live,
         sid,
-        facts.answer_off.as_ref(),
-    );
-    // 后台任务运行中：那台 pidfile 此刻说是这一态 ⇒ 配上记录里还没收场的后台命令写那一句（不累加）。
-    facts.background = crate::history::live_table::now(home)
-        .background_since(sid)
-        .map(|born| facts::background_of(&facts.bg_tasks, born, crate::common::time::now_ms()));
-    // 每一步还没结果时的样子：在等你 · 在跑 · 状态不明（界面只读这一格）。判不了活 ⇒ 状态不明说的是判不了。
-    facts::settle_pending(&mut facts, holders.is_some());
-    // 状态一句会走的那一截：照 pidfile 此刻那一态 ＋ 上面这几格写（不活 ⇒ 不带）。
-    facts.line = facts::line_of(
-        crate::history::live_table::now(home)
-            .doing_one(sid)
-            .flatten(),
-        &facts,
+        Path::new(path),
         crate::common::time::now_ms(),
     );
+    facts.needs = dress_ask(facts.needs.take(), sid, facts.answer_off.as_ref());
+    // 每一步还没结果时的样子：在等你 · 在跑 · 状态不明（界面只读这一格）。判不了活 ⇒ 状态不明说的是判不了。
+    facts::settle_pending(&mut facts, holders.is_some());
     // 通知组：照此刻的交回定哪几条不露、写组头（钟面照看的那一台）。
     facts::settle_notices(&mut facts, tz);
     // 重试串：照结局写整句（钟面照看的那一台）。

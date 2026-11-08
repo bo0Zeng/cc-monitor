@@ -37,6 +37,10 @@ answer?: Answer,
  */
 exitCode?: number, 
 /**
+ * 失败那一步的尾巴（「退出码 N」/「出错」，后端 `StepResult::written` 写）：结果块抬头照摆；没失败 ⇒ 缺。
+ */
+error?: string, 
+/**
  * 这次改动说的是哪个文件（结果里写着的路径，原样）。只有改文件那几类结果有。
  */
 file?: string, 

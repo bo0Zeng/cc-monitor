@@ -533,13 +533,11 @@ describe("S2 设置面板分页结构", () => {
 });
 
 /**
- * S9：本机页上的「终端集成」按 OS 显隐 —— 那块并进了「别名」，
- * 门从「建不建那一块」变成「别名那一块用哪个平台」：Windows ⇒ PowerShell（含终端集成）；其余 ⇒ POSIX。
+ * S9：本机页上的「终端集成」并进了「别名」；别名那一块用哪个平台由本机后端在 `aliases-read` 回包里答（`machine-aliases.vitest.ts`
+ * 两个平台各钉一遍），壳报的系统不再定它：哪个系统上建出来都还没有平台（没读回之前不画平台那几格）。
  * 「构造即发 Windows 专用 IPC」那条纪律跟着搬过去了：`machine-aliases.vitest.ts` 两个平台各钉「构造零 I/O」。
- *
- * v3.4.0 已经发了 `.deb` ⇒ Linux 用户不该在本机页看到一个装 PowerShell profile 的安装器。
  */
-describe("S9 本机 OS 门（〔AL1c〕别名那一块的平台）", () => {
+describe("S9 本机页的别名那一块（〔AL1c〕平台由本机后端答）", () => {
   const tick = () => new Promise((r) => setTimeout(r, 0));
 
   /** 本机页「别名」那一块（`buildAliasManager` 的根）。 */
@@ -563,19 +561,13 @@ describe("S9 本机 OS 门（〔AL1c〕别名那一块的平台）", () => {
     ).length;
   }
 
-  for (const [os, shell] of [
-    ["windows", "powershell"],
-    ["linux", "posix"],
-    ["macos", "posix"],
-    // 认不出 OS ⇒ **不猜方言**：那一格明说、装的入口置灰（不默认取 POSIX）。
-    ["unknown", "unknown"],
-  ] as const) {
-    it(`★ ${os} ⇒ 别名那一块是 ${shell}；单独的「终端集成」一块不再有`, async () => {
+  for (const os of ["windows", "linux", "macos", "unknown"] as const) {
+    it(`★ ${os} ⇒ 别名那一块在、平台不按壳报的系统定（等本机后端答）；单独的「终端集成」一块不再有`, async () => {
       __setHostFactsForTests(factsOn(os));
       document.body.replaceChildren();
       new SettingsPanel({ windowMode: true });
       await tick();
-      expect(aliasBlock().dataset.shell).toBe(shell);
+      expect(aliasBlock().dataset.shell).toBeUndefined();
       expect(terminalBlocks()).toBe(0);
     });
   }

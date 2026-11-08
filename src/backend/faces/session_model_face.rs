@@ -277,8 +277,8 @@ fn send(req: &SessionModelReq, own: &crate::platform::Own) -> Result<Sent2, Said
         .confirm
         .and_then(|bx| box_drive(&req.sid, req.client.clone()).map(|d| (bx, d)));
     let shared = sw.saves.is_some_and(|rel| {
-        crate::observe::accounts_query::session_home(&live, &req.sid)
-            .is_some_and(|h| crate::observe::accounts_query::shared_with_other_accounts(&h, rel))
+        crate::accounts::manage::library::session_home(&live, &req.sid)
+            .is_some_and(|h| crate::accounts::manage::library::shared_with_other_accounts(&h, rel))
     });
     let sent = crate::control::terminals_wire::say(&TerminalInputReq {
         sid: Some(req.sid.to_string()),

@@ -1,7 +1,6 @@
 package com.ccmonitor.mobile.ui.files
 
 import com.ccmonitor.mobile.core.claude.link.CoreLink
-import com.ccmonitor.mobile.core.claude.link.FilesCommitUpload
 import com.ccmonitor.mobile.core.claude.link.FilesCreate
 import com.ccmonitor.mobile.core.claude.link.FilesHome
 import com.ccmonitor.mobile.core.claude.link.FilesLs
@@ -14,13 +13,13 @@ import com.ccmonitor.mobile.core.claude.link.RemotePath
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.Transfer
 import com.ccmonitor.mobile.core.copy.copyText
-import com.ccmonitor.mobile.core.wire.Wire
-import com.ccmonitor.mobile.core.wire.gen.ClashRow
+import com.ccmonitor.mobile.core.wire.gen.Commands
 import com.ccmonitor.mobile.core.wire.gen.FileKind
-import com.ccmonitor.mobile.core.wire.gen.Staged
 import com.ccmonitor.mobile.link.Problem
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import java.io.IOException
 
 /**
@@ -135,52 +134,24 @@ class FileOps(
         undo: Boolean,
     ): Long = feed.batch(mapOf((if (undo) "undo" else "retry") to id))
 
-    /** 上传那一件提交的结局：放好了 · 撞了同名（[Clash.staged] 原样留着：答了再交一次，块不重送）。 */
-    sealed interface Upload {
-        data object Done : Upload
-
-        data class Clash(
-            val name: String,
-            val staged: Staged,
-            /** 那台写的那一句（「同名 1 项」）。 */
-            val said: String,
-            /** 抽屉那几行（核心写好的）。 */
-            val rows: List<ClashRow>,
-        ) : Upload
-    }
-
     /**
-     * 上传：[fd] 现开本机那一份交给核心，核心逐块送进那台的暂存区（分块那一圈是两端同一份）；送完交提交（同名那台问）。
-     * [progress] 报已送字节与总数（总数不知道 ⇒ `-1`）。
+     * 把本机那一份上传进当前目录 [dir]、名字 [name]：一组，全过程在核心（送块 · 提交 · 同名问一次、块不重送；同 [delete]）。
+     * [fd] 现开本机那一份、交出描述符（交了就归核心）；开不了 ⇒ 那一句（系统原话进详情），不起组。回编号（这台不在 ⇒ 0）。
      */
     suspend fun upload(
         dir: RemotePath,
         name: String,
         fd: () -> Int,
-        progress: (Long, Long) -> Unit,
-    ): Result<Upload> {
-        val staged =
-            transfer(Transfer.Stage(name), fd, progress, { Wire.bind<Staged>(it) }) {
-                copyText("mobFiles.local.readFailed", "name" to name)
-            }.getOrElse { return Result.failure(it) }
-        return commit(dir, name, staged, onExists = null)
-    }
-
-    /** 提交（同名照 [onExists]：不带 ⇒ 那台问）。撞了同名 ⇒ [Upload.Clash]，带那台的同名清单与那一句。 */
-    suspend fun commit(
-        dir: RemotePath,
-        name: String,
-        staged: Staged,
-        onExists: String?,
-    ): Result<Upload> {
-        val r = feed.call(FilesCommitUpload.COMMAND, FilesCommitUpload.args(dir, name, staged, onExists), CHUNK_MS)
-        val clash = (r as? Reply.Failed)?.failure?.takeIf { it.code == EXISTS }
-        val rows = clash?.let { feed.clashes(it.data?.value) }.orEmpty()
-        if (clash != null && rows.isNotEmpty()) return Result.success(Upload.Clash(name, staged, clash.said, rows))
-        return when (r) {
-            is Reply.Ok -> Result.success(Upload.Done)
-            else -> Result.failure(Failed(r.problem(machine(), FilesCommitUpload.COMMAND, feed.offline.value) ?: Problem("", "")))
-        }
+    ): Result<Long> {
+        val n =
+            try {
+                fd()
+            } catch (e: IOException) {
+                return Result.failure(Failed(Problem(copyText("mobFiles.local.readFailed", "name" to name), e.toString())))
+            }
+        // 描述符交出去才归核心：交的这一趟不许半路被撤（撤了它就没人关）。
+        val want = mapOf("upload" to mapOf("root" to dir.wire, "shown" to dir.shown, "items" to listOf(mapOf("name" to name, "fd" to n))))
+        return Result.success(withContext(NonCancellable) { feed.batch(want) })
     }
 
     /**
@@ -195,23 +166,6 @@ class FileOps(
         feed.batch(
             mapOf("download" to mapOf("folder" to folder, "here" to here, "items" to entries.map { mapOf("path" to it.path.wire, "name" to it.name) })),
         )
-
-    /** 分块传一趟：本机那一份开不了 ⇒ [local] 那一句（系统原话进详情）；别的同一问一答。 */
-    private suspend fun <T : Any> transfer(
-        how: Transfer,
-        fd: () -> Int,
-        progress: (Long, Long) -> Unit,
-        decode: (Any?) -> T?,
-        local: () -> String,
-    ): Result<T> {
-        val r =
-            try {
-                feed.transfer(how, fd, CHUNK_MS, progress)
-            } catch (e: IOException) {
-                return Result.failure(Failed(Problem(local(), e.toString())))
-            }
-        return reply(r, STAGE, decode)
-    }
 
     private suspend fun done(
         command: String,
@@ -242,17 +196,11 @@ class FileOps(
         /** 写的一问等多久（同桌面写面一趟）。 */
         const val WRITE_MS: Long = 20_000L
 
-        /** 一块（上传）· 提交等多久。 */
+        /** 读进内存一块等多久。 */
         const val CHUNK_MS: Long = 20_000L
 
-        /** 提交撞了同名的码。 */
-        private const val EXISTS = "exists"
-
-        /** 分块传出错时详情里点名的命令。 */
-        private const val STAGE = "files-stage-chunk"
-
         /** 读进内存出错时详情里点名的命令。 */
-        private const val READ = "files-read-chunk"
+        private const val READ = Commands.FilesReadChunk.NAME
 
         /** 读进内存不开本机那一份。 */
         private const val NO_FD = -1

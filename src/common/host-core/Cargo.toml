@@ -18,6 +18,8 @@ serde_json = "1"
 cap-core = { path = "../cap-core" }
 # 原子写与只给本人的目录只经它（后端同一份）；仓内 crate。
 platform-core = { path = "../platform-core" }
+# 工作区那个形状（`WorkArea`）住开窗契约：它随种子过线，两个前端对上同一份；本包的几何判定收它。
+filewin-contract = { path = "../filewin-contract" }
 
 [target.'cfg(windows)'.dependencies]
 # 与 `src/frontend/shell/Cargo.toml` 那条 `windows` 同版本（0.56）：

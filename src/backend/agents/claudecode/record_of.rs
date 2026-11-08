@@ -290,20 +290,9 @@ fn with_attachments(
     if found.is_empty() && kept.len() == body.len() {
         return (who, found);
     }
-    let cut = u32::try_from(body[..body.len() - kept.len()].encode_utf16().count()).unwrap_or(0);
     let text = kept.trim_end().to_string();
-    let end = u32::try_from(text.encode_utf16().count()).unwrap_or(0);
-    who.pasted = std::mem::take(&mut who.pasted)
-        .into_iter()
-        .filter(|p| p.start >= cut && p.end - cut <= end)
-        .map(|mut p| {
-            p.start -= cut;
-            p.end -= cut;
-            p.body_start -= cut;
-            p.body_end -= cut;
-            p
-        })
-        .collect();
+    // 正文短了一截 ⇒ 照剩下的那一份重切段（粘贴块的标记在正文里）。
+    who.parts = face_core::record::said_parts(&text, &super::text::paste_spans(&text));
     who.text = text;
     (who, found)
 }
@@ -380,6 +369,7 @@ fn block_of(b: &Value, images: &mut Images) -> Option<Block> {
                 .map(|c| blocks_of(c, images))
                 .unwrap_or_default(),
             b.get("is_error").and_then(Value::as_bool) == Some(true),
+            copy_core::size_text,
         ),
         "image" => image_of(b.get("source")?, images)?,
         _ => return None,

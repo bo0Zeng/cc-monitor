@@ -4,6 +4,7 @@ import com.ccmonitor.mobile.core.claude.link.Json
 import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.Block
 import com.ccmonitor.mobile.core.wire.gen.Doc
+import com.ccmonitor.mobile.core.wire.gen.Draw
 import com.ccmonitor.mobile.core.wire.gen.Inl
 import com.ccmonitor.mobile.core.wire.gen.LineRecord
 import com.ccmonitor.mobile.core.wire.gen.MdBlock
@@ -39,16 +40,19 @@ class RecordUnitsTest {
     }
 
     @Test
-    fun `人粘贴的块：那台说要折 ⇒ 折成一段，收着那一行是那台写好的 foldText，点开是正文那一截`() {
+    fun `人粘贴的块：那台说要折 ⇒ 折成一段，收着那一行是那台写好的 fold_more，点开是正文那一截`() {
         val u = units("said-pasted-fold").single() as RenderUnit.UserText
         assertEquals(listOf(SaidPart.Plain("see "), SaidPart.Folded("粘贴的内容 · 13 行", (1..13).joinToString("\n"))), u.parts)
     }
 
     @Test
-    fun `重试记录画成重试细条：字是那一条写好的 retry_text；相邻的几条并成一条，身份是首条的`() {
-        assertEquals(listOf(RenderUnit.Retry("r-full", "服务器过载 · 重试 2/10 · 01:30 起", "r-full")), units("retry-full"))
-        assertEquals("相邻的并成一条", listOf("r-full"), units("retry-full", "retry-min").map { it.key })
-        assertEquals("中间隔着别的 ⇒ 各一条", listOf("r-full", "a-min#0", "@4096"), units("retry-full", "reply-min", "retry-min").map { it.key })
+    fun `重试记录画成重试细条：字是那一条写好的 retry_text；并不并照那台的 draw，手机不看相邻`() {
+        val drawn = { name: String -> (cases.getValue(name) as LineRecord.Retry).copy(draw = Draw.CARD) }
+        val one = { r: LineRecord -> RecordUnits.of(listOf(r)) }
+        assertEquals(listOf(RenderUnit.Retry("r-full", "服务器过载 · 重试 2/10 · 01:30 起", "r-full")), one(drawn("retry-full")))
+        val after = drawn("retry-min").copy(draw = Draw.NONE)
+        assertEquals("接在一串后面的那条那台出 none ⇒ 不成单元", listOf("r-full"), RecordUnits.of(listOf(drawn("retry-full"), after)).map { it.key })
+        assertEquals("两条都要画 ⇒ 各一条（不自己并）", listOf("r-full", "@4096"), RecordUnits.of(listOf(drawn("retry-full"), drawn("retry-min"))).map { it.key })
     }
 
     @Test
@@ -58,7 +62,8 @@ class RecordUnitsTest {
 
     @Test
     fun `细条照会话事实那一串：在 ⇒ 那一串的整句与结局；不在 ⇒ 记录那一行；没接上 ⇒ 收起、整句进紧跟着的报错卡`() {
-        val us = units("retry-full", "retry-min", "reply-error")
+        val full = (cases.getValue("retry-full") as LineRecord.Retry).copy(draw = Draw.CARD)
+        val us = RecordUnits.of(listOf(full, cases.getValue("reply-error")))
         val strip = us[0] as RenderUnit.Retry
         assertEquals("事实还没到 ⇒ 记录那一行、在重试", RetryStrip("服务器过载 · 重试 2/10 · 01:30 起", faded = false), RetryLook.strip(strip, emptyList()))
         val ok = RetryRun("r-full", RetryOutcome.RECOVERED, "重试 3 次后接上")

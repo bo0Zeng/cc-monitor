@@ -404,13 +404,6 @@ pub fn pick_menu_json(rows: &str, here: &pick_core::Here) -> String {
     serde_json::to_string(&pick_core::phone_menu(&picks, here)).unwrap_or_default()
 }
 
-/// 一问一答撞了同名（码 `exists` 的 `data`：同名清单）⇒ 抽屉那几行（[`batch::clash_rows`]，一组那一问同一份）；读不动 ⇒ 空串（不当一项都不撞）。
-pub fn clash_rows_json(data: &str) -> String {
-    serde_json::from_str::<cmd_wire::batch::Conflicts>(data)
-        .map(|c| serde_json::to_string(&batch::clash_rows(&c.conflicts)).unwrap_or_default())
-        .unwrap_or_default()
-}
-
 /// 几台的搜内容结果合成一份：`{q, answered: [{origin, reply}]}`（`q` 搜的词；`reply` ＝ 那台 `history-search` 回包原样）⇒ `Merged`。
 /// 合的那一步是本机后端扇出完调的同一份（`face_core::search::merge`）：手机逐台直连问完，在这里合，不经哪一台当信差。
 /// 某台那一份照类型解不开 ⇒ 那台进 `down`（serde 那一句），别台照合；整份读不动 ⇒ 空串。
@@ -1057,21 +1050,6 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_pickMenu<'l>(
     })
 }
 
-/// `Core.clashRows(data)`：同名清单 ⇒ 抽屉那几行（[`clash_rows_json`]）。
-#[no_mangle]
-pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_clashRows<'l>(
-    mut env: JNIEnv<'l>,
-    _class: JClass<'l>,
-    data: JString<'l>,
-) -> jstring {
-    guarded(std::ptr::null_mut(), || {
-        let text = string(&mut env, &data).unwrap_or_default();
-        env.new_string(clash_rows_json(&text))
-            .map(|s| s.into_raw())
-            .unwrap_or(std::ptr::null_mut())
-    })
-}
-
 /// `Core.searchMerge(data)`：几台的搜内容结果合成一份（[`search_merge_json`]）。
 #[no_mangle]
 pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_searchMerge<'l>(
@@ -1082,23 +1060,6 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_searchMerge<'l>(
     guarded(std::ptr::null_mut(), || {
         let text = string(&mut env, &data).unwrap_or_default();
         env.new_string(search_merge_json(&text))
-            .map(|s| s.into_raw())
-            .unwrap_or(std::ptr::null_mut())
-    })
-}
-
-/// `Core.answerOf(keys, answer)`：手机那一侧问的同名（下载 · 上传）那一答 ⇒ 每个键一格（[`batch::decided_json`]）。
-#[no_mangle]
-pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_answerOf<'l>(
-    mut env: JNIEnv<'l>,
-    _class: JClass<'l>,
-    keys: JString<'l>,
-    answer: JString<'l>,
-) -> jstring {
-    guarded(std::ptr::null_mut(), || {
-        let keys = string(&mut env, &keys).unwrap_or_default();
-        let answer = string(&mut env, &answer);
-        env.new_string(batch::decided_json(&keys, answer.as_deref()))
             .map(|s| s.into_raw())
             .unwrap_or(std::ptr::null_mut())
     })
@@ -1438,8 +1399,9 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_transferStop<'l>(
     });
 }
 
-/// `Core.batchStart(handle, want)`：起一组（`batch.rs::plan_of` 那几种「要做什么」，入参由核心拼；`{kept}` ⇒ 接回落盘的那一组）；回编号，
-/// 进度 · 同名那一问 · 结局经 `Sink.resident(…, "batch", …)` 回来，落盘那一份经 `"batch_keep"`。这台不在 · 读不动 ⇒ 0。
+/// `Core.batchStart(handle, want)`：起一组（`batch.rs::plan_of` 那几种「要做什么」，入参由核心拼；`{kept}` ⇒ 接回落盘的那一组；
+/// `{upload}` ⇒ 上传那一组，交来的描述符归核心）；回编号，进度 · 同名那一问 · 结局经 `Sink.resident(…, "batch", …)` 回来，
+/// 落盘那一份经 `"batch_keep"`。这台不在（`handle` 为 0 也算）· 读不动 ⇒ 0，交来的描述符照关。
 #[no_mangle]
 pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_batchStart<'l>(
     mut env: JNIEnv<'l>,
@@ -1626,13 +1588,12 @@ mod tests {
     }
 
     /// 🔴 几个 JSON 口读不动一律回空串（Kotlin 那一侧照它报两端契约对不上），不交一份合法的空值冒充正常：
-    /// 机器表读不懂 ≠ 一台都没有 · ≠ 没毛病；同名清单读不懂 ≠ 一项都不撞。
+    /// 机器表读不懂 ≠ 一台都没有 · ≠ 没毛病。
     #[test]
     fn an_unreadable_input_comes_back_empty_not_as_a_valid_nothing() {
         for (what, got) in [
             ("machines", super::machines_json("nope")),
             ("machine_check", super::machine_check_json("nope", 0)),
-            ("clash_rows", super::clash_rows_json("{")),
             (
                 "pick_menu",
                 super::pick_menu_json("[1]", &pick_core::Here::default()),
@@ -1642,30 +1603,6 @@ mod tests {
         }
         // 正控：读得懂的空表照回空表。
         assert_eq!(super::machines_json("[]"), "[]");
-    }
-
-    /// 一问一答撞了同名：清单 ⇒ 抽屉那几行（说明由核心写、答法照那台给的）。
-    #[test]
-    fn a_clash_list_becomes_the_rows_of_the_sheet() {
-        let data = r#"{"conflicts":[{"key":"0","name":"up.bin","kind":"file","size_text":"9 字节","there":"file","there_size_text":"3 字节","answers":["overwrite","keep_both"]}]}"#;
-        let v: serde_json::Value = serde_json::from_str(&super::clash_rows_json(data)).unwrap();
-        let c: cmd_wire::batch::Conflicts = serde_json::from_str(data).unwrap();
-        assert_eq!(
-            v,
-            serde_json::json!([{ "key": "0", "name": "up.bin",
-                "meta": batch_core::conflict_meta(&c.conflicts[0]),
-                "choices": batch_core::choices(&c.conflicts[0].answers), "there": null }])
-        );
-        assert_eq!(
-            v[0]["choices"]
-                .as_array()
-                .map(|a| a.iter().map(|o| o["decide"].clone()).collect::<Vec<_>>()),
-            Some(vec![
-                serde_json::json!("keep_both"),
-                serde_json::json!("overwrite")
-            ]),
-            "只出那台给了的答，先后照核心"
-        );
     }
 
     use std::time::Duration;

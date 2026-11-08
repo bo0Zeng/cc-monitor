@@ -130,7 +130,7 @@ use resident_client::attach::HANDSHAKE_LINE_CAP;
 /// backend 那侧收「你是常驻的那一个」的 env 名（值 `1`）。听哪个套接字不交：按家算（`relay_route_core::listen_socket_for`），
 /// 两边同一个函数。
 ///
-/// ⚠ **跨 crate 字面量**：backend 那边是 `src/backend/wire/listen.rs::ENV_RESIDENT`。
+/// ⚠ **跨 crate 字面量**：backend 那边是 `src/backend/platform/child_env.rs::RESIDENT`。
 /// 两边漂了**不会报错** —— 起出来的后端会当成「没设」而走 stdio 那条路，
 /// 于是宿主等在一个永远不会有人绑的套接字上，日志里只有一句「断开」。
 /// 由 `the_listen_env_names_are_the_same_string_on_both_sides` 逐字对拍。
@@ -442,7 +442,7 @@ fn send_attach(
 ///   monitor 和它一起走。
 /// - **stdio 全 null** —— 今天它死掉的**真正原因**就在这儿：`Stdio::piped()` 之后
 ///   宿主一退读端就断，它在 **153 毫秒**内 broken-pipe 退出（`backend_policy.rs` 头注实测）。
-/// - **协议改走这台家里的套接字** —— 管子没了就得有别的说话方式，那正是 `listen::ENV_RESIDENT`。
+/// - **协议改走这台家里的套接字** —— 管子没了就得有别的说话方式，那正是 `child_env::RESIDENT`。
 ///
 /// ⚠ **`process_group` 不改变父子关系** ⇒ **不 `wait` 就留僵尸**
 /// （`spawn_managed.rs::Lifetime` 的 `Detached` 那一格逐字）。收尸走 [`reap_detached`]，由「流断了」这个**事件**触发，
@@ -759,7 +759,6 @@ fn attach_stream(
         "本机入方向通道已登记（常驻载体）：origin={}",
         cmd_wire::LOCAL
     );
-    crate::machine_table::refresh();
     tauri::async_runtime::spawn(async move {
         use crate::stream_source::{CappedLine, BACKEND_FRAME_LINE_CAP};
         let mut reader = tokio::io::BufReader::new(rd);

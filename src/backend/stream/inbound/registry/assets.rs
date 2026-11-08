@@ -106,6 +106,6 @@ pub(super) const SPECS: &[CommandSpec] = &[
     super::typed::blocking::<crate::assets::hub_inner::SkillApplyCmd>(
         "在要被写的那一台把勾的那几个 skill 文件写进去",
     ),
-    // cc-bus 钩子诊断：这台自己的 `settings.json` ＋ stat ⇒ 诊断 ＋ 两种待贴片段（`observe/cc_bus_hooks.rs`）。阻塞档（同步文件 I/O）。
+    // cc-bus 钩子诊断：这台自己的 `settings.json` ＋ stat ⇒ 诊断 ＋ 要加的内容（`assets/cc_bus_hooks.rs`）。阻塞档（同步文件 I/O）。
     super::typed::blocking::<crate::faces::feature_face::HooksDiagCmd>("cc-bus 钩子诊断"),
 ];

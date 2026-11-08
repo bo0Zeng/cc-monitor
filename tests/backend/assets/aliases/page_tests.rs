@@ -123,7 +123,6 @@ fn prof<'a>(r: &'a Value, name: &str) -> &'a Value {
 fn read_gives_each_section_its_own_items_with_lines_and_the_shared_labels() {
     let t = tmp("read", Some(BOOK));
     let r = read(&t);
-    assert_eq!(r["exists"], true);
     assert!(r["rev"].is_string());
     let b = prof(&r, "teamcct");
     assert_eq!(b["from"], "cct");
@@ -190,22 +189,26 @@ fn a_toml_syntax_error_is_one_file_problem_with_its_line_and_no_sections() {
 }
 
 #[test]
-fn with_no_file_read_offers_the_first_two_as_a_seed_and_writes_nothing() {
+fn with_no_file_read_lists_the_builtin_ones_and_writes_nothing() {
     let t = tmp("empty", None);
     let r = read(&t);
-    assert_eq!(r["exists"], false);
+    assert!(r["rev"].is_null(), "配置文件不在");
     assert!(r["rev"].is_null());
-    let names: Vec<&str> = r["seed"]
+    let names: Vec<&str> = r["profiles"]
         .as_array()
         .unwrap()
         .iter()
         .map(|p| p["name"].as_str().unwrap())
         .collect();
     assert_eq!(names, ["cc", "cct", "cch"]);
-    assert_eq!(r["seed"][1]["from"], "cc");
+    assert_eq!(prof(&r, "cct")["from"], "cc");
+    assert!(prof(&r, "cct")["drop"].is_null(), "内置的不给删");
+    assert_eq!(
+        prof(&r, "cct")["badge"],
+        copy_text("beSessionCommands.scope.builtin", &[])
+    );
     assert!(!t.0.join(relay_route_core::PROFILES_REL).exists());
 }
-
 #[test]
 fn a_name_that_clashes_with_a_program_on_path_is_a_function_and_says_why() {
     let t = tmp("kind", Some(BOOK));
@@ -335,7 +338,11 @@ fn bases_lists_only_what_cannot_loop_and_greys_itself() {
         })
         .collect();
     // teamcct / workcct 基于 cct ⇒ 选了就成圈，不列；cct 自己灰着。
-    assert_eq!(pick, [("cc", true), ("cct", false), ("pcc", true)]);
+    // 内置的 cch 基于 cc、不成圈，照列。
+    assert_eq!(
+        pick,
+        [("cc", true), ("cct", false), ("cch", true), ("pcc", true)]
+    );
 }
 
 fn write(t: &Tmp, changes: Value) -> Result<Value, crate::common::said::Said> {
@@ -375,26 +382,37 @@ fn write_rename_moves_the_section_in_place_and_children_follow() {
     assert!(now.contains("# tmux 版"), "{now}");
 }
 
+/// 盖着内置的那一段（`cct`）删了回到内置、不问 ⇒ 这一条用一段只属于用户的基段（`mt`）。
+fn own_base() -> String {
+    BOOK.replace("[cct]", "[mt]")
+        .replace("from = \"cct\"", "from = \"mt\"")
+}
+
 #[test]
 fn removing_a_base_needs_a_choice_and_each_choice_does_what_it_says() {
-    let t = tmp("remove", Some(BOOK));
-    let e = write(&t, json!([{"op": "remove", "name": "cct"}])).unwrap_err();
+    let t = tmp("remove", Some(own_base().as_str()));
+    // 删它要先处置的那几段（基于它的）由后端算好随读回给出。
+    assert_eq!(
+        prof(&read(&t), "mt")["drop"]["kids"],
+        json!(["teamcct", "workcct"])
+    );
+    let e = write(&t, json!([{"op": "remove", "name": "mt"}])).unwrap_err();
     assert_eq!(e.code.as_deref(), Some("refused"));
-    assert_eq!(t.text(), BOOK);
+    assert_eq!(t.text(), own_base());
 
     write(
         &t,
-        json!([{"op": "remove", "name": "cct", "children": "reparent"}]),
+        json!([{"op": "remove", "name": "mt", "children": "reparent"}]),
     )
     .unwrap();
     let b = profile::parse_book(&t.text());
-    assert!(b.find("cct").is_none());
+    assert!(b.find("mt").is_none());
     assert_eq!(b.find("teamcct").unwrap().from.as_deref(), Some("cc"));
 
-    let t = tmp("cascade", Some(BOOK));
+    let t = tmp("cascade", Some(own_base().as_str()));
     write(
         &t,
-        json!([{"op": "remove", "name": "cct", "children": "cascade"}]),
+        json!([{"op": "remove", "name": "mt", "children": "cascade"}]),
     )
     .unwrap();
     let names: Vec<String> = profile::parse_book(&t.text())
@@ -467,7 +485,11 @@ fn a_write_may_fix_the_broken_section_but_may_not_break_another() {
     )
     .unwrap();
     assert!(
-        profile::problems_after(&t.text()).is_empty(),
+        read(&t)["profiles"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|p| p["usable"] == true),
         "{}",
         t.text()
     );
@@ -482,21 +504,45 @@ fn a_write_may_fix_the_broken_section_but_may_not_break_another() {
     assert_eq!(t.text(), before);
 }
 
+/// 改一段内置的 ⇒ 用户文件里多一段同名的盖过它；删那一段 ⇒ 回到内置；内置那一段本身删不了、改不了名。
 #[test]
-fn init_writes_the_seed_or_an_empty_file() {
-    let t = tmp("init", None);
-    write(&t, json!([{"op": "init", "seed": true}])).unwrap();
-    let names: Vec<String> = profile::parse_book(&t.text())
+fn editing_a_builtin_writes_an_overriding_section_and_removing_it_restores_the_builtin() {
+    let t = tmp("builtin-edit", None);
+    let mut form = prof(&read(&t), "cc")["form"].clone();
+    form["cwd"] = json!("/w");
+    write(&t, json!([{"op": "set", "was": "cc", "form": form}])).unwrap();
+    assert_eq!(names_in(&t.text()), ["cc"]);
+    let r = read(&t);
+    // 盖着内置的：「删」那一格写「还原成内置」、不带要先处置的（基于它的内置那几条照旧基于回到内置的那一条）。
+    assert_eq!(
+        prof(&r, "cc")["drop"],
+        json!({"label": copy_text("beProfile.drop.restore", &[]), "kids": [], "restores": true})
+    );
+    assert!(prof(&r, "cct")["drop"].is_null());
+    // 盖着内置的那一段删掉：基于它的内置那几条照旧基于回到内置的那一条，不问怎么处置。
+    write(&t, json!([{"op": "remove", "name": "cc"}])).unwrap();
+    assert!(names_in(&t.text()).is_empty());
+    assert!(
+        prof(&read(&t), "cc")["drop"].is_null(),
+        "删掉盖着的那段后 cc 回到内置"
+    );
+    let before = t.text();
+    let e = write(&t, json!([{"op": "remove", "name": "cch"}])).unwrap_err();
+    assert_eq!(e.code.as_deref(), Some("refused"));
+    let mut form = prof(&read(&t), "cch")["form"].clone();
+    form["name"] = json!("hh");
+    let e = write(&t, json!([{"op": "set", "was": "cch", "form": form}])).unwrap_err();
+    assert_eq!(e.code.as_deref(), Some("refused"));
+    assert_eq!(t.text(), before);
+}
+
+fn names_in(text: &str) -> Vec<String> {
+    profile::parse_book(text)
         .profiles
         .into_iter()
         .map(|p| p.name)
-        .collect();
-    assert_eq!(names, ["cc", "cct", "cch"]);
-    let t = tmp("init-empty", None);
-    write(&t, json!([{"op": "init", "seed": false}])).unwrap();
-    assert!(profile::parse_book(&t.text()).profiles.is_empty());
+        .collect()
 }
-
 /// 表单那几格的名字由这里写好交出去（界面不另存一份标签表）：按表单从上到下的顺序，每格 `id` ＋ 文案表里那一句。
 #[test]
 fn read_carries_the_form_slot_labels_in_form_order() {
@@ -544,10 +590,19 @@ fn every_form_round_trips_through_the_file() {
     let t = tmp("roundtrip", Some(BOOK));
     let r = read(&t);
     for p in r["profiles"].as_array().unwrap() {
+        if !p["badge"].is_null() {
+            continue;
+        }
         let f: ProfileForm = serde_json::from_value(p["form"].clone()).unwrap();
         let e = edit_of_form(&f).unwrap();
         let back = profile::parse_book(BOOK);
-        let orig = profile::edit_of(back.find(&f.name).unwrap());
+        let p = back.find(&f.name).unwrap();
+        let orig = profile::ProfileEdit {
+            name: p.name.clone(),
+            from: p.from.clone(),
+            agent: p.agent.clone(),
+            ccm: p.ccm_words(),
+        };
         assert_eq!(e, orig, "{}", f.name);
     }
 }
@@ -739,7 +794,7 @@ fn wire_in(v: &Value, t: &Tmp) -> String {
 
 /// 「写成链接还是终端函数」跟这台 PATH 上有没有同名程序走（金样那一份用不撞名的名字钉）：这几格换成占位。
 fn without_path_facts(mut v: Value) -> Value {
-    for list in ["profiles", "seed"] {
+    for list in ["profiles"] {
         for p in v[list].as_array_mut().unwrap() {
             for k in ["kind", "functionWhy", "functionLine"] {
                 p[k] = json!("<PATH-FACT>");
@@ -749,14 +804,14 @@ fn without_path_facts(mut v: Value) -> Value {
     v
 }
 
-/// 金样那五份之外界面读的几形：没有配置文件（只有首建预览）· TOML 写坏 ＋ 迁移说明 · 合不下来 · 按未存表单合 ·
+/// 金样那五份之外界面读的几形：没有配置文件（只有内置那几段）· TOML 写坏 ＋ 迁移说明 · 合不下来 · 按未存表单合 ·
 /// 改动让别的段合不下来 · 「基于」下拉里的新名字 · 只「知道了」· 盘上被别处改过（`stale`，界面按码认）。
 #[test]
 fn the_profiles_replies_the_ui_reads_keep_their_wire_bytes() {
-    let t = tmp("pin-seed", None);
+    let t = tmp("pin-builtin", None);
     assert_eq!(
         wire_in(&without_path_facts(read(&t)), &t),
-        r#"{"accounts":[],"binDir":"<HOME>/.cc-monitor/bin","editedAt":null,"exists":false,"fileProblem":null,"path":"<HOME>/.cc-monitor/profiles.toml","pathShown":"~/.cc-monitor/profiles.toml","profiles":[],"rev":null,"seed":[{"accountShape":null,"agent":[],"form":{"account":null,"agent":null,"args":null,"cwd":null,"cwdIf":null,"detach":false,"from":null,"launcher":null,"name":"cc","say":null,"tab":null,"tabGroup":null,"tmux":null,"tmuxSize":null},"from":null,"functionLine":"<PATH-FACT>","functionWhy":"<PATH-FACT>","kind":"<PATH-FACT>","name":"cc","own":[],"problem":null,"said":"当前终端","start":"'<HOME>/.cc-monitor/bin/ccm' @cc","usable":true},{"accountShape":null,"agent":[],"form":{"account":null,"agent":null,"args":null,"cwd":null,"cwdIf":null,"detach":false,"from":"cc","launcher":null,"name":"cct","say":null,"tab":null,"tabGroup":null,"tmux":{"mode":"auto","name":""},"tmuxSize":null},"from":"cc","functionLine":"<PATH-FACT>","functionWhy":"<PATH-FACT>","kind":"<PATH-FACT>","name":"cct","own":[{"key":"ccm-tmux","line":5,"slot":"tmux","vals":[]}],"problem":null,"said":"+ tmux · 自动取名","start":"'<HOME>/.cc-monitor/bin/ccm' @cct","usable":true},{"accountShape":null,"agent":[],"form":{"account":null,"agent":null,"args":null,"cwd":null,"cwdIf":null,"detach":false,"from":"cc","launcher":null,"name":"cch","say":null,"tab":null,"tabGroup":null,"tmux":{"mode":"hosted","name":""},"tmuxSize":null},"from":"cc","functionLine":"<PATH-FACT>","functionWhy":"<PATH-FACT>","kind":"<PATH-FACT>","name":"cch","own":[{"key":"hosted","line":9,"slot":"tmux","vals":[]}],"problem":null,"said":"+ 托管终端","start":"'<HOME>/.cc-monitor/bin/ccm' @cch","usable":true}],"seedCreate":"建这几条","seedHint":"别名 = ccm 的具名配置 · 一条一组选项\n可基于另一条 · 先建下面这几条","sets":[],"slots":[{"id":"account","label":"账号"},{"id":"tmux","label":"在哪起"},{"id":"cwdIf","label":"按目录"},{"id":"cwd","label":"其余进哪"},{"id":"agent","label":"agent"},{"id":"args","label":"交给 agent"},{"id":"launcher","label":"启动器"},{"id":"tmuxSize","label":"tmux 尺寸"},{"id":"detach","label":"起完不接进去"},{"id":"tab","label":"标签页"},{"id":"tabGroup","label":"标签页分组"},{"id":"say","label":"第一句话"}],"tmux":true,"tmuxNaming":[{"mode":"auto","text":"名字取自工作目录（目录名-cc） · 被占用依次试 -2 -3…\n在会话窗格里敲则就地启动"},{"mode":"fixed","text":"用填的名字 · 被占用则报错退出 · 不改名"},{"mode":"base","text":"先用填的名字 · 被占用依次试 -2 -3…"},{"mode":"hosted","text":"名字取自工作目录（目录名-cc） · 被占用依次试 -2 -3…\n起在 cc-monitor 托管的终端里 · cch ls 列出 · cch attach <名> 接回"}]}"#
+        r#"{"accounts":[],"binDir":"<HOME>/.cc-monitor/bin","editedAt":null,"fileProblem":null,"path":"<HOME>/.cc-monitor/profiles.toml","pathShown":"~/.cc-monitor/profiles.toml","profiles":[{"accountShape":null,"agent":[],"badge":"内置","drop":null,"form":{"account":null,"agent":null,"args":null,"cwd":null,"cwdIf":null,"detach":false,"from":null,"launcher":null,"name":"cc","say":null,"tab":null,"tabGroup":null,"tmux":null,"tmuxSize":null},"from":null,"functionLine":"<PATH-FACT>","functionWhy":"<PATH-FACT>","kind":"<PATH-FACT>","name":"cc","own":[],"problem":null,"said":"当前终端","start":"'<HOME>/.cc-monitor/bin/ccm' @cc","usable":true},{"accountShape":null,"agent":[],"badge":"内置","drop":null,"form":{"account":null,"agent":null,"args":null,"cwd":null,"cwdIf":null,"detach":false,"from":"cc","launcher":null,"name":"cct","say":null,"tab":null,"tabGroup":null,"tmux":{"mode":"auto","name":""},"tmuxSize":null},"from":"cc","functionLine":"<PATH-FACT>","functionWhy":"<PATH-FACT>","kind":"<PATH-FACT>","name":"cct","own":[{"key":"ccm-tmux","line":0,"slot":"tmux","vals":[]}],"problem":null,"said":"+ tmux · 自动取名","start":"'<HOME>/.cc-monitor/bin/ccm' @cct","usable":true},{"accountShape":null,"agent":[],"badge":"内置","drop":null,"form":{"account":null,"agent":null,"args":null,"cwd":null,"cwdIf":null,"detach":false,"from":"cc","launcher":null,"name":"cch","say":null,"tab":null,"tabGroup":null,"tmux":{"mode":"hosted","name":""},"tmuxSize":null},"from":"cc","functionLine":"<PATH-FACT>","functionWhy":"<PATH-FACT>","kind":"<PATH-FACT>","name":"cch","own":[{"key":"hosted","line":0,"slot":"tmux","vals":[]}],"problem":null,"said":"+ 托管终端","start":"'<HOME>/.cc-monitor/bin/ccm' @cch","usable":true}],"rev":null,"sets":[],"slots":[{"id":"account","label":"账号"},{"id":"tmux","label":"在哪起"},{"id":"cwdIf","label":"按目录"},{"id":"cwd","label":"其余进哪"},{"id":"agent","label":"agent"},{"id":"args","label":"交给 agent"},{"id":"launcher","label":"启动器"},{"id":"tmuxSize","label":"tmux 尺寸"},{"id":"detach","label":"起完不接进去"},{"id":"tab","label":"标签页"},{"id":"tabGroup","label":"标签页分组"},{"id":"say","label":"第一句话"}],"tmux":true,"tmuxNaming":[{"mode":"auto","text":"名字取自工作目录（目录名-cc） · 被占用依次试 -2 -3…\n在会话窗格里敲则就地启动"},{"mode":"fixed","text":"用填的名字 · 被占用则报错退出 · 不改名"},{"mode":"base","text":"先用填的名字 · 被占用依次试 -2 -3…"},{"mode":"hosted","text":"名字取自工作目录（目录名-cc） · 被占用依次试 -2 -3…\n起在 cc-monitor 托管的终端里 · cch ls 列出 · cch attach <名> 接回"}]}"#
     );
 
     let t = tmp(
@@ -771,7 +826,7 @@ fn the_profiles_replies_the_ui_reads_keep_their_wire_bytes() {
     r["fileProblem"]["detail"] = json!("<DETAIL>");
     assert_eq!(
         wire_in(&r, &t),
-        r#"{"accounts":[],"binDir":"<HOME>/.cc-monitor/bin","editedAt":null,"exists":true,"fileProblem":{"detail":"<DETAIL>","line":3,"message":"配置文件格式错误"},"path":"<HOME>/.cc-monitor/profiles.toml","pathShown":"~/.cc-monitor/profiles.toml","profiles":[],"rev":"33-2c4c3ef6bd89afa9","seed":[],"seedCreate":"","seedHint":"","sets":[],"slots":[{"id":"account","label":"账号"},{"id":"tmux","label":"在哪起"},{"id":"cwdIf","label":"按目录"},{"id":"cwd","label":"其余进哪"},{"id":"agent","label":"agent"},{"id":"args","label":"交给 agent"},{"id":"launcher","label":"启动器"},{"id":"tmuxSize","label":"tmux 尺寸"},{"id":"detach","label":"起完不接进去"},{"id":"tab","label":"标签页"},{"id":"tabGroup","label":"标签页分组"},{"id":"say","label":"第一句话"}],"tmux":true,"tmuxNaming":[{"mode":"auto","text":"名字取自工作目录（目录名-cc） · 被占用依次试 -2 -3…\n在会话窗格里敲则就地启动"},{"mode":"fixed","text":"用填的名字 · 被占用则报错退出 · 不改名"},{"mode":"base","text":"先用填的名字 · 被占用依次试 -2 -3…"},{"mode":"hosted","text":"名字取自工作目录（目录名-cc） · 被占用依次试 -2 -3…\n起在 cc-monitor 托管的终端里 · cch ls 列出 · cch attach <名> 接回"}]}"#
+        r#"{"accounts":[],"binDir":"<HOME>/.cc-monitor/bin","editedAt":null,"fileProblem":{"detail":"<DETAIL>","line":3,"message":"配置文件格式错误"},"path":"<HOME>/.cc-monitor/profiles.toml","pathShown":"~/.cc-monitor/profiles.toml","profiles":[],"rev":"33-2c4c3ef6bd89afa9","sets":[],"slots":[{"id":"account","label":"账号"},{"id":"tmux","label":"在哪起"},{"id":"cwdIf","label":"按目录"},{"id":"cwd","label":"其余进哪"},{"id":"agent","label":"agent"},{"id":"args","label":"交给 agent"},{"id":"launcher","label":"启动器"},{"id":"tmuxSize","label":"tmux 尺寸"},{"id":"detach","label":"起完不接进去"},{"id":"tab","label":"标签页"},{"id":"tabGroup","label":"标签页分组"},{"id":"say","label":"第一句话"}],"tmux":true,"tmuxNaming":[{"mode":"auto","text":"名字取自工作目录（目录名-cc） · 被占用依次试 -2 -3…\n在会话窗格里敲则就地启动"},{"mode":"fixed","text":"用填的名字 · 被占用则报错退出 · 不改名"},{"mode":"base","text":"先用填的名字 · 被占用依次试 -2 -3…"},{"mode":"hosted","text":"名字取自工作目录（目录名-cc） · 被占用依次试 -2 -3…\n起在 cc-monitor 托管的终端里 · cch ls 列出 · cch attach <名> 接回"}]}"#
     );
 
     let lost = BOOK.to_string() + "\n[orphan]\nfrom = \"nope\"\n";
@@ -806,7 +861,7 @@ fn the_profiles_replies_the_ui_reads_keep_their_wire_bytes() {
     assert_eq!(
         wire_in(&r, &t),
         format!(
-            r#"{{"affected":[{{"changes":[],"name":"cct","problem":"{broke}"}},{{"changes":[],"name":"teamcct","problem":"{broke}"}},{{"changes":[],"name":"workcct","problem":"{broke}"}}]}}"#
+            r#"{{"affected":[{{"changes":[],"name":"cct","problem":"{broke}"}},{{"changes":[],"name":"cch","problem":"{broke}"}},{{"changes":[],"name":"teamcct","problem":"{broke}"}},{{"changes":[],"name":"workcct","problem":"{broke}"}}]}}"#
         )
     );
 
@@ -815,7 +870,7 @@ fn the_profiles_replies_the_ui_reads_keep_their_wire_bytes() {
             &answer_bases(&t.door(), &json!({"name": "fresh"})).unwrap(),
             &t
         ),
-        r#"{"bases":[{"from":null,"name":"cc","said":"当前终端 · 在 ~ 敲进 ~/projects/notes","selectable":true},{"from":"cc","name":"cct","said":"+ tmux · 自动取名","selectable":true},{"from":"cct","name":"teamcct","said":"账号 team","selectable":true},{"from":"cct","name":"workcct","said":"账号 work","selectable":true},{"from":null,"name":"pcc","said":"当前终端 · 不用账号 · 进 /srv/p","selectable":true},{"from":null,"name":"fresh","said":"","selectable":false}]}"#
+        r#"{"bases":[{"from":null,"name":"cc","said":"当前终端 · 在 ~ 敲进 ~/projects/notes","selectable":true},{"from":"cc","name":"cct","said":"+ tmux · 自动取名","selectable":true},{"from":"cc","name":"cch","said":"+ 托管终端","selectable":true},{"from":"cct","name":"teamcct","said":"账号 team","selectable":true},{"from":"cct","name":"workcct","said":"账号 work","selectable":true},{"from":null,"name":"pcc","said":"当前终端 · 不用账号 · 进 /srv/p","selectable":true},{"from":null,"name":"fresh","said":"","selectable":false}]}"#
     );
 
     assert_eq!(
@@ -857,40 +912,6 @@ fn every_profile_says_the_line_that_starts_it_in_a_terminal_here() {
             "{p}"
         );
     }
-}
-
-/// 一条自由命令行 ⇒ 别名表单：头一个词是那一家的启动器 ⇒ 后面那串原样交它；是 `ccm` ⇒ 照 ccm 的解析器折成表单
-/// （ccm 选项进各格、`--` 左边交 agent）；目录 · 会话名照给的填；别的 ⇒ 拒、那一句。
-#[test]
-fn a_free_command_line_folds_into_the_alias_form_on_the_backend() {
-    let form = |v: Value| -> Result<Value, crate::common::said::Said> {
-        wired(page::form_of_line(&taken::<ProfilesFromLineReq>(&v)?))
-    };
-    let plain = form(
-        json!({"name": "w", "line": "claude --model opus", "cwd": "~/w", "sessionName": "dev"}),
-    )
-    .unwrap();
-    assert_eq!(plain["name"], "w");
-    assert_eq!(plain["args"], "--model opus");
-    assert_eq!(plain["cwd"], "~/w");
-    assert_eq!(plain["tmux"], json!({"mode": "fixed", "name": "dev"}));
-    let bare = form(json!({"name": "b", "line": "ccm"})).unwrap();
-    assert_eq!(
-        (bare["args"].clone(), bare["account"].clone()),
-        (Value::Null, Value::Null)
-    );
-    let ccm =
-        form(json!({"name": "c", "line": "ccm --verbose -- --account team --ccm-tmux"})).unwrap();
-    assert_eq!(ccm["args"], "--verbose");
-    assert_eq!(ccm["account"], json!({"kind": "account", "name": "team"}));
-    assert_eq!(ccm["tmux"]["mode"], "auto");
-    let e = form(json!({"name": "x", "line": "htop"})).expect_err("别的命令建不了");
-    assert_eq!(e.code.as_deref(), Some("refused"));
-    assert!(!e.said.is_empty());
-    assert!(
-        form(json!({"name": "x", "line": "claude \"open"})).is_err(),
-        "引号没配对"
-    );
 }
 
 #[test]

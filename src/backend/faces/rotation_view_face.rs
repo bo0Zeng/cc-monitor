@@ -4,15 +4,17 @@
 
 use crate::accounts::quota::rules::book::{self, Book};
 use crate::accounts::quota::rules::decide::Pick;
+use crate::accounts::quota::rules::decide::{lineup_of, plain_lineup};
 use crate::accounts::quota::rules::{standing, Adopted};
 use crate::accounts::quota::setup::{self, form, script, shelf, uses};
 use crate::accounts::quota::strategy::FailWhy;
 use crate::common::cells::Words;
-use crate::faces::rotation_act_face::{judged, lineup_of, plain_lineup, Judged};
+use crate::faces::rotation_act_face::{judged, Judged};
 use crate::faces::rotation_face::Ctx;
 use crate::faces::rotation_try_face::{decision_of, timeline_of};
 use crate::wire::typed::Command;
 use cmd_wire::cells::Tone;
+use cmd_wire::quota::{SLOT_5H, SLOT_7D};
 pub(crate) use cmd_wire::rotation::{
     RotAccount, RotBadCell, RotBoard, RotCan, RotCell, RotChoice, RotDaySeg, RotGroup, RotHint,
     RotLine, RotLogRow, RotMark, RotNote, RotOldFile, RotPlate, RotRefused, RotRow,
@@ -118,7 +120,7 @@ fn account_of(
     fact: cmd_wire::rotation::Fact,
     colors: &std::collections::BTreeMap<String, u8>,
 ) -> RotAccount {
-    let full = [("5h", &fact.w5h), ("7d", &fact.w7d)]
+    let full = [(SLOT_5H, &fact.w5h), (SLOT_7D, &fact.w7d)]
         .into_iter()
         .filter(|(_, w)| standing::used_up(w.used))
         .map(|(k, _)| k.to_string())
@@ -468,7 +470,7 @@ pub(crate) fn view_with(
                 let facts = ctx
                     .hop
                     .accts(sid, &session, &base, &plan.settings, &row, now);
-                let line = plain_lineup(&session, &facts, now);
+                let line = plain_lineup(&session.current, &session.off, &facts, now);
                 let sendable = |a: &str| {
                     facts
                         .iter()
@@ -487,9 +489,9 @@ pub(crate) fn view_with(
             }
             RotTarget::Strategy { .. } => (Vec::new(), vec![session.start.clone()]),
         };
-        let lib = ctx.hop.library();
+        let lib = ctx.hop.book();
         let row = ctx.row(&agent);
-        let colors = crate::observe::accounts_query::account_colors();
+        let colors = crate::accounts::manage::library::account_colors();
         return Ok(RotationViewReply {
             now,
             now_text: face(now, tz),
@@ -629,8 +631,8 @@ pub(crate) fn view_with(
                 .filter(|id| !rows.iter().any(|(_, x)| x == id)),
         )
         .collect();
-    let lib = ctx.hop.library();
-    let colors = crate::observe::accounts_query::account_colors();
+    let lib = ctx.hop.book();
+    let colors = crate::accounts::manage::library::account_colors();
     let accounts: Vec<RotAccount> = ids
         .iter()
         .map(|id| {
@@ -669,7 +671,7 @@ pub(crate) fn view_with(
             };
             (
                 lines_of(
-                    &lineup_of(&session, &d, &facts, now),
+                    &lineup_of(&session.current, &session.off, &d, &facts, now),
                     &session.off,
                     &sendable,
                     &blocked,
@@ -741,7 +743,7 @@ fn day_clock(min: u64) -> String {
     if min >= form::DAY_MIN {
         copy_text("rot.day.end", &[])
     } else {
-        format!("{:02}:{:02}", min / 60, min % 60)
+        crate::common::time::hm(i64::try_from(min * 60).unwrap_or(i64::MAX))
     }
 }
 
@@ -801,7 +803,7 @@ fn cells_of(c: &form::Cell, settings: &Value, row: Option<usize>) -> Vec<RotCell
     };
     if c.kind == form::Kind::DaySegments {
         let win = |w: &str| match w {
-            "5h" | "7d" => crate::accounts::quota::name_words::slot_text(w),
+            SLOT_5H | SLOT_7D => crate::accounts::quota::name_words::slot_text(w),
             _ => copy_text("rot.win.other", &[("w", w)]),
         };
         let first = c.windows.first().map(|w| win(w)).unwrap_or_default();

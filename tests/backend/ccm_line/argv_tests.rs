@@ -221,7 +221,7 @@ fn every_default_lives_only_in_the_defaults_block() {
 /// 🔴 机检：**ccm 的旗标字面量只住 `argv.rs`。**
 ///
 /// 失效方向：「有人再起第二个 argv 解析口、或把某条子命令的行为
-/// 在第二处重写一遍」。判法 = 扫 `host/ccm_line/` 与 `control/ccm/` 两棵目录下**除 `argv.rs` 外**
+/// 在第二处重写一遍」。判法 = 扫 `wire/ccm_line/` 与 `control/ccm/` 两棵目录下**除 `argv.rs` 外**
 /// 全部 `.rs` 的生产段，不许出现 `"--` 打头的字面量（正控：`argv.rs` 自己有）。
 /// 买不到：不经字面量拼出来的旗标名；这两棵目录以外的文件。
 #[test]
@@ -230,8 +230,8 @@ fn ccm_flag_literals_live_only_in_argv_rs() {
     let mut others: Vec<(String, String)> = Vec::new();
     for (dir, excluded) in [
         (
-            "host/ccm_line",
-            &["src/backend/host/ccm_line/argv.rs"] as &[&str],
+            "wire/ccm_line",
+            &["src/backend/wire/ccm_line/argv.rs"] as &[&str],
         ),
         ("control/ccm", &[]),
     ] {
@@ -251,7 +251,7 @@ fn ccm_flag_literals_live_only_in_argv_rs() {
         others.iter().map(|(r, _)| r).collect::<Vec<_>>()
     );
     let argv =
-        guard_core::production_code(include_str!("../../../src/backend/host/ccm_line/argv.rs"));
+        guard_core::production_code(include_str!("../../../src/backend/wire/ccm_line/argv.rs"));
     assert!(
         argv.contains("\"--"),
         "正控：`argv.rs` 里一个旗标字面量都没有 —— 认法坏了"
@@ -333,7 +333,7 @@ fn own_names_are_the_binary_names_whatever_package_this_code_sits_in() {
     for own in ["ccm", "cc-monitor-backend", "cc-monitor-backend-p11b"] {
         assert!(is_own_name(own), "`{own}` 没认成自己");
     }
-    for other in ["claude", "backend-host", "cc-monitor"] {
+    for other in ["claude", "backend-wire", "cc-monitor"] {
         assert!(!is_own_name(other), "`{other}` 被认成了自己");
     }
 }

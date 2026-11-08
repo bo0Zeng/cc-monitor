@@ -23,7 +23,8 @@ fn answer_with(
     args: &serde_json::Value,
 ) -> Result<ConfigSurfaceReport, crate::common::said::Said> {
     let req: FootprintReq = crate::wire::typed::take(args).map_err(|f| f.coded("bad_args"))?;
-    super::answer_with(get, session_path, agent_home, &req)
+    // 用户级 `PATH` 那一格只有 Windows 那一台问得出；这里的判据不问它 ⇒ 问不出。
+    super::answer_with(get, session_path, agent_home, &|| None, &req)
 }
 
 fn env_of(pairs: Vec<(&'static str, String)>) -> impl Fn(&str) -> Option<String> {
@@ -81,6 +82,7 @@ fn monitor_vantage_population(home: &Path, with_client: bool) -> Vec<(String, St
     let empty = FsProbe {
         meta: &|_| None,
         list: &|_| None,
+        user_path: &|| None,
     };
     let agent = home.join(".claude");
     let env = SurfaceEnv {

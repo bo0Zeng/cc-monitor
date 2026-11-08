@@ -94,8 +94,10 @@ pub fn until(ms: u64) -> Option<crate::platform::child::Until> {
 
 /// 判据用的一台：名字 ＝ 地址 ＝ `name`，用户 `u`（组成的请求里 `host` 就是它，替身按它认是哪台）。
 pub fn host(name: &str) -> crate::dial::Host {
-    crate::dial::machine::loose(&serde_json::json!({"label": name, "host": name, "user": "u"}))
-        .expect("判据那一台")
+    <crate::dial::Host as serde::Deserialize>::deserialize(
+        &serde_json::json!({"label": name, "host": name, "user": "u"}),
+    )
+    .expect("判据那一台")
 }
 
 /// 这几台的机器表（同 [`host`] 那一形，照给的先后）。

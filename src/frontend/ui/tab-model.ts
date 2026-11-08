@@ -19,7 +19,6 @@ import type { FactsSource } from "./views/facts-source";
 import type { RecordAt, ToolResultBlock, ToolUseSeen } from "./cards/index";
 import type { Machine } from "./ipc/origin";
 import type { SessionFace } from "./generated/SessionFace";
-import type { FactsLine } from "./generated/FactsLine";
 import type { LineRecord } from "./generated/LineRecord";
 import type { AutoChoice } from "./generated/AutoChoice";
 import type { AskEnd } from "./generated/AskEnd";
@@ -109,7 +108,7 @@ export interface Tab {
   /** 此刻的权限档：原值（`permissionMode`，抽屉里勾哪一档）与写给人看的字（`permissionModeText`）；没有 ⇒ `null`。 */
   permissionMode: string | null;
   permissionModeText: string | null;
-  /** 需手动（后端 `history-facts` 的 `needs`：种类 · 那一句 · 何时起等）；不在等 ⇒ `null`。与 `face` 上那一态对不上时不认（`session-face.ts::needsOf`）。 */
+  /** 需手动（后端 `history-facts` 的 `needs`：种类 · 那一句 · 何时起等）；不在等 ⇒ `null`。脸上那颗点不说在等时不认（`session-face.ts::needsOf`）。 */
   needs: Needs | null;
   /** 没人答的提问等几分钟替人答（后端 `history-facts` 的 `autoAnswer`，会话注解里那一格）；关 ⇒ `null`。 */
   autoAnswer: number | null;
@@ -117,8 +116,6 @@ export interface Tab {
   autoAnswerChoices: AutoChoice[];
   /** 上一条请求怎么收的场（`history-facts` 的 `askEnd`：后端写好的那一句 · 留不留着）；还没收过场 ⇒ `null`。 */
   askEnd: AskEnd | null;
-  /** 状态一句（后端 `history-facts` 的 `line`）：只在它的 `for` 与 `face` 上那一态相同时用；没有 ⇒ `null`。 */
-  line: FactsLine | null;
   /** 后台任务运行中那一句（后端 `history-facts` 的 `background`：写好的字 · 会走的那一句 · 命令那一格 · 几条）；不是这一态 ⇒ `null`。 */
   backgroundWork: BackgroundWork | null;
   /** 还没有结果的工具调用（后端 `pending`，文件序）：悬停卡「在做什么」。 */

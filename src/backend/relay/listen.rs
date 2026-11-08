@@ -6,6 +6,7 @@
 
 use super::key;
 use crate::common::net::LOOPBACK;
+use crate::platform::child_env::RELAY_PORT;
 use comms_outward::{Relay, Startup, TeeSink};
 use copy_core::copy_text;
 use copy_core::discard::{Discard, Why};
@@ -27,8 +28,6 @@ pub const INFLIGHT_BODY_CAP: cap_core::Cap = cap_core::Cap {
     bytes: 1024 * 1024 * 1024,
     over: cap_core::Over::Reject,
 };
-
-pub const ENV_PORT: &str = "CCM_RELAY_PORT";
 
 //
 // ══════════════════════════════════════════════════════════════════════════
@@ -371,7 +370,7 @@ pub fn our_relay_listening(port: u16) -> bool {
         .contains(&port)
 }
 
-/// 在本进程里起中转：交了端口（[`ENV_PORT`]）才起，接受循环跑在一条专属线程上。
+/// 在本进程里起中转：交了端口（[`RELAY_PORT`]）才起，接受循环跑在一条专属线程上。
 ///
 /// 起常驻后端的宿主交端口（本机 monitor · 远端 `--resident-ensure`）；测试连接探针 exec 的那一趟流模式没人交 ⇒ 不起（它读完 hello 就退）。
 /// ① 端口没有缺省值（交了一个认不出的串 ⇒ `Failed`，不悄悄退回默认值：注入侧拼的是它交出来的那个数）；
@@ -386,14 +385,14 @@ pub fn host(
     own: &crate::platform::fs::Own,
     egress_of: super::EgressOf,
 ) -> Hosted {
-    let Some(raw) = get(ENV_PORT).filter(|s| !s.trim().is_empty()) else {
+    let Some(raw) = get(RELAY_PORT).filter(|s| !s.trim().is_empty()) else {
         return Hosted::NotAsked;
     };
     let port = match raw.trim().parse::<u16>() {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("[relay] not hosted: CCM_RELAY_PORT is not a port number: {e}");
-            return Hosted::Failed(format!("{ENV_PORT}={raw:?} 不是端口号（{e}）"));
+            eprintln!("[relay] not hosted: {RELAY_PORT} is not a port number: {e}");
+            return Hosted::Failed(format!("{RELAY_PORT}={raw:?} 不是端口号（{e}）"));
         }
     };
     let (listener, relay) = match prepare(port, get, startup, TeeSink::to_port(tap), own, egress_of)

@@ -10,7 +10,7 @@ import { isLocalOrigin, type Machine } from "./ipc/origin";
 import { detailOf, saidOf } from "./kit/detail";
 import { toast } from "./kit/toast";
 import { copyText } from "./copy-table";
-import { copyCommand, NoTerminalWindow, openLocalTerminal, openTerminal, sayNoTerminal } from "./terminal-open";
+import { copyCommand, NoTerminalWindow, openTerminal, sayNoTerminal } from "./terminal-open";
 import { chosenAccount } from "./launch-account";
 import { offerResyncRetry } from "./resync";
 import { openLoginDrawer } from "./login-drawer";
@@ -205,13 +205,12 @@ function sayEnd(origin: Machine, req: SessionOpenReq, how: OpenHow, end: Exclude
 }
 
 /**
- * 开那一行：本机带起始目录（`null` ⇒ 壳照家目录开）、远端经 ssh。开不了 ⇒「终端未打开」＋ 在哪跑 ＋ 那一行 ＋［复制命令］
+ * 开那一行（经 `openTerminal`：本机远端同一条，本机带起始目录，`null` ⇒ 壳照家目录开）。开不了 ⇒「终端未打开」＋ 在哪跑 ＋ 那一行 ＋［复制命令］
  * （不自动写剪贴板）；找不到终端 ⇒ 照实说、给设置入口。`sid` ＝ 这个终端显示的那条会话（远端那一行带上它，↗ 先在本机找）。
  */
 async function openLine(origin: Machine, line: string, cwd: string | null, sid: string | null): Promise<boolean> {
   try {
-    if (isLocalOrigin(origin)) await openLocalTerminal(line, cwd);
-    else await openTerminal(origin, line, sid);
+    await openTerminal(origin, line, sid, cwd);
     return true;
   } catch (err) {
     if (err instanceof NoTerminalWindow) {

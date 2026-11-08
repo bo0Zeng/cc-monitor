@@ -172,6 +172,8 @@ describe("C01 边界生成物", () => {
     TypedCommands: "tests/backend/wire/typed_tests.rs",
     // 壳里过界的那几个串（流名 · 事件名 · 日志目录那一行的名字）。
     "shell-names": "tests/frontend/shell/shell_names_export.rs",
+    // 文件窗口那几格设计令牌的名单（契约 `filewin_contract::THEME_TOKENS`）。
+    "filewin-theme-tokens": "tests/frontend/filewin/theme_tokens_export.rs",
   };
 
   it("每个生成物都有产出者、每个导出的类型都有它那一份（两向；自动发现的范围自检）", () => {
@@ -243,6 +245,7 @@ describe("C01 边界生成物", () => {
       "src/frontend/shell/src/payload.rs", // `judgment-rules.ts`
       "src/backend/wire/typed.rs", // `TypedCommands.ts`
       "src/frontend/shell/src/event_replay.rs", // `shell-names.ts`
+      "src/frontend/filewin/src/theme.rs", // `filewin-theme-tokens.ts`
     ];
     for (const dir of REGISTERED_GENERATED_DIRS) {
       const files = generatedNames(dir);

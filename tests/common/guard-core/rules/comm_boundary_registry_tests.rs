@@ -1,9 +1,11 @@
 //! 通信层边界判据的本体 —— 模块头注（成员怎么认 · 这几条管什么 · 买到什么买不到什么）住
 //! `tests/common/guard-core/rules/comm_boundary_registry.rs`，不在这里抄第二份。
 //!
-//! 谁守哪一条：读盘 · 读环境 · 起进程 · 绑端口 · 期限字面量（`Duration::from_*`）· `try_send` 由两包的
-//! `clippy.toml`（`src/comms/clippy.toml` · `src/comms/outward/clippy.toml`）挡；`match` 列全变体由两包
-//! `Cargo.toml` 的 `wildcard_enum_match_arm = "deny"` 挡（通配臂只盖一个变体的那一形它不管，归 `X1`）；
+//! 谁守哪一条：读盘 · 读环境 · 起进程 · 绑端口 · 期限字面量（`Duration::from_*`）· `try_send` 由两份
+//! `clippy.toml`（`src/comms/clippy.toml` · `src/comms/outward/clippy.toml`，两份只差什么由 `M2` 比对）挡；
+//! 丢一个 `Result`（含 `let _ = …send(…)`）由四包 `Cargo.toml` 都开的 `let_underscore_must_use` · `unused_result_ok` 挡；
+//! `match` 列全变体由 `wildcard_enum_match_arm = "deny"` 挡 —— 只 inward · outward 开了，resident-client · egress 没开，
+//! 那两包与通配臂只盖一个变体的那一形都归 `X1`；
 //! 期限只收紧、调用点必给期限由 `Budget` 字段私有（只经 `Budget::new` 造、只经 `narrow` 取小）与
 //! `call` 的签名挡。本文件只留编译器挡不住的那几条。
 //!
@@ -19,11 +21,12 @@ fn repo_root() -> PathBuf {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  一、成员 ＝ 通信层那三个 crate（`cargo metadata` 现取）
+//  一、成员 ＝ 通信层登在这里的四个 crate（`cargo metadata` 现取）
 // ════════════════════════════════════════════════════════════════════════════
 
-/// 通信层那三个 crate 的包名（面 A `comms-inward` · 面 B `comms-outward` · 连常驻后端的客户端那一侧 `resident-client`）。
-const COMMS_CRATES: &[&str] = &["comms-inward", "comms-outward", "resident-client"];
+/// 本族管的通信层包名：搬字节三包（面 A `comms-inward` · 面 B `comms-outward` · 出网口 `egress`）＋ 拨号端核心里连常驻后端的
+/// 客户端那一侧 `resident-client`。拨号端核心的另一件 `ssh-dial` 不在这里：它是判定之家（机器表判准 · 阶段句子 · host key · 写围栏）。
+const COMMS_CRATES: &[&str] = &["comms-inward", "comms-outward", "egress", "resident-client"];
 
 /// 每个通信层 crate 的普通依赖**只许**这些（传递进来的第一方 crate 也必须在表里）。
 /// 第一方业务 crate（后端 · 壳 · 文件窗口 · `acct-core` · `creds-core` · `host-core` · `filewin-contract` …）出现即红。
@@ -66,6 +69,19 @@ const ALLOWED_DEPS: &[(&str, &[&str])] = &[
         ],
     ),
     (
+        "egress",
+        &[
+            // 零依赖：一次握手读多少字节的上限（`HEAD_CAP`）。
+            "cap-core",
+            // 契约 crate：代理鉴权那一头的 base64（`cmd_wire::b64`）。
+            "cmd-wire",
+            // 契约 crate、零依赖：经 `cmd-wire` 的 `Sid` 进来。
+            "shell-quote-core",
+            // 只用 `upstream_is_loopback`：一个地址是不是回环是网络事实，直连判定问它；不是业务。
+            "upstream-url-core",
+        ],
+    ),
+    (
         "resident-client",
         &[
             // 能力事实 · 撤单的词 · 问后端失败了的那一套：通信层面 A 那一份。
@@ -96,9 +112,21 @@ struct Package {
     normal_deps: Vec<(String, Option<PathBuf>)>,
 }
 
-/// 壳那个 workspace 的成员（通信层三个 crate 都在里面），`cargo metadata --no-deps` 现取。
+/// 两棵 workspace（壳 · 后端）的成员，各取一次 `cargo metadata --no-deps`、按包目录去重并起来：
+/// inward · outward · resident-client 与 cmd-wire 是壳那棵的成员，egress 是后端那棵的成员 —— 只读一棵，
+/// 要么找不全成员，要么 `C2` 顺着第一方依赖往下查时查不到（静默少扫）。
 fn workspace_packages() -> Vec<Package> {
-    let manifest = repo_root().join("src/frontend/shell/Cargo.toml");
+    let mut by_dir: BTreeMap<PathBuf, Package> = BTreeMap::new();
+    for manifest in ["src/frontend/shell/Cargo.toml", "src/backend/Cargo.toml"] {
+        for p in workspace_packages_of(&repo_root().join(manifest)) {
+            by_dir.entry(p.dir.clone()).or_insert(p);
+        }
+    }
+    by_dir.into_values().collect()
+}
+
+/// 一棵 workspace 的成员，`cargo metadata --no-deps` 现取。
+fn workspace_packages_of(manifest: &Path) -> Vec<Package> {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
     let out = std::process::Command::new(cargo)
         .args([
@@ -109,7 +137,7 @@ fn workspace_packages() -> Vec<Package> {
             "1",
         ])
         .arg("--manifest-path")
-        .arg(&manifest)
+        .arg(manifest)
         .output()
         .expect("跑不动 `cargo metadata`");
     assert!(
@@ -153,7 +181,7 @@ fn workspace_packages() -> Vec<Package> {
         .collect()
 }
 
-/// 通信层那三个 crate：恰好 [`COMMS_CRATES`] 那三个，都住 `src/comms/` 下。
+/// 本族的成员包：恰好 [`COMMS_CRATES`] 那几个，都住 `src/comms/` 下。
 fn comms_packages(all: &[Package]) -> Vec<&Package> {
     let comms_root = repo_root().join("src/comms");
     let found: Vec<&Package> = all
@@ -164,7 +192,7 @@ fn comms_packages(all: &[Package]) -> Vec<&Package> {
     assert_eq!(
         names,
         COMMS_CRATES.iter().copied().collect::<BTreeSet<_>>(),
-        "壳那个 workspace 里找不全通信层那三个 crate —— 改名了 / 出列了"
+        "壳与后端两棵 workspace 里找不全 `COMMS_CRATES` 登的那几个包 —— 改名了 / 出列了"
     );
     for p in &found {
         assert!(
@@ -178,7 +206,7 @@ fn comms_packages(all: &[Package]) -> Vec<&Package> {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  二、人群：三个 crate 的源文件（含同住目录的 `chan.ts`）—— 每条判据的第一句
+//  二、人群：成员包的源文件（含同住目录的 `chan.ts`）—— 每条判据的第一句
 // ════════════════════════════════════════════════════════════════════════════
 
 /// 一份成员：`(仓根相对路径, 生产段)`。
@@ -211,7 +239,7 @@ fn production_of(rel: &str, raw: &str) -> String {
     guard_core::strip_comment_lines(raw)
 }
 
-/// 人群：三个通信层 crate 目录下的 `.rs` / `.ts`（`chan.ts` 住 `comms-inward` 的目录、同归边界判据管）。
+/// 人群：[`COMMS_CRATES`] 那几包目录下的 `.rs` / `.ts`（`chan.ts` 住 `comms-inward` 的目录、同归边界判据管）。
 ///
 /// 反空真：每个 crate 的 crate 根（`cargo metadata` 的 `targets[].src_path`）必须在人群里（两侧异源：清单 vs 走目录）；
 /// 人群里至少有一份 `.ts`（`C1` / `C3` 的 TS 那一面）。
@@ -256,7 +284,7 @@ fn boundary() -> Vec<Member> {
 const CRITERIA: &[(&str, &str, &str)] = &[
     (
         "成员",
-        "members_are_the_two_comms_crates_and_nothing_is_path_mounted_into_them",
+        "members_are_the_listed_comms_crates_and_nothing_is_path_mounted_into_them",
         "生产代码里 `#[path]` 指进 `src/comms/` 的零处（成员只经 crate 依赖进来）",
     ),
     (
@@ -267,7 +295,7 @@ const CRITERIA: &[(&str, &str, &str)] = &[
     (
         "C2",
         "c2_the_comms_crates_depend_only_on_the_allowed_crates",
-        "三个 crate 的普通依赖（含传递的第一方 crate）⊆ 只许的那几个，业务 crate 一个都不许出现",
+        "成员包的普通依赖（含传递的第一方 crate）⊆ 只许的那几个，业务 crate 一个都不许出现",
     ),
     (
         "C3",
@@ -280,9 +308,9 @@ const CRITERIA: &[(&str, &str, &str)] = &[
         "对 `CallError` / `Item` / `Reach` 的 `match` 穷尽、零 `_ =>`（只盖一个变体的那一形开关挡不住）",
     ),
     (
-        "X4",
-        "x4_the_only_way_to_drop_is_to_say_gap",
-        "丢弃只能经 `Item::Gap` 表达 —— 零 `let _ = …send(…)`（`try_send` 由名单挡）",
+        "M2",
+        "the_two_comms_clippy_lists_differ_only_where_written",
+        "两份通信层 `clippy.toml` 禁的路径只差 `russh::keys::load_*`，中转那份出站 TCP 的 reason 写「去上游走宿主交进来的那一口」",
     ),
     (
         "元",
@@ -323,12 +351,12 @@ fn path_mounts_into(comms: &Path, file: &Path, prod: &str) -> Vec<String> {
 }
 
 /// ★ **成员 ＝ crate**：生产代码里 `#[path]` 指进 `src/comms/` 的零处 —— 通信层的文件只经 crate 依赖进别的包，
-/// 不再被谁的模块树挂进去（挂进去的那一刻它就不受那三个 crate 的依赖边界管了）。
+/// 不再被谁的模块树挂进去（挂进去的那一刻它就不受成员包的依赖边界管了）。
 ///
 /// 人群：`src/` 下全部 `.rs` 的生产段（测试段里挂测试文件不算，那是 `tests/` 那一侧）。
 /// 正控：往一份合成的后端源码里塞一行 `#[path = "../comms/outward/x.rs"]` 必须数得出来。
 #[test]
-fn members_are_the_two_comms_crates_and_nothing_is_path_mounted_into_them() {
+fn members_are_the_listed_comms_crates_and_nothing_is_path_mounted_into_them() {
     let root = repo_root();
     let comms = root.join("src/comms");
     let files = guard_core::scan_tree_excluding(&root.join("src"), &["rs"], &[]);
@@ -349,7 +377,7 @@ fn members_are_the_two_comms_crates_and_nothing_is_path_mounted_into_them() {
         hits.is_empty(),
         "生产代码用 `#[path]` 把通信层的文件挂进了自己的模块树：\n{}\n\n\
          ⇒ 通信层的文件只许经 crate 依赖用（`comms_inward::…` / `comms_outward::…`）；\
-         挂进去的那份就不再受那三个 crate 的依赖边界管。",
+         挂进去的那份就不再受成员包的依赖边界管。",
         hits.join("\n")
     );
     // 正控：识别器认得出那一形（相对路径按那份源码的住址解开）。
@@ -359,7 +387,7 @@ fn members_are_the_two_comms_crates_and_nothing_is_path_mounted_into_them() {
         vec!["../comms/outward/x.rs".to_string()],
         "识别器认不出一行指进 `src/comms/` 的 `#[path]` —— 上面那条零命中在空转"
     );
-    // 三个 crate 都在、都住 `src/comms/` 下（人群的前提）。
+    // 成员包都在、都住 `src/comms/` 下（人群的前提）。
     let _ = comms_packages(&workspace_packages());
 }
 
@@ -877,10 +905,10 @@ fn ts_public_surface_names(prod: &str) -> Vec<(String, String)> {
 /// ⚠ **代价要认下来，它不小**：② 那条是靠「把 A 与 C 一起放过」绕开的
 /// ⇒ **写在串里的业务名从此本条看不见**。现打的活样本是 `relay/tee.rs`：
 /// 它那 4 处 `agent`/`account` 是 tee 输出的 **JSON 字段名**，写成格式串
-/// ⇒ 上一版咬（`C1` ＋ `X4`），本版只剩 `X4`。那不是报错文案，是一条线上契约，
+/// ⇒ 上一版 `C1` 咬，本版不咬。那不是报错文案，是一条线上契约，
 /// 而**本射程分不出这两者** —— `103 §P5.3 ②` 那个形状换了个位置又出现了一次。
 /// 🔴 这一格**今天判不了**，缺的证据是一份「线上契约的字段名住哪」的独立读数。
-/// 挡它的不是本条，是线上类型列全变体（两包的 `wildcard_enum_match_arm` 开关 ＋ `X1`）与金标准逐字节对拍。
+/// 挡它的不是本条，是线上类型列全变体（inward · outward 的 `wildcard_enum_match_arm` 开关 ＋ `X1`）与金标准逐字节对拍。
 ///
 /// # 匹配单位仍是**标识符子词**，词表加了复数〔`§8.1.5`〕
 ///
@@ -1171,7 +1199,7 @@ fn dependency_offences(pkg: &Package, all: &[Package]) -> Vec<String> {
     bad
 }
 
-/// ★ `C2` —— 由**依赖图**判：三个通信层 crate 的普通依赖 ⊆ [`ALLOWED_DEPS`]，
+/// ★ `C2` —— 由**依赖图**判：成员包的普通依赖 ⊆ [`ALLOWED_DEPS`]，
 /// 顺着第一方 path 依赖传递进来的第一方 crate 也必须在名单里。业务 crate 一个都不许出现。
 ///
 /// 同 crate 内的越界由编译器挡（crate 里写 `crate::ssh_source::…` 根本编不过）；跨 crate 的只有依赖这一条路，本条就钉它。
@@ -1195,7 +1223,7 @@ fn c2_the_comms_crates_depend_only_on_the_allowed_crates() {
         offenders.is_empty(),
         "通信层 crate 依赖了名单之外的东西：\n{}\n\n\
 `C2`：通信层是纯基础设施，业务 crate 一个都不许依赖。\n\
-         ⇒ 真需要那份数据，让**宿主交给它**（不读盘 · 不读环境是同一句话的另一面，由两包的名单挡）。",
+         ⇒ 真需要那份数据，让**宿主交给它**（不读盘 · 不读环境是同一句话的另一面，由 `clippy.toml` 的名单挡）。",
         offenders.join("\n")
     );
     // 正控：给面 B 那个 crate 合成一条业务依赖（`creds-core`，它的目录就是盘上那一份）必须咬出来。
@@ -1281,7 +1309,7 @@ fn c3_the_word_transport_never_crosses_the_boundary() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  七、X1 · X4：开关与名单挡不住的那两形
+//  七、X1：开关挡不住的那一形
 // ════════════════════════════════════════════════════════════════════════════
 
 /// 从 `at` 起第一对配平花括号里的内容。
@@ -1335,9 +1363,9 @@ fn inexhaustive_wire_matches(prod: &str) -> Vec<String> {
 
 /// ★ `X1` —— 对 `CallError` / `Item` / `Reach` 的 `match` 必须穷尽，零 `_ =>`。
 ///
-/// 两包的 `wildcard_enum_match_arm = "deny"` 挡住了大半：通配臂盖住两个以上变体就编不过。
-/// 它挡不住的那一形是**通配臂只盖住剩下的一个变体**（那归 clippy 的 match_wildcard_for_single_variants，两包没开）——
-/// 本条只为这一形留着。什么时候删：两包 `Cargo.toml` 开了那一条 lint 那天。
+/// inward · outward 的 `wildcard_enum_match_arm = "deny"` 挡住了大半：通配臂盖住两个以上变体就编不过。
+/// 它挡不住的：resident-client · egress 没开那一条；**通配臂只盖住剩下的一个变体**那一形（归 clippy 的 match_wildcard_for_single_variants，四包都没开）——
+/// 本条为这两处留着。什么时候删：成员包的 `Cargo.toml` 都开了这两条 lint 那天。
 ///
 /// **买不到**：① 类型对不对（本条按**名字**认，不做类型检查）；
 /// ② `_ =>` 之外的兜底写法（`other =>`、`e if true =>`；盖两个以上变体的由开关挡）；
@@ -1381,58 +1409,96 @@ fn x1_every_match_on_the_three_wire_types_is_exhaustive() {
     );
 }
 
-/// 静默丢弃里名单挡不住的那一形：`let _ = …send(…)`（`try_send` 在两包的名单里）。
-fn silent_drop_sites(prod: &str) -> Vec<String> {
+// ════════════════════════════════════════════════════════════════════════════
+//  七½、M2：两份通信层 clippy 名单只差写明的两样
+// ════════════════════════════════════════════════════════════════════════════
+
+/// 一份 `clippy.toml` 正文里禁的每条 `(path, reason)`（`{ path = "…", reason = "…" … }` 一行一条）。
+fn disallowed_entries(text: &str) -> BTreeMap<String, String> {
+    let field = |line: &str, key: &str| -> Option<String> {
+        let at = line.find(&format!("{key} = \""))? + key.len() + 4;
+        Some(line[at..].split('"').next()?.to_string())
+    };
+    guard_core::strip_hash_comment_lines(text)
+        .lines()
+        .filter_map(|l| Some((field(l, "path")?, field(l, "reason").unwrap_or_default())))
+        .collect()
+}
+
+/// 中转那份不禁的那三条：中转不链 russh，钥匙那一组在它那里没有可禁的。
+const ONLY_OUTSIDE_OUTWARD: &[&str] = &[
+    "russh::keys::load_secret_key",
+    "russh::keys::load_public_key",
+    "russh::keys::load_openssh_certificate",
+];
+
+/// 出站 TCP 那一组（两份都禁；中转那份的 reason 写去上游走哪一口）。
+const OUTBOUND_TCP: &[&str] = &[
+    "std::net::TcpStream::connect",
+    "std::net::TcpStream::connect_timeout",
+    "tokio::net::TcpStream::connect",
+    "tokio::net::TcpSocket::new_v4",
+    "tokio::net::TcpSocket::new_v6",
+];
+
+/// 两份名单的差处：多出来 / 少了的路径，与中转那份出站 TCP reason 没写去上游那一口的路径。
+fn clippy_list_drift(comms: &str, outward: &str) -> Vec<String> {
+    let a = disallowed_entries(comms);
+    let b = disallowed_entries(outward);
     let mut out = Vec::new();
-    for line in prod.lines() {
-        let t = line.trim();
-        if t.starts_with("let _ =") && guard_core::contains_word(t, "send") {
-            out.push(t.to_string());
+    let want_only_a: BTreeSet<&str> = ONLY_OUTSIDE_OUTWARD.iter().copied().collect();
+    for p in a.keys().filter(|p| !b.contains_key(*p)) {
+        if !want_only_a.contains(p.as_str()) {
+            out.push(format!("只在 `src/comms/clippy.toml`：{p}"));
+        }
+    }
+    for p in b.keys().filter(|p| !a.contains_key(*p)) {
+        out.push(format!("只在 `src/comms/outward/clippy.toml`：{p}"));
+    }
+    for p in ONLY_OUTSIDE_OUTWARD {
+        if !a.contains_key(*p) {
+            out.push(format!("`src/comms/clippy.toml` 不再禁 {p}"));
+        }
+        if b.contains_key(*p) {
+            out.push(format!("`src/comms/outward/clippy.toml` 也禁了 {p}"));
+        }
+    }
+    for p in OUTBOUND_TCP {
+        match b.get(*p) {
+            Some(r) if r.contains("去上游走宿主交进来的那一口") => {}
+            Some(r) => out.push(format!("中转那份 {p} 的 reason 没写去上游那一口：{r}")),
+            None => out.push(format!("中转那份不禁 {p}")),
         }
     }
     out
 }
 
-/// ★ `X4` —— 丢弃只能经 `Item::Gap` 表达。
+/// ★ `M2` —— 两份通信层 `clippy.toml`（clippy 从包目录往上找最近的那一份：中转用自己那份，其余几包用上一级那份）是手抄的，
+/// 禁的路径除中转不链 russh 的那三条外两向相等；出站 TCP 那一组中转那份的 reason 写「去上游走宿主交进来的那一口」。
 ///
-/// **回推优先 · 推不动才丢 · 丢必须说**。
-/// `let _ = …send(…)` 是「推不动就当没发生」—— 订阅方**看不出**中间少了东西，
-/// 而流的语义整个塌在这一点上。`try_send` 那一形由两包的 `clippy.toml` 挡（发 `Gap` 那一处就地放行）；
-/// 这一形名单挡不住：`send` 返回 `Result` 时 `let _ =` 不触发 rustc 的 `#[must_use]` 告警。
-/// 什么时候删：两包 `Cargo.toml` 开了 clippy 的 let_underscore_must_use 那天。
-///
-/// **买不到**：① 别的丢弃写法（`if ch.capacity() == 0 { return; }` · `.ok()`）；
-/// ② **`§9` 逐字**：SSH 那条路上回推到底推不推得回去**判不了** ——
-///    缺的证据是一次真机的慢消费者实验。本条只买「丢的时候有没有说」。
+/// **买不到**：reason 措辞里别的差（两份各写给各自的读者）；`allow-invalid` 那一格。
 #[test]
-fn x4_the_only_way_to_drop_is_to_say_gap() {
-    let pop = boundary();
-    let offenders: Vec<String> = pop
-        .iter()
-        .flat_map(|m| {
-            silent_drop_sites(&m.prod)
-                .into_iter()
-                .map(|s| format!("  {} —— `{s}`", m.rel))
-                .collect::<Vec<_>>()
-        })
-        .collect();
+fn the_two_comms_clippy_lists_differ_only_where_written() {
+    let root = repo_root();
+    let read = |rel: &str| {
+        std::fs::read_to_string(root.join(rel)).unwrap_or_else(|e| panic!("读 {rel}：{e}"))
+    };
+    let comms = read("src/comms/clippy.toml");
+    let outward = read("src/comms/outward/clippy.toml");
     assert!(
-        offenders.is_empty(),
-        "这几处在**静默地**丢东西：\n{}\n\n\
-**回推优先 · 推不动才丢 · 丢必须说**。\n\
-         ⇒ 丢了就发一个 `Item::Gap`，让订阅方知道中间缺了东西。",
-        offenders.join("\n")
+        disallowed_entries(&comms).len() > OUTBOUND_TCP.len(),
+        "`src/comms/clippy.toml` 里没读出几条禁的路径 —— 读法坏了"
     );
-    assert_eq!(
-        silent_drop_sites("    let _ = ch.send(item);\n").len(),
-        1,
-        "识别器认不出被丢掉的发送结果 —— `X4` 此刻在空转"
-    );
+    let drift = clippy_list_drift(&comms, &outward);
     assert!(
-        silent_drop_sites("    ch.send(item).await?;\n    ch.send(Item::Gap(n)).await?;\n")
-            .is_empty(),
-        "一段**回推 ＋ 报 Gap** 的干净代码被判成静默丢弃 —— 假红比不查更坏"
+        drift.is_empty(),
+        "两份通信层 `clippy.toml` 差出了写明的两样之外：\n{}",
+        drift.join("\n")
     );
+    // 正控：往任一份多塞一条路径都要红。
+    let extra = "  { path = \"std::fs::write\", reason = \"x\" },\n";
+    assert!(!clippy_list_drift(&format!("{comms}{extra}"), &outward).is_empty());
+    assert!(!clippy_list_drift(&comms, &format!("{outward}{extra}")).is_empty());
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1467,12 +1533,12 @@ fn test_fn_names(src: &str) -> BTreeSet<String> {
 /// ★★ **「判据不在执行链上就等于不存在」的机检形态**。
 ///
 /// [`CRITERIA`] 那张表与本文件里**真实的** `#[test]` 两向集合相等，
-/// 并且编号那一列恰好覆盖 `C1`–`C3` 与 `X1` · `X4`。
+/// 并且编号那一列恰好覆盖 `C1`–`C3` 与 `X1`。
 ///
 /// # 它治什么
 ///
 /// 删掉一条判据而把表留着（读的人以为那条性质有人守着）· 加一条判据而不登记
-/// （编号与盘上的东西对不上）· 把 `X4` 悄悄改名（闭集按名字认）。
+/// （编号与盘上的东西对不上）· 把 `X1` 悄悄改名（闭集按名字认）。
 ///
 /// # ⚠ 它**接不住**的那一格（如实登记，这是已知的洞）
 ///
@@ -1513,7 +1579,7 @@ fn every_criterion_is_on_the_execution_chain() {
     );
     let ids: BTreeSet<&str> = CRITERIA.iter().map(|(id, _, _)| *id).collect();
     let want_c: BTreeSet<&str> = ["C1", "C2", "C3"].into_iter().collect();
-    let want_x: BTreeSet<&str> = ["X1", "X4"].into_iter().collect();
+    let want_x: BTreeSet<&str> = ["X1"].into_iter().collect();
     let got_c: BTreeSet<&str> = ids.iter().filter(|i| i.starts_with('C')).copied().collect();
     let got_x: BTreeSet<&str> = ids.iter().filter(|i| i.starts_with('X')).copied().collect();
     assert_eq!(
@@ -1522,6 +1588,6 @@ fn every_criterion_is_on_the_execution_chain() {
     );
     assert_eq!(
         got_x, want_x,
-        "扫文字的签名判据恰好两条（X1 · X4；别的由名单 · 开关 · `Budget` 私有挡），盘上是 {got_x:?}"
+        "扫文字的签名判据恰好一条（X1；丢 `Result` 由 `let_underscore_must_use` 挡，别的由名单 · 开关 · `Budget` 私有挡），盘上是 {got_x:?}"
     );
 }

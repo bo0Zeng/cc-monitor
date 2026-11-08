@@ -9,7 +9,6 @@
 import { renderMessage, buildStepsCard, type LineRecord, type RenderContext } from "./cards";
 import { observeForEnhance } from "./render";
 import { askRefs } from "./plan-refs";
-import { isRetryBar } from "./cards/api-error";
 import { buildInjectedLine } from "./cards/speaker-bar";
 import type { RecordTimeline } from "./record-timeline";
 import type { JsonlLinePayload } from "./events";
@@ -195,7 +194,7 @@ export function renderContentRecord(
   switch (result.kind) {
     case "skip": {
       // 系统注入：不建卡，另放一条旁注细条——开关关着时 CSS 不露、估高 0；
-      // 时间线的邻居查询跳过它（`aside`），相邻合并照它不在时一样合（收场通知并不并一组由后端判，同一条规矩）。不进 `renderMessage`。
+      // 时间线的邻居查询跳过它（`aside`）。不进 `renderMessage`。
       const sp = message.draw === "strip" && message.t === "said" ? message.who.speaker : undefined;
       const injected = sp !== undefined && "body" in sp ? sp.body : undefined;
       if (typeof injected === "string") {
@@ -220,11 +219,7 @@ export function renderContentRecord(
     }
 
     case "card": {
-      // 重试细条（§5.2.5）：左邻居也是一条还在重试的细条 ⇒ 并进它、不另起一条（这一串的整句是会话事实那一格，下一份事实到了照它重摆）。
-      if (isRetryBar(result.element)) {
-        const prev = sink.timeline.peekPrev(payload.seq);
-        if (prev && isRetryBar(prev.element) && prev.element.dataset.state === "retrying") return;
-      }
+      // 重试细条：接在一串后面的那几条后端出 `draw: none`（不到这里），一串只这一条；整句照会话事实那一格重摆。
       // 普通卡：直接 markCardId + timeline.insert
       markCardId(result.element, message);
       sink.onCardRendered?.(result.element, message); // 查看器挂分支按钮

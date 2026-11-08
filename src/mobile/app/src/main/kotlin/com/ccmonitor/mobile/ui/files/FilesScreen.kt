@@ -221,17 +221,6 @@ fun FilesScreen(
     }
 
     DialogHost(dialog = dialog, vm = vm, onDialog = { dialog = it })
-    UploadClash(vm)
-}
-
-/** 上传撞了同名：同一张冲突抽屉（只一项：整组那一个答）。 */
-@Composable
-private fun UploadClash(vm: FilesViewModel) {
-    val clash by vm.clash.collectAsState()
-    clash?.let { (dir, c) ->
-        val title = copyText("rsFilewinBatch.ask.title", "action" to copyText("rsFilewinUpload.label.upload"), "n" to c.rows.size, "dir" to dir.shown)
-        ConflictSheet(title, c.said, c.rows, null, vm::answer)
-    }
 }
 
 /** 条目级动作（下载 · 预览 · 编辑 · 改权限要先读的那几件）。 */
@@ -297,7 +286,7 @@ private fun rememberDownloadLauncher(vm: FilesViewModel): (List<FilesLs.Entry>) 
     }
 }
 
-/** 系统文件选择器 ⇒ 交 VM 上传（流每次从头开）。 */
+/** 系统文件选择器 ⇒ 交 VM 上传（开好的描述符交核心）。 */
 @Composable
 private fun rememberUploadLauncher(vm: FilesViewModel): ManagedActivityResultLauncher<String, Uri?> {
     val context = LocalContext.current
@@ -321,7 +310,6 @@ private fun ReadyContent(
     val cwd by vm.cwd.collectAsState()
     val listing by vm.listing.collectAsState()
     val busy by vm.busy.collectAsState()
-    val progress by vm.progress.collectAsState()
     val sortBySize by vm.sortBySize.collectAsState()
     val selection by vm.selection.collectAsState()
     val online by vm.online.collectAsState()
@@ -354,11 +342,7 @@ private fun ReadyContent(
             BookmarkBar(bookmarks, bookmarkSaid, vm, shelf)
         }
         FilesBar(vm, hostId, online)
-        val p = progress
-        when {
-            p != null -> LinearProgressIndicator(progress = { p }, modifier = Modifier.fillMaxWidth())
-            busy -> LinearProgressIndicator(Modifier.fillMaxWidth())
-        }
+        if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         if (listing.truncated) {
             Text(
                 copyText("mobFiles.list.truncated", "n" to listing.entries.size, "total" to listing.total),

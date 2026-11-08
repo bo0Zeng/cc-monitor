@@ -32,7 +32,7 @@ beforeEach(() => {
 describe("金样：后端出的成品，原样交到调用方", () => {
   it("aliases-read：启动文件候选", async () => {
     invokeMock.mockResolvedValueOnce(chanReply(G.readReply));
-    const l = await readAliases("<local>", "posix", null);
+    const l = await readAliases("<local>", null);
     expect(l.rcCandidates.map((c) => c.shown)).toEqual(["~/.bashrc"]);
     expect(l.rcCandidates.map((c) => c.block.present)).toEqual([false]);
   });
@@ -41,7 +41,7 @@ describe("金样：后端出的成品，原样交到调用方", () => {
 describe("请求：问对那台、说对那条、参数原样", () => {
   it("四问各一发", async () => {
     invokeMock.mockResolvedValueOnce(chanReply(G.readReply));
-    await readAliases("<local>", "powershell", null);
+    await readAliases("<local>", null);
     invokeMock.mockResolvedValueOnce(chanReply({ text: "c" }));
     expect(await renderAliasBlock("devbox", "~/.bashrc")).toBe("c");
     invokeMock.mockResolvedValueOnce(chanReply({}));
@@ -50,7 +50,7 @@ describe("请求：问对那台、说对那条、参数原样", () => {
     await removeAliasBlock("devbox", "~/.bashrc");
     const calls = invokeMock.mock.calls.map((c) => c[1] as ChanCallArgs);
     expect(calls.map((x) => [x.origin, x.op, chanArgsJson(x)])).toEqual([
-      ["<local>", "aliases-read", { shell: "powershell", rcPath: null }],
+      ["<local>", "aliases-read", { rcPath: null }],
       ["devbox", "aliases-block-render", { rcPath: "~/.bashrc" }],
       ["devbox", "aliases-block-install", { rcPath: "~/.bashrc" }],
       ["devbox", "aliases-block-remove", { rcPath: "~/.bashrc" }],

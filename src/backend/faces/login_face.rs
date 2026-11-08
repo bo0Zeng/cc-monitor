@@ -148,14 +148,8 @@ fn account_of(agent: &str, account: &str) -> Option<(Option<String>, bool)> {
         })
 }
 
-fn accounts_product(agent: &str) -> crate::observe::accounts_query::AccountsList {
-    let rows = crate::accounts::upstream_select::file_face::machine_rows();
-    crate::observe::accounts_query::list_product(
-        &rows,
-        agent,
-        crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT,
-        crate::relay::our_relay_listening(relay_route_core::PORT),
-    )
+fn accounts_product(agent: &str) -> crate::accounts::manage::library::AccountsList {
+    crate::faces::launch_account_face::list_of(agent)
 }
 
 /// `login-start` 的本体（分派的硬臂调它：`conn` ＝ 本连接的号，`on_end` ＝ 作业自己收了时推给本连接的那一帧）。
@@ -479,7 +473,7 @@ fn logins_here() -> Result<Vec<ManualItem>, String> {
     manual_of(
         agent,
         &accounts_product(agent),
-        crate::observe::accounts_query::library_unreadable_here(),
+        crate::accounts::manage::library::library_unreadable_here(),
         &relogin,
         mcp.as_ref().map(|(k, r)| (*k, r)),
     )
@@ -487,11 +481,11 @@ fn logins_here() -> Result<Vec<ManualItem>, String> {
 
 /// 会话外的需手动清单（需登录的号 · 需登录的 MCP，`sessions-needs` 里会外那一截）的纯构造器：账号清单成品（`accounts-list` 那一份）·
 /// 续令牌被拒的号（`relogin`，换号那一侧记的）· MCP 读面（哪一家的 · 用户级那一份）⇒ 清单。判据拿夹具喂它。
-/// `unreadable` ＝ 账号库清单在、却读不懂的那一句（`accounts_query::library_unreadable`）：给了 ⇒ 原样回 `Err`，不列
+/// `unreadable` ＝ 账号库清单在、却读不懂的那一句（`accounts::manage::library::library_unreadable`）：给了 ⇒ 原样回 `Err`，不列
 /// （说不出哪些号需登录，不回空清单：空清单看起来像「没事」）。
 pub(crate) fn manual_of(
     agent: &str,
-    accounts: &crate::observe::accounts_query::AccountsList,
+    accounts: &crate::accounts::manage::library::AccountsList,
     unreadable: Option<String>,
     relogin: &[String],
     mcp: Option<(&str, &crate::agents::McpRead)>,

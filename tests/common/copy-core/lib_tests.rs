@@ -252,8 +252,7 @@ fn the_shared_rel_golden_agrees_with_this_reader() {
     assert!(wrong.is_empty(), "距今与金样不符：{wrong:?}");
 }
 
-/// **大小的对拍**：共用金样 `tests/__fixtures__/size-text.golden.json` 逐条喂给 [`crate::size_text`]；
-/// 桌面那一侧 `tests/copy/size-text.vitest.ts` 读同一份（`format.ts::sizeText`）。
+/// **大小的金样**：`tests/__fixtures__/size-text.golden.json` 逐条喂给 [`crate::size_text`]（界面照后端写好的那一格放，不另算）。
 #[test]
 fn the_shared_size_golden_agrees_with_this_reader() {
     let golden: serde_json::Value =
@@ -271,8 +270,7 @@ fn the_shared_size_golden_agrees_with_this_reader() {
     assert!(wrong.is_empty(), "大小与金样不符：{wrong:?}");
 }
 
-/// **计数的对拍**：共用金样 `tests/__fixtures__/count-text.golden.json` 逐条喂给 [`crate::count_text`]；
-/// 桌面那一侧 `tests/copy/count-text.vitest.ts` 读同一份（`format.ts::countText`）。
+/// **计数的金样**：`tests/__fixtures__/count-text.golden.json` 逐条喂给 [`crate::count_text`]（界面不另数）。
 #[test]
 fn the_shared_count_golden_agrees_with_this_reader() {
     let golden: serde_json::Value =

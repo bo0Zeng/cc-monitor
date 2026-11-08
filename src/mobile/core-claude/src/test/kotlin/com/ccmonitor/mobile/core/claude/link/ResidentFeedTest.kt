@@ -1,10 +1,8 @@
 package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.wire.Wire
-import com.ccmonitor.mobile.core.wire.gen.BatchAnswer
 import com.ccmonitor.mobile.core.wire.gen.BranchRun
 import com.ccmonitor.mobile.core.wire.gen.Changed
-import com.ccmonitor.mobile.core.wire.gen.Decide
 import com.ccmonitor.mobile.core.wire.gen.FleetLines
 import com.ccmonitor.mobile.core.wire.gen.HiddenNow
 import com.ccmonitor.mobile.core.wire.gen.Inl
@@ -115,19 +113,7 @@ class ResidentFeedTest {
 
         val picks = mutableListOf<Pair<Long, String>>()
 
-        override fun clashRows(data: String): String = """[{"key":"0","name":"a","meta":"m","choices":[{"decide":"skip","label":"l","pick":"p"}],"there":null}]"""
-
         override fun searchMerge(data: String): String = ""
-
-        override fun answerOf(
-            keys: String,
-            answer: String?,
-        ): String {
-            answered += keys to answer
-            return """{"0":"skip","1":"overwrite"}"""
-        }
-
-        val answered = mutableListOf<Pair<String, String?>>()
 
         override fun transferStop(id: Long) {
             transfers += listOf("stop", id)
@@ -355,9 +341,9 @@ class ResidentFeedTest {
                 onBreak = { breaks += it },
                 onFleet = { got += it },
             ).ensure()
-            core.emit("empty", """{"line":"会话清单未报完","hint":"box 连接中","count":"核心·计数"}""")
+            core.emit("empty", """{"line":"会话清单未报完","hint":"box 连接中","count":"核心·计数","allListed":false}""")
             core.emit("empty", """{"line":"x"}""")
-            assertEquals(listOf(FleetLines("会话清单未报完", "box 连接中", "核心·计数")), got)
+            assertEquals(listOf(FleetLines("会话清单未报完", "box 连接中", "核心·计数", allListed = false)), got)
             assertEquals(1, breaks.size)
         }
 
@@ -498,17 +484,6 @@ class ResidentFeedTest {
             assertTrue(f.working.value)
             core.emit("busy", "false")
             assertFalse(f.working.value)
-        }
-
-    @Test
-    fun `同名那一答交核心认：那几行的键与交核心那一形进去，每个键一格出来`() =
-        runTest(UnconfinedTestDispatcher()) {
-            val core = FakeCore()
-            val f = feed(core)
-            assertEquals(mapOf("0" to Decide.SKIP, "1" to Decide.OVERWRITE), f.decided(listOf("0", "1"), BatchAnswer.Each(mapOf("1" to Decide.OVERWRITE))))
-            assertEquals(listOf("""["0","1"]""" to """{"each":{"1":"overwrite"}}"""), core.answered)
-            f.decided(listOf("0"), null)
-            assertEquals("""["0"]""" to null, core.answered.last())
         }
 
     /** ［重试］（会话列表 · 文件页同一条）：断着（停在要人动手那一步的「没有后端」也算）⇒ 交核心整份重接、不另问；通着 ⇒ 只重问。 */

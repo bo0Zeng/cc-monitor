@@ -1,17 +1,24 @@
-//! 要求：「共享 crate 只放两边必须对上的契约（路径 · 端口 · 文件格式 · 文案表 · 令牌形状 · 字节表键），不放判定；判定只在后端」＋ THIN 第 5 件「monitor 生产段只许依赖契约类 crate」
-//! ＋「`contract_crate_guard_tests.rs` ③ 由『按符号』改成 crate 级」。
+//! 共用包（`src/common/`）分四类，类名照它许谁链、许放什么（规矩 R3：判定只在核心算一次）：
+//! - **契约**：两个核心与各出口都可链；只放线上类型与它的纯编解码 · 常量 · 按键取文案表的那一句 · 机制原语（只回系统原话与结构化结局）。
+//!   copy-core 整包留契约：它带的格式化（大小 · 时长 · 个数 · 截字）出口也照它写，出口拿它格式化后端的数由出口零判定扫描管。
+//! - **核心库**：只两个核心链（每台的后端 —— 桌面这一侧的拨号端核心也在本机后端里 · 手机嵌的核心 `core-rs`）；判定 · 汇总 · 写句子 · 格式化住这里。
+//! - **判据原语**：只在 dev 侧。
+//! - **前端宿主原语**：两个前端（壳 · 文件窗口）链、后端不链。
 //!
-//! 三道：
+//! 几道：
 //! ① `src/common/` 下每个 crate 恰好登记一类、逐个写理由（两向：目录 == [`CRATES`]）；
-//! ② monitor 生产段（`[dependencies]` · `[build-dependencies]` · `[target.*.dependencies]`）点名的每个 path 依赖、连同它们自己生产段的
-//!    path 依赖闭包，只许住 `src/common/` 且是契约类；判定类出现即红，**没有例外**（`deploy-core` 拆成契约 `deploy-contract` ＋ 后端判定之后，按符号那道豁免退役）；
+//! ② 每个出口（[`OUTLETS`]：monitor · 文件窗口）生产段（`[dependencies]` · `[build-dependencies]` · `[target.*.dependencies]`）的 path 依赖闭包
+//!    只许住 `src/common/` 且是契约或前端宿主原语；通信层的包只许 [`CLIENT_SIDE_COMMS`] 登过的那几个（它们本身不判类，它们的第一方依赖照样顺着闭包在这里判）。
+//!    出口链着核心库的那几对照实登在 [`OUTLET_DEBT`]（写明由哪块删），与量到的那一组两向相等：新链一个要红，删了链接不删行也要红；
 //! ③ crate 级：部署判定（[`DEPLOY_DECISIONS`]）只有一个家 —— 后端 `deploy` crate（`place_verdict` 在 `control/deploy_plan.rs`）恰一处定义；契约 crate `deploy-contract` 与
 //!    monitor 生产源码里用着部署契约的每一份（壳 `src/**` ＋ 通信层面 A 那个 crate）零处定义。
-//! ④「前端宿主原语」类（`host-core`）只许两个前端链：后端生产段闭包里出现即红。
+//! ④「前端宿主原语」类（`host-core` · `win-manifest`）只许两个前端链：后端生产段闭包里出现即红。
 //! ⑤「前端包」（[`FRONTEND_PACKAGES`]：文件窗口）不住 `src/common/`、自己出一个程序（它的 `[[bin]]` 住它自己名下，size2 10-11 从 monitor 包搬来）：
 //!    monitor 生产段不链它、生产源码一处都不提它；它自己的闭包照 ② 判（「前端那一侧的生产闭包」= monitor ＋ 各前端包）；
 //!    monitor 的源码人群声明（`[package.metadata.guard] population`）== 前端那一侧的生产闭包 − 后端生产闭包 ＋ 两头都链、归这一群的通信层客户端包
 //!    （[`CLIENT_SIDE_COMMS`]；后端那一群不写它们）（两向）。
+//! ⑥ 类之间的依赖方向（编译器挡不住）：每个共用包生产段的第一方依赖都住 `src/common/`，类落在 [`may_depend`] 许的范围里
+//!    （契约 → 契约；核心库 → 契约 · 核心库；前端宿主原语 → 契约 · 前端宿主原语；判据原语不管）。
 //!
 //! 买不到：契约类 crate **里面**长出一个名字不在 [`DEPLOY_DECISIONS`] 里的判定（这条只按 crate 分类 ＋ 点名的判定符号，不读函数体；
 //! 那是 `judgment-single-home.vitest.ts` 的 CORE_ITEMS）。
@@ -21,10 +28,10 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Class {
-    /// 两侧必须对上的形状：monitor 生产段可以依赖。
+    /// 两侧必须对上的形状与机制原语：两个核心与各出口都可链。
     Contract,
-    /// 裁决：只许后端用；monitor 生产段依赖即红。
-    Decision,
+    /// 判定 · 汇总 · 写句子 · 格式化：只许两个核心链（后端 · 手机嵌的核心）；出口链着的照实登 [`OUTLET_DEBT`]。
+    Core,
     /// 判据原语：两侧只在 dev 侧。
     TestInfra,
     /// 前端宿主原语：两个前端（monitor · 文件窗口）都要、只该有一份的宿主那几件；后端不许链。
@@ -33,29 +40,76 @@ enum Class {
 
 /// `src/common/` 每个 crate 的类与理由（表「类」一列的判据版）。
 const CRATES: &[(&str, Class, &str)] = &[
-    ("acct-core", Class::Decision, "账号能不能用 · 走哪一支（`auth_ready` · `apikey_routed_subset`）是裁决；界面那份 `AUTH_KINDS` 由测试档的生成器现生成（monitor 只在 dev 侧链它）"),
-    ("cmd-wire", Class::Contract, "帧命令两端对上的形状：机器名（`Machine`，线上一个字符串）· typed 命令的形状指纹表（后端 hello 交出去、客户端比）· 文件管理那一族的入参与回包（文件窗口照它发、照它解）· 会话族手机问的那几条的回包（手机嵌的 Rust 核心照它解）；不裁决"),
-    ("face-core", Class::Contract, "契约类型的写字一侧：照 cmd-wire 的线上类型与不上线的结局 · 原因取文案表写成给人看的那一张（↗ 浮层那一张），壳 · 后端 · 手机嵌的核心照同一份；不裁决（结局与原因由各家判好交进来）"),
-    ("chunk-core", Class::Contract, "分块传那一套问法：块多大 · 块号连着 · 整份摘要怎么算 · 读到哪为止；文件窗口与手机嵌的核心照同一份问，不裁决（同名 · 能不能写都由那台判）"),
-    ("batch-core", Class::Contract, "一组一条命令的问法与字：带票发 · 同名问一次 · 断了同票再问 · 标题 · 结局句 · 断开那一行，后端 · 文件窗口 · 手机嵌的核心照同一份；同名 · 能不能做仍由那台在做的时候判"),
-    ("pick-core", Class::Contract, "选中几项 ⇒ 两个出口各给哪几项、灰着说什么：照那台判好的种类 · 三道门排，桌面文件窗口与手机照同一张表画；灰着的两条是出口自己的限度（下载只收文件 · 复制到另一台按路径串寻址），能不能做仍由那台在做的时候判"),
-    ("copy-core", Class::Contract, "文案表：两侧按同一个键取同一句（`copy_text` / `copy_static`），不裁决"),
-    ("creds-core", Class::Contract, "文件格式 · 路径：凭据落盘格式与文件名、数据目录（monitor 只算路径；写半边在 `harden` 后面，monitor 不开）"),
-    ("deploy-contract", Class::Contract, "字节表键 · 文件格式 · 答话形状 · 路径：表 A 的键与行、拒绝的形状与话、身份戳格式、计划答话、落点路径，两侧对上同一份（判定那一半住后端 `deploy` crate）"),
-    ("filewin-contract", Class::Contract, "monitor 与文件窗口进程两边对上的形状：开窗种子 · 就绪那一行 · 「在此打开终端」那一问的名字与参数，不裁决"),
+    ("acct-core", Class::Core, "账号能不能用 · 走哪一支（`auth_ready` · `apikey_routed_subset`）在这里判；后端链，界面那份 `AUTH_KINDS` 由测试档的生成器现生成（monitor 只在 dev 侧链它）"),
+    ("cmd-wire", Class::Contract, "线上类型与它的纯编解码：机器名（`Machine`）· typed 命令的形状指纹表（后端 hello 交出去、客户端比）· 文件管理那一族的入参与回包 · 会话族手机问的那几条的回包 · b64 · fnv"),
+    ("face-core", Class::Core, "照线上类型与结局 · 原因取文案表写成给人看的那一张（↗ 浮层 · 会话簿 · 活卡板的折法）：写句子 · 汇总在这里；后端与手机嵌的核心链，壳链着的照实登欠账"),
+    ("chunk-core", Class::Core, "分块传那一圈带状态的循环：块多大 · 块号连着 · 整份摘要怎么算 · 读到哪为止；手机嵌的核心链，壳（附件 `attach_stage`）与文件窗口链着的照实登欠账"),
+    ("batch-core", Class::Core, "一组一条命令：带票发 · 同名问一次 · 断了同票再问 · 重试与撤销计划（`retry_plan` · `undo_plan`）· 标题 · 结局句，判与写字都在这里；后端与手机嵌的核心链，文件窗口链着的照实登欠账"),
+    ("pick-core", Class::Core, "选中几项 ⇒ 给哪几项、灰着说什么（`blocked` · `refused_here` · `why_not_editable` 回的都是句子）；手机嵌的核心链，文件窗口链着的照实登欠账"),
+    ("copy-core", Class::Contract, "文案表：按同一个键取同一句（`copy_text` / `copy_static`），连带出口照它写的格式化（大小 · 时长 · 个数 · 截字）与通道那几句（said · reason · discard · detail）；各家照同一份取，判好的结局由调用方交进来"),
+    ("creds-core", Class::Core, "凭据落盘格式与文件名 · 写半边（`harden`）· 家目录与数据目录那一族；后端链，壳与文件窗口链着的照实登欠账（家与数据目录挪走之后清）"),
+    ("deploy-contract", Class::Contract, "部署那一族两侧对上的：表 A 的键与行 · 拒绝的形状与话 · 身份戳格式 · 计划答话；包里另有 `build_relation` · `build_order` · `key_from_uname` · 读身份戳那几样判定（壳 `local_backend_host` 还调 `build_relation`），挪进后端 `deploy` 之前照实记在这里"),
+    ("filewin-contract", Class::Contract, "monitor 与文件窗口进程两边对上的形状：开窗种子（连同主窗所在显示器的工作区 `WorkArea`）· 就绪那一行 · 「在此打开终端」那一问的名字与参数 · 主题令牌名单"),
     ("test-home", Class::TestInfra, "测试档的家一开始就是沙箱：各 crate 只在 dev 侧引它，不判业务"),
     ("guard-core", Class::TestInfra, "源码扫描判据的原语，两侧都只在 dev 侧"),
-    ("host-core", Class::HostPrimitive, "两个前端（monitor 主界面 · 文件窗口进程）共用的宿主那几件：自有状态文件的原子写 · 窗口夹进工作区；不裁决业务，后端不链"),
-    ("own-chan", Class::Contract, "通道的形状：只有本人连得上的那一种系统通道（套接字住只给本人的目录 · 收连接核对端 uid · 目录独占锁），后端在听、monitor 去连，两边对上同一份，不裁决"),
-    ("pidwatch-core", Class::Contract, "平台原语：等一个进程退出（Linux pidfd · Windows 进程句柄，内核叫醒），后端（会话的 claude）与 monitor（登记着窗口的 shell）同一份；「还是不是那个进程」由调用方判，它不裁决"),
-    ("platform-core", Class::Contract, "平台原语：目录的跨进程锁 · 只给本人的目录 · 自家状态文件的原子写 · `/proc/<pid>/stat` 怎么切 · Windows 进程表 · CREATE_NO_WINDOW，后端与 monitor（经 host-core 也给文件窗口）同一份；只回系统原话与结构化结局，不说话、不裁决"),
-    ("relay-route-core", Class::Contract, "端口 · 路径 · 路由语法：中转口与常驻后端套接字的门牌、后端落点，两侧拼 / 拆同一份"),
-    ("cap-core", Class::Contract, "读上限的形状与同步整读：一道上限是多少字节 · 超了怎么办（`Cap` · `Over`），读到流尽 · 读一个窗口 · 读一份本机文件只经这一份；只回读到的字节与「超了」，超了怎么办由调用方照 `over` 办，不裁决"),
-    ("shell-quote-core", Class::Contract, "令牌形状：POSIX 单引号 quote 与标识符放行形状（session id · 启动令牌 · cc-bus id · 路径），两侧拼进 shell 前对上同一份"),
-    ("win-path-core", Class::Contract, "路径：交给 Win32 文件 API 的那一形（UTF-16 ＋ 长路径前缀），后端 · monitor · 文件窗口 · creds-core 拼同一份，不裁决"),
-    ("md-core", Class::Decision, "助手正文怎么解析成块树 · 代码高亮成哪一类 · 长正文在哪分段是裁决：只后端链，两端只照 cmd-wire 的 `Doc` 排版"),
-    ("win-manifest", Class::HostPrimitive, "两个前端包在 Windows 上带的进程清单（通用控件 v6）：清单本身 · 构建脚本里的编法 · 测试程序读回，只一份；不裁决业务，后端不链"),
-    ("upstream-url-core", Class::Decision, "上游 URL 能不能用是裁决；界面不判（只画后端拒的那一句），monitor 只在 dev 侧为金样判据链它"),
+    ("host-core", Class::HostPrimitive, "两个前端（monitor 主界面 · 文件窗口进程）共用的宿主那几件：自有状态文件的原子写 · 带上限整读一份文件 · 本机时区 · 编给的系统与架构 · 窗口夹进工作区 · 问一点所在那块屏；后端不链"),
+    ("own-chan", Class::Contract, "机制原语：只有本人连得上的那一种系统通道（套接字住只给本人的目录 · 收连接核对端 uid · 目录独占锁），后端在听、monitor 去连；只回系统结局"),
+    ("pidwatch-core", Class::Contract, "机制原语：等一个进程退出（Linux pidfd · Windows 进程句柄，内核叫醒），后端与 monitor 同一份；「进程退了没有」那三条判法是平台事实、本包判，兜底只记一条错；「还是不是那个进程」由调用方判"),
+    ("platform-core", Class::Contract, "机制原语：目录的跨进程锁 · 只给本人的目录 · 自家状态文件的原子写 · `/proc/<pid>/stat` 怎么切 · Windows 进程表 · CREATE_NO_WINDOW，后端与 monitor（经 host-core 也给文件窗口）同一份；只回系统原话与结构化结局"),
+    ("relay-route-core", Class::Contract, "门牌与家的布局：中转口与常驻后端套接字的门牌 · 路由语法 · 家目录底下各样东西住哪 · 后端落点 · 落盘声明表，两侧拼 / 拆同一份"),
+    ("cap-core", Class::Contract, "机制原语：一道读上限是多少字节 · 超了怎么办（`Cap` · `Over`），读到流尽 · 读一个窗口 · 读一份本机文件只经这一份；只回读到的字节与「超了」，超了怎么办由调用方照 `over` 办"),
+    ("shell-quote-core", Class::Contract, "机制原语：POSIX 单引号 quote 与标识符放行形状（session id · 启动令牌 · cc-bus id · 路径），两侧拼进 shell 前对上同一份"),
+    ("win-path-core", Class::Contract, "机制原语：交给 Win32 文件 API 的那一形（UTF-16 ＋ 长路径前缀），后端 · monitor · 文件窗口 · creds-core 拼同一份"),
+    ("md-core", Class::Core, "助手正文怎么解析成块树 · 代码高亮成哪一类 · 长正文在哪分段在这里判：后端链，两端只照 cmd-wire 的 `Doc` 排版"),
+    ("win-manifest", Class::HostPrimitive, "两个前端包在 Windows 上带的进程清单（通用控件 v6）：清单本身 · 构建脚本里的编法 · 测试程序读回，只一份；后端不链"),
+    ("plain-path-core", Class::Core, "一段相对路径是不是根底下的普通段（绝对 · `..` · `.` 怎么判）只在这里判：后端写面 · 远端写围栏（拨号核心）· 解压条目都调这一份；出口不链"),
+    ("upstream-url-core", Class::Core, "上游 URL 能不能用在这里判；后端 · 中转 · 出网口链，界面不判（只画后端拒的那一句），monitor 只在 dev 侧为金样判据链它"),
+];
+
+/// ② 出口：(名字, 它的清单（仓根相对）)。每个出口自己出一个程序，各自的生产闭包分开量。
+const OUTLETS: &[(&str, &str)] = &[
+    ("monitor", "src/frontend/shell/Cargo.toml"),
+    ("文件窗口", "src/frontend/filewin/Cargo.toml"),
+];
+
+/// ② 出口链着核心库的欠账 —— (出口, 核心库, 由哪块删)。与量到的那一组两向相等：新链一个要红，删了链接不删这一行也要红。
+/// 表空了，整张连同 ② 里认它的那几行一起删。
+const OUTLET_DEBT: &[(&str, &str, &str)] = &[
+    (
+        "monitor",
+        "face-core",
+        "W33（↗ 那一句由本机后端写）· W37（会话簿 · 活卡板照本机后端推的成品）两块都做完才删",
+    ),
+    (
+        "monitor",
+        "chunk-core",
+        "W79（附件草稿整圈随上传路进核心，壳只交暂存文件的路径）",
+    ),
+    (
+        "monitor",
+        "creds-core",
+        "W03（家目录 · 数据目录挪进 relay-route-core）",
+    ),
+    (
+        "文件窗口",
+        "batch-core",
+        "G31 在 A24 下立的待排施工单（一组动作由后端跑、`files_batch` 帧带写好的成品）",
+    ),
+    (
+        "文件窗口",
+        "chunk-core",
+        "G31 在 A24 下立的待排施工单（上传 · 编辑存大文本 · 预览拉取走后端那条传输路）",
+    ),
+    (
+        "文件窗口",
+        "pick-core",
+        "W14（选中变了问本机后端要菜单成品）",
+    ),
+    (
+        "文件窗口",
+        "creds-core",
+        "W03（家目录 · 数据目录挪进 relay-route-core）",
+    ),
 ];
 
 /// ⑤ 两头都链、归 monitor 那一群的通信层包 —— (包目录（仓根相对）, 理由)。两头都链的包只归一群、只登一份：
@@ -63,13 +117,23 @@ const CRATES: &[(&str, Class, &str)] = &[
 const CLIENT_SIDE_COMMS: &[(&str, &str)] = &[
     (
         "src/comms/inward",
-        "通信层面 A（前端 ↔ 后端）的客户端零件：帧 · 路由器 · 问后端的分流；后端只经 resident-client 间接链它",
+        "通信层面 A（前端 ↔ 后端）的客户端零件：帧 · 路由器 · 问后端的分流；后端根包与 control · deploy · dial · history 的生产段也直接链它（有界异步读 `line::read_capped_*` · 通道那几句）；两头都链，只归 monitor 一群",
     ),
     (
         "src/comms/resident-client",
-        "连常驻后端的客户端那一侧（握手 · 重连退避 · 期限，有定时器）：桌面 · 手机的真连接走它；后端只在测试连接里当一回客户端跑它一趟（`dial/probe.rs`）",
+        "连常驻后端的客户端那一侧（握手 · 重连退避 · 期限，有定时器）：桌面 · 手机的真连接走它；后端根包 · control · dial 生产段也直接链（`control/feeds.rs` 给每台跑 `feed` · `dial/probe.rs` 测试连接那个功能 · `stream/inbound` 认 `WATCH_CMD`）；两头都链，只归 monitor 一群",
     ),
 ];
+
+/// ⑥ 一个共用包（类 `from`）的生产段许不许链类 `to` 的共用包。判据原语不管（只在 dev 侧）。
+fn may_depend(from: Class, to: Class) -> bool {
+    match from {
+        Class::Contract => to == Class::Contract,
+        Class::Core => matches!(to, Class::Contract | Class::Core),
+        Class::HostPrimitive => matches!(to, Class::Contract | Class::HostPrimitive),
+        Class::TestInfra => true,
+    }
+}
 
 /// ⑤前端包：不住 `src/common/`、自己出一个程序的包 —— (包目录（仓根相对）, 那个 bin 的 crate 根, 理由)。
 const FRONTEND_PACKAGES: &[(&str, &str, &str)] = &[(
@@ -157,27 +221,14 @@ fn common_dir() -> PathBuf {
     root().join("src/common")
 }
 
-/// 通信层那两个 crate 的住址（面 A `inward` · 面 B `outward`）。
-fn comms_dir() -> PathBuf {
-    root().join("src/comms")
-}
-
-/// monitor 生产段依赖闭包里每个 path 依赖：(谁带进来的, 依赖名, 目录)。
-fn monitor_production_closure() -> Vec<(String, String, PathBuf)> {
+/// 从几份清单出发的生产段 path 依赖闭包（闭包的遍历只这一份）：(谁带进来的, 依赖名, 目录)。
+fn production_closure(starts: Vec<(String, PathBuf)>) -> Vec<(String, String, PathBuf)> {
     let mut out = Vec::new();
-    let mut seen = BTreeSet::new();
-    let mut todo = vec![(
-        "monitor".to_string(),
-        root().join("src/frontend/shell/Cargo.toml"),
-    )];
-    // 前端那一侧的程序不止 monitor 一个：各前端包自己出程序（monitor 不链它们），它们与自己的生产闭包一起算进来。
-    for (at, _, _) in FRONTEND_PACKAGES {
-        let dir = root().join(at);
-        out.push(("前端".to_string(), (*at).to_string(), dir.clone()));
-        if seen.insert(dir.clone()) {
-            todo.push(((*at).to_string(), dir.join("Cargo.toml")));
-        }
-    }
+    let mut seen: BTreeSet<PathBuf> = starts
+        .iter()
+        .filter_map(|(_, m)| m.parent().map(Path::to_path_buf))
+        .collect();
+    let mut todo = starts;
     while let Some((who, manifest)) = todo.pop() {
         for (name, dir) in production_path_deps(&manifest) {
             out.push((who.clone(), name.clone(), dir.clone()));
@@ -186,6 +237,23 @@ fn monitor_production_closure() -> Vec<(String, String, PathBuf)> {
             }
         }
     }
+    out
+}
+
+/// monitor 生产段依赖闭包里每个 path 依赖：(谁带进来的, 依赖名, 目录)。
+fn monitor_production_closure() -> Vec<(String, String, PathBuf)> {
+    let mut starts = vec![(
+        "monitor".to_string(),
+        root().join("src/frontend/shell/Cargo.toml"),
+    )];
+    let mut out = Vec::new();
+    // 前端那一侧的程序不止 monitor 一个：各前端包自己出程序（monitor 不链它们），它们与自己的生产闭包一起算进来。
+    for (at, _, _) in FRONTEND_PACKAGES {
+        let dir = root().join(at);
+        out.push(("前端".to_string(), (*at).to_string(), dir.clone()));
+        starts.push(((*at).to_string(), dir.join("Cargo.toml")));
+    }
+    out.extend(production_closure(starts));
     out
 }
 
@@ -268,30 +336,26 @@ fn every_common_crate_has_exactly_one_class_with_a_reason() {
     );
 }
 
-#[test]
-fn the_monitor_production_segment_links_only_contract_crates() {
-    let closure = monitor_production_closure();
-    assert!(
-        closure.iter().any(|(_, n, _)| n == "copy-core"),
-        "monitor 生产段一个 path 依赖都没量到（`copy-core` 明明在）—— 量法瞎了"
-    );
+/// ② 一个出口的生产闭包里：不许出现的那几处（非核心库的越界）与链着的核心库（出口, 包）。
+fn outlet_links(
+    outlet: &str,
+    closure: &[(String, String, PathBuf)],
+) -> (Vec<String>, BTreeSet<(String, String)>) {
     let common = common_dir();
+    let client_side: BTreeSet<PathBuf> = CLIENT_SIDE_COMMS
+        .iter()
+        .map(|(dir, _)| normalize(&root().join(dir)))
+        .collect();
     let mut bad = Vec::new();
-    for (who, name, dir) in &closure {
+    let mut core = BTreeSet::new();
+    for (who, name, dir) in closure {
         let Ok(rel) = dir.strip_prefix(&common) else {
-            // ⑤ 前端包：它自己的生产依赖也在这张闭包里，照同一条规矩判。
-            if FRONTEND_PACKAGES
-                .iter()
-                .any(|(at, _, _)| *dir == root().join(at))
-            {
-                continue;
-            }
-            // 通信层 crate（`src/comms/` 下）：只搬字节、零业务判断，它们自己的依赖由边界判据按依赖图判（`comm_boundary_registry`）。
-            if dir.starts_with(comms_dir()) {
+            // 通信层：只放行登过的客户端那一侧的包；它们本身不判类，它们的第一方依赖照样顺着闭包在这里判。
+            if client_side.contains(dir) {
                 continue;
             }
             bad.push(format!(
-                "{who} → {name}：path 依赖不在 `src/common/` 下（{}）",
+                "{outlet}：{who} → {name}：path 依赖不在 `src/common/` 下、也不是登过的通信层客户端包（{}）",
                 dir.display()
             ));
             continue;
@@ -299,15 +363,112 @@ fn the_monitor_production_segment_links_only_contract_crates() {
         let crate_dir = rel.to_string_lossy().replace('\\', "/");
         match class_of(&crate_dir) {
             Some(Class::Contract | Class::HostPrimitive) => {}
+            Some(Class::Core) => {
+                core.insert((outlet.to_string(), crate_dir));
+            }
             Some(c) => bad.push(format!(
-                "{who} → {crate_dir}：{c:?} 类，monitor 生产段不许链它（判定的家在后端）"
+                "{outlet}：{who} → {crate_dir}：{c:?} 类，出口生产段不许链它"
             )),
-            None => bad.push(format!("{who} → {crate_dir}：没登记类")),
+            None => bad.push(format!("{outlet}：{who} → {crate_dir}：没登记类")),
         }
+    }
+    (bad, core)
+}
+
+/// ② 每个出口的生产闭包只许契约 · 前端宿主原语 · 登过的通信层客户端包；链着的核心库与 [`OUTLET_DEBT`] 两向相等。
+#[test]
+fn outlets_link_only_contract_crates_and_their_core_links_are_the_debt_table() {
+    let mut bad = Vec::new();
+    let mut linked: BTreeSet<(String, String)> = BTreeSet::new();
+    for (outlet, manifest) in OUTLETS {
+        let closure = production_closure(vec![(outlet.to_string(), root().join(manifest))]);
+        assert!(
+            closure.iter().any(|(_, n, _)| n == "copy-core"),
+            "{outlet} 生产段一个 path 依赖都没量到（`copy-core` 明明在）—— 量法瞎了"
+        );
+        let (b, c) = outlet_links(outlet, &closure);
+        bad.extend(b);
+        linked.extend(c);
     }
     assert!(
         bad.is_empty(),
-        "monitor 生产段依赖了非契约类 crate：\n{}",
+        "出口生产段链了不许链的包：\n{}",
+        bad.join("\n")
+    );
+    let debt: BTreeSet<(String, String)> = OUTLET_DEBT
+        .iter()
+        .map(|(o, c, _)| (o.to_string(), c.to_string()))
+        .collect();
+    assert_eq!(debt.len(), OUTLET_DEBT.len(), "`OUTLET_DEBT` 里有重行");
+    let new: Vec<_> = linked.difference(&debt).collect();
+    let stale: Vec<_> = debt.difference(&linked).collect();
+    assert!(
+        new.is_empty() && stale.is_empty(),
+        "出口链核心库与 `OUTLET_DEBT` 两向不等 —— 新链上的（判定 · 写句子归核心，出口只收成品）：{new:?}；链接删了、行还在（删掉那一行）：{stale:?}"
+    );
+    // 正控：一个出口闭包里的核心库认得出，登过的通信层客户端包放行、没登的通信层包红。
+    let probe = vec![
+        (
+            "p".to_string(),
+            "face-core".to_string(),
+            common_dir().join("face-core"),
+        ),
+        (
+            "p".to_string(),
+            "comms-inward".to_string(),
+            root().join("src/comms/inward"),
+        ),
+        (
+            "p".to_string(),
+            "ssh-dial".to_string(),
+            root().join("src/comms/ssh-dial"),
+        ),
+    ];
+    let (b, c) = outlet_links("p", &probe);
+    assert_eq!(c.len(), 1, "量法认不出出口链着的核心库");
+    assert_eq!(
+        b.len(),
+        1,
+        "量法放过了没登的通信层包，或拦了登过的那个：{b:?}"
+    );
+}
+
+/// ⑥ 每个共用包生产段的第一方依赖都住 `src/common/`，类落在 [`may_depend`] 许的范围里。
+#[test]
+fn common_crates_depend_only_in_the_allowed_class_direction() {
+    let common = common_dir();
+    let mut bad = Vec::new();
+    let mut seen_edges = 0;
+    for (name, class, _) in CRATES {
+        if *class == Class::TestInfra {
+            continue;
+        }
+        for (dep, dir) in production_path_deps(&common.join(name).join("Cargo.toml")) {
+            seen_edges += 1;
+            let Ok(rel) = dir.strip_prefix(&common) else {
+                bad.push(format!(
+                    "{name} → {dep}：第一方依赖不住 `src/common/`（{}）",
+                    dir.display()
+                ));
+                continue;
+            };
+            let to = rel.to_string_lossy().replace('\\', "/");
+            match class_of(&to) {
+                Some(t) if may_depend(*class, t) => {}
+                Some(t) => bad.push(format!(
+                    "{name}（{class:?}）→ {to}（{t:?}）：类之间不许这样依赖"
+                )),
+                None => bad.push(format!("{name} → {to}：没登记类")),
+            }
+        }
+    }
+    assert!(seen_edges > 0, "共用包之间一条依赖都没量到 —— 量法瞎了");
+    // 正控：契约链核心库 · 契约链前端宿主原语都不许。
+    assert!(!may_depend(Class::Contract, Class::Core));
+    assert!(!may_depend(Class::Contract, Class::HostPrimitive));
+    assert!(
+        bad.is_empty(),
+        "共用包的类间依赖方向不对：\n{}",
         bad.join("\n")
     );
 }
@@ -315,23 +476,14 @@ fn the_monitor_production_segment_links_only_contract_crates() {
 /// ④ 后端生产段（`src/backend/Cargo.toml` 的生产段 path 依赖闭包）不链前端宿主原语。
 #[test]
 fn the_backend_links_no_host_primitive_crate() {
-    let mut todo = vec![root().join("src/backend/Cargo.toml")];
-    let mut seen = BTreeSet::new();
     let common = common_dir();
-    let mut linked = Vec::new();
-    while let Some(manifest) = todo.pop() {
-        for (name, dir) in production_path_deps(&manifest) {
-            if let Ok(rel) = dir.strip_prefix(&common) {
-                linked.push((
-                    name.clone(),
-                    class_of(&rel.to_string_lossy().replace('\\', "/")),
-                ));
-            }
-            if seen.insert(dir.clone()) {
-                todo.push(dir.join("Cargo.toml"));
-            }
-        }
-    }
+    let linked: Vec<(String, Option<Class>)> = backend_closure()
+        .into_iter()
+        .filter_map(|(_, name, dir)| {
+            let rel = dir.strip_prefix(&common).ok()?;
+            Some((name, class_of(&rel.to_string_lossy().replace('\\', "/"))))
+        })
+        .collect();
     assert!(
         linked.iter().any(|(n, _)| n == "copy-core"),
         "后端生产段一个共享 crate 都没量到（`copy-core` 明明在）—— 量法瞎了"
@@ -413,16 +565,18 @@ fn deploy_decisions_live_only_in_the_backend() {
 
 /// 后端生产段的 path 依赖闭包（包目录）。
 fn backend_production_closure() -> BTreeSet<PathBuf> {
-    let mut todo = vec![root().join("src/backend/Cargo.toml")];
-    let mut seen = BTreeSet::new();
-    while let Some(manifest) = todo.pop() {
-        for (_, dir) in production_path_deps(&manifest) {
-            if seen.insert(dir.clone()) {
-                todo.push(dir.join("Cargo.toml"));
-            }
-        }
-    }
-    seen
+    backend_closure()
+        .into_iter()
+        .map(|(_, _, dir)| dir)
+        .collect()
+}
+
+/// 后端生产段的 path 依赖闭包：(谁带进来的, 依赖名, 目录)。
+fn backend_closure() -> Vec<(String, String, PathBuf)> {
+    production_closure(vec![(
+        "backend".to_string(),
+        root().join("src/backend/Cargo.toml"),
+    )])
 }
 
 /// ⑤ 前端包自己出程序、monitor 不链它：monitor 的清单生产段不点名它，monitor 生产源码（壳 `src/` ＋ 通信层面 A 那个 crate）一处都不提它的 crate 名；
@@ -452,7 +606,12 @@ fn a_frontend_package_ships_its_own_bin_and_the_monitor_does_not_link_it() {
         let mentioned: BTreeSet<&str> = sources
             .iter()
             .filter(|(rel, _)| {
-                rel.starts_with("src/frontend/shell/") || rel.starts_with("src/comms/")
+                // 按整段路径名比（`src/comms-x/` 不算 `src/comms/`）。
+                let parts: Vec<&str> = rel.split('/').collect();
+                matches!(
+                    parts.as_slice(),
+                    ["src", "frontend", "shell", _, ..] | ["src", "comms", _, ..]
+                )
             })
             .filter(|(_, body)| guard_core::contains_word(body, &name))
             .map(|(rel, _)| rel.as_str())

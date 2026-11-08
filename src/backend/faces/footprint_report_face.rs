@@ -1,6 +1,6 @@
 //! 「足迹」那两条成品（typed）：`data-report` · `chores-merge`（问到各台的 `data-report`、件数合成一份）。本体在 `footprint/mod.rs`（申报表 · 判定 · 重排都在 `footprint/`），
 //! 这里只接上名字 · 入参 · 回包 · 码表与档：都只读 ⇒ 阻塞档；`data-report` 读别名块的候选经文件管理面 ⇒ 带它那一档。
-//! 单住这份文件：`data-report`（`chores-merge` 答本机那一台也是它）问这台的 tmux（`control::terminals::tmux_here`），引用图按文件算，与别的放一起会把它们也判成「够得着 tmux」。
+//! 单住这份文件：`data-report`（`chores-merge` 答本机那一台也是它）问这台的 tmux（`host::tmux::tmux_here`），引用图按文件算，与别的放一起会把它们也判成「够得着 tmux」。
 
 use crate::footprint::data::DataReport;
 use crate::footprint::FootprintReq;
@@ -40,13 +40,12 @@ impl crate::wire::typed::Handle for DataReportCmd {
     }
 }
 
-/// `chores-merge` 的入参：问哪几台（本机逐字 `"<local>"`）· 本机那一台带的 monitor 那几条事实（同 `data-report` 的 `client`）。
+/// `chores-merge` 的入参：本机那一台带的 monitor 那几条事实（同 `data-report` 的 `client`）；问哪几台照本机后端自己的机器表（`Table::asked`）。
 #[derive(Debug, Clone, serde::Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
 pub struct ChoresMergeReq {
-    pub(crate) machines: Vec<cmd_wire::Machine>,
     #[serde(default)]
     #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     pub(crate) client: Option<crate::footprint::FootprintClient>,
@@ -111,7 +110,7 @@ impl crate::wire::typed::Handle for ChoresMergeCmd {
                     .map_err(crate::common::said::Said::from)
             };
             chores_merge_with(
-                &req.machines,
+                &crate::dial::remote_ask::REACH.asked(),
                 local,
                 &cx.tz,
                 cx.until,
@@ -123,7 +122,7 @@ impl crate::wire::typed::Handle for ChoresMergeCmd {
     }
 }
 
-/// [`ChoresMergeCmd`] 的本体（本机那一台怎么答 · 可达表 · 对面由调用方给）。
+/// [`ChoresMergeCmd`] 的本体（问哪几台 · 本机那一台怎么答 · 可达表 · 对面由调用方给；生产问的是 `REACH.asked()`）。
 pub(crate) async fn chores_merge_with(
     machines: &[cmd_wire::Machine],
     local: impl std::future::Future<Output = Result<DataReport, crate::common::said::Said>> + Send,

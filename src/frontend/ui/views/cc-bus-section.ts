@@ -6,7 +6,7 @@
 //  ② 有收件箱 ≠ 在线：名单的行是收件箱；判在线是第二次往返，放在点某一行的「检查」上，不全量查。
 //  ③ 脏数据不能把面板搞崩：后端解析器跳过坏行并计数，这里如实显示「N 条无法解析」。
 import { setCurrentMachine, subscribeMachine } from "../machine-context";
-import { remoteNames } from "../remote-config";
+import { readRemoteNames } from "../machine-feed";
 // 查在线 · 读面都经通道直接问那台机器的后端；形状由 `cc-bus-control.ts` 的解码器严格收。
 import { agentOnline, readInbox, readRoster, type BusList } from "../cc-bus-control";
 // 本机 ＝ `LOCAL`（只住 `cmd-wire`，界面从生成物出）。
@@ -72,10 +72,10 @@ export class CcBusSection {
     return root;
   }
 
-  /** 列远端（`remoteNames`：壳注册表里此刻要连的那几台）。 */
+  /** 列远端（`readRemoteNames`：本机后端机器表里「连接这台」开着的那几台）。 */
   private async loadOrigins(): Promise<void> {
     // 拿不到就当没有远端，不影响面板其余部分。
-    const origins = await remoteNames().catch(() => [] as string[]);
+    const origins = await readRemoteNames().catch(() => [] as string[]);
     this.originSel.replaceChildren();
     // 本机永远在列表里（本机的 `~/.cc-bus/` 就在本地）。
     for (const o of origins) {

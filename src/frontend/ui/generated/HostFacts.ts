@@ -13,8 +13,4 @@ os: string,
  * Wayland 会话照常显示、点了由壳照实说「这个桌面上切不了」并给［在 cc-monitor 里打开］（结局族 `desktop-wont-switch`）；
  * macOS 上那几跳是桩 ⇒ 不显示。
  */
-terminalFront: boolean, 
-/**
- * 本机 shell 说哪种方言（别名块按它写）：`posix` · `powershell`。
- */
-shellDialect: string, };
+terminalFront: boolean, };

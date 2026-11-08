@@ -135,7 +135,7 @@ pub trait Here: Send + Sync {
 /// 分派那一层（[`super::spec::invoke`]）按它把能力交进 `cx.needs`；阻塞还是异步在登记那一行说（[`blocking`] · [`asynchronous`]）。
 /// 阻塞档的本体是同步代码包在 `async move` 里：分派把它放进阻塞池、在那条线程上跑完（开跑之后打不断）。
 pub trait Handle: Command {
-    /// 它要的能力（`spec::needs::Nothing` · `Files` · `Own` · `FilesOwn` · `Face` · `OwnHub`）。
+    /// 它要的能力（`spec::needs::Nothing` · `Files` · `Own` · `FilesOwn` · `Face` · `FaceOwn` · `OwnHub`）。
     type Needs: Needs;
     fn run(
         req: Self::Req,

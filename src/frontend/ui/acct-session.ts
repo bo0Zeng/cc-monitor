@@ -13,7 +13,7 @@ import type { Machine } from "./ipc/origin";
 import { banner } from "./kit/banner";
 import { button } from "./kit/button";
 import { icon } from "./kit/icon";
-import { accountLabel } from "./acct-words";
+import { nameIn } from "./rot-board";
 import { holdOf } from "./rot-words";
 import s from "./acct-session.module.css";
 
@@ -51,8 +51,8 @@ export function stripOf(
     span(
       (e) => (e.className = s.acctSessStripMove),
       copyText("rot.strip.move", {
-        from: accountLabel(h.from),
-        to: accountLabel(h.to),
+        from: nameIn(entry.read, h.from),
+        to: nameIn(entry.read, h.to),
       }),
     ),
     span((e) => (e.className = s.acctSessStripSep), copyText("kit.text.sep")),

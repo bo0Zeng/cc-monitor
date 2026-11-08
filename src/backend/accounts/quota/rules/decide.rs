@@ -179,12 +179,123 @@ fn fact<'a>(f: &'a [Acct], a: &str) -> Option<&'a Acct> {
     f.iter().find(|x| x.id == a)
 }
 
-/// ★ 开窗只认这样的号：订阅号 · 此刻发得出去 · 5 小时窗没在计时（没见过重置时刻 · 重置时刻已过）。
+/// 开窗那一判为什么这样（码；那一句由出口照码写）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WarmWhy {
+    /// 按量号：没有 5 小时窗可开。
+    Api,
+    /// 被拒着。
+    Refused,
+    /// 要重新登录（续令牌一时没成也算，那时带几点再试）。
+    Login,
+    /// 缺 key。
+    Key,
+    /// 在超额上兜着。
+    Overage,
+    /// 用满了：0 ＝ 5 小时 · 1 ＝ 7 天。
+    Full(usize),
+    /// 5 小时窗在计时。
+    Ticking,
+    /// 5 小时窗没在计时（没见过 · 已过重置时刻；事实里两者都没有重置时刻，那一句由出口照显示态挑）。
+    NoWindow,
+}
+
+/// 开窗那一判：发一句 · 等（`until` ＝ 几点又该看；说不出 ⇒ 空，出口自己定过多久再看）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WarmVerdict {
+    Send(WarmWhy),
+    Wait { until: Option<u64>, why: WarmWhy },
+}
+
+/// ★ 一个号此刻要不要发一句让 5 小时窗开始计时（唯一一处：策略交的 `warm` 照它收，`quota-read` 每号的 `warm` 照它写）。
+/// 只发这样的号：订阅号 · 此刻发得出去 · 5 小时窗没在计时（没见过重置时刻 · 重置时刻已过）。
 /// 号的 5 小时窗由第一发触发：在计时的窗不会因多发一句提前或推后，发了白花。
+/// 发不出去的等到它又发得出去（[`standing::sendable_again`]）。
+pub fn warm_verdict(x: &Acct, t: u64) -> WarmVerdict {
+    use super::super::facts::FactWhy;
+    if !standing::sendable(x, t) {
+        let barred = x
+            .barred
+            .filter(|b| b.until.is_none_or(|u| u > t))
+            .map(|b| b.why);
+        let why = if x.refused_until.is_some_and(|u| u > t) {
+            WarmWhy::Refused
+        } else {
+            match barred {
+                Some(FactWhy::Login) => WarmWhy::Login,
+                Some(FactWhy::Key) => WarmWhy::Key,
+                Some(FactWhy::Overage) => WarmWhy::Overage,
+                Some(FactWhy::Refused) => WarmWhy::Refused,
+                Some(FactWhy::Used) | None => {
+                    WarmWhy::Full(usize::from(standing::used_up(standing::used_at(x, 1, t))))
+                }
+            }
+        };
+        return WarmVerdict::Wait {
+            until: standing::sendable_again(x, t),
+            why,
+        };
+    }
+    if x.api {
+        return WarmVerdict::Wait {
+            until: None,
+            why: WarmWhy::Api,
+        };
+    }
+    match x.resets[0] {
+        Some(r) if r > t => WarmVerdict::Wait {
+            until: Some(r),
+            why: WarmWhy::Ticking,
+        },
+        _ => WarmVerdict::Send(WarmWhy::NoWindow),
+    }
+}
+
+/// 策略交的 `warm` 收不收这个号：[`warm_verdict`] 说发。
 pub(crate) fn warmable(x: &Acct, t: u64) -> bool {
-    !x.api
-        && standing::sendable(x, t)
-        && x.resets[0].is_none_or(|r| crate::accounts::quota::reset_since_seen(Some(r), t))
+    matches!(warm_verdict(x, t), WarmVerdict::Send(_))
+}
+
+/// ★ 这个会话此刻用得了 `a`（唯一一处：判的候选与会话顺序都照它）：会话没把它先去掉 · 号列表里有它 · 事实上发得出去。
+pub(crate) fn usable(off: &[String], facts: &[Acct], a: &str, t: u64) -> bool {
+    !off.iter().any(|x| x == a) && fact(facts, a).is_some_and(|x| standing::sendable(x, t))
+}
+
+/// 会话的顺序：第一格 ＝ 在用的号，往下照拖出来的 · 策略交的先后，此刻用不了的与先不用的沉底（各照号的先后）。
+pub fn lineup_of(
+    current: &str,
+    off: &[String],
+    d: &Decision,
+    facts: &[Acct],
+    t: u64,
+) -> Vec<String> {
+    lineup_by(current, off, d.sigma.temp.iter().chain(&d.order), facts, t)
+}
+
+/// 不轮换的会话的顺序：第一格 ＝ 在用的号，往下照号的先后，此刻用不了的与先不用的沉底（没有策略交的先后）。
+pub fn plain_lineup(current: &str, off: &[String], facts: &[Acct], t: u64) -> Vec<String> {
+    lineup_by(current, off, std::iter::empty(), facts, t)
+}
+
+/// 第一格在用的号，往下 `prefer` 里用得了的，再照号的先后：用得了的在前，余下的沉底。
+fn lineup_by<'a>(
+    current: &str,
+    off: &[String],
+    prefer: impl Iterator<Item = &'a String>,
+    facts: &'a [Acct],
+    t: u64,
+) -> Vec<String> {
+    let mut out = vec![current.to_string()];
+    let ids: Vec<&String> = facts.iter().map(|x| &x.id).collect();
+    let ok = prefer
+        .chain(ids.iter().copied())
+        .filter(|a| usable(off, facts, a, t));
+    for a in ok.chain(ids.iter().copied()) {
+        if !out.contains(a) {
+            out.push(a.clone());
+        }
+    }
+    out
 }
 
 /// 策略交的 `warm` 照事实分两份：收下的 · 丢掉的（不在号列表里的也丢）。同一个号只算一次。
@@ -334,11 +445,7 @@ pub fn turn(
     tried: &[String],
 ) -> Decision {
     let ctx = ctx_of(sigma, facts, settings, clock, t);
-    let send = |a: &str| {
-        !tried.iter().any(|x| x == a)
-            && !sigma.off.iter().any(|x| x == a)
-            && fact(facts, a).is_some_and(|x| standing::sendable(x, t))
-    };
+    let send = |a: &str| !tried.iter().any(|x| x == a) && usable(&sigma.off, facts, a, t);
     // 1：叫策略；出错 ⇒ 兜底：此刻的号发得出去就照用，否则照事实的先后取第一个发得出去的。
     let (v, strategy_error) = match p.decide(&ctx) {
         Ok(v) => (v, None),

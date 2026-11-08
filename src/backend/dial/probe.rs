@@ -258,7 +258,6 @@ pub struct ProbeReq {
     /// 1..=64 个 `[A-Za-z0-9-]`；进度帧 `probe` 原样回填。
     pub(crate) ticket: String,
     /// 那台的配置。
-    #[serde(deserialize_with = "ssh_dial::machine::loose_field")]
     pub(crate) machine: super::Host,
 }
 

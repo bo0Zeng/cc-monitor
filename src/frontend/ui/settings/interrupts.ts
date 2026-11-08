@@ -1,7 +1,7 @@
 /**
  * 停下 / 重启 / 更新 / 卸载那台之前「会打断什么」：只问本机后端一条 `machine-interrupts`（`machine` = 那台）——
  * 它经那台的常驻流问到那台的活会话（经它中转的 · 活着的），再数自己账上通往那台的端口转发，并好再答；排成对话框里的两行（中断 · 保留）。
- * 退出 / 重启 cc-monitor：同一条带 `appExit` 与各台名单，本机后端问到各台、加起来答；另有一份各文件窗口手上没存的 · 在跑的（壳现读它那张表，`filewin_interrupts`）。
+ * 退出 / 重启 cc-monitor：同一条带 `appExit` 与 `fleet`，本机后端照自己的机器表问到各台、加起来答；另有一份各文件窗口手上没存的 · 在跑的（壳现读它那张表，`filewin_interrupts`）。
  * 什么都不会断 ⇒ 空，调用方就不弹框。这里不判什么，只排版。
  */
 import { budgetWithin, callTyped } from "../ipc/chan-caller";
@@ -63,11 +63,11 @@ async function askFileWindows(): Promise<{ unsaved: number; running: number } | 
 }
 
 /**
- * 「现在重启 cc-monitor」之前：问本机后端一条（`appExit` ＋ 各台名单）——它问到各台（各台照它自己的退出行为答会不会跟着停）、加起来；
+ * 「现在重启 cc-monitor」之前：问本机后端一条（`appExit` ＋ `fleet`）——它照自己的机器表问到各台（各台照它自己的退出行为答会不会跟着停）、加起来；
  * 远端问不到 ⇒ 那台本来就没连着，不算（后端那一侧定）。本机后端问不到 ⇒ 说数不出。文件窗口那两格随 cc-monitor 一起没（照算）。
  */
-export async function askAppExitInterrupts(remotes: readonly string[]): Promise<Interrupts> {
-  const [files, got] = await Promise.all([askFileWindows(), askHub({ appExit: true, machines: [...remotes] })]);
+export async function askAppExitInterrupts(): Promise<Interrupts> {
+  const [files, got] = await Promise.all([askFileWindows(), askHub({ appExit: true, fleet: true })]);
   return {
     ...fromHub(got),
     unsaved: files?.unsaved ?? null,

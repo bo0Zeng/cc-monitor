@@ -25,8 +25,12 @@ fn http_proxy(answer: &'static str) -> (SocketAddr, mpsc::Receiver<String>) {
             }
             got.push(b[0]);
         }
-        let _ = tx.send(String::from_utf8_lossy(&got).into_owned());
-        let _ = s.write_all(answer.as_bytes());
+        // 测试那一头已经走了 / 连接断了 ⇒ 这台假代理就此收工。
+        if tx.send(String::from_utf8_lossy(&got).into_owned()).is_err()
+            || s.write_all(answer.as_bytes()).is_err()
+        {
+            return;
+        }
         echo(s);
     });
     (a, rx)
@@ -115,14 +119,20 @@ fn socks_proxy(
         };
         let mut p = [0u8; 2];
         s.read_exact(&mut p).unwrap();
-        let _ = tx.send(SocksAsk {
+        let asked = SocksAsk {
             methods,
             creds,
             atyp: h[3],
             addr,
             port: u16::from_be_bytes(p),
-        });
-        let _ = s.write_all(&[5, reply, 0, 1, 127, 0, 0, 1, 0x1f, 0x90]);
+        };
+        // 测试那一头已经走了 / 连接断了 ⇒ 这台假代理就此收工。
+        if tx.send(asked).is_err()
+            || s.write_all(&[5, reply, 0, 1, 127, 0, 0, 1, 0x1f, 0x90])
+                .is_err()
+        {
+            return;
+        }
         if reply == 0 {
             echo(s);
         }

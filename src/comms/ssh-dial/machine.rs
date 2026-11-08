@@ -12,7 +12,7 @@
 //! 竞速顺序：交了 `prefer`（monitor 记的「上次赢的那条」）且它仍在这台的地址里 ⇒ 排首，其余保序；
 //! 所有地址本来就同时起拨，顺序只决定同时完成时谁先被看到。
 //!
-//! 线上交来的那一形（一台原样的配置，键可缺、可为 `null`、可多带）经 [`loose`] 读成 [`Host`]；
+//! 线上交来的那一台照 [`Host`] 自己的派生解（键可缺 ⇒ 缺省；多带的键拒）；
 //! 线上的一份拨号（`{machine, jump?, prefer?, use?, …}`）经 [`resolve`] 进来。
 
 use crate::Endpoint;
@@ -252,53 +252,6 @@ pub fn parse_address_line(line: &str, default_port: u16) -> Option<Endpoint> {
         Some(_) => None,
         None => Some(ep(s, default_port)),
     }
-}
-
-/// 线上那一形（一台原样的配置：键可缺、可为 `null`，多带的键不读）⇒ 一台。键的类型不对 ⇒ `bad_args`。
-/// 不判成不成立：那是组请求时 [`Host::fault`] 的事。
-pub fn loose(v: &Value) -> Result<Host, Said> {
-    let bad = |d: &str| Said::new("bad_args", crate::malformed(d));
-    let obj = v
-        .as_object()
-        .ok_or_else(|| bad("machine is not an object"))?;
-    let text = |k: &str| -> Result<String, Said> {
-        match obj.get(k) {
-            None | Some(Value::Null) => Ok(String::new()),
-            Some(Value::String(s)) => Ok(s.clone()),
-            Some(_) => Err(bad(&format!("`{k}` is not a string"))),
-        }
-    };
-    let port = match obj.get("port") {
-        None | Some(Value::Null) => port_22(),
-        Some(p) => p
-            .as_u64()
-            .ok_or_else(|| bad("`port` is not a port number"))?,
-    };
-    let addresses = match obj.get("addresses") {
-        None | Some(Value::Null) => Vec::new(),
-        Some(Value::Array(a)) => a
-            .iter()
-            .filter_map(Value::as_str)
-            .map(str::to_string)
-            .collect(),
-        Some(_) => return Err(bad("`addresses` is not a list")),
-    };
-    Ok(Host {
-        label: text("label")?,
-        host: text("host")?,
-        port,
-        user: text("user")?,
-        key_path: text("keyPath")?,
-        addresses,
-        jump: text("jump")?,
-        connect: obj.get("connect").and_then(Value::as_bool).unwrap_or(true),
-    })
-}
-
-/// 按类型收的入参里那一格经 [`loose`] 读（`#[serde(deserialize_with = "ssh_dial::machine::loose_field")]`）。
-pub fn loose_field<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Host, D::Error> {
-    let v = <Value as serde::Deserialize>::deserialize(d)?;
-    loose(&v).map_err(|s| serde::de::Error::custom(s.said))
 }
 
 /// 拨不了这一台（没地址 · 没用户 · 端口不在 1–65535）⇒ `bad_args`（调用方是我们自己：契约错）。

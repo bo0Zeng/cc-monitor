@@ -43,6 +43,8 @@ const row = (name: string, from: string | null, over: Partial<ProfileRow> = {}):
   said: `说：${name}`,
   form: form(name, from),
   accountShape: null,
+  badge: null,
+  drop: { label: "删（后端给）", kids: [], restores: false },
   start: `ccm @${name}`,
   ...over,
 });
@@ -60,14 +62,17 @@ describe("buildProfilesList", () => {
       path: "/h/.cc-monitor/profiles.toml",
       // 那台写好的显示形；界面照抄，不拿家目录自己缩。
       pathShown: "~/.cc-monitor/profiles.toml",
-      exists: true,
       rev: "fp-1",
       editedAt: null,
       fileProblem: null,
-      profiles: [row("cc", null, { kind: "function", functionWhy: "和 /usr/bin/cc 同名" }), row("workcc", "cc"), row("cct", "cc"), row("teamcct", "cct"), row("pcc", null)],
-      seed: [],
-      seedHint: "",
-      seedCreate: "",
+      // 「删」要先处置的那几段（基于它的）由后端算好给出。
+      profiles: [
+        row("cc", null, { kind: "function", functionWhy: "和 /usr/bin/cc 同名", drop: { label: "删（后端给）", kids: ["workcc", "cct"], restores: false } }),
+        row("workcc", "cc"),
+        row("cct", "cc", { drop: { label: "删（后端给）", kids: ["teamcct"], restores: false } }),
+        row("teamcct", "cct"),
+        row("pcc", null),
+      ],
       binDir: "/h/.cc-monitor/bin",
       accounts: ["team", "work"],
       tmux: true,
@@ -336,26 +341,21 @@ describe("buildProfilesList", () => {
     expect(again.el.querySelector('[data-role="edited-elsewhere"]')!.textContent).toContain(copyText("profilesPage.edited.line", { time: "10-06 14:20" }));
   });
 
-  it("没有配置文件：给首建那几条的预览；说明与按钮的字照后端给的（没有 tmux 的那台只一条）；点了才写（init seed）", async () => {
-    book.exists = false;
-    book.profiles = [];
-    for (const [seed, hint, create] of [
-      [[row("cc", null), row("cct", "cc")], "先建下面两条（后端给）", "建这两条（后端给）"],
-      [[row("cc", null)], "先建下面这条（后端给）", "建这条（后端给）"],
-    ] as const) {
-      book.seed = [...seed];
-      book.seedHint = hint;
-      book.seedCreate = create;
-      writes = [];
-      document.body.replaceChildren();
-      const { el } = await mount();
-      const box = el.querySelector<HTMLElement>('[data-role="seed"]')!;
-      expect(names(box)).toHaveLength(seed.length);
-      expect(box.querySelector(".cfg-hint")!.textContent).toBe(hint);
-      expect(writes).toEqual([]);
-      [...box.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === create)!.click();
-      await flush();
-      expect(writes).toEqual([{ changes: [{ op: "init", seed: true }], ifRev: "fp-1" }]);
-    }
+  it("「删」那一格照后端给的：内置的带后端给的标、没有这一格；盖着内置的那一格写后端给的字、不问基于它的、当场交 remove（不藏、不撤销）", async () => {
+    book.profiles = [
+      row("cc", null, { drop: { label: "还原（后端给）", kids: [], restores: true } }),
+      row("cch", "cc", { badge: "内置（后端给）", drop: null }),
+    ];
+    const { el } = await mount();
+    const at = (n: string): HTMLElement => el.querySelector<HTMLElement>(`.prof-trow[data-name="${n}"]`)!;
+    expect(at("cch").textContent).toContain("内置（后端给）");
+    expect(at("cch").querySelector(".cfg-link-danger")).toBeNull();
+    const restore = at("cc").querySelector<HTMLElement>(".cfg-link-danger")!;
+    expect(restore.textContent).toBe("还原（后端给）");
+    restore.click();
+    await flush();
+    expect(el.querySelector('[data-role="remove"]')).toBeNull();
+    expect(undoToasts).toEqual([]);
+    expect(writes.at(-1)!.changes).toEqual([{ op: "remove", name: "cc" }]);
   });
 });

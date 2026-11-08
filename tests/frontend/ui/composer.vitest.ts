@@ -200,14 +200,22 @@ describe("消息流底下的输入框", () => {
     expect(box(same.c).value).toBe("kept");
   });
 
-  it("那台拒了 ⇒ 字留着、写那台那一句", async () => {
+  it("★ 那台拒了 ⇒ 字留着；那一句留在那一排、那一行写那台那一句（错误色），框下不另写；［撤回］⇒ 拿掉", async () => {
     const refused = new ChanError({ layer: "peer", why: "refused", body: new TextEncoder().encode(JSON.stringify({ code: "queue_full", said: "full-said" })) }, "full-said");
-    const { c } = rig({ put: async () => Promise.reject(refused) });
+    const { c, reads } = rig({ put: async () => Promise.reject(refused) });
     enter(c, "x");
     await flush();
     expect(box(c).value).toBe("x");
-    expect(c.el.textContent).toContain("full-said");
+    const line = c.el.querySelector<HTMLElement>('[data-role="queue-line"]');
+    expect(rows(c).length).toBe(1);
+    expect(line?.dataset.state).toBe("undelivered");
+    expect(line?.textContent).toContain("full-said");
+    expect(c.el.textContent?.split("full-said").length, "只在那一行说一遍").toBe(2);
+    line?.querySelector("button")?.click();
+    await flush();
     expect(rows(c)).toEqual([]);
+    expect(box(c).value, "字没重一遍").toBe("x");
+    expect(reads.cancel, "拒了的没进那台的队：不去请那台撤").not.toHaveBeenCalled();
   });
 
   it("上方那一排照那台推来的名单画：别的一端撤掉第 1 条 ⇒ 当场少一条", async () => {

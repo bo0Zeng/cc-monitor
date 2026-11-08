@@ -132,7 +132,7 @@ pub struct AccountRef {
     pub config_dir: String,
 }
 
-/// 建号 / 删号那一刻，一份别名文件（`~/.cc-monitor/aliases.sh` · Windows 上另有 `aliases.ps1`）这一趟怎么样了。
+/// 建号 / 删号那一刻别名这一侧怎么样了：用户的配置文件不动，号那三条是内置的、照账号表现算，这一下只重生成别名文件与链接。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -141,16 +141,17 @@ pub struct AccountRef {
     ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 pub struct AliasChange {
+    /// 用户的配置文件（`~/.cc-monitor/profiles.toml`，这一趟不写它）。
     pub path: String,
-    /// 这一趟真写了没有（内容没变 ⇒ 一个字节不写）。
+    /// 别名文件或链接这一趟动了没有（内容没变 ⇒ 一个字节不写）。
     pub changed: bool,
-    /// 建号：加进去的别名（如 `workcc` `workcct`）。
+    /// 建号：多出来的内置别名（如 `workcc` `workcct` `workcch`）。
     pub added: Vec<String>,
-    /// 删号：删掉的别名（参数指向这个号的全部）。
+    /// 删号：跟着号一起没了的内置别名。
     pub removed: Vec<String>,
-    /// 建号：名字被别的别名占着、没加的那几个。
+    /// 建号：用户文件里已有同名的一段、盖着内置的那几个（照用户那段起）。
     pub skipped: Vec<String>,
-    /// 没能自动改它时的那句话（比如文件里有认不出的行）；`None` = 一切照常。
+    /// 没能重生成时的那句话（比如配置文件整份写坏了）；`None` = 一切照常。
     pub note: Option<String>,
 }
 
@@ -427,8 +428,10 @@ pub struct AccountRow {
     pub plate: crate::cells::Words,
     /// 账号行第二行那一句：类型字（同额度卡首行那一格）· 这个号的那一格（邮箱 · 需登录 · 端点的主机），后端写好，两端照摆。
     pub kind_line: crate::cells::Words,
-    /// 这个号「5h 那一格」写好的字（同 `quota-read` 那一格：账读不出 ⇒ `5h 读不到`）；没出过数 · 按量号 ⇒ `null`。
-    pub quota: Option<crate::cells::Words>,
+    /// 这个号的额度格（同一份 `quota-read` 成品里取，后端 `with_quota` 写，两端照摆）：订阅号一个语义位一格、照 5h · 7d 的次序，
+    /// `text` 是整格的字（位名 · 值 · 重置），`tone` 是那一格的语气（数旧也画 warn）；按量号一格（`按量` · 被拒那一句，`slot` 空串）；
+    /// 账读不出 ⇒ 一格 `5h 读不到`；没出过数的订阅号 · 账上没有 ⇒ 空。紧凑那一格（恢复菜单 · 新会话框）取第一格。
+    pub slots: Vec<crate::quota::SlotShow>,
     /// 选不了（`selectable: false`）的那一句：需登录 · 没配 key · 不隔离 · 号目录不在；选得了 ⇒ `null`。
     /// 账号 0 不经选号（起它走「不指定号」那一条）⇒ 恒 `null`。
     pub unselectable: Option<crate::cells::Words>,
@@ -439,14 +442,13 @@ pub struct AccountRow {
     pub new_session: bool,
 }
 
-/// 一个号那一枚徽章（账号菜单每一项右边那一格）：写好的字 · 要不要标警示 · 悬停那一句（没有 ⇒ 空串）。
+/// 一个号那一枚徽章（账号菜单每一项右边那一格）：写好的字 · 要不要标警示。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct Badge {
     pub text: crate::cells::Words,
     pub warn: bool,
-    pub title: crate::cells::Words,
 }
 
 // ── session-account 的回包 ────────────────────────────────────────────────────────────────

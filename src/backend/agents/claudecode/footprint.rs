@@ -130,42 +130,46 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
                 },
                 // 各号共用的用户级 MCP：共享集合 ＋ 上次同步时各号的样子（这台后端自己的状态，里面有 MCP 的密钥 ⇒ 0600）。
                 TouchedFile {
-                    path: "~/.cc-monitor/accounts-mcp.json",
+                    path: concat!("~/", relay_route_core::accounts_mcp_rel!()),
                     host: HostScope::Either,
                     effect: TouchEffect::OwnedFile,
                 },
                 // 额度账：各号最近一次从回包头看到的用量（中转那一路记，这台后端自己的状态）。
                 TouchedFile {
-                    path: "~/.cc-monitor/quota.json",
+                    path: concat!("~/", relay_route_core::quota_ledger_rel!()),
                     host: HostScope::Either,
                     effect: TouchEffect::OwnedFile,
                 },
                 // 账号轮换：每个会话在用的号与载入的策略 · 拖出来的先后 · 换号记录 · 新会话默认用哪份。
                 TouchedFile {
-                    path: "~/.cc-monitor/rotation.json",
+                    path: concat!("~/", relay_route_core::rotation_rel!()),
                     host: HostScope::Either,
                     effect: TouchEffect::OwnedFile,
                 },
                 // 起会话用的号：每条会话上次用哪个号起的（观测侧记）＋ ccm 起会话时留的便条（认完、进程不在了即清）。
                 TouchedFile {
-                    path: "~/.cc-monitor/launch-accounts.json",
+                    path: concat!("~/", relay_route_core::launch_accounts_rel!()),
                     host: HostScope::Either,
                     effect: TouchEffect::OwnedFile,
                 },
                 TouchedFile {
-                    path: "~/.cc-monitor/launch-pending",
+                    path: concat!("~/", relay_route_core::launch_notes_dir_rel!()),
                     host: HostScope::Either,
                     effect: TouchEffect::OwnedFile,
                 },
                 // 换了启动器起会话时交给 claude 的答题插件（清单 ＋ 答题那一组 hook）。
                 TouchedFile {
-                    path: "~/.cc-monitor/answer-plugin",
+                    path: concat!("~/", relay_route_core::answer_plugin_dir_rel!()),
                     host: HostScope::Either,
                     effect: TouchEffect::OwnedFile,
                 },
                 // 同步改写某个号的配置文件之前，那份原文放这里（每个号一份）。
                 TouchedFile {
-                    path: "~/.cc-monitor/backups/accounts-mcp",
+                    path: concat!(
+                        "~/",
+                        relay_route_core::ext_backups_dir_rel!(),
+                        "/accounts-mcp"
+                    ),
                     host: HostScope::Either,
                     effect: TouchEffect::OwnedFile,
                 },
@@ -194,13 +198,13 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
                         effect: TouchEffect::OwnedFile,
                     },
                     TouchedFile {
-                        path: "~/.cc-monitor/skill-installs.json",
+                        path: concat!("~/", relay_route_core::skill_ledger_rel!()),
                         host: HostScope::Either,
                         effect: TouchEffect::OwnedFile,
                     },
                     // 卸掉不是 cc-monitor 装的 skill / MCP 之前，原样挪 / 抄到这里（要找回就从这里拿）。
                     TouchedFile {
-                        path: "~/.cc-monitor/backups",
+                        path: concat!("~/", relay_route_core::ext_backups_dir_rel!()),
                         host: HostScope::Either,
                         effect: TouchEffect::OwnedFile,
                     },

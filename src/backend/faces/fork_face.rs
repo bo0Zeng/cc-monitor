@@ -47,7 +47,7 @@ impl crate::wire::typed::Handle for SessionFork {
 pub(crate) fn launch_of(home: &Path, source: &Path, sid: &str) -> fork_launch::Launch {
     let cwd = crate::agents::project_dir_of(source);
     let processes: Vec<fork_launch::ProcessRow> =
-        crate::observe::accounts_query::session_accounts_here(home)
+        crate::accounts::manage::library::session_accounts_here(home)
             .into_iter()
             .filter_map(|r| {
                 Some(fork_launch::ProcessRow {

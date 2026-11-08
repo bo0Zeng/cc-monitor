@@ -82,22 +82,9 @@ object CoreResident : ResidentCore {
         return Core.pickMenu(handle, rows)
     }
 
-    override fun clashRows(data: String): String {
-        ensureRustCore()
-        return Core.clashRows(data)
-    }
-
     override fun searchMerge(data: String): String {
         ensureRustCore()
         return Core.searchMerge(data)
-    }
-
-    override fun answerOf(
-        keys: String,
-        answer: String?,
-    ): String {
-        ensureRustCore()
-        return Core.answerOf(keys, answer)
     }
 
     override fun deploy(

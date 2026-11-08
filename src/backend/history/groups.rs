@@ -8,7 +8,7 @@
 //! 组员关系 · 固定                   住会话那一台：那条会话注解上的 `groups` · `pinned` 两格（一条会话可在几组）
 //!
 //! groups-here（每台）   ⇒ 这台那一片 ＋ 这台带组或固定的会话（各带此刻活不活，问 live_table）
-//! groups-read {machines}（发问那台）⇒ remote_ask::ask_each 问各台 groups-here、在这里合一次（`face_core::groups::merge`，手机核心调同一份）：
+//! groups-read {}（发问那台，照它自己的机器表 `Table::asked`）⇒ remote_ask::ask_each 问各台 groups-here、在这里合一次（`face_core::groups::merge`，手机核心调同一份）：
 //!     名字取 named 最新的那一片 · 组员照各台 · 组头计数与字在这里数一次；某台没答 ⇒ 照它上一次答的那份、标上次所知（那台的组员画成看不见）；
 //!     从没答过 ⇒ 那台读不到；哪一片都没有那一组的记录、只有组员指着它 ⇒ 名字不知道（组照出、组员不漏）
 //! groups-write ⇒ make 只起 id；move 只写组员那一台（进组抄记录 · 最后一位出组删记录）；
@@ -175,15 +175,12 @@ impl crate::wire::typed::Handle for GroupsHereCmd {
 
 // ───────────────────────── 几台并成一份：groups-read ─────────────────────────
 
-/// `groups-read` 的入参：问哪几台（本机逐字 `"<local>"`）。
+/// `groups-read` 的入参：空的（问哪几台照本机后端自己的机器表，`Table::asked`）。
 #[derive(Debug, Clone, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub struct GroupsReadReq {
-    #[cfg_attr(any(test, feature = "ts"), ts(as = "Vec<String>"))]
-    pub(crate) machines: Vec<Machine>,
-}
+pub struct GroupsReadReq {}
 
 codes! {
     /// `groups-read` 自己没有别的码（哪台没问到只进回包的 `machines`）。
@@ -293,7 +290,7 @@ impl Command for GroupsReadCmd {
 impl crate::wire::typed::Handle for GroupsReadCmd {
     type Needs = crate::wire::typed::needs::Own;
     fn run(
-        req: GroupsReadReq,
+        _req: GroupsReadReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<GroupsRead, GroupsReadErr>> + Send + 'static {
         let (cx, own) = cx.split();
@@ -308,7 +305,7 @@ impl crate::wire::typed::Handle for GroupsReadCmd {
             // 待补读不懂 ⇒ 这一问不补（不覆盖那一份），照常合。
             let owed = owed::load_at(&own).unwrap_or_default();
             let (read, settled) = read_with(
-                &req.machines,
+                &crate::dial::remote_ask::REACH.asked(),
                 local,
                 &cx.tz,
                 cx.until,

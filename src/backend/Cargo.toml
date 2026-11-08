@@ -286,8 +286,6 @@ comms-outward = { path = "../comms/outward", features = ["test-support"] }
 # 源码扫描型守卫的「只留生产段」剥法，与 monitor 共用同一份（守卫全在 cfg(test)，
 # 故是 dev-dependency —— 不进发布二进制）。
 guard-core = { path = "../common/guard-core" }
-# `acct-core` 的跨生产者对拍夹具只在测试构建里（`accounts_query_tests.rs` 用）：同一个依赖，测试构建多开 `fixtures`。
-acct-core = { path = "../common/acct-core", features = ["fixtures"] }
 # 判据里异源算 sha256（夹具的摘要 · 传输与写盘的整份摘要对拍）。**只在测试期链接**；版本就是 lock 里 russh 那棵树
 # 早已解析的 `sha2 0.11`（不新增包）。
 sha2.workspace = true

@@ -143,7 +143,7 @@ class ChatsViewTest {
     ) = chatsView(parts.toList(), current, parts.map { HostName(it.hostId, it.machine) }, filters, query, face, open)
 
     /** 核心交的首屏那一句：各台都报完了的那一形。 */
-    private val allListed = FleetLines(copyText("beEmpty.line.none"), copyText("beEmpty.hint.none"), "核心·计数")
+    private val allListed = FleetLines(copyText("beEmpty.line.none"), copyText("beEmpty.hint.none"), "核心·计数", allListed = true)
 
     @Test
     fun `装一次会好的那一颗照成品带上（断着 · 通着旧了），别的修法不挑；正在装或更新照成品那一句带上，结局在条上没画时单独一行`() {
@@ -330,7 +330,7 @@ class ChatsViewTest {
         assertEquals(Empty.NO_SESSIONS, view(none).empty)
         assertEquals(allListed, view(none).fleet)
         // 各台没报完：核心那一句不是「无会话」，屏上照它写。
-        val waiting = FleetLines(copyText("beEmpty.line.waiting"), "gpu 连接中", "核心·计数")
+        val waiting = FleetLines(copyText("beEmpty.line.waiting"), "gpu 连接中", "核心·计数", allListed = false)
         assertEquals(waiting, view(none, face = waiting).fleet)
         val unknown = view(none, face = null)
         assertTrue("核心还没交 ⇒ 骨架", unknown.skeleton)

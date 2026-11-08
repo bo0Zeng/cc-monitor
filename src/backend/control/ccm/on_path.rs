@@ -1,20 +1,8 @@
-//! 终端里敲 `ccm` 走到的是不是这台的后端落点那一份。帧 `ccm-probe` 的 `onPath` 与待办「终端里的 ccm 是旧的一份」只经这里判。
+//! 帧 `ccm-probe` 的 `onPath` 那一格：终端里敲 `ccm` 走到哪（判法只住 `platform::shell::reach`）＋ 给人读的那一句。
 
+use crate::platform::shell::{reach, Reach};
 use copy_core::copy_text;
 use std::path::{Path, PathBuf};
-
-/// 终端里敲 `ccm` 走到哪。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Reach {
-    /// 终端的 `PATH` 问不出 —— 判不了，不说成「没有」。
-    Unknown,
-    /// `PATH` 上没有 `ccm`。
-    Absent,
-    /// 走到的就是落点那一份（比解过链接的文件）。
-    Ours,
-    /// 走到别的文件。
-    Other(PathBuf),
-}
 
 /// `ccm-probe` 那一格的判词。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
@@ -35,29 +23,6 @@ pub(crate) enum OnPathVerdict {
 pub(crate) struct OnPath {
     pub(crate) verdict: OnPathVerdict,
     pub(crate) said: String,
-}
-
-/// `PATH` 上敲 `ccm` 会起来的那个文件（找法只住 `platform::shell::find_session_command`）与落点那一份比：解过链接是同一个文件 ⇒ 是它。
-pub fn reach(
-    path_env: Option<&str>,
-    landing: &Path,
-    windows: bool,
-    is_file: &dyn Fn(&Path) -> bool,
-) -> Reach {
-    use crate::platform::fs::Ro;
-    use crate::platform::shell::SessionCommand;
-    match crate::platform::shell::find_session_command("ccm", path_env, windows, is_file) {
-        SessionCommand::Unknown => Reach::Unknown,
-        SessionCommand::Absent => Reach::Absent,
-        SessionCommand::Found { file, .. } => {
-            let canon = |p: &Path| Ro::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
-            if canon(&file) == canon(landing) {
-                Reach::Ours
-            } else {
-                Reach::Other(file)
-            }
-        }
-    }
 }
 
 /// 判词 ＋ 那一句。`shown` = 落点那一份在界面上的写法（[`landing_shown`]）。

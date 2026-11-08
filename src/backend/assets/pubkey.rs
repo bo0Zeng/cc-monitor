@@ -351,7 +351,6 @@ impl Reach for Wire {
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct PubkeyPushReq {
     /// 那台的配置（设置页表单里那台，可能还没保存）。
-    #[serde(deserialize_with = "ssh_dial::machine::loose_field")]
     pub(crate) machine: crate::dial::Host,
     /// 本机那份 `.pub` 的路径；缺 / 空 ⇒ 私钥同名 `.pub`（两样都没有 ⇒ `refused`，界面让人挑文件）。
     #[serde(default)]

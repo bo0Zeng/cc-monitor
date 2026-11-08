@@ -150,6 +150,49 @@ pub fn facts(
         .map_err(|e| format!("open failed: {e}"))
 }
 
+/// 会话事实里照这台活会话表配的那两格（`facts_in` 与 [`live_line`] 共用这一处）：pidfile 此刻说在等 ⇒ 配上记录里没结果的那一步判种类
+/// （`needs`，还没配待答请求）；说一轮停了、后台命令还在跑 ⇒ 后台那一句（`background`）。都不累加，每次现查。
+pub fn dress_live(
+    facts: &mut super::super::recognize::facts::SessionFacts,
+    live: &crate::history::live_table::LiveTable,
+    sid: &str,
+    path: &Path,
+    now_ms: u64,
+) {
+    use super::super::recognize::facts;
+    facts.needs = facts::needs_of(
+        crate::agents::record_kind_of(path).unwrap_or_default(),
+        &facts.pending,
+        live.wait_of(sid).as_ref(),
+    );
+    facts.background = live
+        .background_since(sid)
+        .map(|born| facts::background_of(&facts.bg_tasks, born, now_ms));
+}
+
+/// **一条活会话此刻的状态一句**（定格的字 · 会走的那一截 · 悬停句；句子只由 [`super::super::recognize::facts::line_of`] 写）：
+/// `activity` ＝ 造脸那一处判好的那一态（不活 ⇒ `None` ⇒ 没有这一句，不读记录）；记录照 `history-facts` 读的同一份扫描图（[`facts`]，过同一道围栏）；
+/// 需手动的种类与后台那一句照调用方给的活会话表配（[`dress_live`]）。记录读不了 ⇒ `None`。读者：watcher 造脸那一处。
+pub(crate) fn live_line(
+    agent_home: &Path,
+    sid: &str,
+    jsonl_path: &str,
+    activity: Option<crate::agents::SessionActivity>,
+    live: &crate::history::live_table::LiveTable,
+) -> Option<crate::wire::StateLine> {
+    let activity = activity?;
+    let limits = super::super::recognize::facts::ContextLimits::default();
+    let mut f = facts(agent_home, jsonl_path, &limits, None).ok()?;
+    dress_live(
+        &mut f,
+        live,
+        sid,
+        Path::new(jsonl_path),
+        crate::common::time::now_ms(),
+    );
+    super::super::recognize::facts::line_of(Some(activity), &f)
+}
+
 /// 续取用（同一道围栏）：从 `from` 起问的那一张扫描图（同 [`cold_scan`]：留着且没变 ⇒ 那一张；变长了 ⇒ 接着扫追加的那一截；
 /// 不在了 ⇒ 照骨架起步或整份重扫）。`from` 越过文件尾 ⇒ 报错（截断 / 重写过，调用方从 0 重要）。
 pub(crate) fn scan_from(

@@ -483,8 +483,6 @@ export class MachineCard {
     body.appendChild(
       buildConfigPage({
         machine: () => this.displayName(),
-        // 远端恒 POSIX：只承诺远端 Linux。
-        platform: "posix",
         origin,
       }),
     );

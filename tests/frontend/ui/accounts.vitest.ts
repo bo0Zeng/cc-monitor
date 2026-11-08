@@ -44,7 +44,7 @@ function acct(p: Partial<Account>): Account {
     authKind: "subscription",
     authReady: true,
     selectable: true,
-    badge: { text: copyText("accounts.badge.signedIn"), warn: false, title: "" },
+    badge: { text: copyText("accounts.badge.signedIn"), warn: false },
     ...p,
   };
 }
@@ -110,7 +110,7 @@ describe("deriveUi 降级矩阵（DESIGN §7）", () => {
 
 /**
  * 「这个号能不能选 · 默认号是谁」跨三处的金样（`tests/__fixtures__/account-default.golden.json`）：
- * 后端清单成品逐号写 `selectable`、`meta` 写 `effectiveDefault`（`accounts_query_tests` 钉）；命令行不带号落的是同一个（`plan_tests` 钉）；
+ * 后端清单成品逐号写 `selectable`、`meta` 写 `effectiveDefault`（`library_tests` 钉）；命令行不带号落的是同一个（`plan_tests` 钉）；
  * 界面只照抄那两格 —— 这里按金样的期望造成品，界面读出的能选的号与默认号逐格相等（不另判：`isDefault` 与 `selectable` 故意反着也照成品）。
  */
 describe("默认号 · 能选的号照那台写好的格（跨三处金样）", () => {

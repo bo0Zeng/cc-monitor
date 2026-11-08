@@ -23,7 +23,7 @@
         reason = "测试段放开禁用名单与吞结果那两条：夹具自己定期限、读写盘、起进程、收尾时丢结果；用不用得到随判据增减，写成 `expect` 会在用不到时报 ⇒ 整包唯一许写 `allow` 的一行"
     )
 )]
-use backend_accounts as accounts; // 账号域：上游选择 · 账号库 · 登录 · 额度与轮换 · oauth。**不是中转**，不住 relay/（独立的包 `backend-accounts`：只引历史清单 · agents · 宿主口 · 中转宿主 · 帧面零件 · 纯工具 · 平台七层）
+use backend_accounts as accounts; // 账号域：上游选择 · 账号库 · 登录 · 额度与轮换 · oauth。**不是中转**，不住 relay/（独立的包 `backend-accounts`：只引历史清单 · agents · 中转宿主 · 帧面零件 · 纯工具 · 平台六层）
 #[cfg(test)]
 #[path = "../../tests/backend/agent_boundary_guard.rs"]
 mod agent_boundary_guard; // S1：通用层不许知道任何 agent 的名字与文件格式（整体 #[cfg(test)]）
@@ -42,7 +42,7 @@ use test_meters::alloc_probe; // 线程级内存量具（`VmHWM` 是进程级的
 #[cfg(test)]
 #[path = "../../tests/backend/allocator_guard.rs"]
 mod allocator_guard; // 远端 musl 版的全局分配器是 mimalloc，本机 glibc 版与 Windows 版不换（整体 #[cfg(test)]）
-use backend_assets as assets; // 后端代管的用户资产（别名 · MCP · skill）：D 组的计算与判定，写经本进程的文件管理面（独立的包 `backend-assets`：只引账号域 · agents · 宿主口 · 拨号 · 历史清单 · 帧面零件 · 纯工具 · 平台八层）
+use backend_assets as assets; // 后端代管的用户资产（别名 · MCP · skill）：D 组的计算与判定，写经本进程的文件管理面（独立的包 `backend-assets`：只引账号域 · agents · 拨号 · 历史清单 · 帧面零件 · 纯工具 · 平台七层）
 #[cfg(test)]
 #[path = "../../tests/backend/build_features_tests.rs"]
 mod build_features; // 判据构建与发布构建的 serde_json 特性集相同（`cargo tree --frozen` 现取）
@@ -56,7 +56,7 @@ mod cap_over_guard; // 读上限的 `over` 与调用处对得上（硬报错不�
 #[path = "../../tests/backend/cross/assets.rs"]
 mod cross_assets; // 资产域判据里引到上层的那几条（那一层是独立的包、够不到上层）
 use backend_common as common; // U2：两边都要、又不含平台原语的纯工具（§0.5-6 打掉了「三分够用」那个判断；独立的包 `backend-common`）
-use backend_host::ccm_line; // ccm 这一行的词与解析（旗标 · 解析 · 自己叫什么 · 配置的记号）：起会话 · 账号域 · 别名那一族都往下引它（住宿主口那个包 `backend-host`）
+use backend_wire::ccm_line; // ccm 这一行的词与解析（旗标 · 解析 · 自己叫什么 · 配置的记号）：起会话 · 账号域 · 别名那一族都往下引它（住帧面零件那个包 `backend-wire`）
 #[cfg(test)]
 #[path = "../../tests/backend/common/cross_tests.rs"]
 mod common_cross_tests; // 纯工具那一层判据里引到上层的那几条（那一层是独立的包、够不到上层）
@@ -89,7 +89,7 @@ mod cross_footprint; // 足迹判据里引到上层的那几条（那一层是�
 use backend_history as history; // 历史清单那一族：项目 / 会话清单 · 注解 · 历史页那一列 · 组 · 会话输入队 · 判活那张表（独立的包 `backend-history`：只引 agents · dial · host · 帧面零件 · 纯工具 · 平台六层）
 #[cfg(test)]
 use backend_history::lineage; // 会话血缘：谁起的谁（中转那一处认，只存 `~/.cc-monitor/lineage.json` 一份；住历史清单那个包 `backend-history`；生产段的读者都在账号域里，主 crate 只剩判据读它）
-use backend_host as host; // 宿主口：终端住在哪种宿主里（tmux · 托管），起 tmux 进程只在 `host/tmux.rs`（独立的包 `backend-host`：只引 agents · 帧面零件 · 纯工具 · 平台四层）
+use backend_host as host; // 宿主口：终端住在哪种宿主里（tmux · 托管），起 tmux 进程只在 `host/tmux.rs`（独立的包 `backend-host`：只引帧面零件 · 纯工具 · 平台三层）
 #[cfg(test)]
 use test_meters::golden; // 金样判据只比不写；现打的落 `.build/golden/`，由 `tests/scripts/bless-golden.sh` 拷回（住 dev 侧的量具包）
 #[cfg(test)]
@@ -141,7 +141,7 @@ pub use wire::b64_encode; // bench `s7_history_read` 读它（crate 外读者）
 #[cfg(test)]
 #[path = "../../tests/backend/test_home_tests.rs"]
 mod test_home_tests; // `src/common/test-home` 自己的行为（换家 · 摘会话变量 · 临时目录照旧）：子进程那几条要真测试二进制
-use backend_wire as wire; // 帧面的协议零件：帧 · typed 命令 · 登记形状 · 复制详情 · 主题表 · 监听判定 · 收场闸（独立的包 `backend-wire`：只引 agents · relay · 纯工具 · 平台四层）
+use backend_wire as wire; // 帧面的协议零件：帧 · typed 命令 · 登记形状 · 复制详情 · 主题表 · 监听判定 · 收场闸 · ccm 这一行的词（独立的包 `backend-wire`：只引 agents · 纯工具 · 平台三层）
 #[cfg(test)]
 #[path = "../../tests/backend/cross/wire.rs"]
 mod cross_wire; // 帧面零件判据里引到上层的那几条（那一层是独立的包、够不到上层）

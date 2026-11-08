@@ -621,7 +621,7 @@ fn expire_b(home: &Home) {
 fn fact_b(hop: &Hop, at: u64) -> Option<(crate::accounts::quota::facts::FactWhy, Option<u64>)> {
     hop.fact_one(
         "claude-code",
-        &hop.library(),
+        &hop.book(),
         "b",
         &|_| None,
         at,
@@ -942,7 +942,7 @@ fn weekly_and_others_are_facts_of_the_reading_and_the_sessions() {
     let t = now();
     idle_ledger(&home, t, true);
     let hop = home.hop();
-    let lib = hop.library();
+    let lib = hop.book();
     let fact = |acct: &str| {
         hop.fact_one(
             "claude-code",
@@ -1027,7 +1027,7 @@ fn the_past_of_an_account_comes_from_its_ledger_windows() {
     .into();
     std::fs::write(&path, serde_json::to_vec(&book).expect("json")).expect("ledger");
     let hop = home.hop();
-    let lib = hop.library();
+    let lib = hop.book();
     let mut all: Vec<Acct> = ["a", "b"]
         .iter()
         .map(|id| {

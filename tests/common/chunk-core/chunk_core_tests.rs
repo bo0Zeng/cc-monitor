@@ -244,6 +244,37 @@ fn a_download_reads_block_by_block_until_the_end_and_hands_each_block_over() {
 }
 
 #[test]
+fn a_read_into_memory_stops_at_the_block_that_goes_past_the_cap() {
+    let data = body(CHUNK * 3);
+    let b = Box {
+        file: data.clone(),
+        ..Default::default()
+    };
+    let cap = CHUNK as u64 + 1;
+    let e = run(pull_capped(
+        &b,
+        WirePath::from("/f"),
+        cap,
+        &mut Seen::default(),
+        String::new,
+        |t| format!("{} > {}", t.read, t.cap),
+    ))
+    .unwrap_err();
+    assert_eq!(e, format!("{} > {cap}", CHUNK * 2));
+    assert_eq!(*b.asks.borrow(), 2, "第二块读回过了上限就停，不读第三块");
+    let got = run(pull_capped(
+        &b,
+        WirePath::from("/f"),
+        data.len() as u64,
+        &mut Seen::default(),
+        String::new,
+        |t| format!("{} > {}", t.read, t.cap),
+    ))
+    .unwrap();
+    assert_eq!(got, data, "上限碰不到 ⇒ 整份交回");
+}
+
+#[test]
 fn hex_is_lowercase_and_byte_exact() {
     let b: Vec<u8> = (0u8..=255).collect();
     let want: String = b.iter().map(|x| format!("{x:02x}")).collect();

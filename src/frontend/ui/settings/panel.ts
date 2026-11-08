@@ -56,7 +56,7 @@ import {
   setBehavior,
   type BehaviorConfig,
 } from "../behavior";
-import { buildUnknownOsAliasBlock, localShell, rereadAliases } from "./machine-aliases"; // 机器页 ②「别名」（两个平台一份，含 PowerShell 的终端集成）
+import { rereadAliases } from "./machine-aliases"; // 机器页 ②「别名」（两个平台一份，含 PowerShell 的终端集成）
 import { buildConfigPage } from "./config-page";
 import { machineLaunchRows } from "./machine-launch-rows"; // 每台「这台上的 cc-monitor」里怎么起会话那两格
 import { dispatcher } from "../keybindings/registry";
@@ -1013,24 +1013,19 @@ export class SettingsPanel {
         tab: "rot",
         ...this.loadableBlock(copyText("machinePage.tab.rot"), () => new RotationSection()),
       },
-      // 本机那一格「别名」（Windows 上是 PowerShell 那一侧的别名块）；远端那一格在 `MachineCard` 的「组件」栏里。
+      // 本机那一格「别名」（本机后端说 PowerShell 时是那一侧的别名块）；远端那一格在 `MachineCard` 的「组件」栏里。
       // 构造零 I/O：它是个 `<details>`，第一次展开才读盘。
       {
         appliesTo: "local",
         tab: "term",
         el: this.safeBlock(
           copyText("newSession.label.alias"),
-          () => {
-            // 认不出本机系统 ⇒ 不猜方言：明说、安装入口置灰。
-            const shell = localShell();
-            return shell === null
-              ? buildUnknownOsAliasBlock()
-              : buildConfigPage({
-                  platform: shell,
-                  origin: () => LOCAL,
-                  machine: () => machineName(LOCAL),
-                });
-          },
+          // 说哪种 shell 由本机后端在读回里答（壳不猜）。
+          () =>
+            buildConfigPage({
+              origin: () => LOCAL,
+              machine: () => machineName(LOCAL),
+            }),
         ),
       },
     ];

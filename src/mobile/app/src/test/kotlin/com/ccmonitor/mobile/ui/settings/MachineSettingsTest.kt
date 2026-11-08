@@ -34,16 +34,24 @@ class MachineSettingsTest {
     private fun acct(
         name: String,
         selectable: Boolean = true,
+        slots: List<Map<String, Any?>> = emptyList(),
     ) = Wires.accountRow(
         "name" to name,
         "label" to name,
         "selectable" to selectable,
+        "slots" to slots,
         "plate" to name.take(2),
         "kindLine" to "",
         "unselectable" to if (selectable) null else "需登录",
         "login" to !selectable,
         "badge" to mapOf("text" to if (selectable) "已登录" else "需登录", "warn" to !selectable, "title" to ""),
     )
+
+    /** 号行里那台写好的一格额度。 */
+    private fun cell(
+        text: String,
+        tone: String,
+    ) = mapOf("slot" to "5h", "text" to text, "tone" to tone)
 
     private fun prefs(
         child: String = "hide",
@@ -66,7 +74,8 @@ class MachineSettingsTest {
         FakeCoreLink().also { l ->
             l.answer = { cmd, args ->
                 when (cmd) {
-                    "accounts-list" -> Reply.Ok(mapOf("accounts" to listOf(acct("work"), acct("lab", selectable = false)), "meta" to Wires.accountsMeta("effectiveDefault" to "work"), "notice" to null))
+                    "accounts-list" ->
+                        Reply.Ok(mapOf("accounts" to listOf(acct("work", slots = listOf(cell("后端·5h 63% ↻13:00", "warn"), cell("后端·7d", "plain"))), acct("lab", selectable = false)), "meta" to Wires.accountsMeta("effectiveDefault" to "work"), "notice" to null))
                     "quota-read" -> quotaReply()
                     "prefs-read" -> Reply.Ok(prefs())
                     "prefs-set" -> set(args)
@@ -92,28 +101,29 @@ class MachineSettingsTest {
             val s = m.state.value
             assertEquals(listOf("work", "lab"), s.accounts.map { it.name })
             assertEquals("work", s.defaultAccount)
-            assertEquals("5h 63%" to Tone.PLAIN, s.usage("personal")?.let { it.text to it.tone })
-            assertEquals(QuotaGolden.reply("没出过数").let { r -> (r["unseen"] as List<*>).map { ((it as Map<*, *>)["usage"] as Map<*, *>)["text"] } }, listOf("team", "api").map { s.usage(it)?.text })
+            assertEquals("号旁那一格是号行里的第一格", "后端·5h 63% ↻13:00" to Tone.WARN, s.usage("work")?.let { it.text to it.tone })
+            assertNull("号行里没有格 ⇒ 不出", s.usage("lab"))
+            assertNull("不在号列表里的号 ⇒ 不出（额度账里有也不另拼）", s.usage("personal"))
             assertEquals(Tab.HIDE to Tab.SHOW, s.shown(TabKind.CHILD) to s.shown(TabKind.BG))
         }
 
     @Test
-    fun `流上 quota 变了只重读用量 · accounts 变了只重读账号；换一条流整份重读`() =
+    fun `流上 quota 变了重读用量与账号（号行里有额度格）· accounts 变了只重读账号；换一条流整份重读`() =
         runTest {
             val l = link()
             val (_, changes) = open(l)
             changes.emit(Changed.Quota())
             runCurrent()
-            assertEquals(listOf(1, 2, 1), listOf("accounts-list", "quota-read", "prefs-read").map { l.calls(it).size })
+            assertEquals(listOf(2, 2, 1), listOf("accounts-list", "quota-read", "prefs-read").map { l.calls(it).size })
             changes.emit(Changed.Accounts)
             runCurrent()
-            assertEquals(listOf(2, 2, 1), listOf("accounts-list", "quota-read", "prefs-read").map { l.calls(it).size })
+            assertEquals(listOf(3, 2, 1), listOf("accounts-list", "quota-read", "prefs-read").map { l.calls(it).size })
             l.state.value = linkDown("x")
             runCurrent()
             l.state.value = LinkLine.Up(1L, machineOf(MachineStateKind.UP))
             l.epoch.value = 1
             runCurrent()
-            assertEquals(listOf(3, 3, 2), listOf("accounts-list", "quota-read", "prefs-read").map { l.calls(it).size })
+            assertEquals(listOf(4, 3, 2), listOf("accounts-list", "quota-read", "prefs-read").map { l.calls(it).size })
         }
 
     @Test

@@ -7,7 +7,6 @@
           {
             "account": "personal",
             "agent": "claude",
-            "fiveHour": "5h 63%",
             "kind": "sub",
             "login": "ok",
             "rows": [
@@ -123,12 +122,7 @@
           }
         ],
         "detail": null,
-        "fiveHour": null,
         "names": {
-          "accounts": {
-            "0": "~/.claude",
-            "_": "未指定账号"
-          },
           "slots": {
             "5h": "5h",
             "7d": "7d"
@@ -155,7 +149,6 @@
           {
             "account": "personal",
             "agent": "claude",
-            "fiveHour": "5h 63%",
             "kind": "sub",
             "login": "ok",
             "rows": [
@@ -323,12 +316,7 @@
           }
         ],
         "detail": null,
-        "fiveHour": null,
         "names": {
-          "accounts": {
-            "0": "~/.claude",
-            "_": "未指定账号"
-          },
           "slots": {
             "5h": "5h",
             "7d": "7d"
@@ -355,7 +343,6 @@
           {
             "account": "personal",
             "agent": "claude",
-            "fiveHour": "5h 86%",
             "kind": "sub",
             "login": "ok",
             "rows": [
@@ -471,12 +458,7 @@
           }
         ],
         "detail": null,
-        "fiveHour": null,
         "names": {
-          "accounts": {
-            "0": "~/.claude",
-            "_": "未指定账号"
-          },
           "slots": {
             "5h": "5h",
             "7d": "7d"
@@ -503,7 +485,6 @@
           {
             "account": "work",
             "agent": "claude",
-            "fiveHour": "5h ✕",
             "kind": "sub",
             "login": "ok",
             "rows": [
@@ -621,12 +602,7 @@
           }
         ],
         "detail": null,
-        "fiveHour": null,
         "names": {
-          "accounts": {
-            "0": "~/.claude",
-            "_": "未指定账号"
-          },
           "slots": {
             "5h": "5h",
             "7d": "7d"
@@ -653,7 +629,6 @@
           {
             "account": "work",
             "agent": "claude",
-            "fiveHour": "5h 58% · 被拒",
             "kind": "sub",
             "login": "ok",
             "rows": [
@@ -756,9 +731,9 @@
             },
             "warm": {
               "act": "wait",
-              "at": 1791198060,
-              "atText": "19:01",
-              "text": "被拒（5h）↻19:00"
+              "at": 1791189720,
+              "atText": "16:42",
+              "text": "被拒（5h）↻16:41"
             }
           }
         ],
@@ -770,12 +745,7 @@
           }
         ],
         "detail": null,
-        "fiveHour": null,
         "names": {
-          "accounts": {
-            "0": "~/.claude",
-            "_": "未指定账号"
-          },
           "slots": {
             "5h": "5h",
             "7d": "7d"
@@ -802,7 +772,6 @@
           {
             "account": "work",
             "agent": "claude",
-            "fiveHour": "5h 超额",
             "kind": "sub",
             "login": "ok",
             "rows": [
@@ -922,12 +891,7 @@
           }
         ],
         "detail": null,
-        "fiveHour": null,
         "names": {
-          "accounts": {
-            "0": "~/.claude",
-            "_": "未指定账号"
-          },
           "slots": {
             "5h": "5h",
             "7d": "7d"
@@ -954,7 +918,6 @@
           {
             "account": "team",
             "agent": "claude",
-            "fiveHour": "5h —",
             "kind": "sub",
             "login": "ok",
             "rows": [
@@ -1063,12 +1026,7 @@
           }
         ],
         "detail": null,
-        "fiveHour": null,
         "names": {
-          "accounts": {
-            "0": "~/.claude",
-            "_": "未指定账号"
-          },
           "slots": {
             "5h": "5h",
             "7d": "7d"
@@ -1095,7 +1053,6 @@
           {
             "account": "work",
             "agent": "claude",
-            "fiveHour": "5h —",
             "kind": "sub",
             "login": "ok",
             "rows": [
@@ -1180,8 +1137,10 @@
               "window": "5h"
             },
             "warm": {
-              "act": "send",
-              "text": "无 5h 窗口"
+              "act": "wait",
+              "at": 1791192360,
+              "atText": "17:26",
+              "text": "被拒（5h）↻17:25"
             }
           }
         ],
@@ -1193,12 +1152,7 @@
           }
         ],
         "detail": null,
-        "fiveHour": null,
         "names": {
-          "accounts": {
-            "0": "~/.claude",
-            "_": "未指定账号"
-          },
           "slots": {
             "5h": "5h",
             "7d": "7d"
@@ -1225,7 +1179,6 @@
           {
             "account": "old",
             "agent": "claude",
-            "fiveHour": "5h 30%",
             "kind": "sub",
             "login": "needsLogin",
             "rows": [
@@ -1335,12 +1288,7 @@
           }
         ],
         "detail": null,
-        "fiveHour": null,
         "names": {
-          "accounts": {
-            "0": "~/.claude",
-            "_": "未指定账号"
-          },
           "slots": {
             "5h": "5h",
             "7d": "7d"
@@ -1367,7 +1315,6 @@
           {
             "account": "_",
             "agent": "claude",
-            "fiveHour": "5h 31%",
             "kind": "sub",
             "login": "ok",
             "rows": [
@@ -1477,12 +1424,7 @@
         ],
         "candidates": [],
         "detail": null,
-        "fiveHour": null,
         "names": {
-          "accounts": {
-            "0": "~/.claude",
-            "_": "未指定账号"
-          },
           "slots": {
             "5h": "5h",
             "7d": "7d"
@@ -1509,7 +1451,6 @@
           {
             "account": "api",
             "agent": "claude",
-            "fiveHour": null,
             "kind": "api",
             "login": "ok",
             "rows": [
@@ -1557,14 +1498,15 @@
               "value": "按量"
             },
             "warm": {
-              "act": "send",
-              "text": "无 5h 窗口"
+              "act": "wait",
+              "at": 1791193200,
+              "atText": "17:40",
+              "text": "无限额"
             }
           },
           {
             "account": "api2",
             "agent": "claude",
-            "fiveHour": null,
             "kind": "api",
             "login": "ok",
             "rows": [
@@ -1617,14 +1559,15 @@
               "value": "被拒"
             },
             "warm": {
-              "act": "send",
-              "text": "无 5h 窗口"
+              "act": "wait",
+              "at": 1791190380,
+              "atText": "16:53",
+              "text": "被拒"
             }
           },
           {
             "account": "api4",
             "agent": "claude",
-            "fiveHour": null,
             "kind": "api",
             "login": "needsKey",
             "rows": [
@@ -1701,12 +1644,7 @@
           }
         ],
         "detail": null,
-        "fiveHour": null,
         "names": {
-          "accounts": {
-            "0": "~/.claude",
-            "_": "未指定账号"
-          },
           "slots": {
             "5h": "5h",
             "7d": "7d"
@@ -1733,7 +1671,6 @@
           {
             "account": "personal",
             "agent": "claude",
-            "fiveHour": "5h 4%",
             "kind": "sub",
             "login": "ok",
             "rows": [
@@ -1859,12 +1796,7 @@
           }
         ],
         "detail": null,
-        "fiveHour": null,
         "names": {
-          "accounts": {
-            "0": "~/.claude",
-            "_": "未指定账号"
-          },
           "slots": {
             "5h": "5h",
             "7d": "7d"
@@ -1879,7 +1811,6 @@
           {
             "account": "team",
             "agent": "claude",
-            "fiveHour": null,
             "kind": "sub",
             "login": "needsLogin",
             "rows": [
@@ -1939,7 +1870,6 @@
           {
             "account": "api",
             "agent": "claude",
-            "fiveHour": null,
             "kind": "api",
             "login": "ok",
             "rows": [
@@ -1974,8 +1904,10 @@
               "value": "按量"
             },
             "warm": {
-              "act": "send",
-              "text": "无采样 · 发一句后显示"
+              "act": "wait",
+              "at": 1791193200,
+              "atText": "17:40",
+              "text": "无限额"
             }
           }
         ],
@@ -1994,7 +1926,6 @@
           {
             "account": "team",
             "agent": "claude",
-            "fiveHour": "5h —",
             "kind": "sub",
             "login": "ok",
             "rows": [
@@ -2097,7 +2028,6 @@
           {
             "account": "cold",
             "agent": "claude",
-            "fiveHour": "5h —",
             "kind": "sub",
             "login": "ok",
             "rows": [
@@ -2206,12 +2136,7 @@
           }
         ],
         "detail": null,
-        "fiveHour": null,
         "names": {
-          "accounts": {
-            "0": "~/.claude",
-            "_": "未指定账号"
-          },
           "slots": {
             "5h": "5h",
             "7d": "7d"
@@ -2237,12 +2162,7 @@
         "accounts": [],
         "candidates": [],
         "detail": null,
-        "fiveHour": null,
         "names": {
-          "accounts": {
-            "0": "~/.claude",
-            "_": "未指定账号"
-          },
           "slots": {
             "5h": "5h",
             "7d": "7d"
@@ -2264,12 +2184,7 @@
         "accounts": [],
         "candidates": [],
         "detail": null,
-        "fiveHour": "5h 无法读取",
         "names": {
-          "accounts": {
-            "0": "~/.claude",
-            "_": "未指定账号"
-          },
           "slots": {
             "5h": "5h",
             "7d": "7d"
@@ -2286,5 +2201,5 @@
       "tz": "Asia/Shanghai"
     }
   ],
-  "说明": "quota-read 的线上形状（后端真出口走完那一份，由 quota_rows_tests::the_wire_golden_is_what_the_exit_writes 写）：每号 rows 是 [[{text, tone}]]、fiveHour、warm、names。三个语言的读者都照它比，不各自手抄。"
+  "说明": "quota-read 的线上形状（后端真出口走完那一份，由 quota_rows_tests::the_wire_golden_is_what_the_exit_writes 写）：每号 rows 是 [[{text, tone}]]、warm、names。三个语言的读者都照它比，不各自手抄。"
 }

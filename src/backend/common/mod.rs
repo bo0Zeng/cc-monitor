@@ -96,7 +96,7 @@ pub mod seen_terminal;
 /// 「这台机器上现在有哪些 tmux 会话」那一张快照。① control（`gate::list_sessions` 判活、`ccm` 铸名避让）与 observe（`watcher` 焐热）都用 ——
 /// 住 `control/` 的话 watcher 要走一条 `observe → control` 的回边，住 `observe/` 的话 Gate 引用不到 · ② 起的是跨平台的 `tmux` · ③ 只认「会话名 + `@ccm_sid`」。
 pub mod session_snapshot;
-/// 暂存区上传件的键长与后缀。① 原生那一块（传输台造键、往暂存区写）与文件管理那一块（提交、孤儿扫）都认 · ② 只是常量 · ③ 只认「一个键 ＋ 一个后缀」。
+/// 暂存区：位置与建法、件的键长与后缀，加落进用户目录的那一下 `land`（上传提交与下载上位都只经它）。① 原生那一块（传输台）与文件管理那一块（提交、孤儿扫）都认 · ② 落进用户目录只此一处 · ③ 只认「暂存件 ＋ 目标路径」。
 pub mod staging;
 /// 公历换算与 ISO8601 时刻。① control（额度时刻排字 · 账号库操作戳）、observe（搜索与历史清单的时刻）、agents（子运行时刻 · 额度窗口重置）都用 ·
 /// ② 纯算术 · ③ 只认日历。

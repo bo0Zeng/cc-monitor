@@ -286,21 +286,6 @@ fn default_config() -> Value {
     serde_json::json!({})
 }
 
-/// **已配置且启用**的远端 origin（本机后端机器表里算好的名字，`machine_table`）：通用的「列远端配置标签」（历史清单 · 搜索 ·
-/// cc-bus 两块 · MCP 推 / 拉面板都用它）。MCP 读写在那台后端。
-#[tauri::command]
-pub async fn list_remote_mcp_origins() -> Result<Vec<String>, cmd_wire::failed::Failed> {
-    let r: Result<Vec<String>, Said> = async move {
-        Ok(crate::machine_table::rows_now()
-            .into_iter()
-            .filter(|r| r.connect)
-            .map(|r| r.name)
-            .collect())
-    }
-    .await;
-    r.map_err(|s| s.named("list_remote_mcp_origins"))
-}
-
 // ═══════════════════════════════════════════════════════════════════════
 // 数据目录与配置文件路径：Claude 数据目录 · monitor 数据目录 · 配置文件路径（头注见本文件顶上那一节）。
 // ═══════════════════════════════════════════════════════════════════════

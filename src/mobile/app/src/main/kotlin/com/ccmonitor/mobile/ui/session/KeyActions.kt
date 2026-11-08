@@ -20,7 +20,7 @@ sealed interface KeyActionFail {
 
 /**
  * App 动作束：键条上绑了 App 动作的触发经 [invoke] 触达终端屏已有的回调。
- * 要那台后端的那几个（终端名单 · 抓屏 · 推公钥）在 [noBackend] 时不做，回 [KeyActionFail.Unavailable]（终端名单两种宿主都列，不看有没有 tmux）；
+ * 要那台后端的那几个（终端名单 · 抓屏）在 [noBackend] 时不做，回 [KeyActionFail.Unavailable]（终端名单两种宿主都列，不看有没有 tmux）；
  * [onGotoGroup] 回 false ＝ 那组已经不在。
  */
 class KeyActions(
@@ -30,7 +30,6 @@ class KeyActions(
     val onTmuxSessions: () -> Unit,
     val onPaste: () -> Unit,
     val onCapture: () -> Unit,
-    val onPushKey: () -> Unit,
     val onShowKeyboard: () -> Unit,
     val onEditKeys: () -> Unit,
     val onNextGroup: () -> Unit,
@@ -48,13 +47,12 @@ class KeyActions(
             AppAction.TMUX_SESSIONS -> onTmuxSessions()
             AppAction.SHOW_KEYBOARD -> onShowKeyboard()
             AppAction.CAPTURE -> onCapture()
-            AppAction.PUSH_KEY -> onPushKey()
         }
         return null
     }
 
     private companion object {
-        val NEEDS_BACKEND: Set<AppAction> = setOf(AppAction.TMUX_SESSIONS, AppAction.CAPTURE, AppAction.PUSH_KEY)
+        val NEEDS_BACKEND: Set<AppAction> = setOf(AppAction.TMUX_SESSIONS, AppAction.CAPTURE)
     }
 }
 

@@ -1,7 +1,7 @@
 /**
  * 主窗口的标签页栏 · 「需手动」· 会话头：一个会话读成什么、谁在等你、去哪答。
  *
- * - `session-face.ts`：状态点 · 状态句 · peek · 需手动（活动信号说不在等了 ⇒ 手上那份当场不认；说在等、种类没到 ⇒ 不猜）；
+ * - `session-face.ts`：状态点 · 状态句 · peek 都照那台的脸；需手动（脸说不在等了 ⇒ 手上那份当场不认）；
  * - `needs-book.ts`：「需手动」的账问后端（各台 `sessions-needs` 整份，本机 `sessions-needs-merge` 合一份 ＋ 总数），界面不排不数；
  * - 标签页栏：「需手动 N」只在 N ≥ 1 时出、点它开浮层（浮层本身见 `needs-panel.vitest.ts`）、`Ctrl+J` 跳等得最久的；机器离线条（`{machine} 离线 · N 会话状态不明`）＋［重新连接］；
  * - 窗口标题（消息流底部的答题块另见 `answer-block.vitest.ts`）；
@@ -25,8 +25,6 @@ import type { Tab } from "../../../src/frontend/ui/tab-model";
 import type { Needs } from "../../../src/frontend/ui/session-reads";
 import type { MachineState } from "../../../src/frontend/ui/generated/MachineState";
 import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
-import type { FactsLine } from "../../../src/frontend/ui/generated/FactsLine";
-import type { SessionActivity } from "../../../src/frontend/ui/generated/SessionActivity";
 import { goldenFace, liveFace } from "../../test-support/session-faces";
 import { abbrOf, dotOf, needsOf, nextNeedsStep, peekLine, stateLine, stateWord } from "../../../src/frontend/ui/session-face";
 import { NeedsBook } from "../../../src/frontend/ui/needs-book";
@@ -54,7 +52,6 @@ function tab(sid: string, over: Partial<Tab> = {}): Tab {
     label: null,
     projectDir: `/w/${sid}`,
     face: liveFace("working", true),
-    line: null,
     pinned: false,
     group: null,
     origin: LOCAL,
@@ -72,10 +69,8 @@ function tab(sid: string, over: Partial<Tab> = {}): Tab {
   } as unknown as Tab;
 }
 
-/** 会话事实那一句（写它时那一态是 `doing`）。 */
-const lineFor = (doing: SessionActivity): FactsLine => ({ for: doing, text: `${doing}·核心`, clock: null, peek: null });
-/** 在等人：脸 ＋ 同一刻的那一句。 */
-const waiting = { face: liveFace("needs_you"), line: lineFor("needs_you") };
+/** 在等人：那台的脸。 */
+const waiting = { face: liveFace("needs_you") };
 /** 那台在 `NOW` 答出、本机同一刻收到（两台钟一样快）；已等多久由那台算好。 */
 const approve = (sinceMs: number | null = NOW - 120_000): Needs => {
   const waitedMs = sinceMs === null ? null : NOW - sinceMs;
@@ -92,7 +87,7 @@ beforeEach(() => {
   noteMachine(LOCAL, { name: LOCAL_NAME, offlineSaid: "" });
 });
 
-describe("一个会话读成什么（session-face）：点 · 字照抄那台的脸，会话事实那一句与脸同一刻才用", () => {
+describe("一个会话读成什么（session-face）：点 · 状态一句 · 悬停句都照抄那台的脸", () => {
   it("★ 点 · 短名 ＝ 脸上那两格；一张都还没收到 ⇒ 没有点 · 没有名字 · 没有那一句（界面不替那台拼一张）", () => {
     for (const k of ["live-working-plain", "live-idle", "reconnectable", "ended", "gone"] as const) {
       const f = goldenFace(k);
@@ -102,26 +97,24 @@ describe("一个会话读成什么（session-face）：点 · 字照抄那台的
     expect([dotOf(u), stateWord(u), stateLine(u, NOW).text]).toEqual([null, null, ""]);
   });
 
-  it("★ 需手动：脸说在等、会话事实那一句也是在等那一刻 ⇒ 认事实里那一份；对不上（事实还没到 · 已经答完 · 进程不在）⇒ 不算", () => {
+  it("★ 需手动：脸上那颗点说在等 ⇒ 认会话事实里那一份；脸说不在等（已经答完 · 进程不在）⇒ 不算", () => {
     expect(needsOf(tab("a", { ...waiting, needs: approve() }))?.kind).toBe("approve");
-    expect(needsOf(tab("a", { face: liveFace("needs_you"), line: null, needs: approve() })), "事实还没到：不猜").toBeNull();
-    expect(needsOf(tab("a", { face: liveFace("working"), line: lineFor("needs_you"), needs: approve() })), "已经答完：不留一条需手动").toBeNull();
-    expect(needsOf(tab("a", { face: goldenFace("reconnectable"), line: lineFor("needs_you"), needs: approve() })), "Claude 已退出：陈旧的在等不算").toBeNull();
+    expect(needsOf(tab("a", { face: liveFace("working"), needs: approve() })), "已经答完：不留一条需手动").toBeNull();
+    expect(needsOf(tab("a", { face: goldenFace("reconnectable"), needs: approve() })), "Claude 已退出：陈旧的在等不算").toBeNull();
   });
 
-  it("★ 状态一句：会话事实那一句与脸同一刻 ⇒ 用它（会走的那一截按此刻填、钟在走）；不同刻 ⇒ 脸上那一句；在等 ⇒ 琥珀", () => {
-    const t = tab("a", { face: liveFace("working"), line: { for: "working", text: "L·核心", clock: { text: "L · {dur}", from: NOW - 65_000 }, peek: "pytest" } });
+  it("★ 状态一句只照脸：有会走的那一截 ⇒ 按此刻填（钟在走）；没有 ⇒ 脸上那一句；会话事实不参与；在等 ⇒ 琥珀", () => {
+    const t = tab("a", { face: { ...liveFace("working"), line: "运行中 · 调用 Bash", clock: { text: "L · {dur}", from: NOW - 65_000 }, peek: "pytest" } });
     expect(stateLine(t, NOW)).toEqual({ text: "L · 1m", needs: false });
     expect(stateLine(t, NOW + 60_000).text, "钟在走").toBe("L · 2m");
-    expect(stateLine(tab("b", { face: liveFace("working"), line: { for: "working", text: "L·核心", clock: null, peek: null } }), NOW).text).toBe("L·核心");
-    expect(stateLine(tab("c", { face: liveFace("idle"), line: lineFor("working") }), NOW).text, "两份不是同一刻").toBe(goldenFace("live-idle").line);
-    expect(stateLine(tab("d", { face: goldenFace("ended"), line: lineFor("idle") }), NOW).text).toBe(goldenFace("ended").line);
+    expect(stateLine(tab("b", { face: { ...liveFace("working"), line: "运行中 · 调用 Bash" } }), NOW).text).toBe("运行中 · 调用 Bash");
+    expect(stateLine(tab("d", { face: goldenFace("ended") }), NOW).text).toBe(goldenFace("ended").line);
     expect(stateLine(tab("e", waiting), NOW).needs).toBe(true);
   });
 
-  it("peek：会话事实写的那一句（同一刻才认）；拿不到 ⇒ 不出", () => {
-    expect(peekLine(tab("a", { face: liveFace("working"), line: { ...lineFor("working"), peek: "src/a.ts" } }))).toBe("src/a.ts");
-    expect(peekLine(tab("b", { face: liveFace("idle"), line: { ...lineFor("working"), peek: "src/a.ts" } }))).toBeNull();
+  it("peek：脸上那一句；没有 ⇒ 不出", () => {
+    expect(peekLine(tab("a", { face: { ...liveFace("working"), peek: "src/a.ts" } }))).toBe("src/a.ts");
+    expect(peekLine(tab("b", { face: liveFace("idle") }))).toBeNull();
     expect(peekLine(tab("c", { face: goldenFace("ended") }))).toBeNull();
   });
 
@@ -131,7 +124,7 @@ describe("一个会话读成什么（session-face）：点 · 字照抄那台的
     expect([nextNeedsStep(order, "c", null, 2), nextNeedsStep(order, null, 0, 2), nextNeedsStep(order, null, 1, 2)]).toEqual([{ plan: 0 }, { plan: 1 }, { sid: "e" }]);
   });
 
-  it("★ 问后端：只问本机后端一次 `sessions-needs-merge {machines}`（它自己问到各台），界面不逐台问、不当信差；没问到的那台照后端说的记下；数 ＝ 合好的 `total`；推送连着来合成一问", async () => {
+  it("★ 问后端：只问本机后端一次 `sessions-needs-merge {}`（它照自己的机器表问到各台），界面不交名单、不逐台问、不当信差；没问到的那台照后端说的记下；数 ＝ 合好的 `total`；推送连着来合成一问", async () => {
     vi.useFakeTimers();
     const asked: { origin: string; op: string; args: unknown }[] = [];
     const call = vi.fn(async (origin: string, op: string, args: unknown) => {
@@ -140,30 +133,17 @@ describe("一个会话读成什么（session-face）：点 · 字照抄那台的
     });
     typed.fake = call as never;
     const book = new NeedsBook();
-    await book.refreshAll(["<local>", "devbox", "gpu-01"]);
-    expect(asked, "只问本机后端那一条").toEqual([{ origin: "<local>", op: "sessions-needs-merge", args: { machines: ["<local>", "devbox", "gpu-01"] } }]);
+    await book.again();
+    expect(asked, "只问本机后端那一条，不带名单").toEqual([{ origin: "<local>", op: "sessions-needs-merge", args: {} }]);
     expect(book.total(), "照后端合好的总数").toBe(5);
     expect(book.offline()).toEqual([{ origin: "gpu-01", said: "gpu-01 后端未在运行" }]);
     asked.length = 0;
-    book.poke("devbox");
-    book.poke("<local>");
+    book.poke();
+    book.poke();
     await vi.advanceTimersByTimeAsync(400);
     expect(asked.map((x) => x.op), "连着来的两下合成一问").toEqual(["sessions-needs-merge"]);
     typed.fake = null;
     vi.useRealTimers();
-  });
-
-  it("机器表里删掉的那台不再问（`drop`）：再问时 machines 里没有它，别的照旧", async () => {
-    const asked: unknown[] = [];
-    typed.fake = vi.fn(async (_o: string, _op: string, args: unknown) => {
-      asked.push(args);
-      return { items: [], total: 0, unreadable: [], down: [] };
-    }) as never;
-    const book = new NeedsBook();
-    await book.refreshAll(["<local>", "box"]);
-    await book.drop("box");
-    expect(asked.at(-1)).toEqual({ machines: ["<local>"] });
-    typed.fake = null;
   });
 
   it("窄窗两个字母取项目目录名里的字母", () => {
@@ -208,7 +188,7 @@ async function bar(tabs: Tab[], ranked?: string[]) {
   view.needs = { book: needs.book, login: vi.fn() };
   needs.book.subscribe(() => view.planNeedsChanged());
   view.refresh();
-  await needs.book.refresh(LOCAL);
+  await needs.book.again();
   return { view, host: host as TabBarViewHost & typeof host, store, el, needs };
 }
 
@@ -227,7 +207,7 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
     // 答完了（那台重问回来不在等了）⇒ 那一条收起，未读数回来。
     (r.store.tabs.get("b") as Tab).face = liveFace("working");
     r.needs.answers[LOCAL] = listOf([]);
-    await r.needs.book.refresh(LOCAL);
+    await r.needs.book.again();
     r.view.refresh();
     expect(strip.style.display).toBe("none");
     expect(b.badge.textContent).toBe("3");
@@ -263,7 +243,7 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
     const needs = fakeNeedsBook({ [LOCAL]: listOf([sessionItem("a", approve())]) }, (m) => ({ items: m.flatMap((x) => x.list.items.map((item) => ({ origin: x.origin, item }))), total: 5, unreadable: [], down: [], head: "", sure: true }));
     view.needs = { book: needs.book, login: vi.fn() };
     needs.book.subscribe(() => view.planNeedsChanged());
-    await needs.book.refresh(LOCAL);
+    await needs.book.again();
     view.refresh();
     expect(view.needsCountNow()).toBe(5);
     expect(el.querySelector(".tab-needs .tab-needs-count")?.textContent).toBe("5");
@@ -494,7 +474,7 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
       b.value = "字".repeat(2001);
       b.dispatchEvent(new Event("input"));
       const send = [...r.page.el.querySelectorAll("button")].find((x) => x.textContent?.startsWith(copyText("terminal.input.send")))!;
-      expect(send.textContent).toBe(copyText("terminal.input.sendLong", { n: "2,001" }));
+      expect(send.textContent).toBe(copyText("terminal.input.send"));
     } finally {
       vi.useRealTimers();
     }
@@ -772,7 +752,7 @@ describe("报错卡上去它的终端那一颗（与会话头「终端」同一�
 });
 
 // **接线判据**：「那台接上」（机器状态翻成连着）那一段在入口脚本里，没有 DOM 判据够得着 ⇒ 读源码。
-// 那台断开又接上时，订着的 `changed {needs}` 收一格 `seen`（⇒ all ⇒ `needsBook.poke`）；起来那一批由 `onMachinesMoved` 的 `refreshAll` 问。
+// 那台断开又接上时，订着的 `changed {needs}` 收一格 `seen`（⇒ all ⇒ `needsBook.poke`）；起来那一批由 `onMachinesMoved` 的 `again` 问。
 // 「接上」那一下再问一次就是两问（今天删掉之前就是两次）。
 describe("那台接上 ⇒ 需手动只经订阅重问一次", () => {
   it("★ main.ts 的 onMachineUp 那一段不问需手动；`changed {needs}` 那一支照旧 poke", async () => {
@@ -783,8 +763,8 @@ describe("那台接上 ⇒ 需手动只经订阅重问一次", () => {
     const at = main.indexOf("onMachineUp((origin) => {");
     expect(at, "main.ts 里找不到 onMachineUp 那一段").toBeGreaterThan(-1);
     const body = main.slice(at, main.indexOf("\n  });", at));
-    expect(body).not.toMatch(/needsBook\.(refresh|refreshAll|poke)\(/);
-    expect(main.split("needsBook.poke(origin);").length - 1).toBe(1);
+    expect(body).not.toMatch(/needsBook\.(again|poke)\(/);
+    expect(main.split("needsBook.poke();").length - 1).toBe(1);
   });
 });
 

@@ -16,11 +16,12 @@
 
 use super::locate::validate_session_path;
 use crate::agents::beat::contains;
-use crate::agents::record::{Block, Body, Record, RecordExt as _};
+use crate::agents::record::{Block, Body, Record};
 use crate::agents::RecordFace;
 use crate::common::said::Said;
 use crate::observe::recognize::step_clock::StepClock;
 use crate::platform::fs::Ro;
+use crate::wire::stamp::RecordExt as _;
 /// 行摘要 · 记录行的线上形住 `cmd-wire`（手机按同一份解）；记录那一格后端照原样的一团写（缺省 `Value`）。
 pub use cmd_wire::record::{ReadRow, RecordLine};
 use copy_core::copy_text;
@@ -66,7 +67,7 @@ fn split_lines_full(offset: u64, bytes: &[u8]) -> Vec<(&[u8], u64, Option<u64>)>
 /// 再往前不读：读不到 ⇒ 那一格照没有用时的那一形（读不到就不写，不猜）。
 pub struct Reader<'a> {
     face: &'a RecordFace,
-    /// 看的那一台的时区（请求带来的）：成品的钟面按它写（[`crate::agents::record::Record::stamp`]）。
+    /// 看的那一台的时区（请求带来的）：成品的钟面按它写（[`crate::wire::stamp::RecordExt::stamp`]）。
     tz: crate::common::time::Tz,
     /// 没结果的调用记着的时刻。
     clock: StepClock,

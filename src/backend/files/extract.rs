@@ -203,7 +203,7 @@ fn shown(b: &[u8]) -> String {
 /// 包里一条名字（原始字节）→ 相对落点的一段。空段与 `.` 剥掉；`..` · 绝对 · 盘符 ⇒ 拒；全剥光 ⇒ `Ok(None)`（落点自己）。
 /// zip 规范只用 `/`，Windows 上打的包常写 `\`，照 7-Zip / Python 的读法当分隔符；tar 里 `\` 只在落点是 Windows 时才是分隔符。
 pub fn entry_rel(name: &[u8], zip: bool) -> Result<Option<PathBuf>, String> {
-    use ssh_dial::plain_path::{plain_segments, Dots, Fault};
+    use plain_path_core::{plain_segments, Dots, Fault};
     match plain_segments(name, zip || cfg!(windows), Dots::Strip) {
         Ok(segs) if segs.is_empty() => Ok(None),
         Ok(segs) => Ok(Some(crate::files::raw::to_path_buf(&segs.join(&b'/')))),

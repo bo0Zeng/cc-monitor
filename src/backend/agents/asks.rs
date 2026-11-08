@@ -3,7 +3,9 @@
 //! 而那两层彼此不引。
 
 use super::{AskIn, AskKind};
-pub use cmd_wire::needs::{Ask, AskRun, Choice, ChoiceRow, NoteNeed, Question, QuestionOption};
+pub use cmd_wire::needs::{
+    Ask, AskRun, Choice, ChoiceLook, ChoiceRow, NoteNeed, Question, QuestionOption,
+};
 
 /// 会话级答题 hook 叫 ccm 的那个子命令（`control::asks::hook`；那一家的 hook 设置里写的就是它）。
 pub const ANSWER_HOOK_FLAG: &str = "--answer-hook";
@@ -137,17 +139,29 @@ pub fn hook_off_words(env_value: &str) -> Words {
         None => copy_text("beAsk.manual.offUnknown", &[]),
     })
 }
-use crate::common::cells::{Tone, Words};
+use crate::common::cells::Words;
 use copy_core::copy_text;
 use serde_json::Value;
 
-/// 一个选项排在哪一段（唯一一处）：拒绝一族 · 继续规划 ⇒ 不照做那一段；改到终端里答 · 有题时的不回答 ⇒ 放开那一段；其余照做。
+/// 一个选项排在哪一段（唯一一处）：批计划 · 有题的提问 ⇒ 全在照做那一段（一行）；
+/// 别的：拒绝一族 ⇒ 不照做那一段；改到终端里答 ⇒ 放开那一段；其余照做。
 pub(crate) fn row_of(a: &AskIn, id: &str) -> ChoiceRow {
+    if a.kind == AskKind::Plan || !a.questions.is_empty() {
+        return ChoiceRow::Main;
+    }
     match id {
         "release" => ChoiceRow::Release,
-        "dismiss" if !a.questions.is_empty() => ChoiceRow::Release,
-        "deny" | "deny-note" | "deny-stop" | "plan-keep" => ChoiceRow::Hold,
+        "deny" | "deny-note" | "deny-stop" => ChoiceRow::Hold,
         _ => ChoiceRow::Main,
+    }
+}
+
+/// 一道题的题头那一句（[`Question::head`] 的唯一一处）：多选带「多选」那一说法，单选照题头原样。
+fn head_of(header: Option<&str>, multi: bool) -> Option<String> {
+    match (header, multi) {
+        (Some(h), true) => Some(copy_text("beAsk.question.multi", &[("header", h)])),
+        (None, true) => Some(copy_text("beAsk.question.multiBare", &[])),
+        (h, false) => h.map(str::to_string),
     }
 }
 
@@ -178,47 +192,49 @@ fn run_words(label: Option<&str>, kind: Option<&str>) -> Words {
 
 /// 成品：选项按种类写好字；`label` ＝ 子运行发的那一条派出时的标签（[`run_label`]，主会话 / 查不到 ⇒ `None`）。
 pub fn product_of(id: &str, a: &AskIn, label: Option<&str>, since_ms: u64) -> Ask {
-    let c = |id: &str, text: String, tone: Tone, note: NoteNeed| Choice {
+    let quiz = !a.questions.is_empty();
+    let c = |id: &str, text: String, look: ChoiceLook, note: NoteNeed| Choice {
         id: id.to_string(),
         text: Words(text),
-        tone,
+        look,
         note,
         row: row_of(a, id),
+        picks: id == "answer",
     };
+    // 每一种的第一颗是主按钮（照做那一段第一颗，只这一颗）；停下整轮 ⇒ 危险；改到终端里答 · 有题时的不回答 ⇒ 弱。
     let mut choices = Vec::new();
     match a.kind {
         AskKind::Approve => {
             choices.push(c(
                 "allow",
                 copy_text("beAsk.choice.allow", &[]),
-                Tone::Plain,
+                ChoiceLook::Main,
                 NoteNeed::None,
             ));
             for (i, s) in a.suggestions.iter().enumerate() {
                 choices.push(c(
                     &format!("always-{i}"),
                     copy_text("beAsk.choice.allowAlways", &[("rule", &s.text)]),
-                    Tone::Plain,
+                    ChoiceLook::Plain,
                     NoteNeed::None,
                 ));
             }
             choices.push(c(
                 "deny",
                 copy_text("beAsk.choice.deny", &[]),
-                Tone::Warn,
+                ChoiceLook::Plain,
                 NoteNeed::None,
             ));
             choices.push(c(
                 "deny-note",
                 copy_text("beAsk.choice.denyNote", &[]),
-                Tone::Warn,
+                ChoiceLook::Plain,
                 NoteNeed::Required,
             ));
             choices.push(c(
                 "deny-stop",
                 copy_text("beAsk.choice.denyStop", &[]),
-                // 停下整轮：出口标红照这一格（不认 id）。
-                Tone::Fail,
+                ChoiceLook::Danger,
                 NoteNeed::None,
             ));
         }
@@ -226,41 +242,45 @@ pub fn product_of(id: &str, a: &AskIn, label: Option<&str>, since_ms: u64) -> As
             choices.push(c(
                 "plan-auto",
                 copy_text("beAsk.choice.planAuto", &[]),
-                Tone::Plain,
+                ChoiceLook::Main,
                 NoteNeed::None,
             ));
             choices.push(c(
                 "plan-edits",
                 copy_text("beAsk.choice.planEdits", &[]),
-                Tone::Plain,
+                ChoiceLook::Plain,
                 NoteNeed::None,
             ));
             choices.push(c(
                 "plan-manual",
                 copy_text("beAsk.choice.planManual", &[]),
-                Tone::Plain,
+                ChoiceLook::Plain,
                 NoteNeed::None,
             ));
             choices.push(c(
                 "plan-keep",
                 copy_text("beAsk.choice.planKeep", &[]),
-                Tone::Warn,
+                ChoiceLook::Plain,
                 NoteNeed::Optional,
             ));
         }
         AskKind::Question => {
-            if !a.questions.is_empty() {
+            if quiz {
                 choices.push(c(
                     "answer",
                     copy_text("beAsk.choice.answer", &[]),
-                    Tone::Plain,
+                    ChoiceLook::Main,
                     NoteNeed::None,
                 ));
             }
             choices.push(c(
                 "dismiss",
                 copy_text("beAsk.choice.dismiss", &[]),
-                Tone::Warn,
+                if quiz {
+                    ChoiceLook::Ghost
+                } else {
+                    ChoiceLook::Main
+                },
                 NoteNeed::None,
             ));
         }
@@ -269,7 +289,7 @@ pub fn product_of(id: &str, a: &AskIn, label: Option<&str>, since_ms: u64) -> As
         choices.push(c(
             "release",
             copy_text("beAsk.choice.release", &[]),
-            Tone::Plain,
+            ChoiceLook::Ghost,
             NoteNeed::None,
         ));
     }
@@ -291,7 +311,7 @@ pub fn product_of(id: &str, a: &AskIn, label: Option<&str>, since_ms: u64) -> As
             .map(|(qi, q)| Question {
                 id: format!("q{qi}"),
                 text: q.question.clone(),
-                header: q.header.clone(),
+                head: head_of(q.header.as_deref(), q.multi),
                 multi: q.multi,
                 options: q
                     .options

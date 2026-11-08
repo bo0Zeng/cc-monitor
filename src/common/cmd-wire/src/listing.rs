@@ -64,10 +64,6 @@ pub struct HistoryRow {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub forked_from_session_id: Option<String>,
-    /// 分叉来的：父会话那一行（显示标题）；不是分叉来的 · 父会话不在这台的清单里 ⇒ 缺（界面写「分叉自其他会话」）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub forked_from: Option<ForkedFrom>,
     pub project_dir: String,
     pub group: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -98,15 +94,6 @@ pub struct HistoryRow {
     pub reveal: bool,
     /// 删除确认的正文（`face_core::history_asks::delete_ask` 写）。
     pub delete_ask: Words,
-}
-
-/// 分叉来的那一行的父会话：显示标题（同父会话自己那一行的 `label`）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct ForkedFrom {
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
-    pub label: Words,
 }
 
 /// 按项目看时的一组。

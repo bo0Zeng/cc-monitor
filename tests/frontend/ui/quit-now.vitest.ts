@@ -12,7 +12,7 @@ const zero: Interrupts = { relayedSessions: 0, relayedMaybe: 0, liveStreams: 0, 
 describe("退出前问会打断什么", () => {
   it("★ 文件窗口有一份没存的改动 ⇒ 退出先出那一问；取消就不退", async () => {
     const confirm = vi.fn(async (_spec: unknown) => false);
-    const ok = await quitNow({ ask: async () => ({ ...zero, unsaved: 1 }), confirm, remotes: async () => [], exits: async () => true });
+    const ok = await quitNow({ ask: async () => ({ ...zero, unsaved: 1 }), confirm, exits: async () => true });
     expect(ok).toBe(false);
     const spec = confirm.mock.calls[0]![0] as { title: string; rows: Array<{ items: string[] }> };
     expect(spec.title).toBe(copyText("quitNow.dialog.title"));
@@ -21,14 +21,14 @@ describe("退出前问会打断什么", () => {
 
   it("★ 什么都不断 ⇒ 不弹、直接退", async () => {
     const confirm = vi.fn(async () => true);
-    expect(await quitNow({ ask: async () => ({ ...zero }), confirm, remotes: async () => [], exits: async () => true })).toBe(true);
+    expect(await quitNow({ ask: async () => ({ ...zero }), confirm, exits: async () => true })).toBe(true);
     expect(confirm).not.toHaveBeenCalled();
   });
 
   it("关的不是最后一个窗口（进程不退）⇒ 不问", async () => {
     const ask = vi.fn(async () => ({ ...zero, unsaved: 3 }));
     const confirm = vi.fn(async () => false);
-    expect(await quitNow({ ask, confirm, remotes: async () => [], exits: async () => false })).toBe(true);
+    expect(await quitNow({ ask, confirm, exits: async () => false })).toBe(true);
     expect(ask).not.toHaveBeenCalled();
     expect(confirm).not.toHaveBeenCalled();
   });

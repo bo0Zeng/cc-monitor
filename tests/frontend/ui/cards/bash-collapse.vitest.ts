@@ -1,67 +1,52 @@
-// **bash 输出卡的「超长折叠」是一条用户看得见的承诺，而它此前零覆盖。**
-//
-// # 怎么发现的
-//
-// 全局变异抽样（Phase G 的那一项）打到前端：把 `cards/bash.ts` 的
-// `OUTPUT_COLLAPSE_LINES` 30→3、`OUTPUT_HEAD_LINES` 20→2，
-// **`npm test` 17/17 与 `npx vitest run` 1273/1273 全绿** —— 两个门禁一起放过。
-//
-// 同批四条里另两条（`DEFAULT_MAX_LINES` / `BLOCK_LOOKAHEAD_LINES`）**当场被逮**，
-// 所以这不是「前端没有测试」，是**折叠这一支恰好长在没人去的那一层**：
-// 当时的 `bash.test.ts` 是 node 纯函数套件（只测解析，今天解析已进后端、那份套件删了），
-// 折叠那一段是 DOM —— 于是没有任何 vitest 接手。
-//
-// # 为什么不直接断言 30 和 20
-//
-// 那会让判据成为那两个数的**第二份副本**：改常量时判据跟着改，等于没有判据
-// （`doc_claim_registry` 的头注记着同一个坑，`STATUS_CELLS` 第一版就是这么失效的）。
-//
-// ⇒ 本文件用**夹逼锚点**：不写阈值，只钉两端明显该成立的性质 ——
-// 「明显短」的输出不许被折叠 · 「明显长」的输出必须折叠、且头部要**够长**。
-// 30→3 会让前者红，20→2 会让后者红，而合法地微调阈值（比如 30→28）不会误红。
+// **bash 输出卡与派活卡折不折、露几行、展开那一句都照后端写好的折法（`TextFold`）**：阈值只住 `face_core::record`，界面不数行。
+// 夹具故意让折法与行数对不上（5 行却要折 · 200 行却不折）、展开那一句是个占位：界面若还在自己比阈值、自己拼「展开 N 行」，这几条就红。
 import { describe, it, expect } from "vitest";
-import { buildBashOutputCard, OUTPUT_HEAD_LINES } from "../../../../src/frontend/ui/cards/bash";
+import * as bash from "../../../../src/frontend/ui/cards/bash";
+import * as brief from "../../../../src/frontend/ui/cards/brief";
+import { buildBashOutputCard } from "../../../../src/frontend/ui/cards/bash";
+import { buildBriefCard } from "../../../../src/frontend/ui/cards/brief";
 
 const time = "00:00";
-const linesOf = (n: number) =>
-  Array.from({ length: n }, (_, i) => `line-${i + 1}`).join("\n");
-
-/** 折叠时才会出现的两个标记（沿 `block-body-show-full` 惯例）。 */
+const linesOf = (n: number) => Array.from({ length: n }, (_, i) => `line-${i + 1}`).join("\n");
 const WRAP = ".block-body-truncated-wrap";
 const EXPAND = ".block-body-show-full";
 
-describe("bash 输出卡：超长折叠（夹逼锚点，不复制阈值）", () => {
-  it("★ 明显短的输出（5 行）不许被折叠 —— 折叠阈值被调得过小时这条红", () => {
-    const card = buildBashOutputCard({ stdout: linesOf(5), stderr: "" }, time);
-    expect(card.querySelector(WRAP), "5 行就折叠 = 阈值被调小了").toBeNull();
-    expect(card.querySelector(EXPAND)).toBeNull();
-    // 全文要在，一行都不许少。
-    expect(card.textContent).toContain("line-1");
-    expect(card.textContent).toContain("line-5");
-  });
-
-  it("★ 明显长的输出（200 行）必须折叠，且给出展开入口", () => {
-    const card = buildBashOutputCard({ stdout: linesOf(200), stderr: "" }, time);
-    expect(card.querySelector(WRAP), "200 行都不折叠 = 折叠这一支断了").not.toBeNull();
-    expect(card.querySelector(EXPAND), "折叠了却没有展开入口 = 内容被吃掉").not.toBeNull();
-  });
-
-  it("★ 折叠后展示的是头部那一档（`OUTPUT_HEAD_LINES` 行），且那一档够长（≥10 行）—— 调得过小时这条红", () => {
-    const card = buildBashOutputCard({ stdout: linesOf(200), stderr: "" }, time);
+describe("bash 输出卡：照后端的折法", () => {
+  it("★ 有折法 ⇒ 露它说的那几行、展开那一颗写它那一句；点开露全文", () => {
+    const card = buildBashOutputCard({ stdout: linesOf(5), stderr: "", stdoutFold: { shown: 2, total: 5, more: "MORE-LINE" } }, time);
     const pre = card.querySelector(`${WRAP} pre`);
-    expect(pre, "折叠壳里没有 pre").not.toBeNull();
-    const shown = (pre?.textContent ?? "").split("\n").filter((l) => l.length > 0);
-    expect(OUTPUT_HEAD_LINES, "头部那一档太短（下界 10 行远低于今天的取值，合法微调不会误红）").toBeGreaterThanOrEqual(10);
-    expect(shown.length, "折叠后展示的行数不是头部那一档").toBe(OUTPUT_HEAD_LINES);
-    // 头部要是**开头那几行**，不是随便截的一段。
-    expect(shown[0]).toBe("line-1");
+    expect(pre?.textContent).toBe("line-1\nline-2");
+    const expand = card.querySelector<HTMLButtonElement>(EXPAND);
+    expect(expand?.textContent).toBe("MORE-LINE");
+    expand?.click();
+    expect(pre?.textContent).toBe(linesOf(5));
   });
 
-  it("★ 反向自检：夹具真的走到了两条分支（否则上面三条可能都在同一支上空转）", () => {
-    const short = buildBashOutputCard({ stdout: linesOf(5), stderr: "" }, time);
-    const long = buildBashOutputCard({ stdout: linesOf(200), stderr: "" }, time);
-    // 一个有壳、一个没有 —— 两条分支各被走到一次。
-    expect(short.querySelector(WRAP)).toBeNull();
-    expect(long.querySelector(WRAP)).not.toBeNull();
+  it("★ 没有折法 ⇒ 整份照排（200 行也不折）", () => {
+    const card = buildBashOutputCard({ stdout: linesOf(200), stderr: "" }, time);
+    expect(card.querySelector(WRAP)).toBeNull();
+    expect(card.textContent).toContain("line-200");
+  });
+
+  it("stderr 照它自己那一份折法", () => {
+    const card = buildBashOutputCard({ stdout: "", stderr: linesOf(3), stderrFold: { shown: 1, total: 3, more: "ERR-MORE" } }, time);
+    expect(card.querySelector(`.bash-stderr-body`)?.textContent).toBe("line-1");
+    expect(card.querySelector(EXPAND)?.textContent).toBe("ERR-MORE");
+  });
+
+  it("界面不留阈值", () => {
+    expect(Object.keys(bash)).not.toContain("OUTPUT_HEAD_LINES");
+    expect(Object.keys(brief)).not.toContain("BRIEF_LINES");
+  });
+});
+
+describe("派活卡：照后端的折法", () => {
+  it("★ 有折法 ⇒ 收着、展开那一颗写它那一句；没有 ⇒ 不收（9 行也不收）", () => {
+    const folded = buildBriefCard(linesOf(2), { shown: 1, total: 2, more: "BRIEF-MORE" }, time, null);
+    expect(folded.querySelector<HTMLElement>("[data-clamped]")).not.toBeNull();
+    expect(folded.querySelector("button")?.textContent).toBe("BRIEF-MORE");
+    const open = buildBriefCard(linesOf(9), undefined, time, null);
+    expect(open.querySelector("[data-clamped]")).toBeNull();
+    expect(open.querySelector("button")).toBeNull();
   });
 });

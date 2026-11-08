@@ -36,7 +36,7 @@ fn stop_with(args: &Value, ledger: &Ledger) -> Result<Value, crate::common::said
 }
 
 fn table_with(origin: &str) -> remote_ask::Table {
-    remote_ask::Table::of(vec![crate::dial::machine::loose(
+    remote_ask::Table::of(vec![<crate::dial::Host as serde::Deserialize>::deserialize(
         &json!({"label": origin, "host": "192.0.2.2", "port": 22, "user": "u", "keyPath": "/k"}),
     )
     .unwrap()])
@@ -368,10 +368,12 @@ async fn a_machine_that_never_streamed_is_dialled_from_the_table() {
         .await
         .expect_err("表里没有那台也拨了");
     assert_eq!(e.code.as_deref(), Some("unreachable"));
-    let table = remote_ask::Table::of(vec![crate::dial::machine::loose(
-        &json!({"host": "198.51.100.9", "label": "dev", "port": 2201, "user": "u"}),
-    )
-    .unwrap()]);
+    let table = remote_ask::Table::of(vec![
+        <crate::dial::Host as serde::Deserialize>::deserialize(
+            &json!({"host": "198.51.100.9", "label": "dev", "port": 2201, "user": "u"}),
+        )
+        .unwrap(),
+    ]);
     let seen = Arc::new(Mutex::new(None::<(String, u16, crate::dial::Use)>));
     let bound = Arc::new(Mutex::new(None::<std::net::SocketAddr>));
     let s = Arc::clone(&seen);

@@ -27,7 +27,119 @@ fn rows(a: &Ask) -> Vec<(&str, ChoiceRow)> {
     a.choices.iter().map(|c| (c.id.as_str(), c.row)).collect()
 }
 
-/// 每一项排在哪一段由这里定：拒绝一族 · 继续规划另起一段，改到终端里答 · 有题时的不回答放到最后那一段，其余照做那一段。
+fn looks(a: &Ask) -> Vec<(&str, ChoiceRow, ChoiceLook, bool)> {
+    a.choices
+        .iter()
+        .map(|c| (c.id.as_str(), c.row, c.look, c.picks))
+        .collect()
+}
+
+fn one_question(multi: bool, header: Option<&str>) -> AskIn {
+    let mut q = ask_in(AskKind::Question);
+    q.blocks_terminal = true;
+    q.questions = vec![AskQuestion {
+        header: header.map(str::to_string),
+        question: "first".into(),
+        multi,
+        options: Vec::new(),
+    }];
+    q
+}
+
+/// 每颗选项的样子 · 段 · 带不带 picks 只在这里判（出口照摆，不按 id · 次序自己挑）：
+/// 每一种的第一颗主按钮、只这一颗；停下整轮危险；改到终端里答 · 有题时的不回答弱；批计划 · 有题的提问全在一段。
+#[test]
+fn each_choice_carries_its_look_row_and_picks() {
+    use ChoiceLook::{Danger, Ghost, Main as M, Plain};
+    use ChoiceRow::{Hold, Main, Release};
+    let mut plan = ask_in(AskKind::Plan);
+    plan.blocks_terminal = true;
+    assert_eq!(
+        looks(&product_of("a", &plan, None, 1)),
+        [
+            ("plan-auto", Main, M, false),
+            ("plan-edits", Main, Plain, false),
+            ("plan-manual", Main, Plain, false),
+            ("plan-keep", Main, Plain, false),
+            ("release", Main, Ghost, false),
+        ],
+        "批计划：一段，第一颗主按钮，改到终端里答弱"
+    );
+    let mut a = ask_in(AskKind::Approve);
+    a.blocks_terminal = true;
+    assert_eq!(
+        looks(&product_of("a", &a, None, 1)),
+        [
+            ("allow", Main, M, false),
+            ("deny", Hold, Plain, false),
+            ("deny-note", Hold, Plain, false),
+            ("deny-stop", Hold, Danger, false),
+            ("release", Release, Ghost, false),
+        ],
+        "批准：三段"
+    );
+    assert_eq!(
+        looks(&product_of("a", &one_question(false, None), None, 1)),
+        [
+            ("answer", Main, M, true),
+            ("dismiss", Main, Ghost, false),
+            ("release", Main, Ghost, false),
+        ],
+        "有题：一段，只有提交答案带 picks"
+    );
+    assert_eq!(
+        looks(&product_of("a", &ask_in(AskKind::Question), None, 1)),
+        [("dismiss", Main, M, false)],
+        "没有题 ⇒ 不回答是唯一那一项、就是主按钮"
+    );
+}
+
+/// 不论哪一种、挡不挡终端、有没有题：恰好一颗主按钮，就是照做那一段的第一颗。
+#[test]
+fn every_ask_has_exactly_one_main_and_it_leads_the_main_row() {
+    let mut cases = Vec::new();
+    for kind in [AskKind::Approve, AskKind::Plan, AskKind::Question] {
+        for blocks in [false, true] {
+            let mut a = ask_in(kind);
+            a.blocks_terminal = blocks;
+            cases.push(a);
+        }
+    }
+    cases.push(one_question(true, Some("H")));
+    for a in &cases {
+        let p = product_of("a", a, None, 1);
+        let mains: Vec<_> = p
+            .choices
+            .iter()
+            .filter(|c| c.look == ChoiceLook::Main)
+            .collect();
+        let lead = p.choices.iter().find(|c| c.row == ChoiceRow::Main);
+        assert_eq!(mains.len(), 1, "{:?}", looks(&p));
+        assert_eq!(Some(mains[0]), lead, "{:?}", looks(&p));
+    }
+}
+
+/// 题头那一句由这里写好：多选带「多选」那一说法（有题头 · 没题头两种），单选照题头原样、没有就没有。
+#[test]
+fn a_question_head_is_written_here() {
+    let head = |multi, header| {
+        product_of("a", &one_question(multi, header), None, 1).questions[0]
+            .head
+            .clone()
+    };
+    assert_eq!(
+        head(true, Some("H")),
+        Some(copy_text("beAsk.question.multi", &[("header", "H")]))
+    );
+    assert_eq!(
+        head(true, None),
+        Some(copy_text("beAsk.question.multiBare", &[]))
+    );
+    assert_eq!(head(false, Some("H")), Some("H".to_string()));
+    assert_eq!(head(false, None), None);
+}
+
+/// 每一项排在哪一段由这里定：批准分三段（照做 · 拒绝一族 · 改到终端里答）；批计划 · 有题的提问全在照做那一段。
 #[test]
 fn each_choice_carries_the_row_it_goes_in() {
     use ChoiceRow::{Hold, Main, Release};
@@ -49,8 +161,7 @@ fn each_choice_carries_the_row_it_goes_in() {
         ]
     );
     let plan = product_of("a", &ask_in(AskKind::Plan), None, 1);
-    assert_eq!(rows(&plan).last(), Some(&("plan-keep", Hold)));
-    assert!(rows(&plan)[..3].iter().all(|(_, r)| *r == Main));
+    assert!(rows(&plan).iter().all(|(_, r)| *r == Main));
     assert_eq!(
         rows(&product_of("a", &ask_in(AskKind::Question), None, 1)),
         [("dismiss", Main)],
@@ -65,7 +176,7 @@ fn each_choice_carries_the_row_it_goes_in() {
     }];
     assert_eq!(
         rows(&product_of("a", &q, None, 1)),
-        [("answer", Main), ("dismiss", Release)]
+        [("answer", Main), ("dismiss", Main)]
     );
 }
 
@@ -103,20 +214,13 @@ fn approve_puts_allow_first_then_the_suggestions_then_the_denials() {
     for (id, n) in notes {
         assert_eq!(n == NoteNeed::Required, id == "deny-note", "{id}");
     }
-    let warns: Vec<_> = p
-        .choices
-        .iter()
-        .filter(|c| c.tone == Tone::Warn)
-        .map(|c| c.id.as_str())
-        .collect();
-    assert_eq!(warns, ["deny", "deny-note"]);
-    let fails: Vec<_> = p
-        .choices
-        .iter()
-        .filter(|c| c.tone == Tone::Fail)
-        .map(|c| c.id.as_str())
-        .collect();
-    assert_eq!(fails, ["deny-stop"], "拒绝并停下标红：出口照语气，不认 id");
+    let looks: Vec<_> = p.choices.iter().map(|c| c.look).collect();
+    use ChoiceLook::{Danger, Main, Plain};
+    assert_eq!(
+        looks,
+        [Main, Plain, Plain, Plain, Plain, Danger],
+        "拒绝并停下标红：出口照 look，不认 id"
+    );
     assert_eq!(
         (p.id.as_str(), p.since_ms, p.run.clone()),
         ("ask-9", 42, None)
@@ -169,8 +273,8 @@ fn a_question_numbers_its_questions_and_options() {
     assert_eq!(ids(&p), ["answer", "dismiss"]);
     let q = &p.questions[1];
     assert_eq!(
-        (q.id.as_str(), q.text.as_str(), q.header.as_deref(), q.multi),
-        ("q1", "second", Some("H"), true)
+        (q.id.as_str(), q.text.as_str(), q.multi),
+        ("q1", "second", true)
     );
     let opts: Vec<_> = q
         .options

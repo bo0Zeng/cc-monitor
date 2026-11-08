@@ -2,7 +2,7 @@
 //!
 //! 「`settings.json` 那一形照旧被 claude 压过我们（`viaRelay` 那一格不许再说假话）」。
 //! 异源：夹具是本判据现造的设置文件（家目录 / 项目 / 项目本地三处）；被测是适配层那一问 `settings_may_set_base_url`，
-//! 它的答案经 `SESSION_ENV_KEYS` 交给会话账号归属那几行（`observe/accounts_query.rs::session_accounts` 的 `via_relay` 那一格）。
+//! 它的答案经 `SESSION_ENV_KEYS` 交给会话账号归属那几行（`accounts/manage/library.rs::session_accounts` 的 `via_relay` 那一格）。
 
 use super::*;
 

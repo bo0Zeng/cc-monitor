@@ -57,10 +57,10 @@ pub struct SidReq {
 /// 码：`bad_args`（sid 形状不对）· `no_such_session` · `failed` / `child_timed_out`（问 tmux 那一发）。
 pub fn answer_at(home: &std::path::Path, req: &SidReq) -> Result<Showing, Said> {
     let sid = req.sid.as_str();
-    let pid = crate::observe::watcher::running_sessions(home)
-        .into_iter()
-        .find(|(s, _)| s == sid)
-        .map(|(_, pid)| pid)
+    let pid = crate::history::live_table::now(home)
+        .writers(sid)
+        .first()
+        .copied()
         .ok_or_else(|| {
             Said::new(
                 "no_such_session",

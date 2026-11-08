@@ -1,21 +1,15 @@
-//! 号名 / 位名的字只住一处：四件出号名的成品都带 `names`，界面照它画、不认 `_` 与 `5h` / `7d`。
+//! 号名 / 位名的字只住一处：号名由 [`account_text`] 写进每号那一行的 `label`，位名由 `quota-read` 成品带的 `names` 给；界面不认 `_` 与 `5h` / `7d`。
 use super::*;
 
 #[test]
-fn the_names_cell_writes_home_and_both_slots() {
+fn the_names_cell_writes_both_slots_and_account_text_names_home() {
     let n = serde_json::to_value(names()).unwrap();
     // 账号 0 ＝ 不设配置目录的那一份登录（~/.claude）；`_` ＝ 起会话时没说是哪个号（落在哪一份登录说不准，
     //   建了账号库的机器上可能是 shell rc 导出的那个配置根）⇒ 两个名字，`_` 与额度行那一格「未指定账号」同一条键。
-    assert_eq!(n["accounts"]["0"], copy_text("acct.home.name", &[]));
-    assert_eq!(n["accounts"]["_"], copy_text("acct.tag.home", &[]));
     assert_eq!(account_text("0"), copy_text("acct.home.name", &[]));
     assert_eq!(account_text("_"), copy_text("acct.tag.home", &[]));
     assert_ne!(account_text("0"), account_text("_"));
-    assert_eq!(
-        n["accounts"].as_object().unwrap().len(),
-        2,
-        "只列与原名不同的号"
-    );
+    assert!(n.get("accounts").is_none(), "号名不在这张表里：{n}");
     assert_eq!(n["slots"]["5h"], copy_text("acct.slot.fiveHour", &[]));
     assert_eq!(n["slots"]["7d"], copy_text("acct.slot.sevenDay", &[]));
     assert_eq!(account_text("work"), "work");
@@ -48,7 +42,7 @@ fn no_other_backend_module_maps_slots_or_home_to_words() {
     assert!(bad.is_empty(), "号名 / 位名在别处又取了一次字：{bad:#?}");
 }
 
-/// ★ 金样 ＝ 核心写出来的那张表（界面的判据照它喂 `takeNames`，不自己写「默认号」那个字）。
+/// ★ 金样 ＝ 核心写出来的那张位名表（界面不自己写位名）。
 #[test]
 fn the_names_golden_is_what_the_core_writes() {
     crate::golden::assert_golden(

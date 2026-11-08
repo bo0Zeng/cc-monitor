@@ -1,7 +1,7 @@
 //! 上传的提交：把暂存区里一份传完的件挪进用户指定的目标。
 //!
 //! SFTP 只做传输、只写进我们自己的暂存区（`~/.cc-monitor/staging/<key>.part`，断点续传的本钱也住那儿），
-//! 传完由这里提交 ⇒ 真正落进用户目录的那一下只有后端文件管理这一处。
+//! 传完由这里提交（围栏 · 键校验 · 核摘要），最后落进用户目录那一下是 `common::staging::land`（与下载落地同一处）。
 //!
 //! 写面的一员（与 [`crate::files::write`] 同住文件管理那一个包）：只引纯工具与平台两层由 Cargo 管，上层够得到的只有本模块的 `pub` 项。
 //! 写经文件管理面的句柄（`Face`，只收路径解析交回的 `Resolved`，
@@ -15,7 +15,7 @@
 //! | `true` | 暂存件直接改名上位 | 同一个盘上的改名是原子的：读的人要么看见旧的一整份，要么看见新的一整份 |
 //!
 //! 暂存件的路径由本模块自己拼（`$HOME` ＋ 固定的相对段 ＋ `key`），`key` 只收 [`KEY_LEN`] 位小写十六进制 ⇒ 调用方指不到暂存区之外的文件当「源」。
-//! 跨盘（改名回 `EXDEV`）走「复制 ＋ 删」，住 [`land_staged`]。
+//! 落那一下（同盘改名上位 · 跨盘退回复制 ＋ 删 · 盖掉已在的沿用它的权限位）住 `common::staging::land`：传输台的下载落地也调它。
 //!
 //! # 买不到的
 //!
@@ -29,7 +29,7 @@
 //! 文件窗口存一份装不进一条请求行的文本（入方向一行 1 MiB，`stream/inbound/mod.rs::MAX_LINE_BYTES`）时，
 //! 切成几块逐块送进暂存区（`<key>.<seq>.chunk`，`O_EXCL` 新建：一块只写一次），再由 `files-commit-text` 按块号读回、
 //! 拼起来、核总长，交给写面那一份覆盖写（`write::overwrite_text`）—— 同一份文件 1 MiB 上下存出同一种结果
-//! （同目录暂存旁名 ＋ 换名上位：权限位沿用、链接解到底、不跨盘；怎么换住 `write::replace_contents`）。
+//! （同目录暂存旁名 ＋ 换名上位：权限位沿用、链接解到底、不跨盘；怎么换住 `common::staging::land`）。
 //! 一块一份文件、不往一份上续写：`Face` 没有续写那几种开法（新建只有 `O_EXCL` 一种）。
 //! 块数没有单独的上限：每块至少 1 字节 ⇒ 块数 ≤ 总长 ≤ `files::READ_TEXT_MAX_BYTES`。
 //! 清理：提交不论成败都删掉这一次的块（窗口手上还有全文，重存换新键）；中途断掉留下的块由 [`sweep_stale`] 收。
@@ -39,19 +39,22 @@
 //! 目标不由调用方给：会话工作目录下一个新的编号目录（[`session_attachment`]），落那一下就是上传提交这一条（[`commit_upload_at`]）。
 
 use crate::common::said::Said;
+use crate::common::staging::{Content, Was};
+// 这台后端的家（暂存区拼在它底下）：聊天附件那一支（`commit/session_attachment`）也照它取。
+use crate::common::staging::home as home_dir;
 use crate::files::write::{
-    content_sha256, overwrite_text_expecting, rel_of, replace_contents, root_of, walk_in_root,
-    wire_of, Act, Content, Last, Was, WriteRefusal,
+    content_sha256, overwrite_text_expecting, rel_of, root_of, walk_in_root, wire_of, Act, Last,
+    WriteRefusal,
 };
 use crate::platform::fs::{Face, Ro};
 use cmd_wire::files as wire;
 use copy_core::{copy_text, io_reason, Discard, Why};
 use std::path::{Path, PathBuf};
 
-/// 暂存区相对 `$HOME` 的那一段。值只住契约 crate（`relay_route_core::STAGING_DIR_REL`，monitor 的数据位置页按它列出）；
+/// 暂存区相对 `$HOME` 的那一段（`common::staging::DIR`；值只住契约 crate `relay_route_core::STAGING_DIR_REL`，monitor 的数据位置页按它列出）；
 /// 往里写的一侧（`ssh-dial/sftp.rs::STAGING_ROOT` · `control/transfer.rs`）在上层，由主 crate 的
 /// `dial_sftp_tests::the_declared_write_root_is_exactly_staging` 直接比。
-pub const STAGING_DIR: &str = relay_route_core::STAGING_DIR_REL;
+pub const STAGING_DIR: &str = crate::common::staging::DIR;
 
 // 暂存件的键长与后缀住 `common/staging.rs`：造键的一侧（传输台，原生那一块）与提交的一侧（这里）各引各的。
 pub use crate::common::staging::{KEY_LEN, PART_SUFFIX};
@@ -103,7 +106,7 @@ pub fn staged_path(home: &Path, key: &str) -> Result<PathBuf, WriteRefusal> {
 ///
 /// 上位之前先对整份摘要：暂存件的 SHA-256 必须等于 `expect_sha256`（传输台一边传一边算、窗口原样交来）。
 /// 不等 ⇒ 这份暂存件是坏的（失败后晚到的写在中间留了洞之类）⇒ 删掉它、回 `stale`、目标一个字节不动，调用方从 0 重传。
-/// 怎么落交 [`replace_contents`]（盖掉已在的沿用它的权限位；`overwrite` 否 ⇒ 不覆盖上位，已在 ⇒ `exists`）。
+/// 怎么落交 [`crate::common::staging::land`]（盖掉已在的沿用它的权限位；`overwrite` 否 ⇒ 不覆盖上位，已在 ⇒ `exists`）。
 /// 核与上位之间仍有窗（暂存区是我们自己的目录，窗里没人该碰它）。
 pub fn commit_upload(
     face: &Face,
@@ -164,7 +167,7 @@ pub fn commit_upload(
         )));
     }
     let was = if overwrite { Was::Either } else { Was::New };
-    replace_contents(
+    crate::common::staging::land(
         face,
         root,
         rel.as_ref(),
@@ -173,25 +176,17 @@ pub fn commit_upload(
         was,
         &mut || {},
     )
+    .map_err(WriteRefusal::from)
 }
 
 // ═══════════════ 存盘的块：写一块 · 读回拼起来提交 · 删掉 ═══════════════
 
-/// 暂存区在盘上的位置；不在就建（两层：`~/.cc-monitor` 与它底下的 `staging`）。
-///
-/// 每一层**先过路径解析**（以上一层为根）再问后端自家目录那一判（`Face::own_dir`：建的那一下 0700；已在必须是本人的真目录，
-/// 放宽了 ⇒ 收回 0700；`~/.cc-monitor` 是链接 ⇒ 拒、出声，不往里写正文）。
+/// 暂存区在盘上的位置；不在就建（[`crate::common::staging::ensure`]）。拒那一形没有下层原话 ⇒ `refused`。
 fn ensure_staging(face: &Face, home: &Path) -> Result<PathBuf, WriteRefusal> {
-    let mut at = home.to_path_buf();
-    for seg in STAGING_DIR.split('/') {
-        let next = walk_in_root(Last::Link, &at, seg).map_err(WriteRefusal::Refused)?;
-        face.own_dir(&next).map_err(|s| match s.raw {
-            Some(raw) => WriteRefusal::IoSaid { said: s.said, raw },
-            None => WriteRefusal::Refused(s.said),
-        })?;
-        at = next.into_path_buf();
-    }
-    Ok(at)
+    crate::common::staging::ensure(face, home).map_err(|s| match s.raw {
+        Some(raw) => WriteRefusal::IoSaid { said: s.said, raw },
+        None => WriteRefusal::Refused(s.said),
+    })
 }
 
 /// **写一块**：`<key>.<seq>.chunk`，`O_EXCL` 新建。回写进去的字节数。
@@ -430,12 +425,6 @@ pub fn sweep_stale(face: &Face, home: &Path, now_secs: u64, keep: &str) -> Vec<S
 /// 写面拒绝 ⇒ 失败：码由那个枚举自己答，原话（有的话）随失败交出去。
 fn refused(e: WriteRefusal) -> Said {
     Said::from(e)
-}
-
-/// 这台后端的家（暂存区拼在它底下）。
-fn home_dir() -> Result<PathBuf, Said> {
-    crate::platform::paths::home_dir()
-        .ok_or_else(|| Said::new("io_failed", copy_text("beFilesCommit.staging.noHome", &[])))
 }
 
 /// 一次提交成功 ⇒ 顺手扫孤儿（暂存区清理「孤儿」那一格的事件）。

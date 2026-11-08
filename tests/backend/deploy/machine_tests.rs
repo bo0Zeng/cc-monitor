@@ -758,6 +758,28 @@ fn listed_up() -> Vec<Fact> {
     vec![up(Relation::Same, &[]), Fact::Listed]
 }
 
+/// ★ 「各台都报完」由这一端照各台那一行算（`allListed`）：「连接这台」关着的不算；一台连上了还没报完 · 没连上 ⇒ 假。
+#[test]
+fn all_listed_is_true_only_once_every_enabled_machine_has_reported() {
+    let all = face_of(&[
+        seat("here", listed_up(), true),
+        seat("nas", listed_up(), true),
+        seat("off", vec![], false),
+    ]);
+    assert!(all.all_listed);
+    let one_left = face_of(&[
+        seat("here", listed_up(), true),
+        seat("nas", listed_up(), true),
+        seat("gpu", vec![up(Relation::Same, &[])], true),
+    ]);
+    assert!(!one_left.all_listed);
+    let down = face_of(&[
+        seat("here", listed_up(), true),
+        seat("gpu", vec![down_(Some(Why::Auth))], true),
+    ]);
+    assert!(!down.all_listed, "没连上的那台也没报完");
+}
+
 /// ★ A2-17-6-2 先红的那一条：本机报完了、为空，gpu-01 还在连 ⇒ 首屏不说「无会话」，说本机无会话 · gpu-01 还在连。
 #[test]
 fn the_empty_line_says_who_is_still_connecting_instead_of_no_sessions() {

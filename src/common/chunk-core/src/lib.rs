@@ -3,6 +3,7 @@
 //! - 上传 [`stage`]：本机那份逐块读满（每块 [`CHUNK`] 字节）→ 依次 `files-stage-chunk` 进那台的暂存区（同一个键）→ 边送边算整份
 //!   SHA-256 → 交回 [`Staged`]（块数 · 字节数 · 摘要），提交（`files-commit-upload`，同名照 `on_exists`）由调用方交。
 //! - 下载 [`pull`]：`files-read-chunk` 从 0 起逐块读回（按字节寻址），每块交调用方的 [`Sink`]，读到头为止；交回总字节。
+//! - 拉进内存 [`pull_capped`]：同 [`pull`]，攒成一份交回；攒过调用方给的上限就停，交 [`TooLarge`]（读了多少 · 上限）。
 //! - 问那台的那一下是 [`Ask`]（桌面经通道、手机经常驻流）；撤 · 进度 · 本机读不动怎么说都由调用方给，这里不写字。
 
 use cmd_wire::files::{to_hex, ChunkBytes, FilesStageChunkReq, ReadChunkReq, WirePath};
@@ -151,6 +152,53 @@ pub async fn pull<A: Ask, S: Sink<Err = A::Err>>(
             return Ok(off);
         }
     }
+}
+
+/// 拉进内存攒过了上限：已读回的字节 · 调用方给的上限（那一句由调用方照它写）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TooLarge {
+    pub read: u64,
+    pub cap: u64,
+}
+
+/// 读回来的一块攒进内存；攒过 `cap` ⇒ `over`，不读下一块。
+struct ToMemory<F> {
+    bytes: Vec<u8>,
+    cap: u64,
+    over: F,
+}
+
+impl<E, F: Fn(TooLarge) -> E> Sink for ToMemory<F> {
+    type Err = E;
+    async fn put(&mut self, bytes: Vec<u8>) -> Result<(), E> {
+        self.bytes.extend_from_slice(&bytes);
+        let read = self.bytes.len() as u64;
+        if read > self.cap {
+            return Err((self.over)(TooLarge {
+                read,
+                cap: self.cap,
+            }));
+        }
+        Ok(())
+    }
+}
+
+/// 拉进内存那一半（读一张图 · 一小份）：同 [`pull`] 逐块读回，整份交回；攒过 `cap` 就停 ⇒ `over(TooLarge)`。撤了 ⇒ `stop()`。
+pub async fn pull_capped<A: Ask>(
+    ask: &A,
+    path: WirePath,
+    cap: u64,
+    watch: &mut impl Watch,
+    stop: impl Fn() -> A::Err,
+    over: impl Fn(TooLarge) -> A::Err,
+) -> Result<Vec<u8>, A::Err> {
+    let mut sink = ToMemory {
+        bytes: Vec::new(),
+        cap,
+        over,
+    };
+    pull(ask, path, &mut sink, watch, stop).await?;
+    Ok(sink.bytes)
 }
 
 /// 读满一块（或读到头）。

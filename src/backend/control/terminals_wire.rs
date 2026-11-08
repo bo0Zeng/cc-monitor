@@ -1,8 +1,9 @@
 //! 终端管理 L1 三条（`terminals-list` · `terminal-preview` · `terminal-input`）的线上形：入参 · 回包 · 码各一个类型（第 8 批 typed）。
 //! 本体在 [`super::terminals`]；这里只有形状与「怎么跑」那一层。两个前端共用（手机也在读）⇒ 回包的键与「有才出」那几格照换形前原样。
 
-use super::terminals::{self as t, On};
+use super::terminals as t;
 use crate::common::said::Said;
+use crate::host::tmux::On;
 use crate::wire::typed::{self, Command};
 use copy_core::copy_text;
 use serde::Deserialize;

@@ -8,16 +8,11 @@ import type { QuotaWarm } from "./QuotaWarm";
 import type { SlotShow } from "./SlotShow";
 import type { Usage } from "./Usage";
 import type { WindowShow } from "./WindowShow";
-import type { Words } from "./Words";
 
 /**
  * 出过数的一个号：账上那一条的原数 ＋ 显示态（`AccountHead`）＋ 照它写好的几格。
  */
-export type QuotaAccount = { rows: Array<Array<QuotaCell>>, 
-/**
- * 「5h 那一格」（恢复菜单 · 新会话框每个号后面那一格）；按量号 ⇒ `null`。
- */
-fiveHour: Words | null, warm: QuotaWarm, agent: AgentKind, account: string, kind: QuotaKind, state: QuotaState, 
+export type QuotaAccount = { rows: Array<Array<QuotaCell>>, warm: QuotaWarm, agent: AgentKind, account: string, kind: QuotaKind, state: QuotaState, 
 /**
  * 最后一次看到距今超过 30 分钟（与 `state` 叠着画）。
  */

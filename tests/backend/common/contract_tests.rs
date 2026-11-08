@@ -127,3 +127,24 @@ fn a_sentence_joined_with_its_raw_words_splits_back_the_same() {
         assert_eq!(parts(&s, None), (said.to_string(), raw.map(str::to_string)));
     }
 }
+
+/// 契约错那一串住共用的 `copy_core::said`、相对路径词法住 `plain-path-core` ⇒ 最底下这一层不认识拨号核心：
+/// 清单的 `[dependencies]` 里没有 `ssh-dial`（它之上的每个包也就不再经这里传递依赖它）。
+#[test]
+fn the_common_layer_does_not_depend_on_the_dial_core() {
+    let manifest = include_str!("../../../src/backend/common/Cargo.toml");
+    let deps: Vec<&str> = manifest
+        .split("\n[")
+        .find(|s| s.starts_with("dependencies]"))
+        .expect("清单里有 [dependencies]")
+        .lines()
+        .skip(1)
+        .filter_map(|l| l.split(['=', '.']).next().map(str::trim))
+        .filter(|n| !n.is_empty() && !n.starts_with('#'))
+        .collect();
+    assert!(deps.contains(&"copy-core"), "本条在空转：{deps:?}");
+    assert!(
+        !deps.contains(&"ssh-dial"),
+        "`backend-common` 还依赖 `ssh-dial`：{deps:?}"
+    );
+}

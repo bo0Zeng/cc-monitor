@@ -163,6 +163,9 @@ mod show_rows {
                 seen_at: o.seen_at,
                 reading: o.reading.clone(),
                 show: sh,
+                warm: crate::accounts::quota::rules::decide::WarmVerdict::Send(
+                    crate::accounts::quota::rules::decide::WarmWhy::NoWindow,
+                ),
             },
             &clock,
         );

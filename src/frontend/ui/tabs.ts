@@ -740,7 +740,6 @@ export class TabManager {
       autoAnswer: null,
       autoAnswerChoices: [],
       askEnd: null,
-      line: null,
       backgroundWork: null,
       pending: [],
       lastSay: null,
@@ -799,7 +798,7 @@ export class TabManager {
 
   /**
    * 那台说的一条会话此刻的整份脸（会话三帧都带它；同一 sid 后到的覆盖先到的）。Tab 还没建 ⇒ 暂存，建 Tab 时落实。
-   * 副作用挂在「变了什么」上：进程不在了 ⇒ 活卡全撤；成了已结束 ⇒ 隐藏的不留；在干什么变了 ⇒ 手上那份需手动 · 后台那一句作废、
+   * 副作用挂在「变了什么」上：进程不在了 ⇒ 活卡全撤；成了已结束 ⇒ 隐藏的不留；在干什么变了 ⇒ 不在等了就清手上那份需手动、
    * 再要一份会话事实；又活了 ⇒ 空态提示收掉。
    */
   onFace(sessionId: string, face: SessionFace): void {
@@ -813,11 +812,10 @@ export class TabManager {
     if (JSON.stringify(was) === JSON.stringify(face)) return;
     tab.face = face;
     if (sessionId === this.store.activeId) this.publishActive();
+    // 在干什么变了 ⇒ 不在等了就清手上那份需手动（流里在等的那一步 · 轮次刻度直接读它），再要一份会话事实。
     const doing = activityOf(face);
-    const before = activityOf(was);
-    if (doing !== before) {
+    if (doing !== activityOf(was)) {
       if (doing !== "needs_you") tab.needs = null;
-      if (doing !== "background_work") tab.backgroundWork = null;
       if (doing !== undefined) this.view.wantFacts(tab);
     }
     if (isLive(face) && !isLive(was)) this.prefs.clearPinHint(sessionId);
@@ -995,7 +993,7 @@ export class TabManager {
   }
 
   /**
-   * 「各台都报完了」那一刻（`tab-store.ts` 的 `AllListed`：壳说过、且订着的每台都在自己那条流上报完了）：交 {@link onAllListed}。
+   * 「各台都报完了」那一刻（`tab-store.ts` 的 `AllListed`：本机后端说过、且订着的每台都在自己那条流上报完了）：交 {@link onAllListed}。
    */
   private readonly listed = new AllListed(() => this.onAllListed());
 
@@ -1007,9 +1005,9 @@ export class TabManager {
     this.listed.setMachines(origins);
   }
 
-  /** 壳说各台都报完了（`listed` 格的 `all`）。落在某一台那条流上 ⇒ 别的台还没在自己那条流上报完就还不算那一刻。 */
+  /** 本机后端说各台都报完了（`FleetLines.allListed`）。别的台还没在自己那条流上报完就还不算那一刻。 */
   markAllListed(): void {
-    this.listed.shellSays();
+    this.listed.backendSays();
   }
 
   /** 「各台都报完了」那一刻到过没有。 */

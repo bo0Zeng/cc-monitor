@@ -71,7 +71,7 @@ async function settle(): Promise<void> {
 }
 
 function page(origin = "devbox"): HTMLElement {
-  const el = buildConfigPage({ platform: "posix", origin: () => origin, machine: () => origin });
+  const el = buildConfigPage({ origin: () => origin, machine: () => origin });
   document.body.replaceChildren(el);
   return el;
 }

@@ -26,7 +26,7 @@ mod key; // 中转口的钥匙：住哪 · 谁铸 · 落盘（读好交给中转
 mod listen; // 绑口 · accept · 在途上界 · 两个期限值 · 起监听之前的接线
 
 /// 中转的入口（常驻后端进程内起）。**上游选择那只手由调用方递进来**（`accounts::upstream_select::host_relay`）。
-pub use listen::{host, our_relay_listening, Hosted, ENV_PORT};
+pub use listen::{host, our_relay_listening, Hosted};
 
 /// 本进程起的那个中转去上游那一跳此刻的读数（没起中转 ⇒ `None`）；拨号层把它归到本机那台。
 pub use listen::hop_now;

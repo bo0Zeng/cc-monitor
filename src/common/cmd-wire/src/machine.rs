@@ -438,6 +438,9 @@ pub struct FleetLines {
     pub hint: String,
     /// 机器列表页头那一句（机器 N · 离线 a · 要更新 b；没有离线 · 要更新的那一段不出）。
     pub count: String,
+    /// 各台都报完了活会话清单（「连接这台」关着的不算；没连上 · 连上了还没报完 ⇒ 假）。主窗口「各台都报完」那一刻照它。
+    #[serde(rename = "allListed")]
+    pub all_listed: bool,
 }
 
 /// 接常驻那一段的一轮结论（宿主把通信层交出的那一态原样转给后端，只有事实）。

@@ -36,8 +36,8 @@ fn stop_with(
 /// 判号要的事实：这台只有一个号 `work`（能用）、没有谁的上次记录。
 fn with_accounts<T>(f: impl FnOnce(&la::Facts) -> T) -> T {
     let library = || {
-        crate::observe::accounts_query::test_support::list(vec![
-            crate::observe::accounts_query::test_support::row_with("work", |a| {
+        crate::accounts::manage::library::test_support::list(vec![
+            crate::accounts::manage::library::test_support::row_with("work", |a| {
                 a.config_dir = Some("/h/.cc/work".into())
             }),
         ])

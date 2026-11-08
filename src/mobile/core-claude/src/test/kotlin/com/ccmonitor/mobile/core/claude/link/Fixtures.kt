@@ -36,7 +36,6 @@ internal object Fixtures {
             "permissionMode" to null,
             "permissionModeText" to null,
             "tokens" to null,
-            "cost" to null,
             "background" to null,
             "autoAnswer" to null,
             "autoAnswerChoices" to emptyList<Any>(),

@@ -37,7 +37,7 @@ const readers: [string, () => Promise<unknown>][] = [
   ["fetchImage", () => fetchImage("devbox", "/p/s.jsonl", "i1", { at: 0, n: 0 } as never)],
   ["markChore", () => markChore("devbox", {} as never)],
   ["readDataReport", () => readDataReport("devbox")],
-  ["readChores", () => readChores(["devbox"])],
+  ["readChores", () => readChores()],
   ["readBranch", () => readBranch("devbox", "/p/s.jsonl")],
   ["readRecordDrift", () => readRecordDrift("devbox")],
   ["importSshHosts", () => importSshHosts([])],

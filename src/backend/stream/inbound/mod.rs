@@ -135,11 +135,17 @@ pub(crate) fn unix_mode_unavailable(unix_mode_bits: bool) -> Vec<crate::wire::Un
     REGISTRY
         .iter()
         .filter(|s| s.codes.contains(&NO_UNIX_MODE))
-        .map(|s| crate::wire::Unavailable {
-            command: s.name.to_string(),
-            code: NO_UNIX_MODE.to_string(),
-        })
+        .map(|s| gap_here(s.name, NO_UNIX_MODE))
         .collect()
+}
+
+/// 本机做不到的一项：置灰那一句按本机的名字写好（别台的由本机后端转它的 hello 时换成那台的名字：`control/feeds.rs`）。
+fn gap_here(command: &str, code: &str) -> crate::wire::Unavailable {
+    crate::wire::Unavailable {
+        command: command.to_string(),
+        code: code.to_string(),
+        said: copy_core::unavailable(code, &copy_core::local_machine()),
+    }
 }
 
 /// 这台机器上**做不到**的命令 —— **纯判定那一半**（不碰世界 ⇒ 可拿合成读数驱动）。
@@ -167,10 +173,7 @@ pub(crate) fn unavailable_from(tmux: Option<bool>) -> Vec<crate::wire::Unavailab
     if tmux == Some(false) {
         for spec in REGISTRY {
             if spec.codes.contains(&NO_TMUX) {
-                out.push(crate::wire::Unavailable {
-                    command: spec.name.to_string(),
-                    code: NO_TMUX.to_string(),
-                });
+                out.push(gap_here(spec.name, NO_TMUX));
             }
         }
     }

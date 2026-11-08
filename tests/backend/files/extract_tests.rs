@@ -511,3 +511,26 @@ fn landing_a_file_past_what_is_left_deletes_it_and_says_the_cap() {
     assert_eq!((n, left), (5, 0));
     std::fs::remove_dir_all(&base).ok();
 }
+
+/// 文件管理那一块只引纯工具与平台两层：解压条目拆段用共用的词法小包、暂存区落点经后端 common 取 ⇒
+/// 清单的 `[dependencies]` 里没有拨号核心（`ssh-dial`）与中转门牌（`relay-route-core`）。
+#[test]
+fn the_files_crate_depends_on_neither_the_dial_core_nor_the_relay_contract() {
+    let manifest = include_str!("../../../src/backend/files/Cargo.toml");
+    let deps: Vec<&str> = manifest
+        .split("\n[")
+        .find(|s| s.starts_with("dependencies]"))
+        .expect("清单里有 [dependencies]")
+        .lines()
+        .skip(1)
+        .filter_map(|l| l.split(['=', '.']).next().map(str::trim))
+        .filter(|n| !n.is_empty() && !n.starts_with('#'))
+        .collect();
+    assert!(deps.contains(&"backend-common"), "本条在空转：{deps:?}");
+    for gone in ["ssh-dial", "relay-route-core"] {
+        assert!(
+            !deps.contains(&gone),
+            "`backend-files` 还依赖 `{gone}`：{deps:?}"
+        );
+    }
+}

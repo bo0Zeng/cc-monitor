@@ -409,7 +409,7 @@ impl Wired {
     ) -> Result<Wired, CopyErr> {
         use crate::dial::sftp::open_for_transfer;
         // 两台都只按名字：怎么拨照这一端的机器表组（表里没有 · 组不成 ⇒ `bad_args`）。
-        let hosts = super::machines::here();
+        let hosts = crate::dial::machines_now();
         let (_, fd) = super::transfer::dial_by_name(&hosts, from).map_err(CopyErr::BadArgs)?;
         let (to_dial, td) = super::transfer::dial_by_name(&hosts, to).map_err(CopyErr::BadArgs)?;
         let unreach =

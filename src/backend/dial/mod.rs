@@ -57,6 +57,8 @@ pub use ssh_dial::{Captured, DialRequest};
 pub mod forwards; // 端口转发的账（起 · 停 · 列三条帧命令）
 pub mod known_hosts; // cc-monitor 自己那份 known_hosts（握手认下的钥匙；开终端那一行交给 ssh）
 pub mod links; // 每一跳可观测：池里的连接读数归到那一台（机器状态成品的 `links`）
+pub mod machines; // 这一端的机器表怎么读（唯一一份读法；写的那一半住 `control/machines.rs`）
+pub use machines::machines_now;
 pub mod opened_windows; // ↗ 的本机记录：开终端那一刻那个 shell 写下的窗口标签
 pub use known_hosts::install as install_known_hosts;
 pub mod probe; // 测试连接（`remote-probe`）
@@ -102,7 +104,7 @@ pub fn host() {
                 home: crate::platform::paths::home_dir(),
             }),
             host_keys: Box::new(known_hosts::KnownHostsFile),
-            agent: Some(Box::new(crate::platform::ssh_agent::LocalAgent)),
+            agent: Some(Box::new(LocalAgent)),
             facts: Box::new(BackendFacts),
             files: ssh_dial::sftp::WriteRules::Deploy {
                 dir_mode: crate::common::own_dir::PRIVATE_DIR_MODE,
@@ -144,6 +146,24 @@ impl ssh_dial::env::KeySource for HomeKeyFiles {
     }
 }
 
+/// 本机的 ssh-agent，交给拨号核心（[`ssh_dial::env::Agent`]）；两个平台怎么连住平台层（[`crate::platform::ssh_agent::connect`]）。
+pub(crate) struct LocalAgent;
+
+impl ssh_dial::env::Agent for LocalAgent {
+    fn connect<'a>(
+        &'a self,
+        sock: Option<&'a str>,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<ssh_dial::env::AgentClient, ssh_dial::Said>>
+                + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(crate::platform::ssh_agent::connect(sock))
+    }
+}
+
 /// 复制详情那几行：本后端的时刻与机器（`wire/detail.rs`）· 本后端的钟（`common/time.rs`）。
 struct BackendFacts;
 
@@ -161,23 +181,6 @@ impl ssh_dial::env::Facts for BackendFacts {
 }
 
 use crate::common::said::Said;
-
-// ───────────── 这一端的机器表：拨号层只读，读法由 faces 装 ─────────────
-
-/// 这一端的机器表怎么读（`control::machines` 那一份）：起来那一下装一次（拨号层不认控制面：拨号那个包不依赖控制面）。
-static MACHINES: std::sync::OnceLock<fn() -> Vec<Host>> = std::sync::OnceLock::new();
-
-/// 装上「这一端的机器表怎么读」。装过再装 ⇒ 不换（一个进程一张表），记一行。
-pub fn install_machines(read: fn() -> Vec<Host>) {
-    if MACHINES.set(read).is_err() {
-        tracing::warn!("dial: 机器表的读法已经装过了，这一次不换");
-    }
-}
-
-/// 这一端的机器表此刻那一张（现读；没装 ⇒ 空表）。
-pub fn machines_now() -> Vec<Host> {
-    MACHINES.get().map_or_else(Vec::new, |read| read())
-}
 
 /// 那几台此刻有没有一条拨通了的长流（本机后端替那台开的常驻流，接上之后到断掉）：
 /// 「那台后端此刻在」只按它判（推公钥先问那台后端还是走一次 exec，`assets/pubkey.rs`）。记的那一处是 `control/feeds.rs`。

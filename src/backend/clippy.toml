@@ -23,7 +23,7 @@
 #   `libc::SYS_pidfd_send_signal` 那一发一起禁）· 手写 `extern` 声明。只在 clippy 里红（`cargo test` 不红）；Windows 那几臂由门禁 `winchk-backend` 那一格看。
 # 写句柄只在该造的那几处造（`Own` · `DiagLog` 启动入口 · `Face` 分派那一层 · `NewFile` 分叉那两条 · `Resolved` 路径解析与删会话那一道）、
 #   跨进程锁 `platform::lock::hold` 只在写自家状态的句柄与账号库那两趟读—改—写里拿：每一处在调用点放行、写理由；`platform/fs` 里那几处照写。
-#   要文件管理写句柄的处理器（`type Needs = needs::Face`，`disallowed-types` 那一条）只住文件管理那两扇门（挂载那一行放行）。
+#   要文件管理写句柄的处理器（`type Needs = needs::Face` · `needs::FaceOwn`，`disallowed-types` 那一条）只住文件管理那两扇门（挂载那一行放行）。
 #   按定义路径认：经 `fn` 项当值递（`install_from_env(DiagLog::issue, …)`）也认得出。
 # 测试段放开（各库根头上那一行 `cfg_attr(test, …)`）。本文件管 `src/backend/` 底下的各包（各自的 `[lints.clippy]` 定成 deny）；拨号核心 · 出网口住 `src/comms/`，读那边那一份。
 disallowed-methods = [
@@ -201,4 +201,5 @@ disallowed-methods = [
 ]
 disallowed-types = [
   { path = "backend_wire::spec::needs::Face", reason = "文件管理写句柄只递给文件管理那两扇门的处理器：别处要了它，就多了一个写用户文件的口" },
+  { path = "backend_wire::spec::needs::FaceOwn", reason = "文件管理写句柄只递给文件管理那两扇门的处理器：别处要了它，就多了一个写用户文件的口" },
 ]

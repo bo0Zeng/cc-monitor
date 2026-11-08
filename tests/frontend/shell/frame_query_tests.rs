@@ -533,7 +533,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ),
     (
         "machine-interrupts",
-        "`BORN_ON_FRAME` 那一条：后端出成品 `{relayedSessions, relayedMaybe, liveStreams, forwards}`（`accounts_query.rs::machine_product`）；\
+        "`BORN_ON_FRAME` 那一条：后端出成品 `{relayedSessions, relayedMaybe, liveStreams, forwards}`（`accounts/manage/library.rs::machine_product`）；\
          前端 `src/frontend/ui/settings/interrupts.ts::askInterrupts` 只问本机后端（它经那台常驻流问到、并好再答）、按生成类型收，monitor 这一侧零发送点",
     ),
     // 生在帧面上、界面直接问的那一条。
@@ -638,10 +638,6 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     (
         "history-branch",
         "主线外清单冷读：查看器与子运行窗口打开时问一次（`record-reads.ts::decodeBranch` 按形状收），之后跟实时帧 `branch`",
-    ),
-    (
-        "history-forget",
-        "删会话之后连带删那一条注解（界面删成功之后交，monitor 不顺手清）",
     ),
     // `creds.apikey` 写：界面经 `src/frontend/ui/apikey-reads.ts::writeApikeyKey` 直接交那台后端（账号 id 由后端推）。
     (
@@ -783,15 +779,10 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
          monitor 自己要不要跟着收那台后端 —— 它的答案不给界面",
     ),
     (
-        "machines-read",
-        1,
-        "机器表的最近一答（`machine_table.rs::refresh`）：本机通道登记上那一刻 ＋ 本机流每帧 `changed {machines}` 各问一次，\
-         记账、读不懂上屏 —— 壳自己的账，答案不给界面（界面那一问经通道直问本机后端）",
-    ),
-    (
         "machine-read",
-        1,
-        "文件窗口（`filewin/source.rs::machine_now`）：那台通不通先问一次此刻的成品，之后照 `changed/machine` 换（窗口自己的断线条）",
+        2,
+        "文件窗口（`filewin/source.rs::machine_now`）：那台通不通先问一次此刻的成品，之后照 `changed/machine` 换（窗口自己的断线条）；\
+         开窗那一刻（`filewin/entry.rs::machine_names`）问一次「复制到另一台」那一列有哪几台",
     ),
     // `skill-uninstall-plan` 那一行退役：卸那一趟的删与摘记录进了被卸那台后端（`skill-uninstall-apply`），monitor 零处问它。
     // `tasks-list` 那一行退役：本机任务 notify 删了（监视进后端，`changed {tasks}` 帧 ⇒ 通道 `changed/tasks`），
@@ -1434,10 +1425,10 @@ const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
         "快照是两件事：先问（一问，连第一页正文，`PAGE_BUDGET`）· 剩下的正文（分页，问过之后按还差的字节数给 `read_budget`）",
     ),
     (
-        "machine_table.rs",
-        "refresh",
+        "filewin/entry.rs",
+        "machine_names",
         1,
-        "本机通道登记上那一刻 · 本机流每来一帧 `changed {machines}`：问一次本机的机器表（一问，10 秒）",
+        "开文件窗口那一刻：问一次本机后端各台此刻的成品（「复制到另一台」那一列，一问，5 秒）",
     ),
     (
         "backend_control.rs",

@@ -618,7 +618,12 @@ fn the_size_of_one_percent_is_measured_kept_and_aged() {
         "显示态没带上"
     );
     assert_eq!(
-        o.tokens_per_pct("five_hour", t + 600 + PER_PCT_KEPT + 1),
+        o.tokens_per_pct("five_hour", t + 600 + 7 * 86_400),
+        Some(12_500),
+        "满 7 天那一刻还该作数"
+    );
+    assert_eq!(
+        o.tokens_per_pct("five_hour", t + 600 + 7 * 86_400 + 1),
         None,
         "过了 7 天还作数"
     );

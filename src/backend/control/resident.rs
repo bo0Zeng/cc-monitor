@@ -488,11 +488,14 @@ pub fn ensure(args: &[String], own: &Own) -> i32 {
     let hosted = vec![
         // 中转口与这台 `ccm` 起会话时找的是同一个口（同一个函数：这台环境里交了就用交的，否则默认口）。
         (
-            crate::wire::listen::RELAY_PORT_ENV,
+            crate::platform::child_env::RELAY_PORT,
             crate::accounts::upstream_select::endpoint::relay_port(&|k| std::env::var(k).ok())
                 .to_string(),
         ),
-        (crate::stderr_log::ENV, format!("~/{STDERR_LOG_REL}")),
+        (
+            crate::platform::child_env::STDERR_LOG,
+            format!("~/{STDERR_LOG_REL}"),
+        ),
     ];
     // 诊断文件那层目录先建好（`stderr_log` 只 `O_EXCL` 建文件、不建目录）；建不了 ⇒ 子进程装不上、stderr 照旧 null，不拖垮起。
     // 一次性子命令，stderr 只许一行 JSON 信封，没有第二个地方可说
@@ -624,7 +627,7 @@ fn run_dir(own: &Own) -> Result<(OwnPath, OwnPath), crate::common::said::Said> {
 
 /// 子进程的环境：常驻开关 · 宿主层交的那几格（中转口 · stderr 诊断文件，值里的 `~` 换成家目录）。纯函数，判据钉它。
 pub fn child_env(home: &Path, hosted: &[(&str, String)]) -> Vec<(String, String)> {
-    let mut env = vec![(crate::wire::listen::ENV_RESIDENT.into(), "1".into())];
+    let mut env = vec![(crate::platform::child_env::RESIDENT.into(), "1".into())];
     env.extend(hosted.iter().map(|(k, v)| {
         let v = crate::platform::paths::expand_tilde_from(v, Some(home));
         (k.to_string(), v)
@@ -898,7 +901,7 @@ pub fn sandbox_refusal(
     if !(marked || home_moved) {
         return None;
     }
-    let log = get(crate::stderr_log::ENV).map(PathBuf::from);
+    let log = get(crate::platform::child_env::STDERR_LOG).map(PathBuf::from);
     let hit = std::iter::once(data_home.to_path_buf())
         .chain(log)
         .find(|p| p.starts_with(&real))?;

@@ -183,7 +183,7 @@ export const HISTORY_SCENES: Scene[] = [
       // 壳写好的那几句：截图照文案表里壳用的那几格摆。
       w.commands = {
         ...w.commands,
-        open_local_terminal: () => ({
+        open_terminal_window: () => ({
           outcome: "noWindow",
           said: copyText("rsLaunch.posix.noTerminalWindow"),
           title: copyText("terminalOpen.noTerminal.title"),

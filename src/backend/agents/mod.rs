@@ -85,8 +85,8 @@ pub use cmd_wire::needs::AskKind;
 // 通用记录里那几样的形状住 `cmd-wire`（手机按同一份解）；后端在它们上面写字的那几处是下面的 `*Ext`。
 pub use cmd_wire::record::{
     Answer, ApiReason, AskOption, AskQuestion, ChildRunTag, LineDiff, LineDiffKind, LineDiffRow,
-    Pasted, PlanTitle, ResultKind, Speaker, StepAsk, StepBody, StepResult, ToolCard, ToolStep,
-    UserText,
+    PlanTitle, ResultKind, SaidPart, Speaker, StepAsk, StepBody, StepResult, TextFold, ToolCard,
+    ToolStep, UserText,
 };
 use std::path::{Path, PathBuf};
 
@@ -843,12 +843,23 @@ pub struct LocalFace {
     pub home_at: fn(config_dir: Option<&Path>, from_env: bool) -> PathBuf,
     /// 家目录 ⇒ pidfile 目录（判活 · 账号归属读它）。
     pub pidfile_dir: fn(&Path) -> PathBuf,
-    /// 小写后的 cmdline 可不可能是这一家的进程（判活的冒名兜底）。
-    pub cmdline_may_be_agent: fn(&str) -> bool,
+    /// 小写后的 cmdline 说这个进程是不是这一家的一条会话（判活那一判，[`CmdlineSays`]；怎么用见 `history::live_table::add_time_verdict`）。
+    pub cmdline_may_be_agent: fn(&str) -> CmdlineSays,
     /// 家目录 ⇒ 任务列表的根（其下每个会话一个目录）。`None` ＝ 这一家没有任务列表。
     pub tasks_dir: Option<fn(&Path) -> PathBuf>,
     /// 进程状态文件（已解析）⇒ 它说的那一份事实（[`ProcFact`]）。通用层只读这一份，不认那一家的字段名。
     pub(crate) proc_of: fn(&serde_json::Value) -> ProcFact,
+}
+
+/// 一个进程的 cmdline 说它是不是这一家的一条会话（[`LocalFace::cmdline_may_be_agent`] 答）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CmdlineSays {
+    /// 像这一家（读出来是空也落这里：空不算证据，放行）。
+    Session,
+    /// 是这一家的进程、可不是一条会话（例：守护池停泊的备用进程）：启动时刻核上了也不算活。
+    NotSession,
+    /// 明显不像这一家：启动时刻没核上时判冒名；核上了照活（身份证据更硬）。
+    Unlike,
 }
 
 /// 一个会话进程留下的那份进程状态文件说了什么（[`LocalFace::proc_of`] 从那一家的格式翻好）：
@@ -1004,6 +1015,15 @@ pub trait StepResultExt {
 
 impl StepResultExt for StepResult {
     fn written(mut self, read: bool) -> Self {
+        // 结果块抬头的尾巴：失败了（没批准的不算）⇒ 有退出码写退出码，否则「出错」。
+        self.error = (!self.ok && !self.rejected).then(|| {
+            crate::common::cells::Words(match self.exit_code {
+                Some(code) => {
+                    copy_core::copy_text("stream.result.exitCode", &[("n", &code.to_string())])
+                }
+                None => copy_core::copy_text("stream.result.error", &[]),
+            })
+        });
         let text = if self.rejected {
             copy_core::copy_text("stream.step.rejected", &[])
         } else if !self.ok {

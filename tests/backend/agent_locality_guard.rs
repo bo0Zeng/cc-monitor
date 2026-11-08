@@ -126,8 +126,6 @@ mod tests {
             (format!("stop_{}", "reason"), "记录格名"),
             (format!("toolUse{}", "Result"), "记录格名"),
             (format!("request{}", "Id"), "记录格名"),
-            (format!("totalCost{}", "USD"), "记录格名"),
-            (format!("hasUnknown{}", "ModelCost"), "记录格名"),
             (format!("is{}", "Meta"), "记录格名"),
             (format!("\"end_{}\"", "turn"), "停下的原因值"),
             (format!("\"api_{}\"", "error"), "记录子类型名"),

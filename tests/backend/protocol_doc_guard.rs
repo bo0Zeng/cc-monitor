@@ -126,7 +126,7 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
 /// 只登记不接住 = 把一片扫描面静默挖空，那正是本文件头注里 D 审计一击即破的那一族。
 const TERMINAL_SURFACE_FILES: &[(&str, &str)] = &[
     (
-        "host/ccm_line/argv.rs",
+        "wire/ccm_line/argv.rs",
         "`ccm` 这套终端 argv 的唯一解析口。旗标字面量**只住这一个文件**\
          （由 `ccm_line::argv::tests::ccm_flag_literals_live_only_in_argv_rs` 钉），\
          它们是终端命令面、不是 wire 协议面。",
@@ -540,7 +540,7 @@ mod tests {
         // 🔴 **原来的针是 `include_str!("argv.rs")` —— 针里嵌着那条相对路径的全文。**
         //    剖分把那条判据搬去了 `tests/backend/control/ccm_tests.rs`，剖分器**按原语义
         //    重定向**了它的 `include_str!`，于是那一行今天逐字是
-        //    `include_str!("../../../src/backend/host/ccm_line/argv.rs")` ⇒ 整串针失配
+        //    `include_str!("../../../src/backend/wire/ccm_line/argv.rs")` ⇒ 整串针失配
         //    （现打红：「接盘判据不再扫 `argv.rs` 了」）。
         //    ⇒ 针改成**只认路径的收尾文件名**：它认的是「有一处 include 读的是 argv.rs」，
         //      而不是「那条相对路径逐字长这样」。前者是事实，后者是位置。
@@ -578,10 +578,10 @@ mod tests {
         );
         for (f, _) in TERMINAL_SURFACE_FILES {
             assert!(
-                f.starts_with("host/ccm_line/")
+                f.starts_with("wire/ccm_line/")
                     || f.starts_with("control/ccm/")
                     || *f == "control/launch_render/ccm_invocation.rs",
-                "`{f}` 不在 ccm 那一族（`host/ccm_line/` · `control/ccm/`）下 —— 今天那条接盘判据只扫得到那一族，\n                 别的文件放进这张表等于没人管它。"
+                "`{f}` 不在 ccm 那一族（`wire/ccm_line/` · `control/ccm/`）下 —— 今天那条接盘判据只扫得到那一族，\n                 别的文件放进这张表等于没人管它。"
             );
         }
     }
@@ -616,7 +616,7 @@ mod tests {
             ("control/fork_write.rs", "Forked", "同上，出参"),
             ("control/fork_launch.rs", "AccountFact", "同上，号那一格的值（`null` ＝ 账号 0）"),
             (
-                "observe/accounts_query.rs",
+                "accounts/manage/library.rs",
                 "Interrupts",
                 "typed 帧命令 `machine-interrupts` 的回包（形状从类型生成进协议参考与 TS），命令应答不是流协议帧",
             ),
@@ -680,8 +680,8 @@ mod tests {
                 include_str!("../../src/backend/observe/tmux_observe.rs"),
             ),
             (
-                "observe/accounts_query.rs",
-                include_str!("../../src/backend/observe/accounts_query.rs"),
+                "accounts/manage/library.rs",
+                include_str!("../../src/backend/accounts/manage/library.rs"),
             ),
             (
                 "observe/query/locate.rs",

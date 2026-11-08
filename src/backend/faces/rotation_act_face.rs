@@ -4,7 +4,7 @@
 use crate::accounts::quota::rotation;
 use crate::accounts::quota::rules::book::{self, Session};
 use crate::accounts::quota::rules::decide::{self, Decision};
-use crate::accounts::quota::rules::{simulate, standing, Acct, Adopted};
+use crate::accounts::quota::rules::{simulate, Acct, Adopted};
 use crate::accounts::upstream_select::turn;
 use crate::faces::rotation_face::Ctx;
 use crate::wire::typed::Command;
@@ -59,41 +59,6 @@ pub(crate) fn judged(
         end,
     );
     Judged { facts, d, tl }
-}
-
-/// 会话的顺序：第一格 ＝ 在用的号，往下照拖出来的 · 策略交的先后，此刻用不了的与先不用的沉底（各照号的先后）。
-pub(crate) fn lineup_of(s: &Session, d: &Decision, facts: &[Acct], now: u64) -> Vec<String> {
-    lineup_by(s, d.sigma.temp.iter().chain(&d.order), facts, now)
-}
-
-/// 不轮换的会话的顺序：第一格 ＝ 在用的号，往下照号的先后，此刻用不了的与先不用的沉底（没有策略交的先后）。
-pub(crate) fn plain_lineup(s: &Session, facts: &[Acct], now: u64) -> Vec<String> {
-    lineup_by(s, std::iter::empty(), facts, now)
-}
-
-/// 第一格在用的号，往下 `prefer` 里发得出去的，再照号的先后：发得出去的在前，余下的沉底。
-fn lineup_by<'a>(
-    s: &Session,
-    prefer: impl Iterator<Item = &'a String>,
-    facts: &'a [Acct],
-    now: u64,
-) -> Vec<String> {
-    let ok = |a: &str| {
-        !s.off.iter().any(|x| x == a)
-            && facts
-                .iter()
-                .find(|x| x.id == a)
-                .is_some_and(|x| standing::sendable(x, now))
-    };
-    let mut out = vec![s.current.clone()];
-    let ids: Vec<&String> = facts.iter().map(|x| &x.id).collect();
-    let usable = prefer.chain(ids.iter().copied());
-    for a in usable.filter(|a| ok(a)).chain(ids.iter().copied()) {
-        if !out.contains(a) {
-            out.push(a.clone());
-        }
-    }
-    out
 }
 
 /// 这个会话照它载入的副本判一次、推演到 `end`。
@@ -199,7 +164,11 @@ pub(crate) fn temp_with(
     let next = match &req.op {
         RotTempOp::Move { account, to } => {
             let j = judged_session(ctx, &req.sid, &s, now, now);
-            moved(&lineup_of(&s, &j.d, &j.facts, now), account, *to)
+            moved(
+                &decide::lineup_of(&s.current, &s.off, &j.d, &j.facts, now),
+                account,
+                *to,
+            )
         }
         _ => None,
     };
@@ -303,7 +272,7 @@ pub(crate) fn use_now_with(
                 .hop
                 .fact_one(
                     &s.agent,
-                    &ctx.hop.library(),
+                    &ctx.hop.book(),
                     &req.account,
                     &row,
                     now,

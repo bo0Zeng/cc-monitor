@@ -62,10 +62,9 @@ pub enum Out {
         origin: String,
         left: SessionLeft,
     },
-    /// `all` = 这一刻机器表里的每一台都报完了（「各台都报完」那一刻：前端据此收空组、说记住的那一格没出现）。
+    /// 那台的活会话清单报完了（「各台都报完」那一刻是本机后端算的 `FleetLines.allListed`，不在这一侧）。
     Listed {
         origin: String,
-        all: bool,
     },
     /// 一个会话的运行表（原样转）。
     Runs {
@@ -105,8 +104,6 @@ pub struct Book {
     /// 每台每个会话手上那份主线外清单（F5 重放跟在宣告后面再说一次 · 报名单时交回手上有什么）。
     /// **断线不摘**（不跟 `origins` 那一台一起走）：重接之后交回它，那台只补缺的那一截。会话离开 · 关 tab · 那台报完清单时不在了 ⇒ 摘。
     branch: HashMap<crate::origin::Origin, BTreeMap<String, BranchCopy>>,
-    /// 订了会话流的那几台（机器表：本机 ＋ 注册着的远端）；`None` = 还不知道 ⇒ 不立「各台都报完」。
-    machines: Option<Vec<String>>,
 }
 
 impl Book {
@@ -196,8 +193,7 @@ impl Book {
                 {
                     m.retain(|sid, _| live.contains_key(sid));
                 }
-                let all = self.all_listed();
-                vec![Out::Listed { origin, all }]
+                vec![Out::Listed { origin }]
             }
             // 顶替 · 重读只记进簿（内容那一路由收口说）。
             _ => Vec::new(),
@@ -236,28 +232,6 @@ impl Book {
                 },
             })
             .collect()
-    }
-
-    /// 机器表里的每一台都报完了活会话清单（表还不知道 / 空 ⇒ 否）。
-    fn all_listed(&self) -> bool {
-        self.machines.as_ref().is_some_and(|m| {
-            !m.is_empty()
-                && m.iter()
-                    .all(|o| self.origins.get(o).is_some_and(|b| b.listed))
-        })
-    }
-
-    /// 机器表换了（启动 · 热加载）：记下；此刻每一台都报完了 ⇒ 再说一次「报完了」带 `all`（那一刻不因为表变了而错过，
-    /// 例如摘掉的正是唯一没报完的那台）。
-    pub fn set_machines(&mut self, machines: Vec<String>) -> Vec<Out> {
-        self.machines = Some(machines);
-        if !self.all_listed() {
-            return Vec::new();
-        }
-        let first = self.machines.as_ref().and_then(|m| m.first()).cloned();
-        first
-            .map(|origin| vec![Out::Listed { origin, all: true }])
-            .unwrap_or_default()
     }
 
     /// 那台那个会话此刻是活的（它最近的成品是 `Live`）。
@@ -331,13 +305,9 @@ impl Book {
                 }
             }
         }
-        let all = self.all_listed();
         for o in origins {
             if self.origins[o].listed {
-                r.after.push(Out::Listed {
-                    origin: o.clone(),
-                    all,
-                });
+                r.after.push(Out::Listed { origin: o.clone() });
             }
         }
         r
@@ -364,9 +334,8 @@ impl Out {
             Out::Live { meta, .. } => F::Added(meta.clone()),
             Out::Status { status, .. } => F::Status(status.clone()),
             Out::Left { left, .. } => F::Left(left.clone()),
-            Out::Listed { origin, all } => F::Listed(b::OriginSessionsListedPayload {
+            Out::Listed { origin } => F::Listed(b::OriginSessionsListedPayload {
                 origin: crate::origin::Origin::named(origin.clone()),
-                all: *all,
             }),
             Out::Runs { runs, .. } => F::Runs(runs.clone()),
             Out::Branch { sid, off, runs, .. } => F::Branch(b::SessionBranchPayload {
@@ -391,12 +360,6 @@ pub fn install_sink(tx: std::sync::mpsc::Sender<Out>) {
     if SINK.set(tx).is_err() {
         tracing::error!("session_book::install_sink 被调了第二次 —— 出口只许有一个，这次不换");
     }
-}
-
-/// 机器表换了（`machine_table::refresh` 那一处调）：记账，有话就交出口。
-pub fn machines_changed(machines: Vec<String>) {
-    let outs = book().write().set_machines(machines);
-    send(outs);
 }
 
 /// 两条流交来一件事：记账，按序交出口。出口还没装 ⇒ 只记账（前端那时还没在听；F5 / 起步那一问会从账里重放）。

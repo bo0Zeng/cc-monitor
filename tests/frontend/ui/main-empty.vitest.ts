@@ -26,7 +26,7 @@ describe("主窗口空态", () => {
     e.readiness(ready(false));
     expect(lines(e), "还没读到 ≠ 无会话").toEqual([]);
     expect(card(e)).toBeNull();
-    const face: FleetLines = { line: "核心·本机那一句", hint: "核心·gpu-01 还在连那一句", count: "核心·计数" };
+    const face: FleetLines = { line: "核心·本机那一句", hint: "核心·gpu-01 还在连那一句", count: "核心·计数", allListed: false };
     e.face(face);
     expect(lines(e)).toEqual([face.line, face.hint]);
   });
@@ -34,7 +34,7 @@ describe("主窗口空态", () => {
   it("★ 「开始用」卡：每步的名字 · 那一句 · 按钮的字照后端；点按钮按 `go` 开那一处；没做的才有按钮", () => {
     const h = host();
     const e = new MainEmpty(h);
-    e.face({ line: "核心·都报完了", hint: "核心·怎么让它有", count: "" });
+    e.face({ line: "核心·都报完了", hint: "核心·怎么让它有", count: "", allListed: true });
     e.readiness(ready(true));
     const c = card(e)!;
     expect(c).not.toBeNull();
@@ -53,7 +53,7 @@ describe("主窗口空态", () => {
 
   it("问不到 · 跳过过 · 都做完 ⇒ 不出卡，那一句照旧", () => {
     const e = new MainEmpty(host());
-    const face: FleetLines = { line: "核心·一句", hint: "核心·二句", count: "" };
+    const face: FleetLines = { line: "核心·一句", hint: "核心·二句", count: "", allListed: false };
     e.face(face);
     e.readiness(null);
     expect(card(e), "问不到不催").toBeNull();
@@ -68,7 +68,7 @@ describe("主窗口空态", () => {
 
   it("文案是纯字：后端那一句里有尖括号也照字摆", () => {
     const e = new MainEmpty(host());
-    e.face({ line: "<b>x</b>", hint: "<i>y</i>", count: "" });
+    e.face({ line: "<b>x</b>", hint: "<i>y</i>", count: "", allListed: false });
     e.readiness(ready(false, { steps: [{ id: "terminal", done: false, name: "<b>n</b>", hint: "<i>h</i>", act: { label: "<u>a</u>", go: "aliases" } }] }));
     expect(e.el.querySelector("b, i, u")).toBeNull();
   });

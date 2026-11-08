@@ -14,8 +14,8 @@ import com.ccmonitor.mobile.core.wire.gen.AccountRow
 import com.ccmonitor.mobile.core.wire.gen.AgentFacts
 import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.PrefsReply
+import com.ccmonitor.mobile.core.wire.gen.SlotShow
 import com.ccmonitor.mobile.core.wire.gen.Tab
-import com.ccmonitor.mobile.core.wire.gen.Usage
 import com.ccmonitor.mobile.link.Fetched
 import com.ccmonitor.mobile.link.Problem
 import com.ccmonitor.mobile.link.problem
@@ -37,7 +37,7 @@ data class MachineSettingsUi(
     val accountsFailed: Problem? = null,
     /** 号列表答过一次了（[accounts] 是那台答的，空 ＝ 真没有号）；没答过 ⇒ `false`（读中）。 */
     val accountsRead: Boolean = false,
-    /** 那台的额度账（用量屏整份画；账号卡 · 账号一览按号名取用量那一格）。 */
+    /** 那台的额度账（用量屏整份画；账号卡 · 账号一览那一格在 [accounts] 那一行里）。 */
     val quota: Fetched<QuotaReadReply> = Fetched.Loading,
     /** 手上有一份、再读没成的那一句（那份照画，顶上说这一句）；没有 ⇒ `null`。 */
     val quotaRereadFailed: Problem? = null,
@@ -62,15 +62,8 @@ data class MachineSettingsUi(
             }
         }
 
-    /** 这个号用量那一格（出过数的与没出过数的同一种）；还没读到 · 读不成 · 账上没有这个号 ⇒ `null`。 */
-    fun usage(account: String): Usage? =
-        (quota as? Fetched.Got)?.value?.let { q ->
-            q.accounts.firstOrNull { it.account == account }?.usage
-                ?: q.unseen
-                    .firstOrNull { it.account == account }
-                    ?.usage
-                    ?.let { Usage(it.slot, it.window, it.value, null, it.text, it.tone) }
-        }
+    /** 这个号用量那一格：那台 `accounts-list` 那一行写好的第一格（字 · 语气）；号列表里没有这个号 · 那一行没有格 ⇒ `null`。 */
+    fun usage(account: String): SlotShow? = accounts.firstOrNull { it.name == account }?.slots?.firstOrNull()
 
     /** 这个号的默认模型（那台存的原值）；没设 ⇒ `null`（跟随那一家的默认）。 */
     fun model(account: String): String? = prefs?.prefs?.models?.get(account)
@@ -78,8 +71,8 @@ data class MachineSettingsUi(
 
 /**
  * 设置屏与账号一览读写那台的那几份：接上的每一回（核心那一格 [seen]；进来时已通着 ⇒ 当场一回）各读一次 `accounts-list` · `quota-read` · `prefs-read`；
- * 流上 `quota` 变了换上它带的那份（没带 ⇒ 重读用量）、`accounts` 变了重读账号。偏好拨了马上 `prefs-set`、照回包画；没存上退回读到的值、那一行下面说一句。
- * 判（默认号 · 能不能设为默认 · 用量的字与语气 · 偏好的值）全在那台，这里只按号名对上两份回包。
+ * 流上 `quota` 变了换上它带的那份（没带 ⇒ 重读用量）并重读账号（每号的额度格在那一行里）、`accounts` 变了重读账号。偏好拨了马上 `prefs-set`、照回包画；
+ * 没存上退回读到的值、那一行下面说一句。判（默认号 · 能不能设为默认 · 用量的字与语气 · 偏好的值）全在那台，这里只照摆。
  */
 class MachineSettings(
     private val link: CoreLink,
@@ -96,7 +89,11 @@ class MachineSettings(
             changes.collect { c ->
                 when (c) {
                     is Changed.Accounts -> loadAccounts()
-                    is Changed.Quota -> c.body?.let(::gotQuota) ?: loadQuota()
+                    is Changed.Quota -> {
+                        c.body?.let(::gotQuota) ?: loadQuota()
+                        // 每号的额度格在号列表那一行里（`slots`）⇒ 连号列表一起重读。
+                        loadAccounts()
+                    }
                     else -> Unit
                 }
             }

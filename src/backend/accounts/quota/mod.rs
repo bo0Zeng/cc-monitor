@@ -1,12 +1,13 @@
 //! 额度与轮换：账号域里用量的唯一住址（额度账）＋ 满了换号的规则（轮换）。
 //!
 //! 用量只记在额度账这一处；同一种事实两个来源：中转经手的回包头（读法住适配层，[`crate::agents::quota_read_of`]）·
-//! 官方客户端报的用量（帧命令 `quota-probe`，读法同住适配层，[`crate::agents::usage_of`]）。
+//! 官方客户端报的用量（帧命令 `quota-probe`，本体 [`probe`]，读法同住适配层，[`crate::agents::usage_of`]）。
 
 pub mod facts;
 pub mod ledger;
 pub mod name_words;
 pub mod nodes;
+pub mod probe;
 pub mod rotation;
 pub mod rules;
 pub mod setup;

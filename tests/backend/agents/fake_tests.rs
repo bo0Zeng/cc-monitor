@@ -2,6 +2,7 @@
 //! 夹具本身住适配层（`agents::fake`，只在测试档 · `test-support` 下编）。
 use crate::accounts::manage::trust_share::trusted;
 use crate::agents::fake::*;
+use crate::agents::CmdlineSays;
 use std::path::{Path, PathBuf};
 
 /// 夹具根：按 pid + tag 隔开。
@@ -142,13 +143,16 @@ fn every_fake_capability_differs_in_shape_from_both_real_agents() {
     let _ = std::fs::remove_dir_all(&root);
 
     // 7 判活 cmdline：两边的**放行集不同**，否则"判活"这一格没有独立内容。
-    assert!(cmdline_may_be_agent("fakeagent revive x"));
+    assert_eq!(
+        cmdline_may_be_agent("fakeagent revive x"),
+        CmdlineSays::Session
+    );
     assert!(
-        !cmdline_may_be_agent("/usr/bin/node /x/claude"),
+        cmdline_may_be_agent("/usr/bin/node /x/claude") == CmdlineSays::Unlike,
         "本层放行了 Claude 的 cmdline"
     );
     assert!(
-        cc::liveness::cmdline_may_be_agent("/usr/bin/node /x/claude"),
+        cc::liveness::cmdline_may_be_agent("/usr/bin/node /x/claude") == CmdlineSays::Session,
         "对照坏了：Claude 那家不再认自己的 cmdline"
     );
 
@@ -277,7 +281,7 @@ fn removing_any_one_capability_stops_the_flow_somewhere_that_can_name_it() {
 /// |---|---|
 /// | `history::listing::list_projects_into`（项目清单） | 「记录树根不在」（`Ok(false)`、零行）：调用方据此说「这台还没有会话记录」 |
 /// | `search_query::search_into`（全文搜索） | **零命中** ⇒ 静默 |
-/// | `accounts_query::session_accounts`（会话归属） | **零行** ⇒ 静默 |
+/// | `accounts::manage::library::session_accounts`（会话归属） | **零行** ⇒ 静默 |
 /// | `agents::pick_kind`（`ccm --ccm-agent fake` · 起会话那一发的 `agent`，生产注册表里没有这一家） | **不认识这个 agent，说出认得的几家** |
 ///
 /// 最后一条：起会话 / resume 按注册表里那一家的那一格拼（注册了的家走它自己的命令形，见
@@ -329,7 +333,7 @@ fn the_general_layer_answers_a_non_claude_agent_silently_or_with_claudes_words()
     //   会去读**用户真实的**账号库（不碰生产）。
     let no_accts = root.join("no-such-accts");
     assert_eq!(
-        crate::observe::accounts_query::session_accounts(&root, &no_accts),
+        crate::accounts::manage::library::session_accounts(&root, &no_accts),
         Vec::new(),
         "会话归属的反应变了"
     );
@@ -397,9 +401,18 @@ fn the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family() {
         self_argv: vec!["/usr/local/bin/ccm".into()],
         ..Default::default()
     };
-    fn scan(_: Option<&Path>) -> Vec<(String, u32)> {
-        vec![("sid-1".into(), 4242)]
-    }
+    // 「在别处跑着」：一个账号目录里，测试进程自己持着 sid-1（记真的启动时刻 ⇒ 活会话表认它在写）。
+    let live_dir = fixture_root("resume-live");
+    let _ = std::fs::remove_dir_all(&live_dir);
+    let sessions = crate::agents::pidfile_dir(&live_dir);
+    std::fs::create_dir_all(&sessions).expect("建 pidfile 目录");
+    let me = std::process::id();
+    let ticks = crate::platform::proc::proc_starttime(me).expect("读得到自己的启动时刻");
+    std::fs::write(
+        sessions.join(format!("{me}.json")),
+        format!(r#"{{"sessionId":"sid-1","procStart":"{ticks}"}}"#),
+    )
+    .expect("写 pidfile");
     let opts = |agent: &str, args: &[&str]| -> argv::Opts {
         let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
         let Parsed::Opts(mut o) =
@@ -464,7 +477,8 @@ fn the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family() {
         }
         // resume 前问「是不是已在别处跑着」：只对留 pidfile 的那一家问。
         let mut e = env.clone();
-        e.running_sessions = Some(scan);
+        e.asks_live = true;
+        e.inherited_config_dir = Some(live_dir.to_string_lossy().to_string());
         let refused =
             plan::build_among(&reg, &opts(a.kind, &["--resume", "sid-1"]), &e, &t, None).is_err();
         assert_eq!(
@@ -524,6 +538,7 @@ fn the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family() {
         crate::agents::default_launch_among(&reg).map(|(k, _)| k),
         Some(crate::agents::default_kind())
     );
+    let _ = std::fs::remove_dir_all(&live_dir);
 }
 
 /// **夹具家永远不上生产** —— 判据两向。
@@ -713,8 +728,12 @@ fn the_same_generic_dispatch_answers_for_claude_codex_and_the_fake() {
         Some(pidfile_root(h))
     );
     assert!(local(codex).is_none());
-    assert!(local(claude).is_some_and(|f| (f.cmdline_may_be_agent)("/usr/bin/node /x/claude")));
-    assert!(local(AGENT_KIND).is_some_and(|f| !(f.cmdline_may_be_agent)("/usr/bin/node /x/claude")));
+    assert!(local(claude).is_some_and(
+        |f| (f.cmdline_may_be_agent)("/usr/bin/node /x/claude") == CmdlineSays::Session
+    ));
+    assert!(local(AGENT_KIND).is_some_and(
+        |f| (f.cmdline_may_be_agent)("/usr/bin/node /x/claude") == CmdlineSays::Unlike
+    ));
     let cfg = Path::new("/acct/3");
     assert_eq!(
         local(claude).map(|f| (f.home_at)(Some(cfg), true)),

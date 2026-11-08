@@ -69,9 +69,9 @@ export interface EventHandlers {
   /**
    * 某台机器的活会话清单报完了（`listed` 格）。进 queue：排在那台的
    * `remote-added` 之后 ⇒ 处理它时，那台此刻全部的活会话都已宣告过。
-   * `all` = 壳说这一刻机器表里每一台都报完了（「各台都报完」那一刻，壳那一侧 `session_book` 按机器表算）。
+   * 「各台都报完」那一刻不在这一格：本机后端算好放在 `FleetLines.allListed`（`machine-feed.ts` 交）。
    */
-  onOriginSessionsListed?: (origin: string, all: boolean) => void;
+  onOriginSessionsListed?: (origin: string) => void;
   /**
    * 活卡：会话流 `session-live-card`（通道 `subscribe`）里的一格 = 那台某会话某运行此刻整份的卡（壳照端核心的活卡板折好）。
    * **不进 queue**：活卡是临时态，与行 / 起停事件之间不需要顺序（记录那一轮到了，后端发撤卡）。
@@ -167,7 +167,7 @@ type Queued =
   | { kind: "runs"; payload: SessionRuns }
   | { kind: "branch"; payload: SessionBranchPayload }
   | { kind: "watch"; origin: Machine; payload: WatchFrom }
-  | { kind: "listed"; origin: string; all: boolean }
+  | { kind: "listed"; origin: string }
   // 记录文件不见了 / 被改过已从头重读 —— 流里的一格，与行同序（见 EventHandlers.onSessionFileNotice）。
   | { kind: "file-notice"; sessionId: string; change: string; said: string };
 
@@ -282,8 +282,8 @@ export interface BindEventsOptions {
    */
   changed?: ReadonlyArray<{ origin: Machine; topic: Topic }>;
   /**
-   * 订的那几台跟着壳的机器表走（主窗口用）：起来问一次 `ask`（问不到 ⇒ 只订本机），每台照 `plan` 订；之后壳在本机
-   * `changed/machines` 上说一声（它照机器表对齐完远端流之后说）⇒ 再问 · 新来的补订 · 没了的退订。
+   * 订的那几台跟着本机后端的机器表走（主窗口用）：起来问一次 `ask`（问不到 ⇒ 只订本机），每台照 `plan` 订；之后本机后端
+   * 在 `changed/machines` 上说一声（机器表写完那一下）⇒ 再问 · 新来的补订 · 没了的退订。
    * 每问定一次交 `moved(此刻那几台, 新订的, 退掉的)`（起来那一次新订的是全部）。
    */
   machines?: {
@@ -433,7 +433,7 @@ export async function bindEvents(
       } else if (item.kind === "watch") {
         handlers.onSessionWatch?.(item.origin, item.payload);
       } else if (item.kind === "listed") {
-        handlers.onOriginSessionsListed?.(item.origin, item.all);
+        handlers.onOriginSessionsListed?.(item.origin);
       } else if (item.kind === "file-notice") {
         handlers.onSessionFileNotice?.(item.sessionId, item.change, item.said);
       } else if (item.kind === "gap") {
@@ -568,7 +568,7 @@ export async function bindEvents(
         } else if (f !== null && typeof f === "object" && "left" in f) {
           take({ kind: "face", sessionId: f.left.sid, face: f.left.face, name: null });
         } else if (f !== null && typeof f === "object" && "listed" in f) {
-          take({ kind: "listed", origin: f.listed.origin, all: f.listed.all === true });
+          take({ kind: "listed", origin: f.listed.origin });
         } else if (f !== null && typeof f === "object" && "snapshot_inflight" in f) {
           // 快照在途电平 —— 纯批调度信号，不进 queue。
           owe();
@@ -676,7 +676,7 @@ export async function bindEvents(
 }
 
 /**
- * 订的那几台跟着机器表走（[`BindEventsOptions.machines`]）：先订本机的 `changed/machines`（之后壳说一声就再问），再问一次、照答的订。
+ * 订的那几台跟着机器表走（[`BindEventsOptions.machines`]）：先订本机的 `changed/machines`（之后本机后端说一声就再问），再问一次、照答的订。
  * 几次问排着队一次一次来（后一问看的是前一问定下来的那几台）。
  */
 async function followMachines(

@@ -21,7 +21,7 @@ impl Command for FirstRunCmd {
 impl crate::wire::typed::Handle for FirstRunCmd {
     type Needs = crate::wire::typed::needs::Files;
     fn run(
-        req: readiness::FirstRunReq,
+        _req: readiness::FirstRunReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<readiness::FirstRun, FirstRunErr>> + Send + 'static
     {
@@ -29,7 +29,10 @@ impl crate::wire::typed::Handle for FirstRunCmd {
         async move {
             let files = needs;
 
-            Ok(readiness::answer(files, &req))
+            Ok(readiness::answer(
+                files,
+                crate::dial::machines_now().len() as u64,
+            ))
         }
     }
 }

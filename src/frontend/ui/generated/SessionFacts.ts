@@ -3,8 +3,6 @@ import type { AgentKind } from "./AgentKind";
 import type { AskEnd } from "./AskEnd";
 import type { AutoChoice } from "./AutoChoice";
 import type { FactsBackground } from "./FactsBackground";
-import type { FactsCost } from "./FactsCost";
-import type { FactsLine } from "./FactsLine";
 import type { Kin } from "./Kin";
 import type { LastSay } from "./LastSay";
 import type { McpTrouble } from "./McpTrouble";
@@ -20,10 +18,6 @@ import type { Words } from "./Words";
  * 一份会话的事实（**帧面成品的形状，键名一字不差**；跨语言金样 `tests/__fixtures__/session-reads.golden.json`）。
  */
 export type SessionFacts = { 
-/**
- * 源会话 sid；不是分叉来的 ⇒ `null`。
- */
-forkedFrom: string | null, 
 /**
  * 写类工具碰过的文件（原样，可能相对 / Windows 路径），近因序：最近碰的在末尾。
  */
@@ -108,10 +102,6 @@ permissionModeText: Words | null,
  */
 tokens: TokenUse | null, 
 /**
- * 全会话花费（记录里那一家自己记的花费那一条，最后一条为准）；记录里没有 ⇒ `null`（不按定价自己算）。
- */
-cost: FactsCost | null, 
-/**
  * **后台任务运行中**：那台说一轮停了、后台命令还在跑 ⇒ 状态一句（不累加，每次现查）。不是这一态 ⇒ `null`。
  */
 background: FactsBackground | null, 
@@ -147,9 +137,4 @@ startedByText: Words | null,
 /**
  * 子会话那一句（「子会话 N」，[`set_kin`] 写）；一个都没有 ⇒ `null`。
  */
-childrenText: Words | null, 
-/**
- * **状态一句里会走的那一截**：pidfile 此刻说的那一态 ＋ 记录里的事实（在跑的那一步 · 等的种类与起点 · 最后一句的时刻），[`line_of`] 写。
- * 不活 ⇒ `null`。不累加，每次现查。
- */
-line: FactsLine | null, };
+childrenText: Words | null, };

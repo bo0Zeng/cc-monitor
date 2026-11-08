@@ -286,11 +286,8 @@ fn unknown_type_does_not_panic() {
     assert!(matches!(r, JsonlRecord::Unknown));
 }
 
-/// wire 契约：`Unrecognized` 序列化出的 `type` 必须是 `"cc-monitor-unrecognized"`，
-/// 且身份字段用 camelCase。前端 `branching.ts` 白名单 + `cards/index.ts` 镜像
-/// **硬编码同一字符串**；改这边的 rename 就得同步改前端，否则 unrecognized
-/// 全部认不出 → 又开始丢链，且现有测试全绿（漂移无声）。此测试守 Rust 侧，
-/// 前端侧由 branching.test.ts 的白名单用例守（改前端白名单则那边挂）。
+/// 序列化形状：`Unrecognized` 序列化出的 `type` 是 `"cc-monitor-unrecognized"`，
+/// 身份字段用 camelCase。
 #[test]
 fn unrecognized_wire_type_and_camel_case_contract() {
     let rec = JsonlRecord::Unrecognized {
@@ -305,9 +302,8 @@ fn unrecognized_wire_type_and_camel_case_contract() {
     assert_eq!(
         v.get("type").and_then(|t| t.as_str()),
         Some("cc-monitor-unrecognized"),
-        "改 rename 必须同步前端 branching.ts / cards/index.ts 白名单"
+        "Unrecognized 的 type 名变了"
     );
-    // camelCase：前端镜像按此取（parentUuid / originalType）
     assert!(v.get("parentUuid").is_some(), "parentUuid 必须 camelCase");
     assert!(
         v.get("originalType").is_some(),

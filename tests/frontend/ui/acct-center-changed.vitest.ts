@@ -22,6 +22,12 @@ vi.mock("../../../src/frontend/ui/rotation-view-reads", () => ({
     return sid === "gone" ? null : { start: "a", current: `cur-${sid}` };
   }),
 }));
+vi.mock("../../../src/frontend/ui/account-reads", () => ({
+  fetchAccounts: vi.fn(async (o: string) => {
+    asked.push(`accounts-list ${o}`);
+    return null;
+  }),
+}));
 vi.mock("../../../src/frontend/ui/session-account-reads", () => ({
   readSessionAccount: vi.fn(async (o: string, sid: string) => {
     asked.push(`session-account ${o} ${sid}`);
@@ -30,8 +36,8 @@ vi.mock("../../../src/frontend/ui/session-account-reads", () => ({
 }));
 
 import { onAccountsChanged, onQuotaChanged, refreshQuota, syncSessions } from "../../../src/frontend/ui/acct-center";
-import { appStore, quotaOf, quotaReadOf } from "../../../src/frontend/ui/app-store";
-import type { QuotaRead } from "../../../src/frontend/ui/acct-words";
+import { appStore, putIn, quotaOf } from "../../../src/frontend/ui/app-store";
+import type { QuotaRead } from "../../../src/frontend/ui/generated/QuotaRead";
 import { readQuota } from "../../../src/frontend/ui/quota-reads";
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -102,17 +108,24 @@ describe("acct-center 收推送", () => {
     expect(asked.filter((a) => a.startsWith("session-account")).length).toBeGreaterThanOrEqual(3);
   });
 
+  it("★ 额度账变了 ⇒ 那台的账号清单读过就重读一次（每号那几格在那一行里）；没读过的台不问", async () => {
+    putIn(appStore.accounts, "box-g", { origin: "box-g", available: true, error: null, oldBackend: false, meta: null, accounts: [], notice: null });
+    asked.length = 0;
+    onQuotaChanged("box-g", "quota", { cells: [], all: false });
+    onQuotaChanged("box-h", "quota", { cells: [], all: false });
+    await flush();
+    expect(asked.filter((a) => a.startsWith("accounts-list"))).toEqual(["accounts-list box-g"]);
+  });
+
   it("★ quota-read 整问失败 ⇒ 那一格记下出错那一层写好的那一句与复制详情；再问成了 ⇒ 换成成品", async () => {
     const e = Object.assign(new Error("连接层那一句"), { detail: "D-detail" });
     vi.mocked(readQuota).mockRejectedValueOnce(e);
     expect(quotaOf("box-f")).toEqual({ state: "pending" });
     await refreshQuota("box-f");
     expect(quotaOf("box-f")).toEqual({ state: "failed", said: "连接层那一句", detail: "D-detail" });
-    expect(quotaReadOf("box-f")).toBeNull();
     const read = { state: "present", accounts: [] } as unknown as QuotaRead;
     vi.mocked(readQuota).mockResolvedValueOnce(read);
     await refreshQuota("box-f");
     expect(quotaOf("box-f")).toBe(read);
-    expect(quotaReadOf("box-f")).toBe(read);
   });
 });

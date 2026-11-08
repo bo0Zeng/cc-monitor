@@ -36,8 +36,6 @@ pub struct Beat<'a> {
     pub usage: Option<Usage<'a>>,
     /// 这一条说的此刻型号（原值）。
     pub model: Option<Cow<'a, str>>,
-    /// 那一家自己记的全会话花费。
-    pub cost: Option<CostSaid>,
     /// 此刻许可档（原值）。
     pub mode: Option<Cow<'a, str>>,
     /// 这份会话是从哪个会话分叉来的（源 sid）。
@@ -120,13 +118,6 @@ pub struct Usage<'a> {
     pub write_1h: Option<u64>,
     pub output: u64,
     pub request: Option<Cow<'a, str>>,
-}
-
-/// 那一家自己记的全会话花费：微美元 · 有没有定不了价的型号（有 ⇒ 数只是下限）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CostSaid {
-    pub micros: u64,
-    pub partial: bool,
 }
 
 /// 快路要看的此刻状态（事实累加器给）。

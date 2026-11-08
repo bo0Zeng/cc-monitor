@@ -1,31 +1,11 @@
 /**
- * C04a：**钉死 121 个命令名** —— Rust 侧 `#[tauri::command]` 集 ↔ `invoke_handler` 注册表 ↔
- * 包装层（键名 **与** 它传给 `invoke` 的字面量）↔ 全仓 TS 字面量调用点。
+ * 命令名钉死：Rust 侧 `#[tauri::command]` 集 ↔ `invoke_handler` 注册表 ↔
+ * 包装层（键名 **与** 它传给 `invoke` 的字面量）↔ 全仓 TS 字面量调用点，两向相等。
  *
- * ## 这条守卫替换的是什么
+ * 名字错了是运行时必错（`invoke` 直接 reject），与有没有人用返回值无关 ⇒ 每个命令都钉。
+ * 返回类型只在 TS 侧真消费字段时才生成 ⇒ 按需。
  *
- * Phase G 时全仓唯一的跨语言契约门禁是当时钩子诊断那一块判据里的一张
- * **单文件白名单**，覆盖 **3/121 个命令、1/29 个文件**。（C01 之后已不再「唯一」：
- * C01 钉了 1 个命令名 + 类型、C02 钉了 11 个事件名——Phase D 审计 J1 订正了原来那句话。）
- * 本文件把「命令名」这一维**扩到 121/121**。
- *
- * ## 成文规则：名字钉死是普遍的，类型生成是按需的
- *
- * 名字错了是运行时必错（`invoke` 直接 reject），与有没有人用返回值无关 ⇒ **全覆盖**。
- * 返回类型只在 TS 侧真消费字段时才生成 ⇒ **按需**（C03 用 `SftpStat` 立的先例）。
- *
- * ## 两条**不能写**的断言（都会假红，而假红的守卫会被人关掉）
- *
- * 1. **「每个命令都必须经过包装层」** —— C04a 只迁了 1 个模块做样板，其余 118 个仍走裸
- *    `invoke`，由 C04d 分批迁。写了就是当场假红。
- * 2. **「每个 Rust 命令都必须在 TS 侧被静态调用过」** —— **实测证否**：先扫出
- *    「7 个命令 TS 从没调过」（`sftp_delete`/`sftp_mkdir`/`sftp_rename`/4 个 `stream_*`），
- *    逐个查后发现**全都在用**，只是经**动态命令名**走的：
- *    `panel.ts:378` `this.doWrite("sftp_delete", …)`（helper 转发）·
- *    `panel.ts:485` `invoke(cmd, args)` · `session-viewer.ts:211` `invoke<number>(ipc, …)` ·
- *    `history.ts:489` `invoke(ipc, …)`。
- *    ⇒ 只做**单向**子集断言（TS 静态可见的 ⊆ Rust 集），不做反向。
- *    但**把这 7 个名字逐字钉死**（`DYNAMIC_ONLY`）：盲区本身不许静默变大。
+ * 裸 `invoke` 只在包装层（文件末尾〔C4a〕那一组）；动态命令名不许有（`DYNAMIC_ONLY` 恒空）。
  */
 import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
 import { owned } from "../../../test-support/owned-tab-manager.ts";
@@ -119,23 +99,10 @@ import { chanArgsJson, historyCalls, isChanCall, launchRenderShim, withAccountRe
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { nonEmpty } from "../../../test-support/non-empty.ts";
 
-/** Rust 有、但 TS 侧**静态**看不见的命令（全部经动态命令名调用）。见头注「不能写的断言 2」。 */
 /**
- * Rust 有、但 TS 侧**静态**看不见的命令。
+ * Rust 有、但 TS 侧**静态**看不见的命令：空集，每个命令都静态可见。
  *
- * ★★ **C04d 批 6c 起这是空集** —— 121 个命令**全部**静态可见。
- *
- * C04a 立本文件时这里有 7 个，并据此把头注写成「已知盲区、只做单向断言」。
- * 批 6a/6b/6c 逐个查实后结论是：**那 7 个从来不是任意字符串**——
- * 两处是 `origin ? "A" : "B"` 的**两字面量三元**（`views/session-viewer.ts` / `views/history.ts`）、
- * 一处是 `doWrite(cmd, args)` 转发 helper 而**调用方传的全是字面量**（`sftp/panel.ts`）。
- * 「动态」只在于名字从一个**封闭、静态可知的集合**里选。
- *
- * 所以原计划的 `invokeDynamic(name, args)` 逃生口**没有做**（批 6a 推翻）：
- * 为一件其实是静态的事加一个 `string` 键的后门，等于亲手造一个守卫扫不到的洞。
- *
- * **保留这个空数组而不是删掉断言**：它现在钉的性质是「**不许再出现新的动态命名调用**」
- * ——哪天有人写了 `invoke(someVar, …)`，`rustOnly` 会非空、这条会红。
+ * 留着这个空数组钉「不许出现动态命名调用」：哪天有人写了 `invoke(someVar, …)`，`rustOnly` 会非空、这条红。
  */
 const DYNAMIC_ONLY: string[] = [];
 
@@ -202,7 +169,7 @@ function registeredCommands(): Set<string> {
 }
 
 /**
- * TS 侧**字面量**命令名（剥注释后）。动态名看不见——见头注「不能写的断言 2」。
+ * TS 侧**字面量**命令名（剥注释后）。动态名看不见，由 `DYNAMIC_ONLY` 恒空兜住。
  *
  * `(?<![A-Za-z0-9_$])` 防的是 `myinvoke("x")` / `this.invoke("x")` 被误当 Tauri 的 `invoke`
  * （本仓的 `mockInvoke` 等靠大写 I 逃过，但那是运气）。泛型参数放宽成 `[\s\S]{0,200}?`，

@@ -1085,10 +1085,14 @@ mod tests {
         );
         // 那两个会随环境一起漂过去的变量名，点住住址（不复述它们的值）。
         assert!(
-            !crate::wire::listen::ENV_RESIDENT.is_empty() && !crate::stderr_log::ENV.is_empty(),
+            !crate::platform::child_env::RESIDENT.is_empty()
+                && !crate::platform::child_env::STDERR_LOG.is_empty(),
             "常驻口那两个变量名空了 —— 本格头注 ② 段指的就是它们"
         );
-        assert_ne!(crate::wire::listen::ENV_RESIDENT, crate::stderr_log::ENV);
+        assert_ne!(
+            crate::platform::child_env::RESIDENT,
+            crate::platform::child_env::STDERR_LOG
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -1111,7 +1115,7 @@ mod tests {
 
     /// 喂给「backend 侧那个进程」的两个**值**。
     ///
-    /// ⚠ 只有值住这里 —— **键名一律现取** `listen::ENV_PORT` / `listen::ENV_TOKEN_FILE`，
+    /// ⚠ 只有值住这里 —— **键名一律现取** `platform::child_env::RESIDENT` / `platform::child_env::STDERR_LOG`，
     /// 手抄一份字面量的话，那两个常量改了名本格会**安静地**继续绿
     ///（它量的就变成「一个没人用的键没漏过去」）。
     const FAKE_PORT_VALUE: &str = "51999";
@@ -1128,7 +1132,7 @@ mod tests {
     ///    交给那个新进程（形状照 `relay::server::tests` 那台真子进程中转，同一条纪律）。
     ///
     /// ⇒ **分母说清楚**：内层那个进程**不是** `cargo test` 那个进程，
-    ///    它是一个由 `Command` 起、环境里带着 `listen::ENV_PORT`/`ENV_TOKEN_FILE` 的新进程 ——
+    ///    它是一个由 `Command` 起、环境里带着那两个键的新进程 ——
     ///    而**生产里后端拿到那两个键的方式一模一样**（`listen.rs` 头注逐字：
     ///    token「只能由宿主生成、当 env 传进来」，backend 自己造不出它）。
     ///    这就是它凭什么代表生产：**同一条投喂路，只是投喂的人换成了判据。**
@@ -1152,8 +1156,8 @@ mod tests {
             ])
             .env(INHERIT_MARK, "1")
             // ★ 键名现取，值是夹具的。
-            .env(crate::wire::listen::ENV_RESIDENT, FAKE_PORT_VALUE)
-            .env(crate::stderr_log::ENV, FAKE_TOKEN_VALUE)
+            .env(crate::platform::child_env::RESIDENT, FAKE_PORT_VALUE)
+            .env(crate::platform::child_env::STDERR_LOG, FAKE_TOKEN_VALUE)
             .stdin(std::process::Stdio::null())
             .output()
             .expect("起不来那个内层进程");
@@ -1191,8 +1195,8 @@ mod tests {
             // 这里**不做断言也不打读数行** —— 「它到底跑没跑」由外层那条数读数行的断言看着。
             return;
         }
-        let port_key = crate::wire::listen::ENV_RESIDENT;
-        let token_key = crate::stderr_log::ENV;
+        let port_key = crate::platform::child_env::RESIDENT;
+        let token_key = crate::platform::child_env::STDERR_LOG;
 
         // ── 分母①：本进程（扮演后端）的环境键 ────────────────────────────
         let parent: std::collections::BTreeSet<String> = std::env::vars_os()

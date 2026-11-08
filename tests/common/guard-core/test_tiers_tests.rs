@@ -89,9 +89,9 @@ const SUPPORT: &[&str] = &[
     "tests/backend/observe/runs_testing.rs",  // 往运行簿里直接记一个在跑的子运行
     "tests/backend/observe/search_query_support.rs", // 全文搜索几份判据共用：照选项词造选项 · 逐行写进缓冲
     "tests/backend/stream/remote_ask_peers.rs", // 跨台合并那几条判据共用的「那几台」替身（问常驻 · 记命令行与 stdin）
-    "tests/backend/observe/accounts_list_support.rs", // 账号清单成品几份判据共用：照类型造号行与清单
+    "tests/backend/accounts/manage/library_support.rs", // 账号清单成品几份判据共用：照类型造号行与清单 · 盘上一份账号库（账号域的包与上层判据经 `test-support` 共用）
     "tests/backend/platform/fs/own_support.rs", // 判据用的几种 `Own` 造法 · `DiagFile` 的两样（平台层的包与上层测试档经 `test-support` 共用）
-    "tests/backend/common/streamed_read_support.rs", // 整份读按块几份判据共用：合成大记录 · 手里最多多少的上界
+    "tests/backend/common/append_read_support.rs", // 整份读按块几份判据共用：合成大记录 · 手里最多多少的上界
     "tests/backend/common/contract_support.rs", // 契约错记进日志的那条诊断怎么读（纯工具那一层的包与上层测试档经 `test-support` 共用）
     "tests/backend/common/session_snapshot_support.rs", // 会话快照的脚本化探测器 · 陈值（纯工具那一层的包与上层测试档经 `test-support` 共用）
     "tests/backend/heard.rs", // 本线程上一段代码期间 `tracing` 说了什么（量具包与纯工具那一层的 `test-support` 各挂这一份）

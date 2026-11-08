@@ -27,9 +27,13 @@ for: string,
  */
 content: Array<Block>, isError: boolean, 
 /**
- * 内容多少字节（各正文块的 UTF-8 字节 ＋ 各图的原图字节）：出口省掉内容之后照样有，界面写大小照它。
+ * 内容多少字节（各正文块的 UTF-8 字节 ＋ 各图的原图字节）：出口省掉内容之后照样有。
  */
-bytes: number, } | { "type": "image", 
+bytes: number, 
+/**
+ * `bytes` 写成给人看的一格（`3.0 KB`）：后端照字节写好，两端照抄、不自己换算。
+ */
+sizeText: Words, } | { "type": "image", 
 /**
  * 图片类型（`image/png` …）。
  */

@@ -6,7 +6,6 @@
         "authReady": false,
         "badge": {
           "text": "需登录",
-          "title": "未登录 · 终端里用该账号运行 /login",
           "warn": true
         },
         "endpointHost": null,
@@ -24,7 +23,7 @@
         "color": 3,
         "plate": "ze",
         "kindLine": "订阅 · 需登录",
-        "quota": null,
+        "slots": [],
         "unselectable": null,
         "login": false,
         "newSession": false
@@ -34,7 +33,6 @@
         "authReady": true,
         "badge": {
           "text": "已登录",
-          "title": "",
           "warn": false
         },
         "endpointHost": null,
@@ -52,7 +50,7 @@
         "color": 0,
         "plate": "a",
         "kindLine": "订阅 · a@x",
-        "quota": null,
+        "slots": [],
         "unselectable": null,
         "login": false,
         "newSession": true
@@ -62,7 +60,6 @@
         "authReady": true,
         "badge": {
           "text": "按量 · 经中转",
-          "title": "已配置 · 会话请求经此机中转发送\n按凭据文件里该行换上 key · key 对不对要到 claude 那边才知道",
           "warn": false
         },
         "endpointHost": "api.example.com",
@@ -80,7 +77,7 @@
         "color": 1,
         "plate": "b",
         "kindLine": "按量 · api.example.com",
-        "quota": null,
+        "slots": [],
         "unselectable": null,
         "login": false,
         "newSession": true

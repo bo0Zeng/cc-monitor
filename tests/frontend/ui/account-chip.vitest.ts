@@ -46,7 +46,7 @@ function acct(p: Partial<Account>): Account {
     authKind: "subscription",
     authReady: true,
     selectable: true,
-    badge: { text: copyText("accounts.badge.signedIn"), warn: false, title: "" },
+    badge: { text: copyText("accounts.badge.signedIn"), warn: false },
     ...p,
   };
 }

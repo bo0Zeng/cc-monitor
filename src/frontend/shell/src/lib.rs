@@ -80,8 +80,6 @@ mod backend_control;
 mod frame_query;
 mod inbound_client;
 mod local_backend;
-// 机器表的最近一份（本机后端 `machines-read` 答的，`changed {machines}` 每帧重问）
-mod machine_table;
 // 账号种类取值集的生成物（`src/frontend/ui/generated/judgment-rules.ts`）与标识符 · 上游地址的金样：只读共享 crate。
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/payload_judgment_rules.rs"]
@@ -97,7 +95,7 @@ mod kill_name_tests;
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/backend_client_guard_tests.rs"]
 mod backend_client_guard;
-// monitor 生产段只许依赖契约类共享 crate。
+// 共用包四类与出口闸门：出口生产段只许链契约 · 前端宿主原语（链着核心库的照实登欠账），类间依赖方向。
 mod byte_table; // 全仓唯一的取字节口：一台机器要哪一份可执行字节，按它的 (OS, arch) 查表
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/contract_crate_guard_tests.rs"]
@@ -257,11 +255,11 @@ pub(crate) fn windows_to_destroy_after<'a>(destroyed: &str, alive: &[&'a str]) -
         .collect()
 }
 
-/// 那扇窗此刻所在的显示器的工作区（类型与判定住 `host_core`，问 Tauri 这一下留在宿主）；问不到 ⇒ `None`（不夹，照原样开）。
-pub(crate) fn work_area_of(w: &tauri::WebviewWindow) -> Option<host_core::WorkArea> {
+/// 那扇窗此刻所在的显示器的工作区（形状住开窗契约 `filewin_contract`、判定住 `host_core`，问 Tauri 这一下留在宿主）；问不到 ⇒ `None`（不夹，照原样开）。
+pub(crate) fn work_area_of(w: &tauri::WebviewWindow) -> Option<filewin_contract::WorkArea> {
     let m = w.current_monitor().ok().flatten()?;
     let a = m.work_area();
-    Some(host_core::WorkArea {
+    Some(filewin_contract::WorkArea {
         x: a.position.x,
         y: a.position.y,
         w: a.size.width,
@@ -604,7 +602,6 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             // 「退出行为」问 / 交写那两条退役：设置页经通道说 `exit-policy-read` / `exit-policy-set`。
-            backend_control::backend_machines,
             backend_control::backend_status,
             backend_control::backend_start,
             backend_control::backend_stop,
@@ -623,8 +620,6 @@ pub fn run() {
             // `ccm …` 调用行 · 载荷渲染两条退役：那台后端的帧命令 `session-open`。
             // MCP 读写（`mcp::*` 六条）与推 / 拉两条退役：界面经通道问那台后端
             //   （`mcp-read` · `mcp-sync-source` / `-preview` / `-apply`，`src/frontend/ui/mcp-reads.ts` · `src/frontend/ui/mcp-sync-reads.ts`）。
-            //   列远端配置标签那一条是 monitor 自己的配置，挪进 `config.rs`。
-            config::list_remote_mcp_origins,
             // 资产目录同步（`assets_sync`）与 skill 装 / 卸三条退役：界面经通道直问那台后端
             //   （`assets-sync` 问 `<local>` · `skill-read` / `skill-install-plan` / `skill-install-apply` / `skill-uninstall-apply`，
             //   `src/frontend/ui/assets-sync-reads.ts` · `src/frontend/ui/skill-install-reads.ts`）。
@@ -664,9 +659,7 @@ pub fn run() {
             deploy::uninstall_remote_backend,
             // 本机 / 远端各两条合成两条带 origin 的。
             // `probe_session_record`（resume 之前问记录还在不在）退役：界面经通道问 `history-record`。
-            // 本机起会话三条（resume · 新起 · 接回那一句）退役：计划与渲染问本机后端 `session-open`；
-            //   monitor 只剩「开一个终端窗口跑这串」。
-            launch::open_local_terminal,
+            // 本机起会话三条（resume · 新起 · 接回那一句）退役：计划与渲染问本机后端 `session-open`。
             // A2 那两条账号清单（远端 `list_remote_accounts` · 本机 `list_local_accounts`）退役：
             //   前端经通道说 `accounts-list`，后端出成品。
             // 「某会话属于哪个账号」那两条（本机 E79 · 远端 A2）退役：那台后端在会话宣告里说（`session_added.account`）。
@@ -798,11 +791,6 @@ static MAIN_CTX: std::sync::OnceLock<(Arc<event_replay::EventReplay>, tauri::App
 /// 主窗口那一侧的应用把手（起来之后才有；通道上由 monitor 自己接的那几条要发界面事件时取它）。
 pub(crate) fn main_app() -> Option<tauri::AppHandle> {
     MAIN_CTX.get().map(|(_, app)| app.clone())
-}
-
-/// 主窗口那一侧的重放缓冲（起来之后才有；机器表问完之后在它上面说一声）。
-pub(crate) fn main_replay() -> Option<Arc<event_replay::EventReplay>> {
-    MAIN_CTX.get().map(|(replay, _)| replay.clone())
 }
 
 /// 把后端帧里来的一批 `JsonlLine` 组成可 emit 的 `JsonlLinePayload`。

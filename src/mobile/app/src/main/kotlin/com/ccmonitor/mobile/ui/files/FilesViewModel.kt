@@ -7,12 +7,12 @@ import com.ccmonitor.mobile.core.claude.link.FilesReadText
 import com.ccmonitor.mobile.core.claude.link.RemotePath
 import com.ccmonitor.mobile.core.claude.link.over
 import com.ccmonitor.mobile.core.claude.link.retry
+import com.ccmonitor.mobile.core.claude.link.seen
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.ui.feedback.Notice
 import com.ccmonitor.mobile.core.wire.gen.BatchAnswer
 import com.ccmonitor.mobile.core.wire.gen.BatchLine
-import com.ccmonitor.mobile.core.wire.gen.Decide
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.PhoneMenu
 import com.ccmonitor.mobile.core.wire.gen.PreviewGate
@@ -32,7 +32,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onSubscription
@@ -139,10 +138,6 @@ class FilesViewModel(
     private val _busy = MutableStateFlow(false)
     val busy: StateFlow<Boolean> = _busy.asStateFlow()
 
-    /** 上传在走时的进度（0..1）；不知道总数 · 不在传 ⇒ `null`。 */
-    private val _progress = MutableStateFlow<Float?>(null)
-    val progress: StateFlow<Float?> = _progress.asStateFlow()
-
     private val _sortBySize = MutableStateFlow(false)
     val sortBySize: StateFlow<Boolean> = _sortBySize.asStateFlow()
 
@@ -162,7 +157,7 @@ class FilesViewModel(
 
     /**
      * ［重试］：SSH 那层没通 ⇒ 整条重建、重问；不然交会话列表那一条同一份（[retry]：流断着 ⇒ 整份重接，停在要人动手那一步的也重拨，
-     * 接上了 `epoch` 变、照上面那一份重问；通着 ⇒ 重问）。
+     * 接上了核心交 `seen` 那一格、照上面那一份重问；通着 ⇒ 重问）。
      */
     fun retry() = if (hostConnector.connection(hostId)?.isConnected != true) connect() else feed.retry(::connect)
 
@@ -321,12 +316,12 @@ class FilesViewModel(
         folder: String,
     ) = group { ops.download(entries, folder, withContext(io) { saves.names(folder) }) }
 
-    /** 起一组（[start] 回编号；0 ＝ 这台不在 ⇒ 那一句）；起了就退出选择模式。 */
-    private fun group(start: suspend (RemotePath) -> Long) {
+    /** 起一组（[start] 回编号；0 ＝ 这台不在 ⇒ 那一句；`null` ＝ 没起、已说过那一句）；起了就退出选择模式。 */
+    private fun group(start: suspend (RemotePath) -> Long?) {
         val dir = _cwd.value ?: return
         unpick()
         viewModelScope.launch {
-            val id = start(dir)
+            val id = start(dir) ?: return@launch
             if (id == 0L) {
                 _events.tryEmit(Notice(offline.value))
             } else {
@@ -380,59 +375,11 @@ class FilesViewModel(
     /** 改权限那一框的起点：此刻的权限位（八进制）；那台没有这一说 · 读不到 ⇒ `null`。 */
     suspend fun modeText(entry: FilesLs.Entry): String? = ops.mode(entry.path).getOrNull()?.toString(OCTAL)
 
-    /** 上传撞了同名、在问（[FileOps.Upload.Clash]：那台的同名清单与那一句；在哪个目录）；没在问 ⇒ `null`。 */
-    private val _clash = MutableStateFlow<Pair<RemotePath, FileOps.Upload.Clash>?>(null)
-    val clash: StateFlow<Pair<RemotePath, FileOps.Upload.Clash>?> = _clash.asStateFlow()
-
-    /** 上传 [name]（[fd] 每次现开所选那一份、交出描述符）。撞了同名 ⇒ 落进 [clash] 等答。 */
+    /** 上传 [name] 进当前目录（[fd] 现开所选那一份、交出描述符）：一组，全过程在核心（同删 · 复制）；开不了本机那一份 ⇒ 那一句、不起组。 */
     fun upload(
         name: String,
         fd: () -> Int,
-    ) = landed(name) { dir -> withContext(io) { ops.upload(dir, name, fd, ::track) }.also { _progress.value = null } }
-
-    /** 同名那一问的答（核心认）：取消 · 跳过 ⇒ 不传了（暂存件交那台的孤儿扫）；否则同一份暂存件带这一项的答再交一次。 */
-    fun answer(a: BatchAnswer?) {
-        val (dir, c) = _clash.value ?: return
-        _clash.value = null
-        val key = c.rows.firstOrNull()?.key ?: return
-        val onExists =
-            feed
-                .decided(listOf(key), a)
-                ?.get(key)
-                ?.takeIf { it != Decide.SKIP }
-                ?.wire ?: return
-        landed(c.name, dir) { ops.commit(it, c.name, c.staged, onExists) }
-    }
-
-    /** 上传那一件的一趟：放好了 ⇒ 那一句、重列；撞了同名 ⇒ 去问；没成 ⇒ 那台那一句。 */
-    private fun landed(
-        name: String,
-        dir: RemotePath? = _cwd.value,
-        block: suspend (RemotePath) -> Result<FileOps.Upload>,
-    ) {
-        val at = dir ?: return
-        viewModelScope.launch {
-            _busy.value = true
-            block(at)
-                .onSuccess {
-                    when (it) {
-                        FileOps.Upload.Done -> {
-                            _events.tryEmit(Notice(copyText("mobFiles.upload.done", "name" to name)))
-                            refresh()
-                        }
-                        is FileOps.Upload.Clash -> _clash.value = at to it
-                    }
-                }.onFailure(::say)
-            _busy.value = false
-        }
-    }
-
-    private fun track(
-        got: Long,
-        total: Long,
-    ) {
-        _progress.value = if (total > 0) (got.toFloat() / total).coerceIn(0f, 1f) else null
-    }
+    ) = group { dir -> withContext(io) { ops.upload(dir, name, fd) }.onFailure(::say).getOrNull() }
 
     /** 照那一行的预览门预览（[FilePreview.show]：文本 · 图 · 不许 · 门不明都在那一处分）。没成 ⇒ 已说那一句。 */
     suspend fun preview(
@@ -490,9 +437,10 @@ class FilesViewModel(
         viewModelScope.launch {
             feed.batches.onSubscription { feed.resumed().forEach(::show) }.collect(::onBatch)
         }
-        // 换了一条流（`epoch` 变了）：之前在路上的问答作废了 ⇒ 打不开的那一屏再问一次，列着的那一屏重列。
+        // 接上的每一回（核心那一格 [seen]；订时已通着的那一回 connect 正在问、照 Connecting 不动）：之前在路上的问答作废了 ⇒
+        // 打不开的那一屏再问一次，列着的那一屏重列。
         viewModelScope.launch {
-            feed.epoch.drop(1).collect {
+            feed.seen.collect {
                 when (_ui.value) {
                     is FilesUi.Error -> connect()
                     FilesUi.Ready -> refresh()

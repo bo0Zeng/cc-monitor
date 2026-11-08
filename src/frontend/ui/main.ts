@@ -15,7 +15,6 @@
 import { hiddenPushed } from "./session-hidden";
 import { LOCAL, isLocalOrigin, isRemoteOrigin, type Machine } from "./ipc/origin";
 import { emit } from "@tauri-apps/api/event";
-import { commands } from "./ipc/commands";
 import { icon } from "./kit/icon";
 import { GLOBAL_DESTS, destLabel, type GlobalDest, type GlobalDestItem } from "./global-dests";
 import { LS_KEYS, safeGet, safeSet } from "./local-storage";
@@ -80,7 +79,7 @@ import { TasksPanel } from "./tasks-panel";
 import { AgentsPanel } from "./agents-panel";
 import { MainDrawer } from "./main-drawer";
 import { TerminalPage, type Watched } from "./terminal-page";
-import { onLocalBackend, onMachineState, onMachineUp } from "./machine-feed";
+import { onLocalBackend, onMachineState, onMachineUp, readMachineNames } from "./machine-feed";
 import type { Tab } from "./tab-model";
 import { REVEAL_RUN_EVENT } from "./cards/speaker-bar";
 import { getBehavior } from "./behavior";
@@ -178,11 +177,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   status.appendChild(new StatusMessages().el);
   // 「待办 N」（有才出）：本机后端问到各台「文件与数据」、件数合计，与设置窗左栏同一个数。
   const chores = new StatusChores({
-    machines: async () => {
-      const got: unknown = await commands.backend_machines();
-      return Array.isArray(got) ? got.filter((o): o is string => typeof o === "string") : [LOCAL];
-    },
-    read: (ms) => readChores(ms as Machine[]),
+    read: readChores,
     open: () => void openSettingsWindow(undefined, dest.CHORES),
   });
   status.appendChild(chores.el);
@@ -309,7 +304,11 @@ window.addEventListener("DOMContentLoaded", async () => {
       tabs.machineChanged(origin, m);
       composer.machineChanged(origin, m);
     },
-    (f) => empty.face(f),
+    (f) => {
+      empty.face(f);
+      // 各台都报完了（本机后端照它的表算的）：别的台的宣告可能还在它们自己的流上 ⇒ 那一刻由 TabManager 认（`tabs.onAllListed`，下面挂）。
+      if (f.allListed) tabs.markAllListed();
+    },
   );
   // 那台接上了（起来时本机后端还在起 · 断开之后又连上）⇒ 接上之前问过它的那几处再问一次；终端页停在「那台断开」的实时自己重新订上。
   //   订着 `changed/<topic>` 的那几样（需手动 · 组 · 输入队 …）不在这里问：那台断开又接上，订阅原位收一格 `seen`（⇒ all）自己重问。
@@ -617,7 +616,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   tabs.onPlanForGroup = (gid, name, members) => void planView.openForGroup(gid, name, members);
   // 「需手动」：入口 · 浮层 · 窗口标题；点会话外那一行开登录抽屉（入参 ＝ 那一项的 `fix.args`）。
   tabs.attachNeeds(needsBook, (origin, item) => {
-    if (item.fix) openLoginDrawer({ origin, target: item.fix.args, onDone: () => void needsBook.refresh(origin) });
+    if (item.fix) openLoginDrawer({ origin, target: item.fix.args, onDone: () => void needsBook.again() });
   });
   needsBook.subscribe(() => {
     paintNeedsTitle();
@@ -879,20 +878,20 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  // 会话内容经通道 `subscribe` 来：每台机器一条 `session-lines`（连同活卡 · 那几种 `changed`）。哪几台由壳的注册表说了算
-  //   （`backend_machines`：本机恒第一，远端是此刻起了流的那几台；问不到 ⇒ 至少订本机）。机器表变了（加 · 删 · 改名）壳对齐完远端流
-  //   在本机 `changed/machines` 上说一声 ⇒ 再问、新来的补订、没了的退订（`bindEvents` 的 `machines`），不重启。
+  // 会话内容经通道 `subscribe` 来：每台机器一条 `session-lines`（连同活卡 · 那几种 `changed`）。哪几台由本机后端的机器表说了算
+  //   （`readMachineNames`：本机恒第一，远端是「连接这台」开着的那几台）。机器表变了（加 · 删 · 改名 · 开关）本机后端
+  //   推 `changed/machines` ⇒ 再问、新来的补订、没了的退订（`bindEvents` 的 `machines`），不重启。
   let machinesSettled = false;
   const onMachinesMoved = (now: readonly Machine[], added: readonly Machine[], dropped: readonly Machine[]): void => {
-    // 「没回来的组员」等每台都在自己那条流上报完了才认（壳那一刻先在别的台的流上到了也不算）。
+    // 「没回来的组员」等每台都在自己那条流上报完了才认（后端那一刻先到了也不算）。
     tabs.setMachines(now);
     boardMachines = [...now];
     pokeBoard();
-    for (const o of dropped) void needsBook.drop(o);
-    for (const o of dropped) void groupBook.drop(o);
-    // 需手动：每台问一次（之后那台推 `changed {needs}` 再问它）；计划那一侧同。
-    if (added.length > 0) void needsBook.refreshAll(added);
-    if (added.length > 0) void groupBook.refreshAll(added);
+    // 需手动 · 组：本机后端照它的表问到各台，表变了再问一次；计划那一侧逐台问。
+    if (added.length > 0 || dropped.length > 0) {
+      void needsBook.again();
+      void groupBook.again();
+    }
     for (const o of added) void planNeeds.refresh(o);
     // 起来那一批的账号在 `bindEvents` 返回后一起补刷（见下）；之后新来的那台当场补。
     if (machinesSettled) for (const o of added) onAccountsChanged(o);
@@ -915,12 +914,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     },
     onSessionName: (sessionId, label, title) => tabs.updateName(sessionId, label, title),
     // 某台机器的活会话清单报完了。
-    onOriginSessionsListed: (origin, all) => {
-      tabs.markOriginSeen(origin);
-      if (!all) return;
-      // 壳说各台都报完了：落在某一台那条流上，别的台的宣告可能还在它们自己的流上 ⇒ 那一刻由 TabManager 认（`tabs.onAllListed`，下面挂）。
-      tabs.markAllListed();
-    },
+    onOriginSessionsListed: (origin) => tabs.markOriginSeen(origin),
     // 活卡（会话流 `session-live-card`，后端拼好的成品）照画；那台看不见了 ⇒ 活卡全撤。
     onLiveCard: (e) => tabs.onLiveCard(e),
     onSessionRuns: (p) => {
@@ -977,7 +971,7 @@ window.addEventListener("DOMContentLoaded", async () => {
           //   每一声都重问那台的需手动整份与计划那一侧（接手的会话停了可能多一条；连着来的各自合成一问）。
           if (change.all) tabs.rereadFactsOn(origin);
           for (const c of change.cells) if (c.key !== null) tabs.rereadFacts(c.key);
-          needsBook.poke(origin);
+          needsBook.poke();
           planNeeds.poke(origin);
           break;
         }
@@ -989,7 +983,7 @@ window.addEventListener("DOMContentLoaded", async () => {
           break;
         case "groups":
           // 那台的组那一片动了（那台有组员的组 · 那台会话进出组 · 固定）⇒ 组的账重问（连着来的合成一问）。
-          groupBook.poke(origin);
+          groupBook.poke();
           break;
         case "session_hidden":
           // 会话隐藏那一格变了（单个点的 · 规则改了）：帧里带着那一格 ⇒ 当场换上、挪进挪出；没带 ⇒ 等那台重宣告（重连时整份再来）。
@@ -1015,7 +1009,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     onSessionWatch: (origin, p) => tabs.onSessionWatch(origin, p),
   }, {
     machines: {
-      ask: async () => (await commands.backend_machines()) as Machine[],
+      ask: readMachineNames,
       plan: (origin) => ({
         streams: [{ origin, kind: "session-lines" }],
         // 每台的活卡都住那台的常驻后端 ⇒ 每台都订（与会话行同一份机器清单）。

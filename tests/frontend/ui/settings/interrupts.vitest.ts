@@ -1,6 +1,6 @@
 /**
  * 「会打断什么」：`machine-interrupts` 金样那几形排得出「中断 · 保留」两行（回包按生成类型用，形状由握手指纹管）。
- * Rust 那一侧（`tests/backend/observe/accounts_query_tests.rs`）由生产函数现产、与同一份金样逐格比。
+ * Rust 那一侧（`tests/backend/accounts/manage/library_tests.rs`）由生产函数现产、与同一份金样逐格比。
  */
 import { describe, expect, it, vi } from "vitest";
 
@@ -86,11 +86,11 @@ describe("会打断什么 · 只问本机后端一条", () => {
     expect(got.forwards).toBeNull();
   });
 
-  it("★ 现在重启 / 退出：后端只发一条（本机后端带上各台的名单），不再 1 ＋ N", async () => {
+  it("★ 现在重启 / 退出：后端只发一条（`fleet`：本机后端照自己的机器表问各台），不再 1 ＋ N、不交名单", async () => {
     sent.length = 0;
     reply.now = { ...none, relayedSessions: 2, liveStreams: 4, forwards: 2 };
-    const got = await askAppExitInterrupts(["devbox", "gpu"]);
-    expect(sent).toEqual([{ origin: "<local>", cmd: "machine-interrupts", req: { appExit: true, machines: ["devbox", "gpu"] } }]);
+    const got = await askAppExitInterrupts();
+    expect(sent).toEqual([{ origin: "<local>", cmd: "machine-interrupts", req: { appExit: true, fleet: true } }]);
     expect(got).toEqual({ ...none, relayedSessions: 2, liveStreams: 4, forwards: 2, unsaved: 1, filewinRunning: 0 });
   });
 });

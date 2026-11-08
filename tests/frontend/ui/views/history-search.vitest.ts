@@ -29,9 +29,8 @@ const MERGED: Merged = { totalHits: 9, truncated: true, sessions: [], notes: ["�
 beforeEach(() => invokeMock.mockReset());
 
 /** 记下每一条通道问答；`history-search-merge` 答 `reply`。 */
-function rig(remotes: string[], reply: () => Promise<ArrayBuffer>) {
+function rig(reply: () => Promise<ArrayBuffer>) {
   invokeMock.mockImplementation((cmd: string, args: unknown) => {
-    if (cmd === "backend_machines") return Promise.resolve(["<local>", ...remotes]);
     if (isChanCall(cmd, args, "history-search-merge")) return reply();
     return Promise.resolve(undefined);
   });
@@ -42,20 +41,17 @@ function rig(remotes: string[], reply: () => Promise<ArrayBuffer>) {
 }
 
 describe("只问本机后端一次", () => {
-  it("★ 本机 ＋ 各台远端的名字 ＋ 那一份请求体交本机后端；不逐台问 `history-search`；回包原样用（没答上的那几台 · 读不动 · 不覆盖的那几家都在里头）", async () => {
-    const calls = rig(["pi", "down"], () => Promise.resolve(chanReply(MERGED)));
+  it("★ 只交那一份请求体（问哪几台本机后端照自己的机器表定）；不逐台问 `history-search`；回包原样用（没答上的那几台 · 读不动 · 不覆盖的那几家都在里头）", async () => {
+    const calls = rig(() => Promise.resolve(chanReply(MERGED)));
     const got = await searchAllMachines({ ...Q, includeTools: true });
     const asked = calls();
     expect(asked.map((a) => [a.origin, a.op])).toEqual([[LOCAL, "history-search-merge"]]);
-    expect(chanArgsJson(asked[0])).toEqual({ machines: [LOCAL, "pi", "down"], search: { query: "kw", limit: 300, include_tools: true } });
+    expect(chanArgsJson(asked[0])).toEqual({ search: { query: "kw", limit: 300, include_tools: true } });
     expect(got).toEqual(MERGED);
   });
 
-  it("没配远端 ⇒ 只交本机；本机后端问不到 ⇒ 整次失败（不装作「没结果」）", async () => {
-    const calls = rig([], () => Promise.resolve(chanReply({ ...MERGED, down: [] })));
-    await searchAllMachines(Q);
-    expect((chanArgsJson(calls()[0]) as { machines: string[] }).machines).toEqual([LOCAL]);
-    rig(["pi"], () => Promise.reject(NO_CHANNEL));
+  it("本机后端问不到 ⇒ 整次失败（不装作「没结果」）", async () => {
+    rig(() => Promise.reject(NO_CHANNEL));
     await expect(searchAllMachines(Q)).rejects.toBeTruthy();
   });
 });

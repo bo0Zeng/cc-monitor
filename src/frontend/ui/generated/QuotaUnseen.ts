@@ -5,16 +5,11 @@ import type { QuotaCell } from "./QuotaCell";
 import type { QuotaKind } from "./QuotaKind";
 import type { QuotaUnseenUsage } from "./QuotaUnseenUsage";
 import type { QuotaWarm } from "./QuotaWarm";
-import type { Words } from "./Words";
 
 /**
  * 没出过数的一个号。
  */
-export type QuotaUnseen = { rows: Array<Array<QuotaCell>>, 
-/**
- * 没出过数 ⇒ 恒 `null`（这一格只给出过数的订阅号）。
- */
-fiveHour: Words | null, warm: QuotaWarm, agent: AgentKind, account: string, kind: QuotaKind, login: LoginState, 
+export type QuotaUnseen = { rows: Array<Array<QuotaCell>>, warm: QuotaWarm, agent: AgentKind, account: string, kind: QuotaKind, login: LoginState, 
 /**
  * 用量那一格（没出过数 ⇒ `5h —` / `按量`；同出过数的号那一格一个写法，只是没有重置那一格）。
  */

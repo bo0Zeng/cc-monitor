@@ -282,10 +282,8 @@ enum Kind {
     /// monitor 那一侧：**monitor 自带的那份窗口程序**（exe 旁边没有它时用）—— 字节从唯一的取字节口来（`byte_table`），
     /// 放到盘上那一步与本机后端同一套（`local_backend::place_local_program` ＋ 两样平台注入），落点目录与本机后端同一个。
     Carried,
-    /// monitor 那一侧：那条命令的入参类型（那台机器的配置）。
-    /// 这一类原先还装着「开窗前解 home」（走 SFTP，后端没有这一问）——
-    /// 现在问后端 `files-home`，走的是 `Host` 那一类的同一个句柄 ⇒ 这一类只剩配置，改了名。
-    Config,
+    /// monitor 那一侧：开窗那一刻问本机后端一问（`frame_query::ask`：「复制到另一台」那一列有哪几台，`machine-read`）。
+    Ask,
     /// monitor 那一侧：壳自己的错投出去那一口（`detail::Shell`：一句 ＋ 复制详情）。开窗那条命令也是壳命令，全仓同一形。
     Said,
 }
@@ -395,10 +393,10 @@ const MONITOR_SIDE: &[(&str, Kind)] = &[
     ("platform::own_fs::OwnBin", Kind::Carried),
     // 窗口进程的 stderr 读一条：与被监护子进程那一份同一个读法、同一个上界（不另起一个数）。
     ("local_backend::next_stderr_line", Kind::Carried),
-    // 开窗种子带上机器名单（「复制到另一台」那一问的下拉）：本机后端机器表最近那一份里的名字，不新建数据源。
-    ("machine_table::rows_now", Kind::Config),
-    // 左栏「其他机器」点一台：那台在不在机器表里（只要名字，怎么连照本机后端的机器表）。
-    ("machine_table::has", Kind::Config),
+    // 开窗种子里「复制到另一台」那一列：开窗那一刻问本机后端各台的成品（`machine-read`），壳不记机器表。
+    ("frame_query::ask", Kind::Ask),
+    ("frame_query::Deadline::within", Kind::Ask),
+    ("origin::Origin::local", Kind::Ask),
     ("config::resolve_monitor_data_dir", Kind::DataDir), // 原 `paths::`（`paths.rs` 并进 `config.rs`）
     // 视图文件（整窗缩放）的名字：全路径在这一侧拼好随种子交过去（窗口那一侧不引它）。
     ("data_paths::FILEWIN_VIEW_FILE", Kind::DataDir),
@@ -590,7 +588,7 @@ fn every_declared_edge_falls_in_a_live_category() {
         (Wire, WINDOW_SIDE),
         (Host, MONITOR_SIDE),
         (Spawn, MONITOR_SIDE),
-        (Config, MONITOR_SIDE),
+        (Ask, MONITOR_SIDE),
         (DataDir, MONITOR_SIDE),
     ] {
         let n = side.iter().filter(|(_, kk)| *kk == k).count();

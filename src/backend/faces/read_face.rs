@@ -285,28 +285,22 @@ impl crate::wire::typed::Command for AccountsListCmd {
 impl crate::wire::typed::Handle for AccountsListCmd {
     type Needs = crate::wire::typed::needs::Nothing;
     async fn run(
-        req: crate::observe::accounts_query::AccountsListReq,
+        req: cmd_wire::accounts::AccountsListReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> Result<crate::observe::accounts_query::AccountsList, AccountsListErr> {
+    ) -> Result<crate::accounts::manage::library::AccountsList, AccountsListErr> {
         let (kind, _) =
             crate::agents::pick_kind(Some(req.agent.as_str())).map_err(AccountsListErr::BadArgs)?;
         let agent = crate::agents::pick_route(Some(&req.agent))
             .map_err(AccountsListErr::BadArgs)?
             .id();
-        let rows = crate::accounts::upstream_select::file_face::machine_rows();
-        let mut v = crate::observe::accounts_query::list_product(
-            &rows,
-            agent,
-            crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT,
-            crate::relay::our_relay_listening(relay_route_core::PORT),
-        );
+        let mut v = crate::faces::launch_account_face::list_of(agent);
         let quota = crate::faces::rotation_face::quota_read_with(
             &crate::faces::rotation_face::Ctx::here(),
             crate::common::time::now_secs(),
             &cx.tz,
         );
         with_quota(&mut v, &quota, kind);
-        crate::observe::accounts_query::with_sign_in(
+        crate::accounts::manage::library::with_sign_in(
             &mut v,
             crate::agents::accounts_face(kind).is_some_and(|f| f.sign_in.is_some()),
         );
@@ -318,20 +312,98 @@ impl crate::wire::typed::Handle for AccountsListCmd {
     }
 }
 
-/// 每个号带上它「5h 那一格」（同 `quota-read` 那一格，唯一一处：账读不出 ⇒ 顶上那一格；没出过数 · 按量号 ⇒ 没有）。
+/// ★ 每个号带上它的额度格（同一份 `quota-read` 成品里取，按 kind ＋ 号名对；唯一一处，两端照摆）：
+/// 账读不出 ⇒ 一格顶上那一句（`5h 读不到`）；出过数 ⇒ [`slot_cells`]；按量号没出过数 ⇒ 用量那一格；别的 ⇒ 空。
 pub(crate) fn with_quota(
-    v: &mut crate::observe::accounts_query::AccountsList,
+    v: &mut crate::accounts::manage::library::AccountsList,
     q: &crate::faces::quota_read::QuotaRead,
     kind: &str,
 ) {
     for r in &mut v.accounts {
-        r.quota = q.five_hour.clone().or_else(|| {
-            q.accounts
+        let name = r.scanned.name.as_str();
+        r.slots = if let Some(head) = crate::faces::quota_rows::head_five_hour(q.state) {
+            vec![cell(
+                cmd_wire::quota::SLOT_5H,
+                head,
+                crate::common::cells::Tone::Plain,
+            )]
+        } else if let Some(a) = q
+            .accounts
+            .iter()
+            .find(|a| a.head.agent.as_str() == kind && a.head.account == name)
+        {
+            slot_cells(&a.head.show)
+        } else {
+            q.unseen
                 .iter()
-                .find(|a| a.head.agent.as_str() == kind && a.head.account == r.scanned.name)
-                .and_then(|a| a.five_hour.clone())
-        });
+                .find(|u| {
+                    u.head.agent.as_str() == kind
+                        && u.head.account == name
+                        && u.head.kind == cmd_wire::quota::Kind::Api
+                })
+                .map(|u| vec![cell("", u.head.usage.text.clone(), u.head.usage.tone)])
+                .unwrap_or_default()
+        };
     }
+}
+
+/// 一格只有字与语气的（账读不出 · 按量号）。
+fn cell(
+    slot: &str,
+    text: crate::common::cells::Words,
+    tone: crate::common::cells::Tone,
+) -> cmd_wire::quota::SlotShow {
+    cmd_wire::quota::SlotShow {
+        slot: slot.to_string(),
+        pct: None,
+        resets_at: None,
+        resets_at_text: None,
+        resets_at_rel_text: None,
+        reset_text: None,
+        full: false,
+        text,
+        tone,
+        per_pct_text: None,
+        window: String::new(),
+    }
+}
+
+/// ★ 出过数的一个号 ⇒ 账号行的额度格：按量号一格（用量那一格）；订阅号一个语义位一格，字是整格
+/// （位名 · `slot_words` 写的值 · 重置：5h 恒带、别的位只在它是卡人的那一格又被拒时带），语气照 `slot_words`，数旧 ⇒ plain 画 warn。
+fn slot_cells(show: &cmd_wire::quota::QuotaShow) -> Vec<cmd_wire::quota::SlotShow> {
+    use crate::common::cells::{Tone, Words};
+    use cmd_wire::quota::{Kind, QuotaState, SLOT_5H};
+    if show.kind == Kind::Api {
+        return vec![cell("", show.usage.text.clone(), show.usage.tone)];
+    }
+    show.slots
+        .iter()
+        .map(|s| {
+            let here = show.usage.slot.as_deref() == Some(s.slot.as_str());
+            let label = crate::accounts::quota::name_words::slot_text(&s.slot);
+            let reset = s
+                .reset_text
+                .as_ref()
+                .filter(|_| s.slot == SLOT_5H || (here && show.state == QuotaState::Refused));
+            let text = match reset {
+                Some(r) => copy_text(
+                    "acct.usage.wvr",
+                    &[("w", &label), ("v", &s.text.0), ("r", &r.0)],
+                ),
+                None => copy_text("acct.usage.wv", &[("w", &label), ("v", &s.text.0)]),
+            };
+            let tone = if show.stale && s.tone == Tone::Plain {
+                Tone::Warn
+            } else {
+                s.tone
+            };
+            cmd_wire::quota::SlotShow {
+                text: Words(text),
+                tone,
+                ..s.clone()
+            }
+        })
+        .collect()
 }
 
 /// `machine-interrupts` 的入参。
@@ -348,13 +420,14 @@ pub struct MachineInterruptsReq {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     pub(crate) app_exit: Option<bool>,
-    /// 带 `appExit` 时一并问的那几台（各照它自己的退出行为答，答到的加起来；问不到的不算）。问到那几台时不带它（不往下扇）。
+    /// 带 `appExit` 时 `true` ⇒ 照这台的机器表一并问各台（`Table::asked` 里的远端；各照它自己的退出行为答，答到的加起来；问不到的不算）。
+    /// 问到那几台时不带它（不往下扇）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
-    pub(crate) machines: Option<Vec<cmd_wire::Machine>>,
+    pub(crate) fleet: Option<bool>,
 }
 
-/// `machine-interrupts` 的回包：会话三格 ＋ 转发（[`crate::observe::accounts_query::Interrupts`] 那几格）；
+/// `machine-interrupts` 的回包：会话三格 ＋ 转发（[`crate::accounts::manage::library::Interrupts`] 那几格）；
 /// 问的是别的台而那台问不到 ⇒ `relayedSessions` 是 `null`（说不清，不当成 0），另两格 0，转发照这台账上的数。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -367,8 +440,8 @@ pub struct MachineInterruptsReply {
     pub(crate) forwards: u32,
 }
 
-impl From<crate::observe::accounts_query::Interrupts> for MachineInterruptsReply {
-    fn from(i: crate::observe::accounts_query::Interrupts) -> Self {
+impl From<crate::accounts::manage::library::Interrupts> for MachineInterruptsReply {
+    fn from(i: crate::accounts::manage::library::Interrupts) -> Self {
         MachineInterruptsReply {
             relayed_sessions: Some(i.relayed_sessions),
             relayed_maybe: i.relayed_maybe,
@@ -383,7 +456,7 @@ crate::wire::typed::codes! {
     pub enum MachineInterruptsErr {}
 }
 
-/// `machine-interrupts`：停 / 重启 / 更新 / 卸载一台的 cc-monitor 之前会打断什么（`observe/accounts_query.rs::machine_product`）：
+/// `machine-interrupts`：停 / 重启 / 更新 / 卸载一台的 cc-monitor 之前会打断什么（`accounts/manage/library.rs::machine_product`）：
 /// 那台的活会话经不经本机中转 · 活着的几个 · 这台账上通往那台的转发。界面只问本机后端这一条：别的台那一份由这台经它的常驻流问到
 /// （`control/feeds.rs::call`）、并好再答（[`interrupts_hub`]）。只读；这台自己那一份读 pidfile ⇒ 进阻塞池。
 pub struct MachineInterrupts;
@@ -422,17 +495,19 @@ impl crate::wire::typed::Handle for MachineInterrupts {
                     .map_err(|f| tracing::warn!("machine-interrupts [{m}]: {}", f.said))
                     .ok()
             };
-            Ok(interrupts_hub(req, here, there).await)
+            let fleet = crate::dial::remote_ask::REACH.asked();
+            Ok(interrupts_hub(req, &fleet, here, there).await)
         }
     }
 }
 
 /// [`MachineInterrupts`] 并好再答的那一层（这台自己怎么答 · 怎么问到那台由调用方给，判据喂假的）：
 /// - `machine` 是别的台 ⇒ 那台那一份（不带 `machine`）的会话三格 ＋ 这台那一份（带 `machine`）的转发，两边同时问；那台问不到 ⇒ 会话那一格 `null`。
-/// - `appExit` ⇒ 这台那一份 ＋ `machines` 里各台（只带 `appExit`）答到的加起来；问不到的那台不算。
+/// - `appExit` ⇒ 这台那一份 ＋（带 `fleet` 时）`fleet` 里各台远端（只带 `appExit`）答到的加起来；问不到的那台不算。
 /// - 别的（缺 `machine` · 本机）⇒ 只答这台。
 pub(crate) async fn interrupts_hub<H, HF, T, TF>(
     req: MachineInterruptsReq,
+    fleet: &[cmd_wire::Machine],
     here: H,
     there: T,
 ) -> MachineInterruptsReply
@@ -447,14 +522,14 @@ where
             app_exit: Some(true),
             ..Default::default()
         };
-        let mut names: Vec<String> = Vec::new();
-        for m in req.machines.iter().flatten() {
-            if let Some(n) = m.host_name() {
-                if !names.iter().any(|x| x == n) {
-                    names.push(n.to_string());
-                }
-            }
-        }
+        let names: Vec<String> = if req.fleet == Some(true) {
+            fleet
+                .iter()
+                .filter_map(|m| m.host_name().map(str::to_string))
+                .collect()
+        } else {
+            Vec::new()
+        };
         let mut asks = tokio::task::JoinSet::new();
         for n in names {
             asks.spawn(there(n, own.clone()));
@@ -485,7 +560,7 @@ where
         return here(MachineInterruptsReq {
             machine: None,
             app_exit: None,
-            machines: None,
+            fleet: None,
         })
         .await;
     };
@@ -513,22 +588,18 @@ pub(crate) fn interrupts_at(
     home: &std::path::Path,
     req: &MachineInterruptsReq,
 ) -> MachineInterruptsReply {
-    use crate::observe::accounts_query;
-    let lines = accounts_query::session_accounts_here(home);
+    use crate::accounts::manage::library;
+    let lines = library::session_accounts_here(home);
     if req.app_exit == Some(true) {
         let kill = crate::control::exit_policy::read_now().kill_on_exit();
-        return accounts_query::app_exit_product(
-            kill,
-            &lines,
-            crate::dial::forwards::running_all(),
-        )
-        .into();
+        return library::app_exit_product(kill, &lines, crate::dial::forwards::running_all())
+            .into();
     }
     let forwards = req
         .machine
         .as_deref()
         .map_or(0, crate::dial::forwards::running_to_machine);
-    accounts_query::machine_product(&lines, forwards).into()
+    library::machine_product(&lines, forwards).into()
 }
 
 /// 过围栏 ⇒ 这份记录是哪一家的（注册表按它落在谁的根下认），解释交那一家。

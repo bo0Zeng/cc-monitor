@@ -795,3 +795,91 @@ fn each_fold_points_at_its_first_failure() {
         ]
     );
 }
+
+/// ★ 段界齐全（W46）：除最后一轮的尾段外，每段都给 `until`，就是这一段后面紧跟的那一条 —— 这一轮下一条露着的，或下一轮你那句；
+/// `untilLine` 是那一条的行号。最后一轮的尾段没有 `until`。两端照 `after` → `until` 收段、不另找边界，全靠这一条。
+/// 夹具：工具段 · 正文隔开的两段 · 中断停下 · 报错停下 · 带正文又调工具 · 插话自成一轮 · 只有压缩摘要的尾巴 · 开着的最后一轮；
+/// 整份扫与从每一轮的 `at` 续取都照这一条（回退掉的那一轮另见 `a_rewound_turn_is_not_swallowed_by_the_fold_before_it`）。
+#[test]
+fn every_fold_but_the_last_turns_tail_has_its_until() {
+    let t = "2026-10-07T08:00:00Z";
+    let both = |id: &str| serde_json::json!([{"type":"text","text":"先看"}, call(id, "Read", serde_json::json!({}))]);
+    let compact = |u: &str| serde_json::json!({"type":"user","uuid":u,"timestamp":t,"isCompactSummary":true,"message":{"content":"compact summary"}});
+    let slipped = |u: &str| {
+        serde_json::json!({"type":"attachment","uuid":u,"parentUuid":"r9","timestamp":t,
+            "attachment":{"type":"queued_command","prompt":"插一句","commandMode":"prompt","origin":{"kind":"human"}}})
+    };
+    let lines = [
+        user("u1", t, "q1"),
+        said("a1", t, calls("t1")),
+        result("r1", "t1", false),
+        said("a2", t, text("中间的话")),
+        said("a3", t, calls("t2")),
+        result("r2", "t2", true),
+        user("x1", t, "[Request interrupted by user]"),
+        user("u2", t, "q2"),
+        said("a4", t, calls("t3")),
+        result("r3", "t3", false),
+        serde_json::json!({"type":"assistant","uuid":"z1","timestamp":t,"isApiErrorMessage":true,"message":{"content":[{"type":"text","text":"API Error"}]}}),
+        user("u3", t, "q3"),
+        said("a5", t, both("t4")),
+        result("r4", "t4", false),
+        said("a6", t, calls("t5")),
+        result("r9", "t5", false),
+        slipped("q4"),
+        said("a7", t, calls("t6")),
+        result("r6", "t6", false),
+        said("a8", t, text("好")),
+        compact("c1"),
+        user("u5", t, "q5"),
+        said("a9", t, calls("t7")),
+        result("r7", "t7", false),
+    ];
+    let body = body_of(&lines);
+    let line_of = |u: &str| {
+        lines
+            .iter()
+            .position(|l| l["uuid"] == u)
+            .unwrap_or_else(|| panic!("{u} 不在夹具里")) as u64
+    };
+    let check = |rows: &[TurnRow], whole: bool| {
+        for (i, row) in rows.iter().enumerate() {
+            // 这一轮里的边界（文件序）：你那句 · 露着的那几条 · 下一轮你那句（最后一轮没有）。
+            let mut bounds: Vec<&str> = std::iter::once(row.uuid.as_str())
+                .chain(row.shown.iter().map(String::as_str))
+                .collect();
+            if let Some(next) = rows.get(i + 1) {
+                bounds.push(&next.uuid);
+            }
+            for f in &row.folds {
+                let k = bounds
+                    .iter()
+                    .position(|b| *b == f.after)
+                    .expect("after 是这一轮的边界");
+                // 没有下一个边界 ⇒ 只可能是最后一轮的尾段。
+                let want = bounds.get(k + 1).copied();
+                assert_eq!(
+                    f.until.as_deref(),
+                    want,
+                    "第 {i} 轮跟在 {} 后面的那一段（整份扫 {whole}）：{rows:#?}",
+                    f.after
+                );
+                assert_eq!(f.until_line, want.map(line_of), "untilLine 是那一条的行号");
+            }
+        }
+    };
+    let rows = scan(&body, 0);
+    assert_eq!(
+        rows.iter().map(|r| r.uuid.as_str()).collect::<Vec<_>>(),
+        ["u1", "u2", "u3", "q4", "u5"],
+        "{rows:#?}"
+    );
+    assert!(
+        rows.iter().map(|r| r.folds.len()).sum::<usize>() >= 6,
+        "夹具该出六段以上：{rows:#?}"
+    );
+    check(&rows, true);
+    for r in &rows {
+        check(&scan(&body, r.at), false);
+    }
+}

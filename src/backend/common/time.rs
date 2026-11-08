@@ -203,8 +203,7 @@ pub fn fmt_at(t: i64, now: i64, tz: &Tz) -> String {
     let local = tz.local(t);
     let day = local.div_euclid(DAY);
     let today = tz.local(now).div_euclid(DAY);
-    let secs = local - day * DAY;
-    let hm = format!("{:02}:{:02}", secs / 3600, (secs % 3600) / 60);
+    let hm = hm(local);
     if day == today {
         return hm;
     }

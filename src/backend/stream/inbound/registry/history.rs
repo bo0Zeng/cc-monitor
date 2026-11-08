@@ -5,13 +5,10 @@ use crate::wire::spec::CommandSpec;
 pub(super) const SPECS: &[CommandSpec] = &[
     // **历史注解**（星标 / 改名 / 隐藏）的读写者换成本机常驻后端 ——
     //   「文件留在原处、同一路径，不迁移、一条不丢」：文件住家里（`<家>/history-metadata.json`，后端按家推），
-    //   写是自家状态，经 `Own`（`history_annotations.rs`，读不懂就拒写、只改那一条、认不出的键原样留着）。两条都是阻塞档（读写一份小文件）。
+    //   写是自家状态，经 `Own`（`history_annotations.rs`，读不懂就拒写、只改那一条、认不出的键原样留着）。阻塞档（读写一份小文件）。删会话连带删注解在 `files-delete-session` 里一并做完，不单出一条。
     //   「上次用哪个号起的」不单出一条：一条会话的号那一份成品（`session-account`）里带着。
     super::typed::blocking::<crate::history::history_annotations::HistoryAnnotateCmd>(
         "改一条历史注解",
-    ),
-    super::typed::blocking::<crate::history::history_annotations::HistoryForgetCmd>(
-        "删一条历史注解",
     ),
     // **组**（`history/groups.rs`）：组跟着组员走，每台注解文件的 `groups` 那一节只记这台有组员的那一片（名字带起名时刻，A95-3）；固定是会话注解的一格。
     //   这台那一半读一份小文件 ＋ 活会话表 ⇒ 阻塞档；几台并成一份由这台自己扇出（本机同进程、别的台经 `--resident-call` 问它的常驻）⇒ 异步档；

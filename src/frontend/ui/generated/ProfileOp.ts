@@ -6,4 +6,4 @@ import type { SetEdit } from "./SetEdit";
 /**
  * 线上那一种改动。
  */
-export type ProfileOp = { "op": "set", was: string | null, form: ProfileForm, } | { "op": "remove", name: string, children?: ProfileChildren, } | { "op": "init", seed: boolean, } | { "op": "saveSet", was: string | null, set: SetEdit, } | { "op": "removeSet", name: string, };
+export type ProfileOp = { "op": "set", was: string | null, form: ProfileForm, } | { "op": "remove", name: string, children?: ProfileChildren, } | { "op": "saveSet", was: string | null, set: SetEdit, } | { "op": "removeSet", name: string, };

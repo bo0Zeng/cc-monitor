@@ -2,11 +2,11 @@
 //! `5h` / `7d` 两个语义位叫什么。`_` 只说「没表态」：落在哪一份登录说不准（建了账号库的机器上可能是 shell rc 导出的那个配置根），
 //! 所以它不叫 `~/.claude`，叫「未指定账号」（与额度行那一格同一条键）。
 //!
-//! 后端自己拼句子时用 [`account_text`] / [`slot_text`]；出口要画号名 / 位名时读成品上的 `names`（[`names`]：
-//! `{accounts: {码: 字}, slots: {码: 字}}`，`accounts` 只列与原名不同的那几个 —— 不在表里的号就叫它自己的名字）。
-//! 出口不认 `_`、不认 `5h` / `7d`。
+//! 后端自己拼句子时用 [`account_text`] / [`slot_text`]；出口画号名照 `accounts-list` 每号那一行的 `label`（[`account_text`] 写），
+//! 画位名照 `quota-read` 成品上的 `names`（[`names`]：`{slots: {码: 字}}`）。出口不认 `_`、不认 `5h` / `7d`。
 
 use crate::common::cells::Words;
+use cmd_wire::quota::{SLOT_5H, SLOT_7D};
 use copy_core::copy_text;
 
 /// 起会话时没说是哪个号 ⇒ 记成这个（是哪一份登录说不准；不等于账号 0）。
@@ -83,8 +83,8 @@ pub fn endpoint_host(url: &str) -> Words {
 /// 一个语义位在人眼里叫什么：`5h` · `7d` 各一个字；认不出的照原样。
 pub fn slot_text(w: &str) -> String {
     match w {
-        "5h" => copy_text("acct.slot.fiveHour", &[]),
-        "7d" => copy_text("acct.slot.sevenDay", &[]),
+        SLOT_5H => copy_text("acct.slot.fiveHour", &[]),
+        SLOT_7D => copy_text("acct.slot.sevenDay", &[]),
         other => other.to_string(),
     }
 }
@@ -95,11 +95,7 @@ pub(crate) use cmd_wire::quota::Names;
 /// 唯一一处造 [`Names`]。
 pub fn names() -> Names {
     Names {
-        accounts: [HOME_ACCOUNT, acct_core::BARE_ACCOUNT]
-            .iter()
-            .map(|a| (a.to_string(), Words(account_text(a))))
-            .collect(),
-        slots: ["5h", "7d"]
+        slots: [SLOT_5H, SLOT_7D]
             .iter()
             .map(|w| (w.to_string(), Words(slot_text(w))))
             .collect(),

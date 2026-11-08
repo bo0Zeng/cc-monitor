@@ -326,23 +326,15 @@ async fn transfer_open(origin: Origin, op: Op, payload: Body) -> Result<Body, Ca
             copy_text("rsChanHost.transfer.localNone", &[]),
         ));
     }
+    // 表里有没有那台由本机后端答（没有 ⇒ 它那一码原样回窗口）。
     let host = origin.host_name().unwrap_or_default();
-    if !crate::machine_table::has(host) {
-        return Err(refused(
-            "no_such_origin",
-            copy_text(
-                "rsChanHost.transfer.noConfig",
-                &[("machine", &host.to_string())],
-            ),
-        ));
-    }
     match crate::transfer_relay::transfer_call(host.to_string(), &op.0, &args).await {
         Ok(v) => Ok(Body(serde_json::to_vec(&v).unwrap_or_default())),
         Err(r) => Err(refused_with(r)),
     }
 }
 
-/// 两台之间复制一组：源 ＝ 寻址的那台，落点 ＝ 载荷里 `to` 那台；两台都要在机器表里（本机不是一台能拨的远端 ⇒ 说真实原因）。
+/// 两台之间复制一组：源 ＝ 寻址的那台，落点 ＝ 载荷里 `to` 那台；本机不是一台能拨的远端 ⇒ 说真实原因；表里有没有那两台由本机后端答。
 /// 本机后端做完整组才回 ⇒ 等的上限是窗口给的 `left`。
 async fn transfer_copy(origin: Origin, payload: Body, left: Duration) -> Result<Body, CallError> {
     let Ok(args) = serde_json::from_slice::<serde_json::Value>(&payload.0) else {
@@ -360,12 +352,6 @@ async fn transfer_copy(origin: Origin, payload: Body, left: Duration) -> Result<
                 copy_text("rsChanHost.transfer.localNone", &[]),
             ));
         }
-        if !crate::machine_table::has(&machine) {
-            return Err(refused(
-                "no_such_origin",
-                copy_text("rsChanHost.transfer.noConfig", &[("machine", &machine)]),
-            ));
-        }
     }
     match crate::transfer_relay::copy_call(origin.to_string(), &args, left).await {
         Ok(v) => Ok(Body(serde_json::to_vec(&v).unwrap_or_default())),
@@ -373,7 +359,7 @@ async fn transfer_copy(origin: Origin, payload: Body, left: Duration) -> Result<
     }
 }
 
-/// **文件窗口「在此打开终端」**：窗口只交意图（寻址 ＝ 那台 · 参数 `{cwd}`），这里只补那台的名字、
+/// **文件窗口「在此打开终端」**：窗口只交意图（寻址 ＝ 那台，本机也算一台 · 参数 `{cwd}`），这里只补那台的名字、
 /// 问本机后端 `terminal-ssh` 渲那一行（怎么拨照它的机器表）、交 `open_terminal_window` 开窗 ——
 /// 与主界面开终端同一条路（`src/frontend/ui/terminal-open.ts`：`terminal-ssh` → `open_terminal_window`）。
 /// 窗口不拼命令、不认识 monitor 的配置；成败作为这一次 `call` 的应答回去，那句话照旧画在窗口上。
@@ -384,26 +370,10 @@ async fn terminal_open(origin: Origin, payload: Body, left: Duration) -> Result<
     let Some(cwd) = filewin_contract::terminal_open_cwd(&args) else {
         return Err(OursFault::Misuse.into());
     };
-    // 文件窗口只开在远端上⇒ 本机这一问不存在，说真实原因。
-    if origin.is_local() {
-        return Err(refused(
-            "local_has_no_file_window",
-            copy_text("rsChanHost.terminal.localNone", &[]),
-        ));
-    }
-    let host = origin.host_name().unwrap_or_default();
-    if !crate::machine_table::has(host) {
-        return Err(refused(
-            "no_such_origin",
-            copy_text(
-                "rsChanHost.terminal.noConfig",
-                &[("machine", &host.to_string())],
-            ),
-        ));
-    }
-    // 开终端那一行由本机后端渲（`src/backend/dial/terminal.rs`，与主界面 `terminal-open.ts` 问的同一条）。
+    // 那台的名字原样交（本机就是 `<local>`）：表里有没有那台、本机那一行怎么写都由本机后端答
+    // （`src/backend/dial/terminal.rs`，与主界面 `terminal-open.ts` 问的同一条；它的码原样回窗口）。
     let ask = cmd_wire::terminal::TerminalSshReq {
-        machine: cmd_wire::Machine::named(host),
+        machine: cmd_wire::Machine::named(origin.to_string()),
         command: None,
         cwd: Some(cwd.clone()),
         sid: None,
@@ -422,7 +392,7 @@ async fn terminal_open(origin: Origin, payload: Body, left: Duration) -> Result<
         }
         Err(e) => return Err(backend_route::layer_call_error(&e, HOP).error),
     };
-    match crate::launch::open_terminal_window(line).await {
+    match crate::launch::open_terminal_window(line, None).await {
         Ok(crate::launch::TerminalOpened::Opened) => Ok(Body(b"{}".to_vec())),
         // 这台开不了终端窗口（没探到 · 设置里指定的不在）：窗口那一侧把开窗那一下写好的那句当原话画出来（说去设置里哪一格）。
         Ok(crate::launch::TerminalOpened::NoWindow { said, .. }) => Err(refused("no_window", said)),

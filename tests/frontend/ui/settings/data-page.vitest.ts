@@ -36,8 +36,11 @@ vi.mock("../../../../src/comms/inward/chan", () => ({
     call: (origin: string, op: string, body: Uint8Array) => {
       if (op === "chores-merge") {
         if (origin !== "<local>") return Promise.reject(new Error("只问本机后端"));
-        const { machines, client } = JSON.parse(new TextDecoder().decode(body)) as { machines: string[]; client: unknown };
-        if (client === undefined) return Promise.reject(new Error("本机那几条事实没带"));
+        const req = JSON.parse(new TextDecoder().decode(body)) as { machines?: unknown; client: unknown };
+        if (req.client === undefined) return Promise.reject(new Error("本机那几条事实没带"));
+        if ("machines" in req) return Promise.reject(new Error("名单不是入参：本机后端照自己的机器表问"));
+        // 本机后端照它自己的机器表问：本机 ＋ 盘上那几台里「连接这台」开着的（名字照表，同 `machines-read`）。
+        const machines = ["<local>", ...disk.machines.filter((h) => h.connect !== false).map((h) => String(h.label || h.host))];
         merges.asked.push(machines);
         const sum: Record<string, number> = {};
         const rows = machines.map((o) => {

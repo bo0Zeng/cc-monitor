@@ -9,8 +9,8 @@ fn row(
     kind: &str,
     exists: bool,
     ready: bool,
-) -> crate::observe::accounts_query::AccountRow {
-    crate::observe::accounts_query::test_support::row_with(name, |a| {
+) -> crate::accounts::manage::library::AccountRow {
+    crate::accounts::manage::library::test_support::row_with(name, |a| {
         a.auth_kind = kind.to_string();
         a.exists = exists;
         a.auth_ready = ready;
@@ -38,7 +38,7 @@ fn entry(
 /// 那一家不在 app 里登 MCP ⇒ `fix: null`（只能在会话里登，不列成「点了能解」），并带 `why`：为什么没有解法。
 #[test]
 fn the_manual_list_names_each_thing_and_how_to_fix_it() {
-    let accounts = crate::observe::accounts_query::test_support::list(vec![
+    let accounts = crate::accounts::manage::library::test_support::list(vec![
         row("work", "subscription", true, false),
         row("0", "subscription", true, false),
         row("api", "api-key", true, false),
@@ -105,7 +105,7 @@ fn the_manual_list_names_each_thing_and_how_to_fix_it() {
 /// 没被点名的已登录号照旧不列。
 #[test]
 fn an_account_whose_renewal_was_refused_is_listed_as_needing_a_new_login() {
-    let accounts = crate::observe::accounts_query::test_support::list(vec![
+    let accounts = crate::accounts::manage::library::test_support::list(vec![
         row("q", "subscription", true, true),
         row("ok", "subscription", true, true),
     ]);
@@ -124,12 +124,12 @@ fn an_account_whose_renewal_was_refused_is_listed_as_needing_a_new_login() {
 /// 读法照账号清单那一份（坏 JSON 的清单 ⇒ `meta.error` 那一句）；没有清单（没启用多账号）照旧列得出。
 #[test]
 fn an_unreadable_account_library_is_said_not_listed_as_nothing() {
-    use crate::observe::accounts_query::{library_unreadable, list_product_with};
+    use crate::accounts::manage::library::{library_unreadable, list_product_with};
     let root = std::env::temp_dir().join(format!("ccm-manual-unreadable-{}", std::process::id()));
     let accts = root.join("accts");
     std::fs::create_dir_all(&accts).unwrap();
     std::fs::write(accts.join("accounts.json"), "{not json").unwrap();
-    let product = list_product_with(&accts, None, &[], &[], "claude", "claude", false);
+    let product = list_product_with(&accts, None, &[], &|_| None, "claude", "claude", false);
     let why = library_unreadable(&accts);
     assert_eq!(why, product.meta.error, "同账号清单那一句");
     let fail = manual_of("claude", &product, why, &[], None).expect_err("读不懂 ⇒ 不是空清单");
@@ -140,7 +140,7 @@ fn an_unreadable_account_library_is_said_not_listed_as_nothing() {
         None,
         "没有清单 ＝ 没启用多账号，不是读不懂"
     );
-    let absent = list_product_with(&nope, None, &[], &[], "claude", "claude", false);
+    let absent = list_product_with(&nope, None, &[], &|_| None, "claude", "claude", false);
     assert_eq!(
         manual_of("claude", &absent, None, &[], None).expect("没有清单照列"),
         Vec::new()

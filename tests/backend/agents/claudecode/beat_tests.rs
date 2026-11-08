@@ -105,7 +105,7 @@ fn an_input_carries_results_who_said_it_and_whether_the_host_injected_it() {
 }
 
 #[test]
-fn bookkeeping_lines_say_retry_cost_and_mode_and_nothing_else() {
+fn bookkeeping_lines_say_retry_and_mode_and_nothing_else() {
     let retry =
         json!({"type": "system", "subtype": "api_error", "uuid": "s1", "content": "上游失败"});
     let b = beat_of(&retry).unwrap();
@@ -125,22 +125,14 @@ fn bookkeeping_lines_say_retry_cost_and_mode_and_nothing_else() {
     )));
     assert_eq!(said_kind(&b), None);
 
-    let cost = json!({"type": "cost-state", "totalCostUSD": 1.234567, "hasUnknownModelCost": true});
-    assert_eq!(
-        beat_of(&cost).unwrap().cost,
-        Some(CostSaid {
-            micros: 1_234_567,
-            partial: true
-        })
-    );
-    let bad = json!({"type": "cost-state", "totalCostUSD": -1.0});
-    assert_eq!(beat_of(&bad).unwrap().cost, None, "负数不算");
-
     let mode = json!({"type": "permission-mode", "permissionMode": "plan"});
     assert_eq!(beat_of(&mode).unwrap().mode.as_deref(), Some("plan"));
-    let other = json!({"type": "summary", "permissionMode": "plan", "totalCostUSD": 1.0});
-    let b = beat_of(&other).unwrap();
-    assert_eq!((b.mode, b.cost), (None, None), "别的类型带着同名格也不算");
+    let other = json!({"type": "summary", "permissionMode": "plan"});
+    assert_eq!(
+        beat_of(&other).unwrap().mode,
+        None,
+        "别的类型带着同名格也不算"
+    );
 }
 
 #[test]

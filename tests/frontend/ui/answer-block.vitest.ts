@@ -1,8 +1,8 @@
 /**
  * 答题块（`src/frontend/ui/answer-block.ts`）：会话在等批准 / 回答 / 批计划时，消息流末尾展开的那一块。
  *
- * - 只排版：选项的字、语气、要不要附话、题目，全照核心那一份 `needs.ask`（跨语言金样 `needs-ask.golden.json`，Rust 造）；
- * - 分组：允许那一族一行 · 拒绝那一族另起一行（红字照语气 `fail`，今天只有「拒绝并停下」）· 改到终端里答排末尾、幽灵样式；
+ * - 只排版：选项的字、样子（`look`）、段（`row`）、带不带每题的答（`picks`）、要不要附话、题目，全照核心那一份 `needs.ask`（跨语言金样 `needs-ask.golden.json`，Rust 造）；
+ * - 分段照 `row`：批准是允许一族 · 拒绝一族 · 改到终端里答三行，批计划 · 有题的提问一行；红字照 `look: danger`（今天只有「拒绝并停下」）· 改到终端里答幽灵样式；
  * - 交互：点一项即答；要附话的原地换输入框（Enter 交 · Esc 回）；数字键只在焦点在块里时生效；出现不抢焦点；
  * - 别处先答了（回包 `result: "gone"`）⇒ 块淡出、留核心那一句、重读；
  * - 只能在终端里答（`ask: null`）⇒ 核心那一句 ＋［看终端］。
@@ -26,14 +26,14 @@ import { nonEmpty } from "../../test-support/non-empty";
 const ASKS = JSON.parse(readFileSync(resolve(__dirname, "../../__fixtures__/needs-ask.golden.json"), "utf8")) as Record<"approve" | "subAgent" | "plan" | "question", Ask>;
 const NOW = Date.parse("2026-10-11T12:00:00Z");
 /** 在等人：脸 ＋ 同一刻的会话事实那一句（需手动那一份只在两份同一刻时作数）。 */
-const waiting = { face: liveFace("needs_you"), line: { for: "needs_you" as const, text: "", clock: null, peek: null } };
+const waiting = { face: liveFace("needs_you") };
 
 function needs(ask: Ask | null, over: Partial<Needs> = {}): Needs {
   return { kind: "approve", tool: "Bash", call: "toolu_1", what: "w", text: "核心·等批准", head: "核心·等批准 · Bash", headCode: null, tone: "need", rank: 1, waitedMs: 12_000, ask, manualText: ask ? null : "核心·只能在终端里答", receivedAt: NOW, ...over };
 }
 
 function tab(n: Needs | null, sid = "s1"): Tab {
-  return { sessionId: sid, origin: LOCAL, ...(n ? waiting : { face: liveFace("working"), line: null }), needs: n } as unknown as Tab;
+  return { sessionId: sid, origin: LOCAL, ...(n ? waiting : { face: liveFace("working") }), needs: n } as unknown as Tab;
 }
 
 /** 会话事实里上一条请求收场的那一格（后端写好的那一句 · 留不留着）。 */
@@ -107,11 +107,12 @@ describe("甲1 批准一步", () => {
     ]);
   });
 
-  it("★ 红字照核心给的语气（`tone: fail`），不认选项 id", () => {
-    const swapped = { ...ASKS.approve, choices: ASKS.approve.choices.map((x) => (x.id === "deny" ? { ...x, tone: "fail" as const } : x.id === "deny-stop" ? { ...x, tone: "warn" as const } : x)) };
+  it("★ 每颗的样子照核心给的 `look`：不认选项 id、不按次序挑主按钮", () => {
+    const look = { allow: "plain", "always-0": "main", deny: "danger", "deny-stop": "ghost" } as const;
+    const swapped = { ...ASKS.approve, choices: ASKS.approve.choices.map((x) => (x.id in look ? { ...x, look: look[x.id as keyof typeof look] } : x)) };
     const { b } = rig(tab(needs(swapped)));
     const kinds = Object.fromEntries([...b.el.querySelectorAll<HTMLButtonElement>("button[data-choice]")].map((x) => [x.dataset.choice, x.dataset.kind]));
-    expect([kinds["deny"], kinds["deny-stop"]]).toEqual(["danger-text", "secondary"]);
+    expect([kinds["allow"], kinds["always-0"], kinds["deny"], kinds["deny-stop"]]).toEqual(["secondary", "primary", "danger-text", "ghost"]);
   });
 
   it("★ 点一项即答：交回核心给的 ask id 与选项 id；答出去后等重读（块还在、按钮进行中不可再点）", async () => {
@@ -181,7 +182,7 @@ describe("甲3 回答提问", () => {
     const { b } = q();
     expect(b.el.querySelector("[data-part=head]")!.textContent).toContain(copyText("askBlock.head.questions", { head: "核心·等回答", n: 2 }));
     const qs = [...b.el.querySelectorAll<HTMLElement>("[data-question]")];
-    expect(qs.map((x) => x.querySelector("[data-part=qhead]")?.textContent)).toEqual([ASKS.question.questions[0].header, copyText("askBlock.question.multi", { header: ASKS.question.questions[1].header! })]);
+    expect(qs.map((x) => x.querySelector("[data-part=qhead]")?.textContent)).toEqual(ASKS.question.questions.map((x) => x.head));
     expect(qs.map((x) => x.querySelector("[data-part=qtext]")?.textContent)).toEqual(ASKS.question.questions.map((x) => x.text));
     expect(qs[0].querySelectorAll("[data-option]").length).toBe(ASKS.question.questions[0].options.length);
     expect(qs[0].textContent).toContain("warm");
@@ -206,6 +207,16 @@ describe("甲3 回答提问", () => {
     submit.click();
     await flush();
     expect(answers).toEqual([{ ask: ASKS.question.id, choice: "answer", picks: { q0: { options: ["q0o1"], text: "" }, q1: { options: ["q1o0", "q1o1"], text: "" } } }]);
+  });
+
+  it("★ 带不带每题的答照核心给的 `picks`，不认 answer 这个 id", async () => {
+    const swapped = { ...ASKS.question, choices: ASKS.question.choices.map((x) => ({ ...x, picks: x.id === "dismiss" })) };
+    const { b, answers } = rig(tab(needs(swapped, { kind: "answer", head: "核心·等回答" })));
+    expect(btn(b, swapped.choices[1].text).getAttribute("aria-disabled"), "带 picks 的那一颗才等每题都答").toBe("true");
+    expect(btn(b, swapped.choices[0].text).getAttribute("aria-disabled")).toBeNull();
+    btn(b, swapped.choices[0].text).click();
+    await flush();
+    expect(answers).toEqual([{ ask: swapped.id, choice: "answer" }]);
   });
 
   it("单选写了自由文本 ⇒ 不再算选了哪一项；只写自由文本也算答", async () => {
@@ -386,7 +397,7 @@ describe("每一种需手动都有地方出（钉条删了以后）", () => {
   });
 
   it("★ 会话事实还没到（只有脸说在等）⇒ 不出：种类判不出，不猜", () => {
-    const t = { sessionId: "s1", origin: LOCAL, face: liveFace("needs_you"), line: null, needs: null } as unknown as Tab;
+    const t = { sessionId: "s1", origin: LOCAL, face: liveFace("needs_you"), needs: null } as unknown as Tab;
     const { b } = rig(t);
     expect(b.el.hidden).toBe(true);
   });
@@ -483,7 +494,7 @@ describe("甲9 多题：只展开正在答的那一题", () => {
   const line = (x: HTMLElement) => x.querySelector<HTMLElement>("[data-part=qline]")!;
   const sep = copyText("kit.text.sep");
   const [Q0, Q1] = ASKS.question.questions;
-  const q1head = copyText("askBlock.question.multi", { header: Q1.header! });
+  const q1head = Q1.head!;
 
   it("★ 开头展开第一道；没轮到的收成一行：题头 ＋ 题目", () => {
     const { b } = q();
@@ -495,7 +506,7 @@ describe("甲9 多题：只展开正在答的那一题", () => {
     const { b } = q();
     boxes(b)[0].querySelectorAll<HTMLElement>("[data-option]")[0].click();
     expect(open(b)).toEqual([false, true]);
-    expect(line(boxes(b)[0]).textContent).toBe([Q0.header, Q0.options[0].text].join(sep));
+    expect(line(boxes(b)[0]).textContent).toBe([Q0.head, Q0.options[0].text].join(sep));
     boxes(b)[1].querySelectorAll<HTMLElement>("[data-option]")[1].click();
     expect(open(b)).toEqual([false, true]);
   });

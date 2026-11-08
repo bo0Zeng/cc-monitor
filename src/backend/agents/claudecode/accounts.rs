@@ -1,7 +1,7 @@
 //! Claude 的**账号文件**：`.claude.json` 里信任记在哪一格 · 登录邮箱 · 「一个身份由哪几份文件组成」那张表。
 //!
 //! ⚠ 只装 Claude Code 自己的布局与格式。**账号清单（manifest）与配置目录白名单不在这里** ——
-//! 那是账号库的格式（`accounts/manage/model.rs` 读写、`observe/accounts_query.rs` 只读）。
+//! 那是账号库的格式（`accounts/manage/model.rs` 读写、`accounts/manage/library.rs` 只读）。
 
 use crate::agents::{AccountsFace, IdentityCell, IdentityClass, IdentityRoot, TrustCells};
 use crate::platform::fs::Ro;

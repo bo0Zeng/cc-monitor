@@ -55,7 +55,6 @@
 //! 每个 debounce 事件把整份 jsonl 读进内存的话，257 MB 的活跃会话 ⇒ 每次读 257 MB，
 //! 只为提取约 500 字节的新行 —— 而 backend 常跑在树莓派那类小机器上。
 
-use crate::history::live_table::SESSION_FILE_CAP;
 use crate::platform::fs::{Ro, RoFile};
 use crate::wire::{Changed, Frame, RereadWhy, SeqCounter, Topic};
 use crate::wire::{FrameMake as _, FrameRules as _, TopicExt as _};
@@ -70,9 +69,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 // U2：平台原语搬进 `platform/`（§1.1 第一条解耦线）。这里 re-import 回来，
 // 调用点一处未改 —— 纯重构，行为逐字不变。
 use crate::platform::paths::{is_under, path_key};
-use crate::platform::proc::{pid_alive, proc_cmdline, proc_starttime, start_epoch_from_ticks};
+use crate::platform::proc::pid_alive;
 // 只在测试段用到的几个（生产段的调用点随函数一起搬走了）。分开写而不是给整条 `use`
-// 加 `#[cfg(test)]`：上面那四个生产段真在用，混在一起会让「谁是生产依赖」看不出来。
+// 加 `#[cfg(test)]`：上面那一个生产段真在用，混在一起会让「谁是生产依赖」看不出来。
 // U4a：`pidfd_open` 只在 Linux 上存在（`pidwatch-core` 的 `linux.rs`）。
 // 少这个 cfg 会让 `cargo check --all-targets --target …windows-msvc` 红 —— 而那正是
 // §1.1 第一条解耦线的**唯一真判据**（计划自审 §0.5-3：cfg 位置扫描抓不到 pidfd）。
@@ -82,8 +81,10 @@ use super::tmux_observe::{
 };
 #[cfg(test)]
 use crate::platform::liveness::is_same_live_process;
+#[cfg(any(test, feature = "test-support"))]
+use crate::platform::proc::proc_starttime;
 #[cfg(test)]
-use crate::platform::proc::{parse_btime, session_alive};
+use crate::platform::proc::{parse_btime, session_alive, start_epoch_from_ticks};
 #[cfg(all(test, target_os = "linux"))]
 use pidwatch_core::pidfd_open;
 use tokio::sync::mpsc;
@@ -1536,7 +1537,7 @@ fn watch_loop(
         // 主运行的心跳同一个期限（#43）：说在跑、久未动静 ⇒ 状态不明。
         judge_beats(&mut state, &mut sink, now);
         // 进程状态文件 · 冻住那几样变过 ⇒ 整份重造活会话表、发布（冷路都读它）。
-        publish_table(&agent_home, &mut state);
+        publish_and_resay(&agent_home, &mut state, &mut sink);
         let due = [state.book.next_due(), state.beat_due(now)]
             .into_iter()
             .flatten()
@@ -1984,6 +1985,9 @@ struct ReaderState {
     /// 同一 sid 两份进程状态文件共用一份；退休时 entry 先摘、之后才收尾补读，收尾那几行照样配。
     /// 起步照冷开扫描图的事实种（[`primed`]）；会话退休收尾之后丢掉（[`retire_sid_if_unreferenced`]）。
     clocks: HashMap<String, crate::observe::recognize::step_clock::StepClock>,
+    /// 每条活会话上一次造进脸里的状态一句（sid → 定格的字 · 会走的 · 悬停句；[`ReaderState::live_face`] 造一次记一次）：
+    /// 一批记录行读完，照它判那一句变没变、变了才补推（[`note_said`]）。会话退休时丢掉。
+    said: std::cell::RefCell<HashMap<String, Option<crate::wire::StateLine>>>,
 }
 
 impl ReaderState {
@@ -2008,10 +2012,43 @@ impl ReaderState {
             _ => (None, None, None),
         };
         let activity = self.heard(sid, activity);
+        let said = self.said_now(sid, activity);
+        self.said.borrow_mut().insert(sid.to_string(), said.clone());
         crate::wire::SessionFace::of(crate::wire::Life::live(activity, container))
             .under(account)
             .attachable(attachable)
             .housed_in(container)
+            .saying(said)
+    }
+
+    /// 这条活会话此刻的状态一句（[`crate::observe::query::locate::live_line`]，与 `history-facts` 读同一份扫描图）：
+    /// 预读还没交回（记录还没读完，不在本线程现扫整份）· 记录路径还没定 · 不在哪一家的记录根下 ⇒ 没有，脸照那一态的那一句。
+    fn said_now(
+        &self,
+        sid: &str,
+        activity: Option<crate::agents::SessionActivity>,
+    ) -> Option<crate::wire::StateLine> {
+        if self.priming.contains_key(sid) {
+            return None;
+        }
+        let path = self
+            .sessions
+            .values()
+            .filter(|e| e.sid == sid)
+            .find_map(|e| e.path.clone())
+            .or_else(|| match self.added.get(sid) {
+                Some(Frame::SessionAdded(a)) => a.path.clone(),
+                _ => None,
+            })?;
+        let root = &self.roots[self.root_of(Path::new(&path))?];
+        let home = root.root.parent()?;
+        // 判活认 pidfile 的那一家照它发布的活会话表配在等 · 后台；认写者的那一家没有 pidfile，给空表（不为它现扫一遍）。
+        let live = if root.by_writer {
+            std::sync::Arc::default()
+        } else {
+            crate::history::live_table::now(home)
+        };
+        crate::observe::query::locate::live_line(home, sid, &path, activity, &live)
     }
 
     /// 这条会话此刻交出去的那一态，判法同活会话表（[`crate::history::live_table::doing_of`]）：有待答请求挂着 ⇒ 等人；
@@ -2277,6 +2314,7 @@ impl ReaderState {
             asked: std::collections::BTreeSet::new(),
             table_dirty: true,
             clocks: HashMap::new(),
+            said: std::cell::RefCell::new(HashMap::new()),
         }
     }
 }
@@ -2877,6 +2915,9 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> 
     if branch_changed {
         send_branch(state, sink, &session_id, path, reread.is_some());
     }
+    if n > 0 {
+        note_said(&session_id, state, sink);
+    }
     n
 }
 
@@ -3257,6 +3298,28 @@ fn send_line(
     rec.changed
 }
 
+/// 一批记录行读完（或预读交回）：这条活会话的状态一句与上一次造进脸里的不一样了 ⇒ 一帧 `session_status`（带全，与别的几路同一形）。
+/// 比的是定格的字 · 会走的那一截（字与起点）· 悬停句，不比时长：一步一换至多一帧，不比行帧密。不活 ⇒ 不发。
+fn note_said(sid: &str, state: &ReaderState, sink: &mut FrameSink) {
+    let Some(e) = state.sessions.values().find(|e| e.sid == sid) else {
+        return;
+    };
+    let (activity, waiting_for, path) = (e.activity, e.waiting_for.clone(), e.path.clone());
+    let said = |s: &ReaderState| s.said.borrow().get(sid).cloned().flatten();
+    let before = said(state);
+    let face = state.live_face(sid, activity);
+    if said(state) == before {
+        return;
+    }
+    sink.send(Frame::SessionStatus(crate::wire::SessionStatus {
+        sid: sid.to_string(),
+        face,
+        name_face: state.name_face(sid),
+        waiting_for,
+        path,
+    }));
+}
+
 /// 记录说这条会话此刻进到 `a` 这一态 ⇒ 记账；真变了 ⇒ 一帧 `session_status`（带全，与进程状态文件那一路同一形）。
 fn note_activity(
     sid: &str,
@@ -3467,15 +3530,8 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     // 盘上这份 pidfile 被读了一回（事件 · 后建目录挂上时的重扫 · 起步初扫 · 对齐都经这里）⇒ 活会话表照盘上重造。
     state.table_dirty = true;
     let key = path_key(path);
-    // PID is the sessions/<PID>.json filename stem.
-    let Some(pid) = file_stem_str(path).and_then(|s| s.parse::<u32>().ok()) else {
-        return false;
-    };
-    let Some(bytes) = Ro::read_capped(path, SESSION_FILE_CAP).ok() else {
-        return false;
-    };
-    // 一次解析（适配层翻成一行 `ProcFact`；status diff 与后面的宣告帧共用）
-    let Some(fact) = crate::agents::proc_fact(&bytes) else {
+    // pidfile 只读一次、读法只活会话表那一处（pid 是文件名；status diff 与后面的宣告帧共用这一份）。
+    let Some((pid, fact)) = crate::history::live_table::read_pidfile(path) else {
         return false;
     };
     let Some(sid) = fact.sid.clone() else {
@@ -3547,25 +3603,11 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
         // monitor 若不知道这点，就会去查自己那份会陈旧的 tmux 快照、把它判成灰点。
         retire_sid_if_unreferenced(&old.sid, Some(sid.as_str()), state, sink);
     }
-    // Add-time imposter check. `/proc/<pid>` existing is NOT enough:
-    // a stale pidfile (CC force-killed, tmux server killed, power loss — nothing
-    // ever cleans sessions/ up) plus PID reuse by any long-lived process (tmux
-    // server, pane shell, sshd …) used to sail through and stream the whole dead
-    // session's history as a live zombie tab, un-healable because the #34
-    // procStart baseline below was captured FROM the imposter itself.
-    //
-    // Primary evidence: the pidfile's own `procStart` field — on Linux CC writes
-    // the process's /proc starttime ticks verbatim (audit-verified bit-identical
-    // on live sessions), so equality with the CURRENT occupant's starttime is
-    // exact process identity (the same PID+starttime pair #34 uses), immune to
-    // every wall-clock concern. Fallback heuristics (field absent, or mismatch
-    // that could be CC format drift rather than reuse): the real claude wrote
-    // this pidfile while alive, so its start must not be later than the file's
-    // mtime; and its cmdline must look like claude. Missing data degrades to
-    // allow (same philosophy as the local procStart-absent fallback).
-    // #34: the poll baseline. Reuse the very ticks the verdict just examined —
-    // no second /proc read, so no verdict-to-baseline TOCTOU window.
-    let start = match add_time_check(pid, fact.proc_start, path) {
+    // 加会话那一道闸：`/proc/<pid>` 在还不够 —— 陈旧的 pidfile（强杀 · tmux server 被杀 · 断电，没人清 sessions/）
+    // 加上被长命进程复用的 PID，会把整条死会话当活的推出来，而且 #34 的基线是从冒名者身上取的、永远自愈不了。
+    // 判法只有活会话表那一份（`history::live_table::author_check`：身份证据 · 时刻 · cmdline 三态）。
+    // #34：pid 看守的基线就用判决刚看过的那个启动时刻 —— 不再读一次 /proc，判决与基线之间没有空窗。
+    let start = match crate::history::live_table::author_check(pid, fact.proc_start, path) {
         Ok(ticks) => ticks,
         Err(reason) => {
             tracing::warn!(
@@ -3826,10 +3868,30 @@ fn dress_run_needs(
     }
 }
 
-/// 活会话表变过 ⇒ 用表的构造函数现扫这台那一家的 pidfile、盖上冻住的那几个进程，整份发布。
-fn publish_table(agent_home: &Path, state: &mut ReaderState) {
-    if !std::mem::take(&mut state.table_dirty) {
+/// 活会话表重造发布（[`publish_table`]）；真发布了 ⇒ 在等 · 后台的活会话照新表把状态一句重算一次、变了补推（[`note_said`]）：
+/// pidfile 刚变的那一下，造脸用的还是之前发布的那张表（读不到在等什么 · 后台从何时起），等人的时候记录不长、别处不会再补。
+fn publish_and_resay(agent_home: &Path, state: &mut ReaderState, sink: &mut FrameSink) {
+    use crate::agents::SessionActivity as A;
+    if !publish_table(agent_home, state) {
         return;
+    }
+    let mut sids: Vec<String> = state
+        .sessions
+        .values()
+        .filter(|e| matches!(e.activity, Some(A::NeedsYou | A::BackgroundWork)))
+        .map(|e| e.sid.clone())
+        .collect();
+    sids.sort_unstable();
+    sids.dedup();
+    for sid in sids {
+        note_said(&sid, state, sink);
+    }
+}
+
+/// 活会话表变过 ⇒ 用表的构造函数现扫这台那一家的 pidfile、盖上冻住的那几个进程，整份发布。回：这一下真重造发布了（之前标了脏）。
+fn publish_table(agent_home: &Path, state: &mut ReaderState) -> bool {
+    if !std::mem::take(&mut state.table_dirty) {
+        return false;
     }
     let frozen: std::collections::BTreeSet<u32> = state
         .sessions
@@ -3840,6 +3902,7 @@ fn publish_table(agent_home: &Path, state: &mut ReaderState) {
     let mut table = crate::history::live_table::LiveTable::scan(agent_home);
     table.freeze(&frozen);
     crate::history::live_table::publish(table);
+    true
 }
 
 /// 需手动的铃每响一声（`history::needs_changed` 那一个；漏听了几声 ⇒ 当整份变了）⇒ 把此刻挂着请求的那几条与哪条会话交给 watcher（[`WatchEvent::Asked`]）。
@@ -4277,10 +4340,7 @@ fn reconcile_sessions(
                 continue;
             }
             if let Some(want) = only {
-                let sid = Ro::read_capped(p, SESSION_FILE_CAP)
-                    .ok()
-                    .and_then(|b| crate::agents::proc_fact(&b))
-                    .and_then(|f| f.sid);
+                let sid = crate::history::live_table::read_pidfile(p).and_then(|(_, f)| f.sid);
                 if sid.as_deref() != Some(want) {
                     continue;
                 }
@@ -4329,6 +4389,7 @@ fn retire_sid_if_unreferenced(
     }
     catch_up_session(sid, true, state, sink); // 写端已死：补读 ＋ 收尾残行（D 块）
     state.clocks.remove(sid);
+    state.said.borrow_mut().remove(sid);
     state.active_sids.remove(sid);
     state.added.remove(sid);
     state.reading.remove(sid);
@@ -4799,6 +4860,8 @@ fn primed(done: PrimeDone, state: &mut ReaderState, sink: &mut FrameSink) {
         }
         _ => {}
     }
+    // 记录读完了：状态一句照记录写得出来了（宣告那一帧还没有）⇒ 补推一帧。
+    note_said(&sid, state, sink);
     // 这个会话此刻已有的子运行（宣告之前就派出去的那几个）：收进来、从头读一遍，有就发一帧运行表。
     let jsonls: Vec<PathBuf> = paths
         .iter()
@@ -4936,130 +4999,6 @@ impl PrimeReader {
         }
         None
     }
-}
-
-/// Add-time verdict on whether the current occupant of a PID is plausibly the
-/// claude process that wrote the `sessions/<PID>.json` pidfile.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum AddTimeVerdict {
-    Alive,
-    Imposter(&'static str),
-}
-
-/// A process that started noticeably later than the pidfile's last write cannot
-/// be its author. 60s absorbs clock fuzz (mtime granularity, btime rounding,
-/// NTP slew) — real reuse gaps are hours-to-weeks, so the tolerance is safe.
-const ADD_TIME_TOLERANCE_SECS: u64 = 60;
-
-/// Pure decision core (unit-tested on every platform):
-///
-/// - **identity evidence（primary）**: `start_checked` — the pidfile's `procStart` equals
-///   the current occupant's starttime ticks (活会话表那一处读法 `history::live_table::start_matches`) → the occupant
-///   IS the author (PID + starttime is exact process identity, the same pair
-///   #34 relies on) — Alive, no further checks, immune to every wall-clock
-///   concern (NTP steps, NFS mtime, btime drift). A **mismatch** is NOT
-///   immediately fatal: it is either PID reuse (imposter) or a CC version
-///   writing a different format into `procStart` (a hard reject on format
-///   drift would black out every real session) — fall through, the heuristics
-///   below catch the stale-pidfile case either way.
-/// - **time evidence**: `proc_start_epoch > file_mtime_epoch + tolerance` →
-///   imposter. CC rewrites its pidfile on every state transition, so the file's
-///   mtime is a lower bound on "the real claude was alive at this instant"; a
-///   later-started process is a PID-reuse squatter. Both sides are wall-clock
-///   seconds from the same host clock (btime + starttime/USER_HZ vs mtime), so
-///   there is no timezone concern. This also subsumes the reboot case: after a
-///   reboot every process starts after btime > old mtime.
-/// - **cmdline evidence**: a readable, non-empty cmdline that mentions neither
-///   `claude` nor `node` is not a claude CLI (tmux, bash, sshd …).
-/// - Missing data (absent procStart, unreadable stat/mtime/cmdline) skips that
-///   check — degrade to allow, mirroring the local procStart-absent fallback.
-fn add_time_verdict(
-    start_checked: bool,
-    proc_start_epoch: Option<u64>,
-    file_mtime_epoch: Option<u64>,
-    cmdline: Option<&str>,
-) -> AddTimeVerdict {
-    // 「父会话恒绿」总闸：bg-spare = 守护池停泊的备用进程（cmdline 含 "bg-spare"）。
-    // 它是真 claude 进程、会写合规 pidfile、procStart 自洽——**必须在 exact-identity 之前拦**，
-    // 否则下面的启动时刻对拍（`start_checked`）会把它判 Alive 而恒绿。语义上它不是一个运行中的会话。
-    if let Some(cmd) = cmdline {
-        if cmd.to_lowercase().contains("bg-spare") {
-            return AddTimeVerdict::Imposter("bg-spare");
-        }
-    }
-    if start_checked {
-        return AddTimeVerdict::Alive; // exact identity: author confirmed
-    }
-    // mismatch / unrecorded: fall through to the heuristics (see doc comment)
-    if let (Some(start), Some(mtime)) = (proc_start_epoch, file_mtime_epoch) {
-        if start > mtime + ADD_TIME_TOLERANCE_SECS {
-            return AddTimeVerdict::Imposter("started-after-pidfile");
-        }
-    }
-    if let Some(cmd) = cmdline {
-        let lower = cmd.to_lowercase();
-        let may_be =
-            crate::agents::tree_local_face().is_some_and(|f| (f.cmdline_may_be_agent)(&lower));
-        if !may_be {
-            return AddTimeVerdict::Imposter("cmdline");
-        }
-    }
-    AddTimeVerdict::Alive
-}
-
-/// add-time 冒名判定的那一趟 /proc 读：活着且是写它的那个 claude ⇒ `Ok(当前 starttime ticks)`（调用方拿它当 #34 基线），
-/// 否则 `Err(原因)`。起步初扫 / 对齐（`process_session_added`）与一次性扫描（[`running_sessions`]）同这一条。
-/// `recorded` ＝ 那份 pidfile 说的启动时刻（[`crate::agents::ProcFact::proc_start`]）。
-fn add_time_check(
-    pid: u32,
-    recorded: Option<u64>,
-    path: &Path,
-) -> Result<Option<u64>, &'static str> {
-    let current_ticks = proc_starttime(pid);
-    match add_time_verdict(
-        crate::history::live_table::start_matches(pid, recorded),
-        start_epoch_from_ticks(current_ticks),
-        file_mtime_epoch(path),
-        proc_cmdline(pid).as_deref(),
-    ) {
-        AddTimeVerdict::Imposter(reason) => Err(reason),
-        AddTimeVerdict::Alive => Ok(current_ticks),
-    }
-}
-
-/// pidfile 目录（一次性扫描问注册表里后端盯着的那一家，`agents::pidfile_dir`）。
-pub fn pidfile_dir(agent_home: &Path) -> PathBuf {
-    crate::agents::pidfile_dir(agent_home)
-}
-
-/// **一次性扫描**：`<agent_home>/sessions/` 下此刻活着的交互会话 `(sid, pid)` —— 判活与起步初扫同一条
-/// （pid 在 · 不是后台任务 · add-time 冒名判定过）。给 `ccm` resume 用（由 `stream/entry.rs` 注入，control 层不引用 observe）。
-pub fn running_sessions(agent_home: &Path) -> Vec<(String, u32)> {
-    let dir = pidfile_dir(agent_home);
-    let Ok(entries) = Ro::read_dir(&dir) else {
-        return Vec::new();
-    };
-    entries
-        .filter_map(Result::ok)
-        .map(|e| e.path())
-        .filter(|p| is_session_json(p))
-        .filter_map(|p| {
-            let pid = file_stem_str(&p)?.parse::<u32>().ok()?;
-            let fact = crate::agents::proc_fact(&Ro::read_capped(&p, SESSION_FILE_CAP).ok()?)?;
-            let sid = fact.sid?;
-            (pid_alive(pid) && !fact.background && add_time_check(pid, fact.proc_start, &p).is_ok())
-                .then_some((sid, pid))
-        })
-        .collect()
-}
-
-/// The pidfile's mtime as epoch seconds (None on any error → check skipped).
-fn file_mtime_epoch(path: &Path) -> Option<u64> {
-    let mtime = Ro::metadata(path).ok()?.modified().ok()?;
-    mtime
-        .duration_since(std::time::UNIX_EPOCH)
-        .ok()
-        .map(|d| d.as_secs())
 }
 
 /// 这台 watcher 的发帧口：**整台一份**的那几样（会话账本 · 预读还没交回的会话）＋ **每条连接一份**的投影（[`Sub`]）。
@@ -5486,10 +5425,6 @@ impl Sub {
 /// the sessions dir, so an extension check suffices.
 fn is_session_json(p: &Path) -> bool {
     p.extension().is_some_and(|e| e == "json")
-}
-
-fn file_stem_str(p: &Path) -> Option<String> {
-    p.file_stem().and_then(|s| s.to_str()).map(str::to_string)
 }
 
 // 判据夹具（不等地取一帧 · 夹具那一份发帧口 · 读者 · 在跑名单的耳朵）：本包的判据与上层判据经 `test-support` 共用。

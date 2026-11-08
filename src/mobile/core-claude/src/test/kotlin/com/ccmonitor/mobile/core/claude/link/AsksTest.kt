@@ -41,7 +41,8 @@ class AsksTest {
         assertEquals(false, q.questions[0].multi)
         assertEquals(true, q.questions[1].multi)
         assertEquals("warm", q.questions[0].options[0].detail)
-        assertEquals("Color", q.questions[0].header)
+        assertEquals("题头是那台写好的那一句（单选照原样）", "Color", q.questions[0].head)
+        assertEquals("提交答案那颗带 picks", listOf(true, false), q.choices.map { it.picks })
 
         val sub = ask("subAgent")
         assertTrue("子 agent 那一趟带 run", sub.run != null)

@@ -249,6 +249,7 @@ fn an_offer_takes_the_hello_as_typed_and_names_the_frame_kinds_that_differ() {
         unavailable: vec![cmd_wire::frame::Unavailable {
             command: "tmux-ls".into(),
             code: "no_tmux".into(),
+            said: "灰".into(),
         }],
         host_env: Default::default(),
         shapes: [("a".to_string(), "h1".to_string())].into(),

@@ -18,7 +18,7 @@ async fn a_late_starter_that_cannot_claim_never_touches_the_log_or_the_socket() 
     let data_s = data.to_string_lossy().into_owned();
     let home_s = home.to_string_lossy().into_owned();
     let env = |k: &str| match k {
-        listen::ENV_RESIDENT => Some("1".to_string()),
+        crate::platform::child_env::RESIDENT => Some("1".to_string()),
         creds_core::store::DATA_DIR_ENV => Some(data_s.clone()),
         "HOME" => Some(home_s.clone()),
         _ => None,
@@ -49,7 +49,7 @@ async fn a_late_starter_that_cannot_claim_never_touches_the_log_or_the_socket() 
         "抢不到锁的后起者动了在跑那一个的套接字"
     );
 
-    let bad = |k: &str| (k == listen::ENV_RESIDENT).then(|| "yes".to_string());
+    let bad = |k: &str| (k == crate::platform::child_env::RESIDENT).then(|| "yes".to_string());
     assert_eq!(
         claim_then_log(&own_of(&bad), &bad, None, install)
             .await
@@ -73,7 +73,7 @@ async fn a_late_starter_that_cannot_claim_never_touches_the_log_or_the_socket() 
         let fresh = home.join("fresh");
         let fresh_s = fresh.to_string_lossy().into_owned();
         let env2 = |k: &str| match k {
-            listen::ENV_RESIDENT => Some("1".to_string()),
+            crate::platform::child_env::RESIDENT => Some("1".to_string()),
             creds_core::store::DATA_DIR_ENV => Some(fresh_s.clone()),
             "HOME" => Some(home_s.clone()),
             _ => None,
@@ -112,7 +112,7 @@ async fn a_sandboxed_start_refuses_the_real_home() {
     // 10-08 那一形：HOME 隔离了，家却漏成真家里的那一份。
     let leaked_dir = real.join(".cc-monitor").to_string_lossy().into_owned();
     let leaked = |k: &str| match k {
-        listen::ENV_RESIDENT => Some("1".to_string()),
+        crate::platform::child_env::RESIDENT => Some("1".to_string()),
         creds_core::store::DATA_DIR_ENV => Some(leaked_dir.clone()),
         "HOME" => Some(fake_s.clone()),
         _ => None,
@@ -125,7 +125,7 @@ async fn a_sandboxed_start_refuses_the_real_home() {
     );
     // HOME 也没隔离、只带了标记：同样拒。
     let marked = |k: &str| match k {
-        listen::ENV_RESIDENT => Some("1".to_string()),
+        crate::platform::child_env::RESIDENT => Some("1".to_string()),
         relay_route_core::SANDBOX_ENV => Some("1".to_string()),
         "HOME" => Some(real_s.clone()),
         _ => None,
@@ -143,7 +143,7 @@ async fn a_sandboxed_start_refuses_the_real_home() {
     );
     // 正控：沙箱跑、家在沙箱里 ⇒ 起。
     let boxed = |k: &str| match k {
-        listen::ENV_RESIDENT => Some("1".to_string()),
+        crate::platform::child_env::RESIDENT => Some("1".to_string()),
         relay_route_core::SANDBOX_ENV => Some("1".to_string()),
         "HOME" => Some(fake_s.clone()),
         _ => None,

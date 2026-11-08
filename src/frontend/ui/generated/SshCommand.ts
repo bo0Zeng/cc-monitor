@@ -6,10 +6,10 @@
 export type SshCommand = { 
 /**
  * cc-monitor 自己开的窗里跑的那一整串，本机后端拼好：入参给了 `sid`、记录目录也在 ⇒ 前奏（跑它的 shell 把窗口标签记进本机后端的家）
- * ＋ `line` ＋ 收尾（那条 ssh 一退就删掉那份记录；里面是本机数据目录的绝对路径与这台终端方言的写法）；否则就是 `line`。
+ * ＋ `line` ＋ 收尾（那一行一退就删掉那份记录；里面是本机数据目录的绝对路径与这台终端方言的写法）；否则就是 `line`。
  */
 window: string, 
 /**
- * 这台电脑终端里跑的那一行（Windows：PowerShell `& '<ssh 全路径>' -t … -- 'bash -lic …'`；别处：同一组参数的 POSIX shell 一行）。
+ * 这台电脑终端里跑的那一行（远端：Windows PowerShell `& '<ssh 全路径>' -t … -- 'bash -lic …'`、别处同一组参数的 POSIX shell 一行；本机：那一串本身）。
  */
 line: string, };

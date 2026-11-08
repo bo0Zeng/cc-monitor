@@ -960,22 +960,29 @@ fn the_powershell_block_never_touches_the_session_path_again() {
     }
 }
 
-/// ★★ **两臂的 `cc` 走同一条路**：`cc` 今天是清单里首建就带的一条（[`super::super::first_aliases`]），
+/// ★★ **两臂的 `cc` 走同一条路**：`cc` 是内置的一条（[`super::super::accounts::with_builtins`]），
 /// 两种方言都由同一个渲染器写出 —— POSIX `cc() { ccm @cc "$@"; }`、PowerShell `& "$HOME\.cc-monitor\bin\ccm.exe" '@cc' $RemainingArgs`
 /// （「所有命令只许有一处」＋「一切对外都经后端」）。PowerShell 的别名块里**一条调用行都没有**
-/// （`cc` 不住块里）；没有 tmux 的那一臂首建不带 `cct`（「名字在、行为不在」的壳比没有更坏）。
+/// （`cc` 不住块里）；没有 tmux 的那一臂内置的不带 `cct`（「名字在、行为不在」的壳比没有更坏）。
 ///
 /// 🔴 诚实边界：证的是「生成的文本指向 `ccm` 的落点」，不是「敲下去真起得来」（要一台 Windows）。
 #[test]
 fn the_powershell_cc_goes_through_ccm_exactly_like_the_posix_one() {
-    use super::super::{first_aliases, render_line};
+    use super::super::{accounts::with_builtins, render_line, Caps};
+    let builtin = |sh: Shell| -> Vec<String> {
+        with_builtins(Default::default(), &[], Caps::of(sh).tmux, &|a, b| a == b)
+            .profiles
+            .into_iter()
+            .map(|p| p.name)
+            .collect()
+    };
     let word = crate::ccm_line::SUBCOMMAND_WORD;
     let cc_of = |sh: Shell| {
-        first_aliases(sh)
+        builtin(sh)
             .into_iter()
-            .find(|a| a.name == "cc")
-            .map(|a| render_line(&a.name, sh))
-            .expect("首建那几条里该有 `cc`")
+            .find(|n| n == "cc")
+            .map(|n| render_line(&n, sh))
+            .expect("内置那几条里该有 `cc`")
     };
     assert_eq!(
         cc_of(Shell::Posix),
@@ -1005,10 +1012,8 @@ fn the_powershell_cc_goes_through_ccm_exactly_like_the_posix_one() {
         ["& $exe.Source -o SendEnv=LC_CCM_WINDOW @args"],
         "别名块里又有调用行了 —— `cc` 住清单\n{block}"
     );
-    let names =
-        |sh: Shell| -> Vec<String> { first_aliases(sh).into_iter().map(|a| a.name).collect() };
-    assert_eq!(names(Shell::Posix), ["cc", "cct", "cch"]);
-    assert_eq!(names(Shell::PowerShell), ["cc", "cch"]);
+    assert_eq!(builtin(Shell::Posix), ["cc", "cct", "cch"]);
+    assert_eq!(builtin(Shell::PowerShell), ["cc", "cch"]);
 }
 
 /// ★★ **真机逮到的那一条**：

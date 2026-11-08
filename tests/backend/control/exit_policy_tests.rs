@@ -315,7 +315,7 @@ fn wire_child() {
 /// 没有常驻开关 ⇒ 被监护那一句；开关在 ⇒ 常驻那一句。
 #[test]
 fn the_production_wire_reads_the_carrier_from_the_listen_mode() {
-    use crate::wire::listen::ENV_RESIDENT;
+    use crate::platform::child_env::RESIDENT;
     let home = test_home::scratch("wire-child");
     let said = |env: &[(&str, &str)]| -> serde_json::Value {
         let out = std::process::Command::new(std::env::current_exe().expect("测试二进制"))
@@ -346,7 +346,7 @@ fn the_production_wire_reads_the_carrier_from_the_listen_mode() {
     };
     assert_eq!(said(&[]), copy_text("backendPolicy.exit.selfDies", &[]));
     assert_eq!(
-        said(&[(ENV_RESIDENT, "1")]),
+        said(&[(RESIDENT, "1")]),
         copy_text("backendPolicy.exit.unattended", &[])
     );
     let _ = std::fs::remove_dir_all(&home);

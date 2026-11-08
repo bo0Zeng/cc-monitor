@@ -123,26 +123,18 @@ pub async fn chan_call(
 pub struct OfferView {
     /// 那台认的 op。
     ops: Vec<String>,
-    /// `[op, 码, 那一句]`：这台做不到（码与那台事后会回的同一个；那一句是置灰时说的）。
+    /// `[op, 码, 那一句]`：这台做不到（码与那台事后会回的同一个；那一句是本机后端写好的置灰句，原样转）。
     unavailable: Vec<(String, String, String)>,
 }
 
-/// `Offer` ⇒ webview 那一份。`origin` 只用来称呼那台。
-pub fn offer_view(o: &super::wire::Offer, origin: &crate::origin::Origin) -> OfferView {
+/// `Offer` ⇒ webview 那一份（照 op 的次序排，那一句原样转）。
+pub fn offer_view(o: &super::wire::Offer) -> OfferView {
     let ops = o.ops().to_vec();
-    let machine = super::said::machine(origin);
     OfferView {
         unavailable: ops
             .iter()
-            .filter_map(|op| {
-                o.unavailable(op).map(|c| {
-                    (
-                        op.clone(),
-                        c.to_string(),
-                        copy_core::unavailable(c, &machine),
-                    )
-                })
-            })
+            .filter_map(|op| o.gap(op))
+            .map(|u| (u.command.clone(), u.code.clone(), u.said.clone()))
             .collect(),
         ops,
     }
@@ -153,10 +145,7 @@ pub fn offer_view(o: &super::wire::Offer, origin: &crate::origin::Origin) -> Off
 #[tauri::command]
 pub fn chan_offer(origin: crate::origin::Origin) -> Option<OfferView> {
     origin.route("chan_offer").ok()?;
-    InboundBackends
-        .offer(&origin)
-        .as_ref()
-        .map(|o| offer_view(o, &origin))
+    InboundBackends.offer(&origin).as_ref().map(offer_view)
 }
 
 // ════════════════════════════════════════════════════════════════════════════

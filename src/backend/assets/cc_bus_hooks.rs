@@ -224,7 +224,7 @@ pub(crate) fn diagnose(raw: Option<&str>, exists: &dyn Fn(&str) -> bool) -> Hook
 /// 入口不在 ⇒ `None`（cc-bus 没装，先装）。
 pub(crate) fn snippet(skills: &Path, home: Option<&Path>) -> Option<String> {
     let script: PathBuf = skills
-        .join(crate::assets::cc_bus_install::NAME)
+        .join(super::cc_bus_install::NAME)
         .join("scripts")
         .join(PROGRAM);
     if !script.is_file() {
@@ -289,5 +289,5 @@ pub(crate) fn answer_at(
 }
 
 #[cfg(test)]
-#[path = "../../../tests/backend/observe/cc_bus_hooks_tests.rs"]
+#[path = "../../../tests/backend/assets/cc_bus_hooks_tests.rs"]
 mod tests;

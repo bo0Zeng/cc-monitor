@@ -132,10 +132,10 @@ pub(crate) use crate::faces::quota_read::QuotaRead;
 
 /// 读这台的额度账、给每个号判显示态，交出口写成成品。
 pub(crate) fn quota_read_with(ctx: &Ctx, now: u64, tz: &crate::common::time::Tz) -> QuotaRead {
-    use crate::faces::quota_read::{reply_of, Base, Seen, UnseenHead};
+    use crate::faces::quota_read::{reply_of, Base, Seen, Unseen, UnseenHead};
     let base = ledger::answer_of(ctx.hop.quota.path(), now);
     let seen = &base.accounts;
-    let lib = ctx.hop.library();
+    let lib = ctx.hop.book();
     let shown = |agent: &str, account: &str, o: Option<&ledger::Observed>| {
         let slot = crate::agents::route_named(agent).and_then(crate::agents::window_slot_of);
         let key = crate::agents::route_named(agent).and_then(crate::agents::window_key_of);
@@ -150,18 +150,17 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64, tz: &crate::common::time::Tz)
         );
         if let Some(o) = o {
             sh.windows = show::windows_of(o, &key, now);
-            show::per_pct_of_slots(&mut sh);
         }
         sh
     };
     let mut usable: Vec<String> = Vec::new();
     let mut earliest: Option<(u64, String)> = None;
-    // 「可发」与「几点回来」照事实那一格（`blocked` 由 `rules::standing` 那一处判），显示态不另判。
+    // 「可发」与「几点回来」照事实那一格（`blocked` 由 `rules::standing` 那一处判），显示态不另判；开窗那一判也照这一份事实。
     let mut judge = |agent: &str, account: &str| {
         let f = ctx
             .hop
             .fact_one(agent, &lib, account, &|a| (ctx.rows)(agent, a), now, tz);
-        match f.blocked {
+        match &f.blocked {
             None => usable.push(account.to_string()),
             Some(b) => {
                 if let Some(at) = b
@@ -172,20 +171,25 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64, tz: &crate::common::time::Tz)
                 }
             }
         }
+        crate::accounts::quota::rules::decide::warm_verdict(
+            &crate::accounts::quota::rules::Acct::of_fact(&f),
+            now,
+        )
     };
     let mut rows: Vec<Seen> = Vec::new();
     for o in seen {
         let sh = shown(&o.agent, &o.account, Some(o));
-        judge(&o.agent, &o.account);
+        let warm = judge(&o.agent, &o.account);
         rows.push(Seen {
             agent: o.agent.clone(),
             account: o.account.clone(),
             seen_at: o.seen_at,
             reading: o.reading.clone(),
             show: sh,
+            warm,
         });
     }
-    let unseen: Vec<UnseenHead> = lib
+    let unseen: Vec<Unseen> = lib
         .accounts
         .iter()
         .filter_map(ManifestAccount::route_id)
@@ -196,13 +200,16 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64, tz: &crate::common::time::Tz)
         })
         .map(|id| {
             let sh = shown(LIBRARY_AGENT, &id, None);
-            judge(LIBRARY_AGENT, &id);
-            UnseenHead {
-                agent: crate::agents::kind_of_route(LIBRARY_AGENT),
-                account: id,
-                kind: sh.kind,
-                login: sh.login,
-                usage: sh.usage.into(),
+            let warm = judge(LIBRARY_AGENT, &id);
+            Unseen {
+                head: UnseenHead {
+                    agent: crate::agents::kind_of_route(LIBRARY_AGENT),
+                    account: id,
+                    kind: sh.kind,
+                    login: sh.login,
+                    usage: sh.usage.into(),
+                },
+                warm,
             }
         })
         .collect();

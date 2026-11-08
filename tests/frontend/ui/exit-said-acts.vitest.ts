@@ -1,7 +1,7 @@
 /**
  * 回答与运行表的成品由后端写好，出口照摆、不各自判（A16-1-2）：
  * - 答题「别处已答」是 `needs-answer` 回包的一种结局（`result: "gone"` ＋ 那一句）：桌面 · 手机的产品源里不再认 `already_answered` · `closed_elsewhere` 两个码；
- * - 选项标红照语气（`tone: fail`）：出口不认 `deny-stop` 这个选项 id；
+ * - 选项长什么样照核心给的 `look`（红字 ＝ `danger`）：出口不认 `deny-stop` 这个选项 id；
  * - 运行表的状态字 · 名字 · 记录里最近一件事由后端写进那一帧（`status_text` · `label_text` · `last_text`）：`runs.ts` 不再取 `runs.state.*` · `runs.label.*` · `runs.last.tool`；
  * - 送字的结局带下一步（`terminal-input` 回包的 `acts`：再发一次 · 重抓 · 重读名单）：出口不认拒因码。
  * 正控：同一把尺在后端那一处量得到它们（没量到 ⇒ 本条在空转）。

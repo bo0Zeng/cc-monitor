@@ -581,3 +581,20 @@ fn home_entries_with_a_declaration_take_their_class_from_it() {
     assert_eq!(KEY_FILE.row.format, Format::Foreign);
     assert_eq!(KNOWN_HOSTS_FILE.row.format, Format::Foreign);
 }
+
+/// ★ 能当一个号的 id（quota-warm · quota-probe · 轮换同问这一处）：过段闸、又不是「没说是哪个号」那一段。
+#[test]
+fn an_account_id_passes_the_gate_and_is_not_the_undeclared_segment() {
+    assert_eq!(UNDECLARED_ACCOUNT_SEGMENT, "_");
+    assert!(
+        segment_is_safe(UNDECLARED_ACCOUNT_SEGMENT),
+        "`_` 本身是合法段"
+    );
+    assert!(!account_ok(UNDECLARED_ACCOUNT_SEGMENT));
+    for bad in ["", "../x", "a/b", "a b"] {
+        assert!(!account_ok(bad), "{bad:?}");
+    }
+    for ok in ["a", "0", "team-2", "a_b"] {
+        assert!(account_ok(ok), "{ok:?}");
+    }
+}

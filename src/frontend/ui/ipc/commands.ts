@@ -130,15 +130,11 @@ export const commands = {
 
   /** 这台已跟 monitor 完成拉前握手的终端数（住 monitor 进程里的 `BindRegistry`）。 */
 
-  /** 在本机开一个终端窗口跑 `cmd`（工作目录 `cwd`）：POSIX 上按设置 / 探到的终端 / Windows 上 PowerShell。
-   *  结局同 `open_terminal_window`。只经 `src/frontend/ui/terminal-open.ts` 调。桶③。 */
-  open_local_terminal: (args: { cmd: string; cwd: string | null }) =>
-    invoke<TerminalOpened>("open_local_terminal", args),
-
-  /** 开一个终端窗口跑 `command`（**成品**：远端那一行由本机后端 `terminal-ssh` 渲好、本机那一串由本机后端起会话那一问交回 —— monitor 只开窗）。
+  /** 开一个终端窗口跑 `command`（**成品**：本机远端一样由本机后端 `terminal-ssh` 渲好 —— monitor 只开窗），起始目录 `cwd`（`null` ⇒ 不设）。
+   *  POSIX 上按设置 / 探到的终端，Windows 上 PowerShell。
    *  Rust 返回 `Result<TerminalOpened, Failed>`（`opened` / `noWindow` 带壳写好的那几句）⇒ 生成物（桶③）。
    *  只经 `src/frontend/ui/terminal-open.ts::openTerminal` 调（开终端只有一个家）。 */
-  open_terminal_window: (args: { command: string }) =>
+  open_terminal_window: (args: { command: string; cwd: string | null }) =>
     invoke<TerminalOpened>("open_terminal_window", args),
 
   /** 写系统剪贴板（`clipboard.rs`，回真成败）。桶①。只经 `src/frontend/ui/clipboard.ts` 调（复制只有一个家）。 */
@@ -182,9 +178,6 @@ export const commands = {
   footprint_client_facts: () =>
     invoke<Record<string, unknown>>("footprint_client_facts"),
 
-  /** 装了 MCP 的远端 host 列表。原始类型数组，无需生成物。 */
-  list_remote_mcp_origins: () => invoke<string[]>("list_remote_mcp_origins"),
-
   /**
    * 读配置。**Rust 侧返回 `Result<serde_json::Value, String>`——它把配置当不透明 JSON 透传**，
    * 所以这个边界**结构性无法**由生成物加固：Rust 自己就不知道形状。
@@ -195,13 +188,6 @@ export const commands = {
   /** 这台机的后端现在什么状态（本机那一台的状态成品 · 通道在不在 · 健康那一格）。 */
   backend_status: (args: { origin: string }) =>
     invoke<BackendStatus>("backend_status", args),
-
-  /**
-   * **开关面该列哪几台机** —— 由后端的注册表说了算，前端不自己算。
-   * 前端自己拼会与 Rust 的 origin 分叉四处（trim / 重复 label 后缀化 / 忽略 enabled /
-   * 启动后新增的没注册），见 `backend_control::backend_machines` 头注。⇒ **桶②**。
-   */
-  backend_machines: () => invoke<string[]>("backend_machines"),
 
   /** 起这台机的后端（已经在跑也算成）；起不来 ⇒ reject 带那一句 ⇒ **桶②**。 */
   backend_start: (args: { origin: string }) =>

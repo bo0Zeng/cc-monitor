@@ -2,16 +2,247 @@
 //!
 //! 唯一一处行模型：桌面悬停卡、CLI `--text`（通用拼字，见 `stream/cli.rs`）、手机、skill 都只照抄这几行，不按码取字。
 //! 读的是出口写好时刻字之后的回包（`faces/quota_read.rs`，同一把钟 `TextClock`）：时刻的字 `…Text` 与距今 `…RelText` 已写好；
-//! 一个语义位那一格的字与语气是显示态那一处写的（`accounts/quota/show.rs::slot_words`），这里照抄。
+//! 显示态那一判在 `accounts/quota/show.rs`；判好的写成字与语气（每个语义位那一格 · 用量那一格 · 时刻旁边那几格）也在这里（[`written`] · [`Stamp`]）。
 //! 「采样那一格」只写几点（数旧带「旧」）：哪台采的是出口自己的事（它知道问的是哪台、那台叫什么）。
 
-use crate::accounts::quota::show::{reset_text, window_label};
+use crate::accounts::quota::name_words::slot_text;
+use crate::accounts::quota::rules::decide::{WarmVerdict, WarmWhy};
 use crate::common::cells::{Tone, Words};
+use crate::common::time::TextClock;
 use cmd_wire::quota::{
     AccountHead, Kind, LoginState, QuotaShow, QuotaState, ResetsAt, SlotShow, UnseenHead,
+    UnseenUsage, Usage, WindowShow, SLOT_5H, SLOT_7D,
 };
 pub(crate) use cmd_wire::quota::{Cell, Rows, Warm, WarmAct};
 use copy_core::copy_text;
+
+// ── 显示态写成字（判在 `accounts/quota/show.rs`，这里只照判好的写） ─────────────────────────────
+
+/// ★ 一个语义位那一格写成什么字、什么语气（唯一一处：额度每号几行 · 账号面板 · 规则编辑器 · 起会话菜单都读它）。
+/// `here` ＝ 它是卡人的那一格（[`QuotaShow::limiting`]）。
+pub(crate) fn slot_words(
+    state: QuotaState,
+    here: bool,
+    pct: Option<u32>,
+    full: bool,
+) -> (Words, Tone) {
+    if here && state == QuotaState::OverageInUse {
+        return (Words(copy_text("acct.row.over", &[])), Tone::Warn);
+    }
+    if here && matches!(state, QuotaState::ResetSinceSeen | QuotaState::Unseen) {
+        return (Words(copy_text("acct.val.none", &[])), Tone::Plain);
+    }
+    if full {
+        return (Words(copy_text("acct.val.full", &[])), Tone::Fail);
+    }
+    if here && state == QuotaState::Refused {
+        return match pct {
+            Some(p) => (
+                Words(copy_text("acct.val.refusedPct", &[("pct", &p.to_string())])),
+                Tone::Fail,
+            ),
+            None => (Words(copy_text("reason.code.refused", &[])), Tone::Fail),
+        };
+    }
+    match pct {
+        None => (Words(copy_text("acct.val.none", &[])), Tone::Plain),
+        Some(p) => (
+            Words(copy_text("acct.val.pct", &[("pct", &p.to_string())])),
+            if here && state == QuotaState::Near {
+                Tone::Warn
+            } else {
+                Tone::Plain
+            },
+        ),
+    }
+}
+
+/// 用量那一格连成一句（窗口 · 值 · 重置）。
+fn joined(u: &mut Usage) {
+    let v = u.value.0.as_str();
+    u.text = Words(match (&u.window, &u.reset) {
+        (None, None) => v.to_string(),
+        (None, Some(r)) => copy_text("acct.usage.wv", &[("w", v), ("v", &r.0)]),
+        (Some(w), None) => copy_text("acct.usage.wv", &[("w", &w.0), ("v", v)]),
+        (Some(w), Some(r)) => copy_text("acct.usage.wvr", &[("w", &w.0), ("v", v), ("r", &r.0)]),
+    });
+}
+
+/// 一个号用量那一格（还没按钟写重置那一格）。`reading_reset` ＝ 回包说的几点能再用（卡着的那一格没给时刻时用它）。
+/// 回包没说卡在哪一窗 ⇒ 画 5h（这一判也只在这里）。
+pub(crate) fn usage_of(
+    kind: Kind,
+    state: QuotaState,
+    limiting: Option<&str>,
+    slots: &[SlotShow],
+    reading_reset: Option<u64>,
+) -> Usage {
+    let mut u = if kind == Kind::Api {
+        if state == QuotaState::Refused {
+            Usage {
+                value: Words(copy_text("reason.code.refused", &[])),
+                tone: Tone::Fail,
+                resets_at: reading_reset,
+                ..Usage::default()
+            }
+        } else {
+            Usage {
+                value: Words(copy_text("acct.kind.api", &[])),
+                tone: Tone::Plain,
+                ..Usage::default()
+            }
+        }
+    } else {
+        let w = limiting.unwrap_or(SLOT_5H);
+        let slot = slots.iter().find(|s| s.slot == w);
+        let value = slot.map_or_else(
+            || {
+                Words(if state == QuotaState::Refused {
+                    copy_text("reason.code.refused", &[])
+                } else {
+                    copy_text("acct.val.none", &[])
+                })
+            },
+            |s| s.text.clone(),
+        );
+        let (tone, resets_at) = match state {
+            QuotaState::Refused => (Tone::Fail, slot.and_then(|s| s.resets_at).or(reading_reset)),
+            QuotaState::OverageInUse => (Tone::Warn, None),
+            QuotaState::ResetSinceSeen | QuotaState::Unseen => (Tone::Plain, None),
+            _ if slot.is_some_and(|s| s.full) => (Tone::Fail, None),
+            QuotaState::Near if slot.is_some_and(|s| s.pct.is_some()) => (Tone::Warn, None),
+            _ => (Tone::Plain, None),
+        };
+        Usage {
+            slot: Some(w.to_string()),
+            window: Some(Words(slot_text(w))),
+            value,
+            tone,
+            resets_at,
+            ..Usage::default()
+        }
+    };
+    joined(&mut u);
+    u
+}
+
+/// 没出过数的号那一格用量（只看种类）。
+pub(crate) fn unseen_usage(kind: Kind) -> UnseenUsage {
+    usage_of(kind, QuotaState::Unseen, None, &[], None).into()
+}
+
+/// 「1% ≈ 多少用量」那一格的字（唯一写法）。
+fn per_pct_text(n: u64) -> Words {
+    Words(copy_text(
+        "acct.val.perPct",
+        &[("n", &copy_core::count_short(n))],
+    ))
+}
+
+/// ★ 判好的显示态写成字（唯一一处）：每个语义位那一格 · 各窗口与语义位的「1% ≈ 多少」· 用量那一格。
+/// `reading_reset` ＝ 回包说的几点能再用。
+pub(crate) fn written(sh: &mut QuotaShow, reading_reset: Option<u64>) {
+    let (state, limiting) = (sh.state, sh.limiting.clone());
+    for x in &mut sh.slots {
+        (x.text, x.tone) = slot_words(
+            state,
+            limiting.as_deref() == Some(x.slot.as_str()),
+            x.pct,
+            x.full,
+        );
+    }
+    for w in &mut sh.windows {
+        w.per_pct_text = w.tokens_per_pct.map(per_pct_text);
+    }
+    for s in &mut sh.slots {
+        s.per_pct_text = sh
+            .windows
+            .iter()
+            .find(|w| w.name == s.window)
+            .and_then(|w| w.per_pct_text.clone());
+    }
+    sh.usage = usage_of(
+        sh.kind,
+        state,
+        limiting.as_deref(),
+        &sh.slots,
+        reading_reset,
+    );
+}
+
+/// 出口那一下：按钟写时刻旁边那几格。
+pub(crate) trait Stamp {
+    fn stamp(&mut self, clock: &TextClock);
+}
+
+impl Stamp for Usage {
+    /// 写重置那一格，再连成一句。
+    fn stamp(&mut self, clock: &TextClock) {
+        self.reset = self
+            .resets_at
+            .map(|t| Words(copy_text("acct.reset.at", &[("at", &clock.text(t).0)])));
+        joined(self);
+    }
+}
+
+impl Stamp for SlotShow {
+    /// 按钟写 `resets_at` 旁边那两格。
+    fn stamp(&mut self, clock: &TextClock) {
+        if let Some(t) = self.resets_at {
+            let at = clock.text(t);
+            self.resets_at_rel_text = clock.rel(t);
+            self.reset_text = Some(reset_text(&at, self.resets_at_rel_text.is_none()));
+            self.resets_at_text = Some(at);
+        }
+    }
+}
+
+impl Stamp for WindowShow {
+    /// 按钟写 `resets_at` 旁边那两格。
+    fn stamp(&mut self, clock: &TextClock) {
+        if let Some(t) = self.resets_at {
+            self.resets_at_text = Some(clock.text(t));
+            self.resets_at_rel_text = clock.rel(t);
+        }
+    }
+}
+
+impl Stamp for QuotaShow {
+    /// 每一格的时刻字按钟写好。
+    fn stamp(&mut self, clock: &TextClock) {
+        self.slots.iter_mut().for_each(|s| s.stamp(clock));
+        self.windows.iter_mut().for_each(|w| w.stamp(clock));
+        self.usage.stamp(clock);
+    }
+}
+
+/// 重置那一格的字（唯一写法）：还没到 ⇒ `↻18:30`；已过 ⇒ `↻13:10 已过`。
+pub(crate) fn reset_text(at: &Words, past: bool) -> Words {
+    Words(if past {
+        copy_text("acct.reset.past", &[("at", &at.0)])
+    } else {
+        copy_text("acct.reset.at", &[("at", &at.0)])
+    })
+}
+
+/// 一个窗口那一行的名字：窗口键 `5h` · `7d` 照语义位的字；`7d:<档>` ⇒「7d <档>」；不算用量窗口的（超额）⇒「超额」。
+pub(crate) fn window_label(key: Option<&str>) -> String {
+    match key {
+        None => copy_text("acct.row.over", &[]),
+        Some(k) => match k.split_once(':') {
+            Some((slot, tier)) => copy_text(
+                "acct.window.tier",
+                &[
+                    ("slot", &slot_text(slot)),
+                    ("tier", &tier.replace('_', " ")),
+                ],
+            ),
+            None => slot_text(k),
+        },
+    }
+}
+
+// ── 每号几行 ───────────────────────────────────────────────────────────────────────
 
 fn c(text: String) -> Cell {
     Cell {
@@ -146,8 +377,8 @@ pub(crate) fn seen_block(a: &AccountHead) -> Rows {
             ]
         }));
     } else {
-        rows.push(slot_row(show, "5h"));
-        rows.push(slot_row(show, "7d"));
+        rows.push(slot_row(show, SLOT_5H));
+        rows.push(slot_row(show, SLOT_7D));
         rows.extend(tier_rows(show));
         if !windowed {
             rows.extend(state_row(show, reading));
@@ -180,11 +411,14 @@ pub(crate) fn unseen_block(u: &UnseenHead) -> Rows {
         ]);
     } else {
         rows.push(vec![
-            slot_label("5h"),
+            slot_label(SLOT_5H),
             c(copy_text("acct.val.none", &[])),
             c(copy_text("acct.seen.none", &[])),
         ]);
-        rows.push(vec![slot_label("7d"), c(copy_text("acct.val.none", &[]))]);
+        rows.push(vec![
+            slot_label(SLOT_7D),
+            c(copy_text("acct.val.none", &[])),
+        ]);
     }
     rows
 }
@@ -212,7 +446,10 @@ pub(crate) fn five_hour(value: &str) -> String {
     copy_text(
         "resumeMenu.account.quota",
         &[
-            ("slot", &crate::accounts::quota::name_words::slot_text("5h")),
+            (
+                "slot",
+                &crate::accounts::quota::name_words::slot_text(SLOT_5H),
+            ),
             ("value", value),
         ],
     )
@@ -239,79 +476,72 @@ pub(crate) fn stamped(mut w: Warm, clock: &crate::common::time::TextClock) -> Wa
     w
 }
 
-/// ★ 一个号此刻要不要发一句让窗口开始计时（唯一一处）：`seen` ＝ 出过数的号的显示态（没出过数 ⇒ `None`）。
-pub(crate) fn warm_of(login: LoginState, seen: Option<&QuotaShow>, now: i64) -> Warm {
-    let wait = |at: i64, text: String| Warm {
-        act: WarmAct::Wait,
-        at: Some(at),
-        at_text: None,
-        text: Words(text),
+/// ★ 开窗那一判写成线上那一格：判在 accounts（[`warm_verdict`] 的码），这里只写那一句与几点再看。
+/// `seen` ＝ 出过数的号的显示态（没出过数 ⇒ `None`），只用来挑字（卡人的是哪一窗 · 5h 用到几 · 有没有见过 5h 窗）。
+/// 说得出几点 ⇒ 那一刻再加 [`WARM_MARGIN_S`]；说不出（按量号 · 要登录 · 缺 key）⇒ 过 [`WARM_LOGIN_RETRY_S`] 再看。
+pub(crate) fn warm_of(
+    v: WarmVerdict,
+    seen: Option<&QuotaShow>,
+    clock: &crate::common::time::TextClock,
+) -> Warm {
+    let now = clock.now;
+    let s5 = seen.and_then(|s| slot_of(s, SLOT_5H));
+    let (why, until) = match v {
+        WarmVerdict::Send(_) => {
+            // 发的码只有「5 小时窗没在计时」一种；那一句照显示态挑：没出过数 · 见过 5h 窗（已过重置）· 没见过。
+            let text = if seen.is_none() {
+                copy_text("acct.warm.unseen", &[])
+            } else if s5.is_some() {
+                copy_text("acct.warm.expired", &[])
+            } else {
+                copy_text("acct.warm.noWindow", &[])
+            };
+            return Warm {
+                act: WarmAct::Send,
+                at: None,
+                at_text: None,
+                text: Words(text),
+            };
+        }
+        WarmVerdict::Wait { until, why } => (why, until),
     };
-    let send = |text: String| Warm {
-        act: WarmAct::Send,
-        at: None,
-        at_text: None,
-        text: Words(text),
+    let at_text = until.map(|u| clock.text(u).0).unwrap_or_default();
+    let pct = s5.and_then(|x| x.pct).unwrap_or(0).to_string();
+    let text = match why {
+        WarmWhy::Api => copy_text("acct.val.noLimit", &[]),
+        WarmWhy::Login => copy_text("acct.tag.login", &[]),
+        WarmWhy::Key => copy_text("acct.tag.key", &[]),
+        WarmWhy::Overage => copy_text("acct.row.over", &[]),
+        WarmWhy::Refused => {
+            // 卡在哪一窗照显示态；按量号没有窗 ⇒ 只说被拒（订阅号说不出 ⇒ 5h，回包默认卡的那一窗）。
+            let w = seen
+                .and_then(|s| s.limiting.as_deref())
+                .filter(|l| !l.is_empty())
+                .or((!seen.is_some_and(|s| s.kind == Kind::Api)).then_some(SLOT_5H));
+            match (w, until) {
+                (Some(w), Some(_)) => copy_text("acct.warm.refused", &[("w", w), ("at", &at_text)]),
+                _ => copy_text("reason.code.refused", &[]),
+            }
+        }
+        WarmWhy::Full(1) => copy_text("acct.warm.weekFull", &[("at", &at_text)]),
+        WarmWhy::Full(_) | WarmWhy::Ticking | WarmWhy::NoWindow => {
+            copy_text("acct.warm.ticking", &[("pct", &pct), ("at", &at_text)])
+        }
     };
-    match login {
-        LoginState::NeedsLogin => {
-            return wait(now + WARM_LOGIN_RETRY_S, copy_text("acct.tag.login", &[]))
-        }
-        LoginState::NeedsKey => {
-            return wait(now + WARM_LOGIN_RETRY_S, copy_text("acct.tag.key", &[]))
-        }
-        LoginState::Ok => {}
-    }
-    let Some(show) = seen else {
-        return send(copy_text("acct.warm.unseen", &[]));
-    };
-    let ahead = |x: Option<&SlotShow>| {
-        x.and_then(|x| x.resets_at)
-            .and_then(|t| i64::try_from(t).ok())
-            .filter(|t| *t > now)
-    };
-    let when =
-        |x: Option<&SlotShow>| text_of(x.and_then(|x| x.resets_at_text.as_ref())).to_string();
-    let (s5, s7) = (slot_of(show, "5h"), slot_of(show, "7d"));
-    if show.state == QuotaState::Refused {
-        let limiting = show
-            .limiting
-            .as_deref()
-            .filter(|l| !l.is_empty())
-            .unwrap_or("5h");
-        let blocker = slot_of(show, limiting).or(s5);
-        if let Some(at) = ahead(blocker) {
-            return wait(
-                at + WARM_MARGIN_S,
-                copy_text(
-                    "acct.warm.refused",
-                    &[("w", limiting), ("at", &when(blocker))],
-                ),
-            );
-        }
-    }
-    if let Some(x) = s7 {
-        if let Some(at) = ahead(Some(x)).filter(|_| x.pct.unwrap_or(0) >= 100) {
-            return wait(
-                at + WARM_MARGIN_S,
-                copy_text("acct.warm.weekFull", &[("at", &when(Some(x)))]),
-            );
-        }
-    }
-    if let Some(x) = s5 {
-        if let Some(at) = ahead(Some(x)) {
-            let pct = x.pct.unwrap_or(0).to_string();
-            return wait(
-                at + WARM_MARGIN_S,
-                copy_text(
-                    "acct.warm.ticking",
-                    &[("pct", &pct), ("at", &when(Some(x)))],
-                ),
-            );
-        }
-        return send(copy_text("acct.warm.expired", &[]));
-    }
-    send(copy_text("acct.warm.noWindow", &[]))
+    let at = until.map_or(now.saturating_add(WARM_LOGIN_RETRY_S), |u| {
+        i64::try_from(u)
+            .unwrap_or(i64::MAX)
+            .saturating_add(WARM_MARGIN_S)
+    });
+    stamped(
+        Warm {
+            act: WarmAct::Wait,
+            at: Some(at),
+            at_text: None,
+            text: Words(text),
+        },
+        clock,
+    )
 }
 
 /// ★ 额度账读不懂时每个号那一判：一个都不发（账上说不出它此刻什么样，「没见过就发」那一条不成立），过一阵再看；

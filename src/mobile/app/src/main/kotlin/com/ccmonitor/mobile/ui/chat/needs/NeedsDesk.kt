@@ -15,7 +15,6 @@ import com.ccmonitor.mobile.core.wire.gen.NeedsItem
 import com.ccmonitor.mobile.core.wire.gen.NeedsList
 import com.ccmonitor.mobile.core.wire.gen.NeedsNote
 import com.ccmonitor.mobile.core.wire.gen.NeedsQuestion
-import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.link.Problem
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
@@ -105,50 +104,23 @@ data class AskSheet(
     fun lostTo(current: NeedsAsk?): Boolean = gone == null && sending == null && ask.id != current?.id
 }
 
-/** 一颗选项长什么样。 */
-enum class ChoiceLook {
-    /** 主按钮（强调色实心）：每一族的第一颗只在允许那一族。 */
-    PRIMARY,
-
-    /** 描边。 */
-    OUTLINE,
-
-    /** 「拒绝并停下」：红字描边。 */
-    DANGER,
-
-    /** 文字按钮（「改到终端里答」「不回答」）。 */
-    QUIET,
-}
-
 data class ChoiceRow(
     val choice: NeedsChoice,
-    val look: ChoiceLook,
     /** 要附话的字后加「…」（同桌面 `askBlock.choice.more`）。 */
     val label: String,
 )
 
 /**
- * 选项分段（照那台排好的次序，不重排）：哪一项进哪一段照那台给的 `row`（照做 · 不照做 · 放开这一条），不按 id 认、不按字。
- * 照做那一段第一项实心；语气 `fail` 的（「拒绝并停下」）红字描边，照 `tone` 不认 id；放开那一段文字按钮。
+ * 选项分段（照那台排好的次序，不重排）：哪一项进哪一段照那台给的 `row`，每颗长什么样照那台给的 `look`，
+ * 不按 id 认、不按次序挑、不按字。
  */
 fun choiceGroups(ask: NeedsAsk): List<List<ChoiceRow>> {
     val groups = sortedMapOf<NeedsChoiceRow, MutableList<ChoiceRow>>()
     for (c in ask.choices) {
-        val list = groups.getOrPut(c.row) { mutableListOf() }
-        val look =
-            when {
-                c.row == NeedsChoiceRow.RELEASE -> ChoiceLook.QUIET
-                c.tone == Tone.FAIL -> ChoiceLook.DANGER
-                c.row == NeedsChoiceRow.MAIN && list.isEmpty() -> ChoiceLook.PRIMARY
-                else -> ChoiceLook.OUTLINE
-            }
-        list += ChoiceRow(c, look, if (c.note == NeedsNote.NONE) c.text else copyText("askBlock.choice.more", "label" to c.text))
+        groups.getOrPut(c.row) { mutableListOf() } += ChoiceRow(c, if (c.note == NeedsNote.NONE) c.text else copyText("askBlock.choice.more", "label" to c.text))
     }
     return groups.values.toList()
 }
-
-/** 交题目答案的那一项（带 picks 交）。 */
-private const val ANSWER = "answer"
 
 /**
  * 一条会话的需手动（聊天屏那一块）：读跨会话需手动板上那台那一份（[NeedsBoard]，这里不另问 `sessions-needs`）里这一条；
@@ -215,7 +187,7 @@ class NeedsDesk(
     fun pick(choice: String) {
         val sheet = _state.value.sheet?.takeIf { !it.locked } ?: return
         val c = sheet.ask.choices.firstOrNull { it.id == choice } ?: return
-        val quiz = c.id == ANSWER && sheet.ask.questions.isNotEmpty()
+        val quiz = c.picks
         when {
             c.note != NeedsNote.NONE -> update { it.copy(sheet = sheet.copy(noteFor = c.id, failed = null)) }
             quiz && !sheet.allAnswered -> Unit

@@ -3,7 +3,8 @@
 //! - [`Ready`] —— 窗口进程列完第一屏在 stderr 上说的那一行（带 [`READY_MARK`] 打头；stderr 上别的行是诊断）；
 //! - [`TERMINAL_OPEN_OP`] —— 「在此打开终端」：窗口在它那条通道上 `call` 的、由 monitor 自己接下来的那一条（只带意图：那台 ＋ 当前目录）；
 //! - [`PLAN_OPEN_OP`] —— 「在计划里看」：同上那一形（只带意图：那台 ＋ 工作区 · 片 · 格），monitor 交给主窗口；
-//! - [`BIN_ENV`] —— 指到窗口那份二进制的环境变量。
+//! - [`BIN_ENV`] —— 指到窗口那份二进制的环境变量；
+//! - [`WorkArea`] —— 主窗所在显示器的工作区（随种子过线）。
 
 use copy_core::copy_text;
 use copy_core::said::Said;
@@ -18,6 +19,16 @@ pub use theme::{parse_css_color, parse_shadow, Rgba, Shadow, Theme, THEME_TOKENS
 /// 而 `[[bin]]` 的产物在它的上一级 ⇒ 判据必须说得出「用这一份」。
 /// ⚠ 它**不是** fail-open 的开关：给了但那份文件不在，照旧是一条响亮的失败。
 pub const BIN_ENV: &str = "CCM_FILEWIN_BIN";
+
+/// 一台显示器的**工作区**（去掉任务栏 / 程序坞那一块，物理像素）：monitor 问到、随开窗种子交给文件窗口进程；
+/// 两个前端夹窗口都按它。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct WorkArea {
+    pub x: i32,
+    pub y: i32,
+    pub w: u32,
+    pub h: u32,
+}
 
 /// 一次开窗的全部输入 —— 它整份过一次进程边界（stdin 的第一行）。之后那一对管子就是通道，帧长上限是 [`Self::frame`]。
 /// 字段与窗口那一侧 `shell::FileWindow::seeded` ＋ `set_reveal` 的入参一一对应、不多不少（多一个就是「窗口那侧能有、而开窗这条路给不了」的缝）；
@@ -39,7 +50,7 @@ pub struct OpenRequest {
     pub machines: Vec<String>,
     /// 主窗所在显示器的工作区（monitor 问 Tauri 得来）：窗口开出来第一拍夹进它。`None` ＝ 问不到，不夹。
     #[serde(default)]
-    pub work_area: Option<host_core::WorkArea>,
+    pub work_area: Option<WorkArea>,
     /// 窗口的样子：开窗那一刻主界面解析出来的那一套（含用户改过的）。窗口只照它画，不另有一份。
     pub theme: Theme,
     /// 复制详情「本机」那一项的值（`cc-monitor 版本 (构建) · 系统 架构`，monitor 算好）：窗口自己写的那几份详情（通道断了 · 本侧的错）

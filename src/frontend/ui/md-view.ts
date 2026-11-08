@@ -17,7 +17,6 @@ import type { MdAlign } from "./generated/MdAlign";
 import type { MdBlock } from "./generated/MdBlock";
 import type { MdItem } from "./generated/MdItem";
 import type { MathBox } from "./generated/MathBox";
-import type { MathFont } from "./generated/MathFont";
 import type { MathItem } from "./generated/MathItem";
 import type { MathPath } from "./generated/MathPath";
 import type { SegHl } from "./generated/SegHl";
@@ -298,7 +297,6 @@ function mathSlot(tex: string, m: MathBox | null, display: boolean): HTMLElement
   if (!display) svg.style.verticalAlign = em(-m.d);
   for (const it of m.items) svg.appendChild(mathItem(it));
   box.appendChild(svg);
-  if (m.items.some((it) => it.t === "g")) loadMathFonts();
   return box;
 }
 
@@ -318,7 +316,7 @@ function em(milli: number): string {
 function mathItem(it: MathItem): SVGElement {
   switch (it.t) {
     case "g": {
-      const t = svgEl("text", { x: it.x, y: it.y, "font-size": it.s, "font-family": MATH_FAMILY[it.f], fill: "currentColor" });
+      const t = svgEl("text", { x: it.x, y: it.y, "font-size": it.s, "font-family": mathFamily(it.f), fill: "currentColor" });
       t.textContent = String.fromCodePoint(it.u);
       return t;
     }
@@ -351,62 +349,20 @@ function pathCmd(c: MathPath): string {
   }
 }
 
-/** 画单里的字体 ⇒ 字体族名（每份 TTF 一族，族名就是文件名去掉扩展名）；`sys` 交系统字体。 */
-const MATH_FAMILY: Record<MathFont, string> = {
-  ams: "KaTeX_AMS-Regular",
-  caligraphic_regular: "KaTeX_Caligraphic-Regular",
-  fraktur_regular: "KaTeX_Fraktur-Regular",
-  fraktur_bold: "KaTeX_Fraktur-Bold",
-  main_regular: "KaTeX_Main-Regular",
-  main_bold: "KaTeX_Main-Bold",
-  main_italic: "KaTeX_Main-Italic",
-  main_bold_italic: "KaTeX_Main-BoldItalic",
-  math_italic: "KaTeX_Math-Italic",
-  math_bold_italic: "KaTeX_Math-BoldItalic",
-  sans_serif_regular: "KaTeX_SansSerif-Regular",
-  sans_serif_bold: "KaTeX_SansSerif-Bold",
-  sans_serif_italic: "KaTeX_SansSerif-Italic",
-  script_regular: "KaTeX_Script-Regular",
-  size1: "KaTeX_Size1-Regular",
-  size2: "KaTeX_Size2-Regular",
-  size3: "KaTeX_Size3-Regular",
-  size4: "KaTeX_Size4-Regular",
-  typewriter: "KaTeX_Typewriter-Regular",
-  sys: "serif",
-};
+/** 注册过的那几族（头一回画到哪一族才注册哪一族；浏览器到真用上才去取那一份文件）。 */
+const mathFontsAdded = new Set<string>();
 
-/** 字体文件（两端共用 `src/shared/fonts/katex/` 那一份；`new URL` 的字面量路径让构建把它们当资源打进产物）。 */
-const MATH_FONT_URL: Record<Exclude<MathFont, "sys">, URL> = {
-  ams: new URL("../../shared/fonts/katex/KaTeX_AMS-Regular.ttf", import.meta.url),
-  caligraphic_regular: new URL("../../shared/fonts/katex/KaTeX_Caligraphic-Regular.ttf", import.meta.url),
-  fraktur_regular: new URL("../../shared/fonts/katex/KaTeX_Fraktur-Regular.ttf", import.meta.url),
-  fraktur_bold: new URL("../../shared/fonts/katex/KaTeX_Fraktur-Bold.ttf", import.meta.url),
-  main_regular: new URL("../../shared/fonts/katex/KaTeX_Main-Regular.ttf", import.meta.url),
-  main_bold: new URL("../../shared/fonts/katex/KaTeX_Main-Bold.ttf", import.meta.url),
-  main_italic: new URL("../../shared/fonts/katex/KaTeX_Main-Italic.ttf", import.meta.url),
-  main_bold_italic: new URL("../../shared/fonts/katex/KaTeX_Main-BoldItalic.ttf", import.meta.url),
-  math_italic: new URL("../../shared/fonts/katex/KaTeX_Math-Italic.ttf", import.meta.url),
-  math_bold_italic: new URL("../../shared/fonts/katex/KaTeX_Math-BoldItalic.ttf", import.meta.url),
-  sans_serif_regular: new URL("../../shared/fonts/katex/KaTeX_SansSerif-Regular.ttf", import.meta.url),
-  sans_serif_bold: new URL("../../shared/fonts/katex/KaTeX_SansSerif-Bold.ttf", import.meta.url),
-  sans_serif_italic: new URL("../../shared/fonts/katex/KaTeX_SansSerif-Italic.ttf", import.meta.url),
-  script_regular: new URL("../../shared/fonts/katex/KaTeX_Script-Regular.ttf", import.meta.url),
-  size1: new URL("../../shared/fonts/katex/KaTeX_Size1-Regular.ttf", import.meta.url),
-  size2: new URL("../../shared/fonts/katex/KaTeX_Size2-Regular.ttf", import.meta.url),
-  size3: new URL("../../shared/fonts/katex/KaTeX_Size3-Regular.ttf", import.meta.url),
-  size4: new URL("../../shared/fonts/katex/KaTeX_Size4-Regular.ttf", import.meta.url),
-  typewriter: new URL("../../shared/fonts/katex/KaTeX_Typewriter-Regular.ttf", import.meta.url),
-};
-
-/** 头一回画公式时把那几族字体注册进文档（浏览器到真用上某一族才去取那一份）；没公式的窗口一份都不注册。 */
-const mathFonts = { added: false };
-
-function loadMathFonts(): void {
-  if (mathFonts.added || typeof FontFace === "undefined") return;
-  mathFonts.added = true;
-  for (const [f, url] of Object.entries(MATH_FONT_URL) as [Exclude<MathFont, "sys">, URL][]) {
-    document.fonts.add(new FontFace(MATH_FAMILY[f], `url(${url.href})`));
+/** 字形那一格（KaTeX 字体文件名主干）⇒ 字体族名（每份 TTF 一族，族名就是文件名去掉扩展名）；缺 ⇒ 系统字体。
+ *  字体文件两端共用 `src/shared/fonts/katex/` 那一份；`new URL` 的模板路径让构建把那一目录的字体当资源打进产物。 */
+function mathFamily(stem: string | null): string {
+  if (stem === null) return "serif";
+  const family = `KaTeX_${stem}`;
+  if (!mathFontsAdded.has(stem) && typeof FontFace !== "undefined") {
+    mathFontsAdded.add(stem);
+    const url = new URL(`../../shared/fonts/katex/KaTeX_${stem}.ttf`, import.meta.url);
+    document.fonts.add(new FontFace(family, `url(${url.href})`));
   }
+  return family;
 }
 
 function inlines(ks: readonly Inl[]): Node[] {

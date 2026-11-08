@@ -142,13 +142,12 @@ pub(crate) fn search_at(
     })
 }
 
-/// `history-search-merge` 的入参：问哪几台（本机逐字 `"<local>"`）· 每台怎么搜（同 `history-search`）。
+/// `history-search-merge` 的入参：每台怎么搜（同 `history-search`）；问哪几台照本机后端自己的机器表（`Table::asked`）。
 #[derive(Debug, Clone, serde::Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
 pub struct HistorySearchMergeReq {
-    pub(crate) machines: Vec<cmd_wire::Machine>,
     pub(crate) search: HistorySearchReq,
 }
 
@@ -181,6 +180,7 @@ impl crate::wire::typed::Handle for HistorySearchMerge {
     ) -> Result<Merged, HistorySearchMergeErr> {
         let local = search_here(req.search.clone(), cx.tz.clone());
         merge_with(
+            &crate::dial::remote_ask::REACH.asked(),
             req,
             local,
             &cx.tz,
@@ -192,8 +192,9 @@ impl crate::wire::typed::Handle for HistorySearchMerge {
     }
 }
 
-/// [`HistorySearchMerge`] 的本体（本机那一台怎么答 · 可达表 · 对面由调用方给）。
+/// [`HistorySearchMerge`] 的本体（问哪几台 · 本机那一台怎么答 · 可达表 · 对面由调用方给；生产问的是 `REACH.asked()`）。
 pub(crate) async fn merge_with(
+    machines: &[cmd_wire::Machine],
     req: HistorySearchMergeReq,
     local: impl std::future::Future<Output = Result<HistorySearchReply, HistorySearchErr>> + Send,
     tz: &crate::common::time::Tz,
@@ -210,7 +211,7 @@ pub(crate) async fn merge_with(
         })
     };
     let got = crate::dial::remote_ask::ask_each::<HistorySearch, _>(
-        &req.machines,
+        machines,
         &req.search,
         local,
         tz,

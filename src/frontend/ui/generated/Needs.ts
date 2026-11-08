@@ -47,7 +47,7 @@ rank: number,
  */
 waitedMs: number | null, 
 /**
- * 这一条可以怎么答（挂着的待答请求，`control::asks`）：选项的字 · 语气 · 要不要附话都写好；没有挂着的 ⇒ `null`（只能去终端）。
+ * 这一条可以怎么答（挂着的待答请求，`control::asks`）：选项的字 · 样子 · 段 · 要不要附话都写好；没有挂着的 ⇒ `null`（只能去终端）。
  */
 ask: NeedsAsk | null, 
 /**

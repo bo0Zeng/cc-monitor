@@ -952,8 +952,16 @@ pub struct SessionFace {
     pub name: Words,
     /// 悬停那一句。
     pub tip: Words,
-    /// 没有会话事实时的状态一句。
+    /// 状态一句（定格的字，不带时长）：活着、记录读得到 ⇒ 那台照记录写（在跑的那一步 · 等的种类 · 后台那一句 …）；否则是那一态的那一句。
     pub line: Words,
+    /// 会走的那一截（同一句、时长那一截留 `{dur}` ＋ 起点，出口按此刻填）；没有 ⇒ 不上线，照 `line`。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub clock: Option<Clock>,
+    /// 悬停卡那一句（在等 ⇒ 等的那一步 · 在跑 ⇒ 那一步 · 空闲 / 后台 ⇒ 最后一句）；没有 ⇒ 不上线。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub peek: Option<Words>,
     pub tone: Tone,
     /// 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5。
     pub order: u8,
@@ -963,6 +971,24 @@ pub struct SessionFace {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub account: Option<String>,
+}
+
+/// 会走的一句：字里的 `{dur}` 填 现在 − `from`（epoch ms），由出口那一个读口填。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(
+        export,
+        rename = "FactsClock",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
+    )
+)]
+pub struct Clock {
+    pub text: Words,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub from: u64,
 }
 
 /// **一条会话的一生**（线上只此一处说活不活）：`{is: "live", activity?}`（判得出在干什么才带）·
@@ -1179,11 +1205,10 @@ pub enum SessionContainer {
 /// 这一条由 `main_fourth_face_tests.rs::the_declared_code_is_one_the_registry_already_declares` 钉住：
 /// 本表只许说 `inbound::REGISTRY` 里那条命令**自己登记过**的 code。
 ///
-/// # 为什么不带一句 `said`
+/// # 置灰那一句（`said`）谁写
 ///
-/// 那句人话今天归 monitor（见上）。再发一份等于给同一句话开第二个源头，
-/// 而后端这一侧连用户的语言都不知道。**要诊断细节的场合走真调用**，那条路的 `said`
-/// 本来就说得更细（`not_installed_message` 会列出查过哪几个目录）。
+/// 本机后端写：发本机 hello · `resync` 回包按本机的名字填，转别台 hello · 别台 `resync` 回包时换成那台的名字（都经 `copy_core::unavailable`）；
+/// 壳与界面原样摆，不按码取字。**要诊断细节的场合走真调用**，那条路的 `said` 说得更细。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -1197,6 +1222,8 @@ pub struct Unavailable {
     pub command: String,
     /// 为什么做不到 —— **就是真调用那一刻会回的那个命令级 code**（如 `no_tmux`）。
     pub code: String,
+    /// 置灰时说的那一句（称呼那台、码不上屏），本机后端写好（见上「置灰那一句谁写」）。
+    pub said: String,
 }
 
 /// 推送主题（线上 `changed.topic`）。
@@ -1276,10 +1303,10 @@ pub enum TransferEnd {
         #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         sha256: Option<String>,
     },
-    /// 失败：交出去的那一形（码 · 那一句 · 复制详情）。上传那一路的暂存件**留着**给续传；下载那一路的 `.part` 删了。
+    /// 失败：交出去的那一形（码 · 那一句 · 复制详情）。上传那一路的暂存件**留着**给续传；下载那一路住本机暂存区的 `.part` 删了。
     /// 码：调用方按它换路的那几形（今天只有 `sftp_home_mismatch`），别的是一般的失败（兜底码）；没写详情 ⇒ 空串。
     Failed(crate::failed::Failed),
-    /// 撤了（`transfer-stop` / 本机流断了）。上传那一路的暂存件已删；下载那一路的 `.part` 留着。
+    /// 撤了（`transfer-stop` / 本机流断了）。上传那一路的暂存件已删；下载那一路住本机暂存区的 `.part` 留着（续传时接着写，传完经 `land` 上位）。
     Cancelled,
 }
 

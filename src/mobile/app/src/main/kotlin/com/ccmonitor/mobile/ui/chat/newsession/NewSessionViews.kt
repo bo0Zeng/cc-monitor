@@ -248,7 +248,10 @@ private fun AccountRow(
             trail = {
                 if (a.name == ui.defaultAccount) DefaultTag()
                 if (a.selectable) {
-                    a.quota?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    a.slots
+                        .firstOrNull()
+                        ?.text
+                        ?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 } else if (a.login) {
                     OutlinedButton(onClick = onLogin) { Text(copyText("newSession.account.login")) }
                 }

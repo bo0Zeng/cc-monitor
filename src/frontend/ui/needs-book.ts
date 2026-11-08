@@ -1,6 +1,6 @@
 /**
  * 「需手动」的账：本机后端 `sessions-needs-merge` 自己问到各台的 `sessions-needs`（别的台经它的连接问那台的常驻）、合成一份 ＋ 总数再答
- * （判 · 排 · 数 · 问哪台没问到全在后端；这里只记要问哪几台、只把合好的那一份交出去）。侧栏「需手动 N」· 浮层 · `Ctrl+J` · 窗口标题都读它。
+ * （判 · 排 · 数 · 问哪台没问到全在后端；问哪几台也是后端照它自己的机器表定；这里只把合好的那一份交出去）。侧栏「需手动 N」· 浮层 · `Ctrl+J` · 窗口标题都读它。
  *
  * 什么时候问：起来 · 那台接上 · 开「需手动」浮层 · `Ctrl+J` · 那台推 `changed {needs}`（连着来的合成一问）·
  * 一问没问到之后自己退避再问（[`RETRY_FIRST_MS`] 起、翻倍、封顶 [`RETRY_MAX_MS`]；问到了归零）。在读的时候旧的一份照留（入口照上一份的数），读回来才换。
@@ -30,9 +30,9 @@ const RETRY_FIRST_MS = 1_000;
 /** 退避的封顶。 */
 const RETRY_MAX_MS = 30_000;
 
-/** 本机后端问到这几台、合一份。 */
-export function mergeNeeds(machines: Machine[]): Promise<NeedsMerged> {
-  return callTyped(LOCAL, "sessions-needs-merge", { machines }, budgetWithin(ASK_BUDGET_MS));
+/** 本机后端照自己的机器表问到各台、合一份。 */
+export function mergeNeeds(): Promise<NeedsMerged> {
+  return callTyped(LOCAL, "sessions-needs-merge", {}, budgetWithin(ASK_BUDGET_MS));
 }
 
 /** 计划里要人看的一条：哪台 · 哪个工作区 · 哪一片 · 落在哪一格（后端给的编号与「编号 标题」；没有格可落 ⇒ `null`，进那一片的概览）。 */
@@ -52,8 +52,6 @@ export function planCellIn(slice: { cells: readonly { id: string }[] }, it: Plan
 const EMPTY: NeedsMerged = { items: [], total: 0, unreadable: [], down: [], head: "", sure: true };
 
 export class NeedsBook {
-  /** 要问的那几台（问过的都记着，照先来的先后）。 */
-  private readonly origins: Machine[] = [];
   private timer: ReturnType<typeof setTimeout> | null = null;
   /** 没问到之后排着的那一次再问。 */
   private retry: ReturnType<typeof setTimeout> | null = null;
@@ -65,35 +63,15 @@ export class NeedsBook {
   /** 收到 `merged` 那一刻（本机钟）：会走的那一句从它起接着走。 */
   private at = 0;
 
-  constructor(private readonly merge: (machines: Machine[]) => Promise<NeedsMerged> = mergeNeeds) {}
+  constructor(private readonly merge: () => Promise<NeedsMerged> = mergeNeeds) {}
 
-  /** 那一台记进要问的、再问一次（叠着问 ⇒ 只收最后一问）。 */
-  refresh(origin: Machine): Promise<void> {
-    return this.refreshAll([origin]);
-  }
-
-  /** 这几台都记进要问的、问一次。 */
-  refreshAll(origins: readonly Machine[]): Promise<void> {
-    for (const o of origins) if (!this.origins.includes(o)) this.origins.push(o);
-    return this.ask();
-  }
-
-  /** 那台从机器表里删了：不再问它，剩下的再问一次。 */
-  drop(origin: Machine): Promise<void> {
-    const i = this.origins.indexOf(origin);
-    if (i < 0) return Promise.resolve();
-    this.origins.splice(i, 1);
-    return this.ask();
-  }
-
-  /** 记着的每一台再问一次（开浮层 · `Ctrl+J` 那一下）。 */
+  /** 再问一次（起来 · 机器表变了 · 开浮层 · `Ctrl+J` 那一下；叠着问 ⇒ 只收最后一问）。 */
   again(): Promise<void> {
     return this.ask();
   }
 
-  /** 那台可能变了（推送 · 会话帧）：稍等一下合成一次重问。 */
-  poke(origin: Machine): void {
-    if (!this.origins.includes(origin)) this.origins.push(origin);
+  /** 哪台可能变了（推送 · 会话帧）：稍等一下合成一次重问。 */
+  poke(): void {
     if (this.timer !== null) clearTimeout(this.timer);
     // 调度：合批 —— 推送 · 会话帧连着来时合成一次重问。
     this.timer = setTimeout(() => {
@@ -108,7 +86,7 @@ export class NeedsBook {
     this.retry = null;
     let next: NeedsMerged;
     try {
-      next = this.origins.length === 0 ? EMPTY : await this.merge([...this.origins]);
+      next = await this.merge();
     } catch (e) {
       console.warn("[needs] 本机后端没合成，照上一份：", e);
       if (my === this.seq) this.retryLater();

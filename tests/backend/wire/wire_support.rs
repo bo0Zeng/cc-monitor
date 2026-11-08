@@ -82,7 +82,7 @@ pub fn said_record(id: &str, text: &str) -> crate::agents::record::Record {
             who: crate::agents::UserText {
                 speaker: crate::agents::Speaker::Human,
                 text: text.into(),
-                pasted: Vec::new(),
+                parts: Vec::new(),
             },
             blocks: vec![Block::text(text.into())],
             results: Default::default(),

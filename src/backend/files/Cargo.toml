@@ -21,12 +21,11 @@ backend-platform = { path = "../platform" }
 batch-core = { path = "../../common/batch-core" }
 cmd-wire = { path = "../../common/cmd-wire" }
 copy-core = { path = "../../common/copy-core" }
-relay-route-core = { path = "../../common/relay-route-core" }
 # 有上限读（读上限 `Cap` · 同步整读）的唯一一份；零依赖。
 cap-core = { path = "../../common/cap-core" }
 win-path-core = { path = "../../common/win-path-core" }
-# 解压条目的相对路径拆段（同远端写围栏那一份）。
-ssh-dial = { path = "../../comms/ssh-dial" }
+# 解压条目的相对路径拆段（同远端写围栏 · 本机写面那一份）。
+plain-path-core = { path = "../../common/plain-path-core" }
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

@@ -9,9 +9,11 @@ import com.ccmonitor.mobile.core.claude.link.RotationStrategies
 import com.ccmonitor.mobile.core.claude.link.SessionOpen
 import com.ccmonitor.mobile.core.claude.link.SessionOpenDir
 import com.ccmonitor.mobile.core.claude.link.SessionOpenFacts
+import com.ccmonitor.mobile.core.claude.link.seen
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.AccountRow
 import com.ccmonitor.mobile.core.wire.gen.AgentFacts
+import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.RotStrategyItem
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
@@ -21,6 +23,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -78,7 +84,7 @@ data class Chosen(
 )
 
 /**
- * 一张新建会话草稿的选项：打开就问那台一次（`session-open-facts` · `accounts-list`；没问到 ⇒ 流接上了再问），四样默认值都是那台的；
+ * 一张新建会话草稿的选项：接上那一回问那台一次（`session-open-facts` · `accounts-list`，照 [seen]；没问到 ⇒ 下一回接上再问），四样默认值都是那台的；
  * 点 chip 只为改，改了才多交那一格。账号抽屉打开那一刻再问一次账号 · 额度 · 轮换（关了不再问）。手机不另记默认。
  */
 class NewSessionPicker(
@@ -94,12 +100,12 @@ class NewSessionPicker(
     private val loaded = CompletableDeferred<Unit>()
 
     init {
+        // 接上的每一回（核心那一格：打开时已通着 ⇒ 当场一回）问一次；问到了 ⇒ 再换流不重问（不把填好的冲掉），没问到 ⇒ 下一回接上再问。
         scope.launch {
-            val seen = link.epoch.value
-            load()
-            loaded.complete(Unit)
-            // 打开时那台没问到（离线 · 还没接上）⇒ 常驻流接上了再问一遍，不等人重开这一张。
-            link.epoch.filter { it != seen }.collect { if (_state.value.factsFailed != null) load() }
+            link.seen.collect {
+                if (!loaded.isCompleted || _state.value.factsFailed != null) load()
+                loaded.complete(Unit)
+            }
         }
     }
 
@@ -109,8 +115,13 @@ class NewSessionPicker(
         loadAccounts()
     }
 
-    /** 打开时那一问问完了（成没成都算）。 */
-    suspend fun settled() = loaded.await()
+    /**
+     * 起会话前等选项：头一回接上那一问问完了（成没成都算）；核心那一行是 [LinkLine.Down]（不论会不会自己接回）⇒ 不等，
+     * 起会话那一侧照 Down 不起（字回输入框）。在连 ⇒ 等它接上（那一问本来也要等）。
+     */
+    suspend fun settled() {
+        merge(flow { emit(loaded.await()) }, link.state.filter { it is LinkLine.Down }.map { }).first()
+    }
 
     private suspend fun loadFacts() {
         val r = link.call(SessionOpenFacts.COMMAND, emptyMap(), READ_MS)

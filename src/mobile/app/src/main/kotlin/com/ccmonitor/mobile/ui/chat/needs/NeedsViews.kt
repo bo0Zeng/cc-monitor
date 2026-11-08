@@ -61,6 +61,7 @@ import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoBody
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
+import com.ccmonitor.mobile.core.wire.gen.NeedsChoiceLook
 import com.ccmonitor.mobile.core.wire.gen.NeedsNote
 import com.ccmonitor.mobile.core.wire.gen.NeedsQuestion
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
@@ -395,13 +396,13 @@ private fun Choices(
     groups.forEachIndexed { i, g ->
         if (i > 0) Spacer(Modifier.size(8.dp))
         for (row in g) {
-            val pager = sheet.ask.questions.isNotEmpty() && row.look == ChoiceLook.PRIMARY
+            val pager = row.choice.picks
             if (pager && !sheet.last) {
                 // 非末题：主按钮是「下一题」（这一题答了才亮），末题才是那台的「提交答案」。
-                ChoiceButton(copyText("mobAsk.act.next"), ChoiceLook.PRIMARY, enabled = sheet.canNext, busy = false, tag = NeedsTags.choice("next"), onClick = act.next)
+                ChoiceButton(copyText("mobAsk.act.next"), NeedsChoiceLook.MAIN, enabled = sheet.canNext, busy = false, tag = NeedsTags.choice("next"), onClick = act.next)
             } else {
                 val enabled = !sheet.locked && (!pager || sheet.allAnswered)
-                ChoiceButton(row.label, row.look, enabled = enabled, busy = sheet.sending == row.choice.id, tag = NeedsTags.choice(row.choice.id)) { act.pick(row.choice.id) }
+                ChoiceButton(row.label, row.choice.look, enabled = enabled, busy = sheet.sending == row.choice.id, tag = NeedsTags.choice(row.choice.id)) { act.pick(row.choice.id) }
             }
         }
     }
@@ -414,8 +415,8 @@ private fun GoneChoices(
     act: AskActions,
 ) {
     if (sheet.ask.questions.isEmpty()) {
-        for (row in choiceGroups(sheet.ask).flatten().filter { it.look != ChoiceLook.QUIET }) {
-            ChoiceButton(row.label, row.look, enabled = false, busy = false, tag = NeedsTags.choice(row.choice.id)) {}
+        for (row in choiceGroups(sheet.ask).flatten().filter { it.choice.look != NeedsChoiceLook.GHOST }) {
+            ChoiceButton(row.label, row.choice.look, enabled = false, busy = false, tag = NeedsTags.choice(row.choice.id)) {}
         }
     }
     OutlinedButton(
@@ -442,20 +443,20 @@ private fun NoteBox(
         enabled = !sheet.locked,
     )
     val required = c.note == NeedsNote.REQUIRED
-    ChoiceButton(c.text, ChoiceLook.PRIMARY, enabled = !sheet.locked && (!required || text.isNotBlank()), busy = sheet.sending == c.id, tag = NeedsTags.choice(c.id)) {
+    ChoiceButton(c.text, NeedsChoiceLook.MAIN, enabled = !sheet.locked && (!required || text.isNotBlank()), busy = sheet.sending == c.id, tag = NeedsTags.choice(c.id)) {
         act.sendNote(text)
     }
-    ChoiceButton(copyText("kit.dialog.cancel"), ChoiceLook.QUIET, enabled = !sheet.locked, busy = false, tag = NeedsTags.choice("note-back"), onClick = act.cancelNote)
+    ChoiceButton(copyText("kit.dialog.cancel"), NeedsChoiceLook.GHOST, enabled = !sheet.locked, busy = false, tag = NeedsTags.choice("note-back"), onClick = act.cancelNote)
 }
 
-/** 一题一屏：题头（header）· 题目 · 选项（单选圆点 / 多选方块，选中淡底 ＋ 强调色描边）· 末尾「其他…」。 */
+/** 一题一屏：题头（那台写好的 head）· 题目 · 选项（单选圆点 / 多选方块，选中淡底 ＋ 强调色描边）· 末尾「其他…」。 */
 @Composable
 private fun QuestionPage(
     q: NeedsQuestion,
     sheet: AskSheet,
     act: AskActions,
 ) {
-    val head = if (q.multi) q.header?.let { copyText("askBlock.question.multi", "header" to it) } ?: copyText("askBlock.question.multiBare") else q.header
+    val head = q.head
     head?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     Text(q.text, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
     val pick = sheet.picks[q.id]
@@ -540,7 +541,7 @@ private fun OptionRow(
 @Composable
 private fun ChoiceButton(
     label: String,
-    look: ChoiceLook,
+    look: NeedsChoiceLook,
     enabled: Boolean,
     busy: Boolean,
     tag: String,
@@ -551,14 +552,14 @@ private fun ChoiceButton(
         if (busy) {
             CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
         } else {
-            Text(label, textAlign = if (look == ChoiceLook.PRIMARY || look == ChoiceLook.QUIET) TextAlign.Center else TextAlign.Start, modifier = Modifier.fillMaxWidth())
+            Text(label, textAlign = if (look == NeedsChoiceLook.MAIN || look == NeedsChoiceLook.GHOST) TextAlign.Center else TextAlign.Start, modifier = Modifier.fillMaxWidth())
         }
     }
     when (look) {
-        ChoiceLook.PRIMARY -> Button(onClick = onClick, enabled = enabled || busy, modifier = m, shape = ROW_SHAPE) { inner() }
-        ChoiceLook.OUTLINE ->
+        NeedsChoiceLook.MAIN -> Button(onClick = onClick, enabled = enabled || busy, modifier = m, shape = ROW_SHAPE) { inner() }
+        NeedsChoiceLook.PLAIN ->
             OutlinedButton(onClick = onClick, enabled = enabled || busy, modifier = m, shape = ROW_SHAPE) { inner() }
-        ChoiceLook.DANGER ->
+        NeedsChoiceLook.DANGER ->
             OutlinedButton(
                 onClick = onClick,
                 enabled = enabled || busy,
@@ -566,6 +567,6 @@ private fun ChoiceButton(
                 shape = ROW_SHAPE,
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = LocalAppTokens.current.errorText),
             ) { inner() }
-        ChoiceLook.QUIET -> SecondaryButton(onClick = onClick, modifier = m, enabled = enabled || busy) { inner() }
+        NeedsChoiceLook.GHOST -> SecondaryButton(onClick = onClick, modifier = m, enabled = enabled || busy) { inner() }
     }
 }

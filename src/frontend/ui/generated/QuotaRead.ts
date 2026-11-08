@@ -48,11 +48,7 @@ candidates: Array<QuotaCandidate>,
  */
 text: Words | null, 
 /**
- * 读不出 ⇒「5h 那一格」写好的字（`5h 读不到`，`quota_rows::head_five_hour`）；否则 `null`（每号自己那一格）。
- */
-fiveHour: Words | null, 
-/**
- * 号名 / 位名表（出口画号名 · 位名只照它）。
+ * 位名表（出口画位名只照它）。
  */
 names: QuotaNames, 
 /**

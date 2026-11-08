@@ -30,12 +30,12 @@ const flush = async () => {
 
 type Answer = (op: string, body: Record<string, unknown>) => unknown;
 
-/** 替身：远端清单固定；`chan_call` 交给 `answer`（抛 ⇒ 对端说「不行」，原话原样）。 */
+/** 替身：本机后端各台的成品固定（`machine-read` 照 `remotes` 答）；别的 `chan_call` 交给 `answer`（抛 ⇒ 对端说「不行」，原话原样）。 */
 function serve(answer: Answer, remotes: string[] = ["<local>", "devbox"]): void {
   mockInvoke.mockImplementation(async (cmd: string, a: unknown) => {
-    if (cmd === "backend_machines") return remotes;
     if (cmd !== "chan_call") throw new Error(`没想到会调 ${cmd}`);
     const args = a as ChanCallArgs;
+    if (args.op === "machine-read") return chanReply({ machines: Object.fromEntries(remotes.map((o) => [o, { state: "up" }])) });
     let v: unknown;
     try {
       v = answer(args.op, chanArgsJson(args) as Record<string, unknown>);
@@ -80,9 +80,22 @@ describe("cc-bus 驾驶舱：不预取、不轮询", () => {
     const s = new CcBusSection();
     document.body.appendChild(s.element);
     await flush();
-    expect(mockInvoke.mock.calls.map((c) => c[0])).toEqual(["backend_machines"]);
+    expect(chanCalls().map((c) => c[1])).toEqual(["machine-read"]);
     expect(s.element.querySelector(".cc-bus-status")?.textContent).toContain(copyText("ccBus.build.notRead"));
     expect(s.element.querySelector(".cc-bus-deploy")).toBeNull();
+  });
+
+  it("★ 列哪几台远端照本机后端各台的成品（`machine-read`）：「连接这台」关着的那台不列，本机在末尾", async () => {
+    mockInvoke.mockImplementation(async (cmd: string, a: unknown) => {
+      if (cmd !== "chan_call") throw new Error(`没想到会调 ${cmd}`);
+      if ((a as ChanCallArgs).op !== "machine-read") throw new Error("构造时只问各台的成品");
+      return chanReply({ machines: { "<local>": { state: "up" }, devbox: { state: "down" }, off: { state: "disabled" } } });
+    });
+    const s = new CcBusSection();
+    document.body.appendChild(s.element);
+    await flush();
+    const sel = s.element.querySelector(".cc-bus-origin") as HTMLSelectElement;
+    expect([...sel.options].map((o) => o.value)).toEqual(["devbox", "<local>"]);
   });
 
   it("点「读取」才问一次那台的 `bus-list`", async () => {

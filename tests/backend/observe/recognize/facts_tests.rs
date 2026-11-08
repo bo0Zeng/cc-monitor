@@ -995,7 +995,6 @@ fn tokens_count_each_request_once_with_two_cache_write_tiers() {
             ]
         )
     );
-    assert_eq!(f.cost, None, "记录里没有花费那一条 ⇒ 不给花费");
     let cut = text.find('\n').unwrap() + 1;
     let first = scan_facts(
         &text.as_bytes()[..cut],
@@ -1009,34 +1008,13 @@ fn tokens_count_each_request_once_with_two_cache_write_tiers() {
     assert_eq!(resumed.tokens, f.tokens);
 }
 
-/// 花费照记录里那一家自己记的（最后一条为准），不按定价自己算；有定不了价的型号 ⇒ 串里带「约」；不到一分 ⇒ 另一句。
+/// 花费不进会话事实：`cost-state` 那一条认得、不读，线上事实里没有花费那一格。
 #[test]
-fn cost_is_the_last_cost_record_as_written() {
-    let cost = |usd: f64, unknown: bool| json!({"type": "cost-state", "totalCostUSD": usd, "modelUsage": {}, "hasUnknownModelCost": unknown});
-    let f = scan_all(&jsonl(&[cost(0.5, true), cost(1.234, false)]));
-    assert_eq!(
-        f.cost,
-        Some(Cost {
-            partial: false,
-            text: crate::common::cells::Words(copy_core::copy_text(
-                "beSpend.cost.exact",
-                &[("usd", "1.23")]
-            ))
-        })
-    );
-    let f = scan_all(&jsonl(&[cost(2.0, true)]));
-    assert_eq!(
-        f.cost.as_ref().map(|c| c.text.0.clone()),
-        Some(copy_core::copy_text(
-            "beSpend.cost.about",
-            &[("usd", "2.00")]
-        ))
-    );
-    let f = scan_all(&jsonl(&[cost(0.001, false)]));
-    assert_eq!(
-        f.cost.map(|c| c.text.0),
-        Some(copy_core::copy_text("beSpend.cost.tiny", &[]))
-    );
+fn a_cost_record_leaves_no_cost_on_the_facts() {
+    let cost = json!({"type": "cost-state", "totalCostUSD": 1.234, "modelUsage": {}, "hasUnknownModelCost": false});
+    let wire = serde_json::to_value(scan_all(&jsonl(&[cost]))).unwrap();
+    assert!(wire.get("cost").is_none(), "线上事实不带 cost：{wire}");
+    assert_eq!(wire, serde_json::to_value(SessionFacts::default()).unwrap());
 }
 
 /// 许可档：最后一条许可档记录说的那一档（会话事实；记录流里不显示）。
@@ -1929,7 +1907,6 @@ fn the_state_line_follows_the_pidfile_state_and_the_record_facts() {
     use crate::agents::SessionActivity as A;
     let t0: u64 = 1_700_000_000_000;
     let now = t0 + 2 * 60_000;
-    let d = copy_core::short_duration(2 * 60_000);
     let mut f = SessionFacts {
         pending: vec![PendingCall {
             id: "c1".into(),
@@ -1949,24 +1926,31 @@ fn the_state_line_follows_the_pidfile_state_and_the_record_facts() {
         }),
         ..Default::default()
     };
-    let w = line_of(Some(A::Working), &f, now).unwrap();
-    assert_eq!(w.of, A::Working);
+    let w = line_of(Some(A::Working), &f).unwrap();
     assert_eq!(
         w.text.0,
-        copy_core::copy_text(
-            "sessionFace.state.runningFor",
-            &[("tool", "Bash"), ("dur", &d)]
-        )
+        copy_core::copy_text("sessionFace.state.running", &[("tool", "Bash")]),
+        "定格的字不带时长"
     );
     let clock = w.clock.unwrap();
-    assert!(clock.text.0.contains("{dur}"), "{}", clock.text.0);
+    assert_eq!(
+        clock.text.0,
+        copy_core::copy_text(
+            "sessionFace.state.runningFor",
+            &[("tool", "Bash"), ("dur", "{dur}")]
+        )
+    );
     assert_eq!(clock.from, t0);
     assert_eq!(w.peek.unwrap().0, "make test");
 
-    let i = line_of(Some(A::Idle), &f, now).unwrap();
+    let i = line_of(Some(A::Idle), &f).unwrap();
     assert_eq!(
         i.text.0,
-        copy_core::copy_text("sessionFace.state.idleSeen", &[("ago", &d)])
+        copy_core::copy_text("beSession.activity.idle", &[])
+    );
+    assert_eq!(
+        i.clock.as_ref().unwrap().text.0,
+        copy_core::copy_text("sessionFace.state.idleSeen", &[("ago", "{dur}")])
     );
     assert_eq!(i.clock.unwrap().from, t0);
     assert_eq!(i.peek.unwrap().0, "好了");
@@ -1980,18 +1964,19 @@ fn the_state_line_follows_the_pidfile_state_and_the_record_facts() {
             read_at_ms: now,
         }),
     );
-    let n = line_of(Some(A::NeedsYou), &f, now).unwrap();
+    let n = line_of(Some(A::NeedsYou), &f).unwrap();
     let kind = f.needs.as_ref().unwrap().text.0.clone();
+    assert_eq!(n.text.0, kind, "在等：定格的字是等的种类");
     assert_eq!(
-        n.text.0,
+        n.clock.as_ref().unwrap().text.0,
         copy_core::copy_text(
             "sessionFace.state.waiting",
-            &[("kind", &kind), ("waited", &d)]
+            &[("kind", &kind), ("waited", "{dur}")]
         )
     );
     assert_eq!(n.clock.unwrap().from, t0);
 
-    assert!(line_of(None, &f, now).is_none(), "不活 ⇒ 没有这一句");
+    assert!(line_of(None, &f).is_none(), "不活 ⇒ 没有这一句");
 }
 
 /// 一条收场通知（框里那几格；记录带 `uuid` 与时刻，翻得成通用记录）。

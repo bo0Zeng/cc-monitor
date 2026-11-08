@@ -34,6 +34,13 @@ class FilesRetryTest {
         assertTrue("会话列表的 retry 没经 link.retry(…)：$chats", calls(chats, "link.retry"))
     }
 
+    @Test
+    fun `接上以后再问只照核心那一格 seen，不自己看 epoch`() {
+        val vm = code("src/main/kotlin/com/ccmonitor/mobile/ui/files/FilesViewModel.kt")
+        assertTrue("文件页还在自己看 feed.epoch", !Regex("""\bfeed\.epoch\b""").containsMatchIn(vm))
+        assertTrue("文件页接上以后再问没经 feed.seen", Regex("""\bfeed\.seen\b""").containsMatchIn(vm))
+    }
+
     /** [body] 里调了 [fn]：`fn(…)` 与尾随 lambda `fn { … }` 两种写法都算。 */
     private fun calls(
         body: String,

@@ -28,7 +28,7 @@ const ONE: { [K in Kind]: unknown } = {
   added: { sid: "s", agent_kind: "claude", pid: 1, container: { host: "none" } },
   status: { sid: "s" },
   left: { sid: "s", face: { life: { is: "ended" } } },
-  listed: { origin: "<local>", all: true },
+  listed: { origin: "<local>" },
   snapshot_inflight: { count: 0 },
   runs: { sid: "s", runs: [], ended: [] },
   branch: { sid: "s", off: [], runs: [] },

@@ -65,8 +65,7 @@ export function applyFacts(tab: Tab, f: SessionFacts): FactsChange {
   tab.autoAnswer = f.autoAnswer;
   tab.autoAnswerChoices = f.autoAnswerChoices;
   tab.askEnd = f.askEnd;
-  const peek = JSON.stringify([tab.pending, tab.lastSay, tab.backgroundWork, tab.line]) !== JSON.stringify([f.pending, f.lastSay, f.background, f.line ?? null]);
-  tab.line = f.line ?? null;
+  const peek = JSON.stringify([tab.pending, tab.lastSay, tab.backgroundWork]) !== JSON.stringify([f.pending, f.lastSay, f.background]);
   tab.backgroundWork = f.background;
   tab.pending = f.pending;
   tab.lastSay = f.lastSay;

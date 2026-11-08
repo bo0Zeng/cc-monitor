@@ -2,8 +2,9 @@
 //! 报错带原因与状态码 · 不进界面的几类不出记录。夹具是结构占位，不采真正文。
 //! 骨架行那一条经观测面 ⇒ 整份挂在 `observe` 底下（适配层是独立的包、够不到观测面）。
 use crate::agents::claudecode::record_of::*;
+use crate::agents::record::BodyExt as _;
 use crate::agents::record::{Block, Body, Record};
-use crate::agents::record::{BodyExt as _, RecordExt as _};
+use crate::wire::stamp::RecordExt as _;
 
 fn one(raw: &str) -> Option<Record> {
     let rec = crate::agents::claudecode::parse::parse_line(&crate::agents::Line::new(raw, 0))
@@ -109,6 +110,10 @@ const CASES: &[(&str, &str)] = &[
     (
         "said-bash-output",
         r#"{"type":"user","uuid":"u-said-bash-output","timestamp":"2026-10-09T01:31:18.000Z","message":{"role":"user","content":"<bash-stdout>o</bash-stdout><bash-stderr>e</bash-stderr>"}}"#,
+    ),
+    (
+        "said-bash-output-long",
+        r#"{"type":"user","uuid":"u-said-bash-output-long","timestamp":"2026-10-09T01:31:18.500Z","message":{"role":"user","content":"<bash-stdout>1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20\n21\n22\n23\n24\n25\n26\n27\n28\n29\n30\n31</bash-stdout><bash-stderr>1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20\n21\n22\n23\n24\n25\n26\n27\n28\n29\n30\n31</bash-stderr>"}}"#,
     ),
     (
         "said-command-output",
@@ -804,8 +809,10 @@ fn text_and_result_blocks_carry_their_utf8_bytes() {
     let Body::Said { blocks, .. } = &r.body else {
         panic!("{r:?}")
     };
+    // 大小那一格后端照字节写好（界面照抄，不自己换算）。
+    let size = copy_core::size_text(3002);
     assert!(
-        matches!(blocks[0], Block::ToolResult { bytes: 3002, .. }),
+        matches!(&blocks[0], Block::ToolResult { bytes: 3002, size_text, .. } if size_text.0 == size),
         "{:?}",
         blocks[0]
     );

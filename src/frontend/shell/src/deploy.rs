@@ -114,7 +114,7 @@ async fn install_for(machine: &str, slots: Vec<SlotRow>) -> Result<Installed, Fa
 /// 那台不比这一版旧 ⇒ 手动点也不降级：那一句后面接出路（先卸载再部署 = 明确授权覆盖）。
 #[tauri::command]
 pub async fn deploy_remote_backend(origin: String) -> Result<String, cmd_wire::failed::Failed> {
-    remote_in_table(&origin).map_err(|s| s.named("deploy_remote_backend"))?;
+    remote_only(&origin).map_err(|s| s.named("deploy_remote_backend"))?;
     let got = install(&origin).await?;
     Ok(match got.action {
         ActionTag::Keep => copy_text("rsSftp.deploy.keptNotOlder", &[("why", &got.said)]),
@@ -122,16 +122,10 @@ pub async fn deploy_remote_backend(origin: String) -> Result<String, cmd_wire::f
     })
 }
 
-/// 装 · 卸只对机器表里的一台远端：本机不经这两条命令（本机那一份由宿主起来时自己放），表里没有那台 ⇒ 说是哪台、不去问后端。
-fn remote_in_table(origin: &str) -> Result<(), Said> {
+/// 装 · 卸只对远端：本机不经这两条命令（本机那一份由宿主起来时自己放）。表里有没有那台由本机后端答。
+fn remote_only(origin: &str) -> Result<(), Said> {
     if origin == cmd_wire::LOCAL {
         return Err(Said::of("reason.code.bug", &[]));
-    }
-    if !crate::machine_table::has(origin) {
-        return Err(Said::of(
-            "rsBackendControl.handle.missing",
-            &[("origin", &origin.to_string())],
-        ));
     }
     Ok(())
 }
@@ -141,7 +135,7 @@ fn remote_in_table(origin: &str) -> Result<(), Said> {
 #[tauri::command]
 pub async fn uninstall_remote_backend(origin: String) -> Result<String, cmd_wire::failed::Failed> {
     let own = |s: Said| s.named("uninstall_remote_backend");
-    remote_in_table(&origin).map_err(own)?;
+    remote_only(&origin).map_err(own)?;
     let slots = slot_rows().map_err(own)?;
     uninstall_for(&origin, slots).await
 }

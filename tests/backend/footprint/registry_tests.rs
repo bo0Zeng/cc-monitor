@@ -669,6 +669,9 @@ fn landing_path_of(d: &ToolDestination) -> Option<String> {
         }
         ToolDestination::ProjectRelative(p) => Some((*p).to_string()),
         ToolDestination::UserShellProfile(p) => Some(p.token().to_string()),
+        ToolDestination::UserPath => {
+            Some(crate::agents::footprint_decl::USER_PATH_TOKEN.to_string())
+        }
         ToolDestination::NotInstalledByUs => None,
     }
 }
@@ -1611,6 +1614,8 @@ fn claims() -> Vec<Claim> {
     const SKILL_INSTALL: &str = include_str!("../../../src/backend/assets/skill_flow.rs");
     // 账号库由那台后端自己建（界面「启用多账号」）：装口住 `src/backend/accounts/manage/wire.rs`（`accounts-init` 走它）。
     const ACCOUNTS_WIRE: &str = include_str!("../../../src/backend/accounts/manage/wire.rs");
+    // 用户级 `PATH` 那一段：加 · 撤两段脚本住 `src/backend/platform/shell/powershell.rs`（`ccm-user-path` 跑它们）。
+    const USER_PATH: &str = include_str!("../../../src/backend/platform/shell/powershell.rs");
     let deploy = || ImplHome {
         addr: "deploy.rs",
         text: DEPLOY,
@@ -1724,6 +1729,21 @@ fn claims() -> Vec<Claim> {
             home: Some(profile()),
             install: Some(profile_install()),
             uninstall: Some(profile_uninstall()),
+        },
+        Claim {
+            tool: "ccm-user-path",
+            home: Some(ImplHome {
+                addr: "powershell.rs",
+                text: USER_PATH,
+            }),
+            install: Some(ImplSite {
+                addr: "powershell.rs::user_path_add",
+                definition: "pub fn user_path_add(dir: &str) -> String {",
+            }),
+            uninstall: Some(ImplSite {
+                addr: "powershell.rs::user_path_remove",
+                definition: "pub fn user_path_remove(dir: &str) -> String {",
+            }),
         },
         // **我们从不装它** ⇒ 没有「它的实现该住哪」这回事。这一行的 `home: None`
         // 不是手写的豁免：下面那条性质断言 `home.is_none()` **当且仅当**
@@ -2055,4 +2075,45 @@ fn the_declared_ccm_bin_dirs_are_the_shared_landing_dir() {
         Some(want),
         "远端那一份申报的目录不是后端落点那一个"
     );
+}
+
+/// 申报里落在后端家里的那几条照契约常量拼（`relay_route_core` 的布局宏 ＋ `concat!`）：两份申报的生产段里
+/// 一处 `~/.cc-monitor/` 字面量都没有，家的那一段只住契约 crate。
+#[test]
+fn the_declarations_spell_our_home_only_through_the_contract() {
+    let needle = format!("\"~/.cc-{}/", "monitor");
+    let mut hits = Vec::new();
+    for (name, src) in [
+        ("footprint/registry.rs", REGISTRY_SRC),
+        ("agents/claudecode/footprint.rs", AGENT_SRC),
+    ] {
+        for (i, line) in production_code(src).lines().enumerate() {
+            if line.contains(&needle) {
+                hits.push(format!("{name}:{}  {}", i + 1, line.trim()));
+            }
+        }
+    }
+    assert!(
+        hits.is_empty(),
+        "足迹申报里手写了后端家的路径（照 `relay_route_core` 的布局宏拼）：\n  {}",
+        hits.join("\n  ")
+    );
+    // 正控：针对准了手写那一形。
+    assert!(format!("path: \"~/.cc-{}/quota.json\",", "monitor").contains(&needle));
+}
+
+/// `ccm-user-path` 改的用户级 `PATH` 在 Windows 那一台的闭集里，档是「app 装的」（有装口、卸得掉），申报写它在注册表里的位置。
+/// （别的平台那台问不出它在不在 ⇒ 那一行恒「未确定」，判在 `rows_tests`。）
+#[test]
+fn the_windows_closed_set_declares_the_user_path_we_change() {
+    let e = environment_on(true)
+        .into_iter()
+        .find(|e| e.id == "ccm-user-path")
+        .expect("Windows 那一台的闭集里该有用户级 PATH 那一格");
+    assert_eq!(e.tier, EnvTier::AppInstalls);
+    let EnvBacking::Managed(t) = e.backing else {
+        panic!("用户级 PATH 那一格该有 ToolSpec");
+    };
+    let paths: Vec<&str> = t.touches().map(|f| f.path).collect();
+    assert_eq!(paths, [crate::agents::footprint_decl::USER_PATH_TOKEN]);
 }

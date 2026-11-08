@@ -77,7 +77,7 @@ fn facts_here(ctx: &crate::faces::rotation_face::Ctx, sid: &str) -> Facts {
         .get(sid)
         .map(|s| (s.start.clone(), s.current.clone()));
     let home = crate::history::listing::agent_home();
-    let rows = crate::observe::accounts_query::session_accounts_here(&home);
+    let rows = crate::accounts::manage::library::session_accounts_here(&home);
     let mine = || {
         rows.iter()
             .filter(|r| r.alive && r.sid.as_deref() == Some(sid))

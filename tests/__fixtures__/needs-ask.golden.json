@@ -3,45 +3,51 @@
     "choices": [
       {
         "id": "allow",
+        "look": "main",
         "note": "none",
+        "picks": false,
         "row": "main",
-        "text": "允许",
-        "tone": "plain"
+        "text": "允许"
       },
       {
         "id": "always-0",
+        "look": "plain",
         "note": "none",
+        "picks": false,
         "row": "main",
-        "text": "允许，且允许访问 /w（本次会话）",
-        "tone": "plain"
+        "text": "允许，且允许访问 /w（本次会话）"
       },
       {
         "id": "always-1",
+        "look": "plain",
         "note": "none",
+        "picks": false,
         "row": "main",
-        "text": "允许，且自动接受编辑（本次会话）",
-        "tone": "plain"
+        "text": "允许，且自动接受编辑（本次会话）"
       },
       {
         "id": "deny",
+        "look": "plain",
         "note": "none",
+        "picks": false,
         "row": "hold",
-        "text": "拒绝",
-        "tone": "warn"
+        "text": "拒绝"
       },
       {
         "id": "deny-note",
+        "look": "plain",
         "note": "required",
+        "picks": false,
         "row": "hold",
-        "text": "拒绝并说明",
-        "tone": "warn"
+        "text": "拒绝并说明"
       },
       {
         "id": "deny-stop",
+        "look": "danger",
         "note": "none",
+        "picks": false,
         "row": "hold",
-        "text": "拒绝并停下",
-        "tone": "fail"
+        "text": "拒绝并停下"
       }
     ],
     "detail": "touch a.txt\necho ok",
@@ -56,31 +62,35 @@
     "choices": [
       {
         "id": "plan-auto",
+        "look": "main",
         "note": "none",
+        "picks": false,
         "row": "main",
-        "text": "自动模式",
-        "tone": "plain"
+        "text": "自动模式"
       },
       {
         "id": "plan-edits",
+        "look": "plain",
         "note": "none",
+        "picks": false,
         "row": "main",
-        "text": "自动接受编辑",
-        "tone": "plain"
+        "text": "自动接受编辑"
       },
       {
         "id": "plan-manual",
+        "look": "plain",
         "note": "none",
+        "picks": false,
         "row": "main",
-        "text": "逐个确认",
-        "tone": "plain"
+        "text": "逐个确认"
       },
       {
         "id": "plan-keep",
+        "look": "plain",
         "note": "optional",
-        "row": "hold",
-        "text": "继续规划",
-        "tone": "warn"
+        "picks": false,
+        "row": "main",
+        "text": "继续规划"
       }
     ],
     "detail": "1. a\n2. b\n",
@@ -95,17 +105,19 @@
     "choices": [
       {
         "id": "answer",
+        "look": "main",
         "note": "none",
+        "picks": true,
         "row": "main",
-        "text": "提交答案",
-        "tone": "plain"
+        "text": "提交答案"
       },
       {
         "id": "dismiss",
+        "look": "ghost",
         "note": "none",
-        "row": "release",
-        "text": "不回答",
-        "tone": "warn"
+        "picks": false,
+        "row": "main",
+        "text": "不回答"
       }
     ],
     "detail": "Which color?\nWhich fruits?",
@@ -113,7 +125,7 @@
     "kind": "answer",
     "questions": [
       {
-        "header": "Color",
+        "head": "Color",
         "id": "q0",
         "multi": false,
         "options": [
@@ -132,7 +144,7 @@
         "text": "Which color?"
       },
       {
-        "header": "Fruit",
+        "head": "Fruit · 多选",
         "id": "q1",
         "multi": true,
         "options": [
@@ -159,52 +171,59 @@
     "choices": [
       {
         "id": "allow",
+        "look": "main",
         "note": "none",
+        "picks": false,
         "row": "main",
-        "text": "允许",
-        "tone": "plain"
+        "text": "允许"
       },
       {
         "id": "always-0",
+        "look": "plain",
         "note": "none",
+        "picks": false,
         "row": "main",
-        "text": "允许，且允许访问 /w（本次会话）",
-        "tone": "plain"
+        "text": "允许，且允许访问 /w（本次会话）"
       },
       {
         "id": "always-1",
+        "look": "plain",
         "note": "none",
+        "picks": false,
         "row": "main",
-        "text": "允许，且自动接受编辑（本次会话）",
-        "tone": "plain"
+        "text": "允许，且自动接受编辑（本次会话）"
       },
       {
         "id": "deny",
+        "look": "plain",
         "note": "none",
+        "picks": false,
         "row": "hold",
-        "text": "拒绝",
-        "tone": "warn"
+        "text": "拒绝"
       },
       {
         "id": "deny-note",
+        "look": "plain",
         "note": "required",
+        "picks": false,
         "row": "hold",
-        "text": "拒绝并说明",
-        "tone": "warn"
+        "text": "拒绝并说明"
       },
       {
         "id": "deny-stop",
+        "look": "danger",
         "note": "none",
+        "picks": false,
         "row": "hold",
-        "text": "拒绝并停下",
-        "tone": "fail"
+        "text": "拒绝并停下"
       },
       {
         "id": "release",
+        "look": "ghost",
         "note": "none",
+        "picks": false,
         "row": "release",
-        "text": "改到终端里答",
-        "tone": "plain"
+        "text": "改到终端里答"
       }
     ],
     "detail": "touch a.txt\necho ok",

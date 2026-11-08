@@ -6,8 +6,6 @@ import com.ccmonitor.mobile.core.wire.gen.BatchKeep
 import com.ccmonitor.mobile.core.wire.gen.BatchLine
 import com.ccmonitor.mobile.core.wire.gen.CallEnd
 import com.ccmonitor.mobile.core.wire.gen.Changed
-import com.ccmonitor.mobile.core.wire.gen.ClashRow
-import com.ccmonitor.mobile.core.wire.gen.Decide
 import com.ccmonitor.mobile.core.wire.gen.DeployEnd
 import com.ccmonitor.mobile.core.wire.gen.Failed
 import com.ccmonitor.mobile.core.wire.gen.FleetLines
@@ -20,7 +18,6 @@ import com.ccmonitor.mobile.core.wire.gen.PhoneMenu
 import com.ccmonitor.mobile.core.wire.gen.SessionBook
 import com.ccmonitor.mobile.core.wire.gen.SessionBranch
 import com.ccmonitor.mobile.core.wire.gen.arr
-import com.ccmonitor.mobile.core.wire.gen.dict
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -118,17 +115,8 @@ interface ResidentCore {
         rows: String,
     ): String
 
-    /** 同名清单（JSON）⇒ 抽屉那几行（[ClashRow] 的 JSON 数组）。 */
-    fun clashRows(data: String): String
-
     /** 几台搜内容的结果（`[{origin, reply}]`，JSON）⇒ 合好的那一份（[SearchMerge.of]）；读不动 ⇒ 空串。 */
     fun searchMerge(data: String): String
-
-    /** 手机这一侧问的同名那一答（JSON；`null` ＝ 取消）⇒ [keys]（JSON 数组）每个键一格（键 ⇒ [Decide] 的 JSON）。 */
-    fun answerOf(
-        keys: String,
-        answer: String?,
-    ): String
 
     /** 给那台装 / 更新后端（[slots] = 包里那几格解到的文件，JSON）；结局经 `deploy` 那一种交回，走到哪一步在 `state` 那一行的成品里。那台不在 · 正在装 ⇒ `false`。 */
     fun deploy(
@@ -333,7 +321,8 @@ class ResidentFeed(
 
     override suspend fun batch(want: Map<String, Any?>): Long {
         ensure()
-        val h = withTimeoutOrNull(DEFAULT_CALL_MS) { opened.await() } ?: return 0L
+        // 流还没开（等不到）也照交核心：它认 0 ＝ 这台不在、回 0，上传那一组交来的描述符随这一下由它关掉（交出去就归它，这里不碰）。
+        val h = withTimeoutOrNull(DEFAULT_CALL_MS) { opened.await() } ?: 0L
         return core.batchStart(h, Json.args(want))
     }
 
@@ -350,21 +339,6 @@ class ResidentFeed(
         val h = if (opened.isCompleted) opened.getCompleted() else 0L
         val line = core.pickMenu(h, Json.line(rows))
         return Wire.read<PhoneMenu>(line) ?: null.also { broke("pick_menu", line) }
-    }
-
-    override fun clashes(data: Any?): List<ClashRow> {
-        val line = core.clashRows(Json.line(data))
-        return Wire.read(arr(ClashRow.ADAPTER), line) ?: emptyList<ClashRow>().also { broke("clash_rows", line) }
-    }
-
-    override fun decided(
-        keys: List<String>,
-        answer: BatchAnswer?,
-    ): Map<String, Decide>? {
-        val line = core.answerOf(Json.line(keys), answer?.let { Wire.line(it) })
-        // 取消 ⇒ 核心回 `null`。
-        if (line == "null") return null
-        return Wire.read(dict(Decide.ADAPTER), line) ?: null.also { broke("answer_of", line) }
     }
 
     override fun hold(sid: String): AutoCloseable {

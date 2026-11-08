@@ -79,9 +79,7 @@ fn products_pass_through_in_order_and_a_closed_link_adds_nothing() {
             Out::Live { sid, .. } => format!("live {sid}"),
             Out::Status { status, .. } => format!("status {}", status.sid),
             Out::Left { left, .. } => format!("left {} {}", left.sid, went(left)),
-            Out::Listed { origin, all } => {
-                format!("listed {origin}{}", if *all { " all" } else { "" })
-            }
+            Out::Listed { origin } => format!("listed {origin}"),
             Out::Runs { runs, .. } => format!("runs {}", runs.sid),
             Out::Branch { sid, .. } => format!("branch {sid}"),
         })
@@ -134,9 +132,7 @@ fn the_f5_plan_puts_skeletons_first_and_judges_bufferless_nothing() {
                 Out::Left { origin, left } => {
                     format!("left {origin}/{} {}", left.sid, went(left))
                 }
-                Out::Listed { origin, all } => {
-                    format!("listed {origin}{}", if *all { " all" } else { "" })
-                }
+                Out::Listed { origin } => format!("listed {origin}"),
                 Out::Status { status, .. } => format!("status {}", status.sid),
                 Out::Runs { origin, runs } => format!("runs {origin}/{}", runs.sid),
                 Out::Branch { origin, sid, .. } => format!("branch {origin}/{sid}"),
@@ -229,65 +225,6 @@ fn the_live_cell_is_the_backends_session_added_frame() {
     assert_eq!(
         (&a["face"]["life"]["activity"], &a["face"]["name"]),
         (&serde_json::json!("working"), &serde_json::json!("跑着"))
-    );
-}
-
-/// ★ 「各台都报完」那一刻：机器表里每一台都来过 `listed` 才立（少一台 ⇒ 不立；表还不知道 ⇒ 不立）；
-/// 机器表换了按新表重算（摘掉的正是唯一没报完的那台 ⇒ 当场再说一次「报完了」带 `all`）；F5 重放带同一份。
-#[test]
-fn all_listed_holds_only_when_every_machine_in_the_table_has_listed() {
-    let all_of = |v: Vec<Out>| -> Vec<(String, bool)> {
-        v.into_iter()
-            .filter_map(|o| match o {
-                Out::Listed { origin, all } => Some((origin, all)),
-                _ => None,
-            })
-            .collect()
-    };
-    let mut b = Book::default();
-    assert_eq!(
-        all_of(b.step(listed("<local>"))),
-        vec![("<local>".into(), false)],
-        "表还不知道 ⇒ 不立"
-    );
-    assert!(
-        b.set_machines(vec!["<local>".into(), "gpu-01".into(), "pi".into()])
-            .is_empty(),
-        "还有两台没来"
-    );
-    assert_eq!(
-        all_of(b.step(listed("pi"))),
-        vec![("pi".into(), false)],
-        "少一台（gpu-01）⇒ 不立"
-    );
-    // gpu-01 从机器表里摘掉：剩下的都报完了 ⇒ 那一刻不错过。
-    assert_eq!(
-        all_of(b.set_machines(vec!["<local>".into(), "pi".into()])),
-        vec![("<local>".into(), true)]
-    );
-    assert_eq!(
-        all_of(b.replay(&[]).after),
-        vec![("<local>".into(), true), ("pi".into(), true)],
-        "F5 重放同一份"
-    );
-    // 又加回一台、它还没来 ⇒ 不立；它来了 ⇒ 立。
-    assert!(b
-        .set_machines(vec!["<local>".into(), "gpu-01".into(), "pi".into()])
-        .is_empty());
-    assert_eq!(
-        all_of(b.step(listed("gpu-01"))),
-        vec![("gpu-01".into(), true)]
-    );
-    // 那台这一条连接收了（清单作废）⇒ 再报一次之前不立。
-    b.step(In::Closed {
-        origin: "pi".into(),
-    });
-    assert_eq!(
-        all_of(b.replay(&[]).after)
-            .iter()
-            .filter(|(_, a)| *a)
-            .count(),
-        0
     );
 }
 

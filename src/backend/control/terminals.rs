@@ -22,7 +22,7 @@ use super::terminals_wire::{
 use crate::common::time::now_secs;
 use crate::common::tmux_utf8::UTF8_CLIENT_FLAG;
 use crate::control::gate::{self, Barred, Who};
-pub use crate::host::tmux::{handle_of, tmux_here, On};
+use crate::host::tmux::On;
 use crate::host::tmux::{rows_found_on, rows_on};
 pub(crate) use crate::host::TermRow;
 use crate::platform::child::Deadline;

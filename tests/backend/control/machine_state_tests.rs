@@ -246,13 +246,13 @@ fn the_empty_line_is_over_the_table_and_the_local_row() {
             line: copy_core::copy_text("beEmpty.line.some", &[("names", &local)]),
             hint: copy_core::copy_text("beEmpty.hint.pending", &[("names", "ms-empty")]),
             count: copy_core::copy_text("machineList.count.all", &[("n", "2")]),
+            all_listed: false,
         }
     );
     fold(t.entry("ms-empty".to_string()).or_default(), Fact::Listed);
-    assert_eq!(
-        fleet_over(&t, &hosts, &Links::new()).line,
-        copy_core::copy_text("beEmpty.line.none", &[])
-    );
+    let done = fleet_over(&t, &hosts, &Links::new());
+    assert_eq!(done.line, copy_core::copy_text("beEmpty.line.none", &[]));
+    assert!(done.all_listed, "本机 ＋ 表里那台都报完了");
 }
 
 /// 这棵树要发的那一版：仓根 `package.json` 的 `version`（发版改的就是它）。

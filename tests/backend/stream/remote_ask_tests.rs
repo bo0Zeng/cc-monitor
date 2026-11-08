@@ -45,7 +45,7 @@ impl crate::wire::typed::Command for SkillReadCmd {
 
 /// 机器表里的一台（线上那一形读成的）。
 fn host(v: Value) -> crate::dial::Host {
-    crate::dial::machine::loose(&v).unwrap()
+    <crate::dial::Host as serde::Deserialize>::deserialize(&v).unwrap()
 }
 /// 生产段（剥测试模块 ＋ 整行注释 ＋ 行尾注释）—— 指纹只认代码，不认说起它的散文。
 fn code_of(body: &str) -> String {
@@ -362,10 +362,12 @@ async fn a_capture_that_never_opened_says_unreachable_with_the_dial_words() {
 /// ⚠ 买不到：「写进远端进程 stdin」那一跳要真 sshd（不进门禁）。
 #[test]
 fn a_capture_dial_carries_the_stdin_line_verbatim_and_only_when_given() {
-    let dial = Table::of(vec![crate::dial::machine::loose(
-        &json!({"label": "h", "host": "h", "port": 22, "user": "u", "keyPath": "/k"}),
-    )
-    .unwrap()])
+    let dial = Table::of(vec![
+        <crate::dial::Host as serde::Deserialize>::deserialize(
+            &json!({"label": "h", "host": "h", "port": 22, "user": "u", "keyPath": "/k"}),
+        )
+        .unwrap(),
+    ])
     .dial("h")
     .unwrap();
     let with = crate::dial::remote_ask::for_capture(

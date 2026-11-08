@@ -55,10 +55,6 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
       calls.push({ name: "backend_stop", args: a });
       return Promise.resolve(stopAnswer);
     },
-    backend_machines: () => {
-      calls.push({ name: "backend_machines", args: null });
-      return Promise.resolve(["<local>", "甲机"]);
-    },
     // 「退出行为」两问改走通道：`chan_call`（op = `exit-policy-read` / `exit-policy-set`）。
     //   这里把一发 `chan_call` 译回判据里的旧叫法（`backend_exit_policy` / `set_backend_exit_policy`），
     //   回包译成后端那份字节（`ArrayBuffer`），问不到译成通道那一跳「没有控制通道」的线上形状。
@@ -69,6 +65,10 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
         return Promise.resolve(u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength));
       };
       const noChannel = { err: { Hop: { idx: 1, tag: "open", reach: "NotSent", why: "Unreachable" } }, body: [] };
+      if (a.op === "machine-read") {
+        calls.push({ name: "machine_read", args: null });
+        return bytes({ machines: { "<local>": { state: "up" }, 甲机: { state: "up" } } });
+      }
       if (a.op === "resync") {
         calls.push({ name: "resync", args: { origin: a.origin, body } });
         return bytes({ added: 0, removed: 0, retagged: 1, caught_up: 0, watchers: 1, unavailable: [] });
@@ -256,10 +256,10 @@ describe("P2s backend 开关区", () => {
     await flush();
     await flush();
     expect(
-      calls.some((c) => c.name === "backend_machines"),
-      "没调 backend_machines —— 前端又在自己拼清单了。\n" +
-        "Rust 侧会对重复 label 后缀化（pi → pi (#2)）、会按 enabled 过滤、启动后新增的不注册；\n" +
-        "自己拼出来的名字对不上注册表，那些行的起/停恒回「没有这台机的把手」。",
+      calls.some((c) => c.name === "machine_read"),
+      "没问本机后端 machine-read —— 前端又在自己拼清单了。\n" +
+        "名字是本机后端照机器表算好的（重复 label 后缀化 pi → pi (#2)、「连接这台」关着的不列）；\n" +
+        "自己拼出来的名字对不上那张表，那些行的起 / 停本机后端答「没有这台」。",
     ).toBe(true);
     const { readFileSync } = await import("node:fs");
     const { resolve } = await import("node:path");

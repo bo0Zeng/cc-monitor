@@ -42,17 +42,17 @@ function writes(answerOp: (op: string) => unknown): ReturnType<typeof book> {
 const sent = (missed: Array<{ origin: string; why: string }> = []) => ({ is: "sent", id: "g1", missed });
 
 describe("组的账", () => {
-  it("B1 读：本机一问带着每一台；读失败留着上一份", async () => {
+  it("B1 读：本机一问、不带名单（它照自己的机器表问到各台）；读失败留着上一份", async () => {
     let fail = false;
     const { b, calls } = book(() => (fail ? new Error("本机后端没答") : READ));
     const seen: Array<GroupsRead | null> = [];
     b.subscribe(() => seen.push(b.read()));
-    await b.refreshAll(["<local>", "devbox"]);
-    expect(calls).toEqual([["<local>", "groups-read", { machines: ["<local>", "devbox"] }]]);
+    await b.again();
+    expect(calls).toEqual([["<local>", "groups-read", {}]]);
     expect(b.read()).toEqual(READ);
     expect(seen).toEqual([READ]);
     fail = true;
-    await b.refreshAll([]);
+    await b.again();
     expect(b.read()).toEqual(READ);
   });
 
@@ -80,13 +80,13 @@ describe("组的账", () => {
     vi.useFakeTimers();
     try {
       const { b, calls } = book(() => READ);
-      await b.refreshAll(["<local>"]);
+      await b.again();
       calls.length = 0;
-      b.poke("devbox");
-      b.poke("devbox");
-      b.poke("<local>");
+      b.poke();
+      b.poke();
+      b.poke();
       await vi.advanceTimersByTimeAsync(10);
-      expect(calls).toEqual([["<local>", "groups-read", { machines: ["<local>", "devbox"] }]]);
+      expect(calls).toEqual([["<local>", "groups-read", {}]]);
     } finally {
       vi.useRealTimers();
     }

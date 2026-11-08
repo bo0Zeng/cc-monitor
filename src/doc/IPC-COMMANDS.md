@@ -346,11 +346,22 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 | `settled` | bool | 那台看不见时照旧作数（已结束 · 记录已不在） |
 | `name` | Words | 短名（运行中 · 需手动 · 已结束 …） |
 | `tip` | Words | 悬停那一句 |
-| `line` | Words | 没有会话事实时的状态一句 |
+| `line` | Words | 状态一句（定格的字，不带时长）：活着、记录读得到 ⇒ 那台照记录写（在跑的那一步 · 等的种类 · 后台那一句 …）；否则是那一态的那一句 |
+| `clock` | Clock? | 会走的那一截（同一句、时长那一截留 `{dur}` ＋ 起点，出口按此刻填）；没有 ⇒ 不上线，照 `line` |
+| `peek` | Words? | 悬停卡那一句（在等 ⇒ 等的那一步 · 在跑 ⇒ 那一步 · 空闲 / 后台 ⇒ 最后一句）；没有 ⇒ 不上线 |
 | `tone` | Tone |  |
 | `order` | number | 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5 |
 | `can` | SessionCan |  |
 | `account` | string? | 跑在账号库里哪个号下：那台后端宣告时读会话进程环境判一次，这条会话之后的脸（含离开「活」的那几张）都带它 |
+
+#### `Clock`
+
+会走的一句：字里的 `{dur}` 填 现在 − `from`（epoch ms），由出口那一个读口填。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `text` | Words |  |
+| `from` | number |  |
 
 #### `Life`
 
@@ -469,6 +480,7 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 |---|---|---|
 | `command` | string | 哪条命令 —— 取值空间与 `Hello.commands` **同一套**（`inbound::command_names`） |
 | `code` | string | 为什么做不到 —— **就是真调用那一刻会回的那个命令级 code**（如 `no_tmux`） |
+| `said` | string | 置灰时说的那一句（称呼那台、码不上屏），本机后端写好（见上「置灰那一句谁写」） |
 
 #### `Topic`
 
@@ -2083,11 +2095,7 @@ at?: Array<string>, };
 ```ts
 type AgentKind = string;
 type LoginState = "ok" | "needsLogin" | "needsKey";
-type QuotaAccount = { rows: Array<Array<QuotaCell>>, 
-/**
- * 「5h 那一格」（恢复菜单 · 新会话框每个号后面那一格）；按量号 ⇒ `null`。
- */
-fiveHour: Words | null, warm: QuotaWarm, agent: AgentKind, account: string, kind: QuotaKind, state: QuotaState, 
+type QuotaAccount = { rows: Array<Array<QuotaCell>>, warm: QuotaWarm, agent: AgentKind, account: string, kind: QuotaKind, state: QuotaState, 
 /**
  * 最后一次看到距今超过 30 分钟（与 `state` 叠着画）。
  */
@@ -2107,7 +2115,7 @@ usage: Usage, };
 type QuotaCandidate = { agent: AgentKind, account: string, kind: QuotaKind, };
 type QuotaCell = { text: Words, tone: Tone, };
 type QuotaKind = "sub" | "api";
-type QuotaNames = { accounts: { [key in string]: Words }, slots: { [key in string]: Words }, };
+type QuotaNames = { slots: { [key in string]: Words }, };
 type QuotaRead = { 
 /**
  * 那份文件读到的三态。
@@ -2146,11 +2154,7 @@ candidates: Array<QuotaCandidate>,
  */
 text: Words | null, 
 /**
- * 读不出 ⇒「5h 那一格」写好的字（`5h 读不到`，`quota_rows::head_five_hour`）；否则 `null`（每号自己那一格）。
- */
-fiveHour: Words | null, 
-/**
- * 号名 / 位名表（出口画号名 · 位名只照它）。
+ * 位名表（出口画位名只照它）。
  */
 names: QuotaNames, 
 /**
@@ -2161,11 +2165,7 @@ type QuotaReadReq = Record<symbol, never>;
 type QuotaReadState = "present" | "absent" | "unreadable";
 type QuotaSource = "headers" | "usage";
 type QuotaState = "ok" | "near" | "refused" | "overageInUse" | "unseen" | "resetSinceSeen";
-type QuotaUnseen = { rows: Array<Array<QuotaCell>>, 
-/**
- * 没出过数 ⇒ 恒 `null`（这一格只给出过数的订阅号）。
- */
-fiveHour: Words | null, warm: QuotaWarm, agent: AgentKind, account: string, kind: QuotaKind, login: LoginState, 
+type QuotaUnseen = { rows: Array<Array<QuotaCell>>, warm: QuotaWarm, agent: AgentKind, account: string, kind: QuotaKind, login: LoginState, 
 /**
  * 用量那一格（没出过数 ⇒ `5h —` / `按量`；同出过数的号那一格一个写法，只是没有重置那一格）。
  */
@@ -2351,7 +2351,7 @@ warnedAt?: number, };
 
 给一个号开窗。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 125 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --quota-warm`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 125 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · 只在流上
 
 入参 `QuotaWarmReq` · 回包 `Warmed`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
@@ -3209,9 +3209,11 @@ plate: Words,
  */
 kindLine: Words, 
 /**
- * 这个号「5h 那一格」写好的字（同 `quota-read` 那一格：账读不出 ⇒ `5h 读不到`）；没出过数 · 按量号 ⇒ `null`。
+ * 这个号的额度格（同一份 `quota-read` 成品里取，后端 `with_quota` 写，两端照摆）：订阅号一个语义位一格、照 5h · 7d 的次序，
+ * `text` 是整格的字（位名 · 值 · 重置），`tone` 是那一格的语气（数旧也画 warn）；按量号一格（`按量` · 被拒那一句，`slot` 空串）；
+ * 账读不出 ⇒ 一格 `5h 读不到`；没出过数的订阅号 · 账上没有 ⇒ 空。紧凑那一格（恢复菜单 · 新会话框）取第一格。
  */
-quota: Words | null, 
+slots: Array<SlotShow>, 
 /**
  * 选不了（`selectable: false`）的那一句：需登录 · 没配 key · 不隔离 · 号目录不在；选得了 ⇒ `null`。
  * 账号 0 不经选号（起它走「不指定号」那一条）⇒ 恒 `null`。
@@ -3270,7 +3272,7 @@ type AccountsListReq = {
  */
 agent: AgentKind, };
 type AgentKind = string;
-type Badge = { text: Words, warn: boolean, title: Words, };
+type Badge = { text: Words, warn: boolean, };
 type ListMeta = { 
 /**
  * 这台建了账号库（清单读得出）。
@@ -3296,6 +3298,31 @@ nextDefault: string | null,
  * 这台的默认号（标了的第一个，没标 ⇒ 第一个；`acct_core::effective_default`）。
  */
 effectiveDefault: string | null, };
+type SlotShow = { slot: string, pct?: number, resetsAt?: number, 
+/**
+ * `resets_at` 距今（`+1h50m`；同上，只在还没到时有）。
+ */
+resetsAtRelText?: string, 
+/**
+ * 重置那一格写好的字（`↻18:30` · 已过 `↻13:10 已过`；同 `rows` 里那一格）；说不出几点 ⇒ 缺。
+ */
+resetText?: string, 
+/**
+ * 用满：这个窗口用到 100%、还没重置（画 `✕`；被拒而没用满画「{pct}% · 被拒」）。没用满 ⇒ 缺。
+ */
+full?: boolean, 
+/**
+ * 这一格的字（唯一写法 `slot_words`：超额在兜 `超额` · 上一窗已过 / 没数 `—` · 用满 `✕` · 被拒没用满 `58% · 被拒` · 否则 `58%`）。
+ */
+text: string, 
+/**
+ * 那一格的语气：用满 · 被拒 ⇒ `fail`；超额在兜 · 卡着的窗口快满 ⇒ `warn`；否则 `plain`。
+ */
+tone: "plain" | "fail" | "warn", 
+/**
+ * 这一格那个窗口「1% ≈ 多少用量」写好的字（`1% ≈ 2.1M`，同 [`WindowShow::per_pct_text`]）；量不到 ⇒ 缺。
+ */
+perPctText?: string, };
 type Words = string;
 ```
 
@@ -3310,7 +3337,6 @@ type Words = string;
 入参 `MachineInterruptsReq` · 回包 `MachineInterruptsReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Machine = string;
 type MachineInterruptsReply = { relayedSessions: number | null, relayedMaybe: number, liveStreams: number, forwards: number, };
 type MachineInterruptsReq = { 
 /**
@@ -3322,9 +3348,10 @@ machine?: string | null,
  */
 appExit?: boolean | null, 
 /**
- * 带 `appExit` 时一并问的那几台（各照它自己的退出行为答，答到的加起来；问不到的不算）。问到那几台时不带它（不往下扇）。
+ * 带 `appExit` 时 `true` ⇒ 照这台的机器表一并问各台（`Table::asked` 里的远端；各照它自己的退出行为答，答到的加起来；问不到的不算）。
+ * 问到那几台时不带它（不往下扇）。
  */
-machines?: Array<Machine> | null, };
+fleet?: boolean | null, };
 ```
 
 码：`bad_args`
@@ -3377,25 +3404,29 @@ type AccountInitArgs = { name: string,
  */
 dryRun?: boolean, };
 type AccountRef = { name: string, configDir: string, };
-type AliasChange = { path: string, 
+type AliasChange = { 
 /**
- * 这一趟真写了没有（内容没变 ⇒ 一个字节不写）。
+ * 用户的配置文件（`~/.cc-monitor/profiles.toml`，这一趟不写它）。
+ */
+path: string, 
+/**
+ * 别名文件或链接这一趟动了没有（内容没变 ⇒ 一个字节不写）。
  */
 changed: boolean, 
 /**
- * 建号：加进去的别名（如 `workcc` `workcct`）。
+ * 建号：多出来的内置别名（如 `workcc` `workcct` `workcch`）。
  */
 added: Array<string>, 
 /**
- * 删号：删掉的别名（参数指向这个号的全部）。
+ * 删号：跟着号一起没了的内置别名。
  */
 removed: Array<string>, 
 /**
- * 建号：名字被别的别名占着、没加的那几个。
+ * 建号：用户文件里已有同名的一段、盖着内置的那几个（照用户那段起）。
  */
 skipped: Array<string>, 
 /**
- * 没能自动改它时的那句话（比如文件里有认不出的行）；`None` = 一切照常。
+ * 没能重生成时的那句话（比如配置文件整份写坏了）；`None` = 一切照常。
  */
 note: string | null, };
 ```
@@ -3463,25 +3494,29 @@ keyProblem: string | null,
 aliases: Array<AliasChange>, };
 type AccountKind = "subscription" | "api-key";
 type AccountRef = { name: string, configDir: string, };
-type AliasChange = { path: string, 
+type AliasChange = { 
 /**
- * 这一趟真写了没有（内容没变 ⇒ 一个字节不写）。
+ * 用户的配置文件（`~/.cc-monitor/profiles.toml`，这一趟不写它）。
+ */
+path: string, 
+/**
+ * 别名文件或链接这一趟动了没有（内容没变 ⇒ 一个字节不写）。
  */
 changed: boolean, 
 /**
- * 建号：加进去的别名（如 `workcc` `workcct`）。
+ * 建号：多出来的内置别名（如 `workcc` `workcct` `workcch`）。
  */
 added: Array<string>, 
 /**
- * 删号：删掉的别名（参数指向这个号的全部）。
+ * 删号：跟着号一起没了的内置别名。
  */
 removed: Array<string>, 
 /**
- * 建号：名字被别的别名占着、没加的那几个。
+ * 建号：用户文件里已有同名的一段、盖着内置的那几个（照用户那段起）。
  */
 skipped: Array<string>, 
 /**
- * 没能自动改它时的那句话（比如文件里有认不出的行）；`None` = 一切照常。
+ * 没能重生成时的那句话（比如配置文件整份写坏了）；`None` = 一切照常。
  */
 note: string | null, };
 ```
@@ -3536,25 +3571,29 @@ type AccountRemoveArgs = { name: string,
  * 删的是默认号时必须给真。
  */
 force?: boolean, dryRun?: boolean, };
-type AliasChange = { path: string, 
+type AliasChange = { 
 /**
- * 这一趟真写了没有（内容没变 ⇒ 一个字节不写）。
+ * 用户的配置文件（`~/.cc-monitor/profiles.toml`，这一趟不写它）。
+ */
+path: string, 
+/**
+ * 别名文件或链接这一趟动了没有（内容没变 ⇒ 一个字节不写）。
  */
 changed: boolean, 
 /**
- * 建号：加进去的别名（如 `workcc` `workcct`）。
+ * 建号：多出来的内置别名（如 `workcc` `workcct` `workcch`）。
  */
 added: Array<string>, 
 /**
- * 删号：删掉的别名（参数指向这个号的全部）。
+ * 删号：跟着号一起没了的内置别名。
  */
 removed: Array<string>, 
 /**
- * 建号：名字被别的别名占着、没加的那几个。
+ * 建号：用户文件里已有同名的一段、盖着内置的那几个（照用户那段起）。
  */
 skipped: Array<string>, 
 /**
- * 没能自动改它时的那句话（比如文件里有认不出的行）；`None` = 一切照常。
+ * 没能重生成时的那句话（比如配置文件整份写坏了）；`None` = 一切照常。
  */
 note: string | null, };
 ```
@@ -3605,25 +3644,29 @@ keyProblem: string | null,
 aliases: Array<AliasChange>, };
 type AccountNameArgs = { name: string, dryRun?: boolean, };
 type AccountRef = { name: string, configDir: string, };
-type AliasChange = { path: string, 
+type AliasChange = { 
 /**
- * 这一趟真写了没有（内容没变 ⇒ 一个字节不写）。
+ * 用户的配置文件（`~/.cc-monitor/profiles.toml`，这一趟不写它）。
+ */
+path: string, 
+/**
+ * 别名文件或链接这一趟动了没有（内容没变 ⇒ 一个字节不写）。
  */
 changed: boolean, 
 /**
- * 建号：加进去的别名（如 `workcc` `workcct`）。
+ * 建号：多出来的内置别名（如 `workcc` `workcct` `workcch`）。
  */
 added: Array<string>, 
 /**
- * 删号：删掉的别名（参数指向这个号的全部）。
+ * 删号：跟着号一起没了的内置别名。
  */
 removed: Array<string>, 
 /**
- * 建号：名字被别的别名占着、没加的那几个。
+ * 建号：用户文件里已有同名的一段、盖着内置的那几个（照用户那段起）。
  */
 skipped: Array<string>, 
 /**
- * 没能自动改它时的那句话（比如文件里有认不出的行）；`None` = 一切照常。
+ * 没能重生成时的那句话（比如配置文件整份写坏了）；`None` = 一切照常。
  */
 note: string | null, };
 ```
@@ -3674,25 +3717,29 @@ keyProblem: string | null,
 aliases: Array<AliasChange>, };
 type AccountRef = { name: string, configDir: string, };
 type AccountRepairArgs = { dryRun?: boolean, };
-type AliasChange = { path: string, 
+type AliasChange = { 
 /**
- * 这一趟真写了没有（内容没变 ⇒ 一个字节不写）。
+ * 用户的配置文件（`~/.cc-monitor/profiles.toml`，这一趟不写它）。
+ */
+path: string, 
+/**
+ * 别名文件或链接这一趟动了没有（内容没变 ⇒ 一个字节不写）。
  */
 changed: boolean, 
 /**
- * 建号：加进去的别名（如 `workcc` `workcct`）。
+ * 建号：多出来的内置别名（如 `workcc` `workcct` `workcch`）。
  */
 added: Array<string>, 
 /**
- * 删号：删掉的别名（参数指向这个号的全部）。
+ * 删号：跟着号一起没了的内置别名。
  */
 removed: Array<string>, 
 /**
- * 建号：名字被别的别名占着、没加的那几个。
+ * 建号：用户文件里已有同名的一段、盖着内置的那几个（照用户那段起）。
  */
 skipped: Array<string>, 
 /**
- * 没能自动改它时的那句话（比如文件里有认不出的行）；`None` = 一切照常。
+ * 没能重生成时的那句话（比如配置文件整份写坏了）；`None` = 一切照常。
  */
 note: string | null, };
 ```
@@ -3743,25 +3790,29 @@ keyProblem: string | null,
 aliases: Array<AliasChange>, };
 type AccountRef = { name: string, configDir: string, };
 type AccountRollbackArgs = { backup?: string, dryRun?: boolean, };
-type AliasChange = { path: string, 
+type AliasChange = { 
 /**
- * 这一趟真写了没有（内容没变 ⇒ 一个字节不写）。
+ * 用户的配置文件（`~/.cc-monitor/profiles.toml`，这一趟不写它）。
+ */
+path: string, 
+/**
+ * 别名文件或链接这一趟动了没有（内容没变 ⇒ 一个字节不写）。
  */
 changed: boolean, 
 /**
- * 建号：加进去的别名（如 `workcc` `workcct`）。
+ * 建号：多出来的内置别名（如 `workcc` `workcct` `workcch`）。
  */
 added: Array<string>, 
 /**
- * 删号：删掉的别名（参数指向这个号的全部）。
+ * 删号：跟着号一起没了的内置别名。
  */
 removed: Array<string>, 
 /**
- * 建号：名字被别的别名占着、没加的那几个。
+ * 建号：用户文件里已有同名的一段、盖着内置的那几个（照用户那段起）。
  */
 skipped: Array<string>, 
 /**
- * 没能自动改它时的那句话（比如文件里有认不出的行）；`None` = 一切照常。
+ * 没能重生成时的那句话（比如配置文件整份写坏了）；`None` = 一切照常。
  */
 note: string | null, };
 ```
@@ -4165,29 +4216,6 @@ type ResumeWith = { model?: string, permissionMode?: string, end: number, };
 
 码：`bad_args` · `annotations_unreadable` · `io_failed` · `no_annotations`
 
-#### `history-forget`
-
-删一条历史注解。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --history-forget`
-
-入参 `ForgetReq` · 回包 `Forgotten`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type ForgetReq = { 
-/**
- * 会话 id。
- */
-sid: string, };
-type Forgotten = { 
-/**
- * 真删了一条没有（`false` = 本来就没有这一条，文件没动）。
- */
-removed: boolean, };
-```
-
-码：`bad_args` · `annotations_unreadable` · `io_failed` · `no_annotations`
-
 #### `groups-here`
 
 这台的组那一半：这台有组员的那几片 ＋ 带组或固定的会话。
@@ -4201,6 +4229,7 @@ type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
 type CanTerminal = { near: TermWay, far: TermWay, };
+type FactsClock = { text: Words, from: number, };
 type GroupsHere = { groups: Array<HereGroup>, members: Array<HereMember>, };
 type HereGroup = { id: string, name: string, made: number, named: number, };
 type HereMember = { sid: string, groups: Array<string>, pinned: boolean, face: SessionFace, facts: MemberFacts, };
@@ -4290,9 +4319,17 @@ name: Words,
  */
 tip: Words, 
 /**
- * 没有会话事实时的状态一句。
+ * 状态一句（定格的字，不带时长）：活着、记录读得到 ⇒ 那台照记录写（在跑的那一步 · 等的种类 · 后台那一句 …）；否则是那一态的那一句。
  */
-line: Words, tone: Tone, 
+line: Words, 
+/**
+ * 会走的那一截（同一句、时长那一截留 `{dur}` ＋ 起点，出口按此刻填）；没有 ⇒ 不上线，照 `line`。
+ */
+clock?: FactsClock, 
+/**
+ * 悬停卡那一句（在等 ⇒ 等的那一步 · 在跑 ⇒ 那一步 · 空闲 / 后台 ⇒ 最后一句）；没有 ⇒ 不上线。
+ */
+peek?: Words, tone: Tone, 
 /**
  * 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5。
  */
@@ -4323,6 +4360,7 @@ type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
 type CanTerminal = { near: TermWay, far: TermWay, };
+type FactsClock = { text: Words, from: number, };
 type GroupCount = { dot: SessionDot, n: number, word: string, 
 /**
  * 组头那一句（「需手动 2」那样，出口照摆）。
@@ -4365,7 +4403,7 @@ pinned: Array<GroupMember>,
  * 问的每一台这一问的结局（照问的先后）。
  */
 machines: Array<GroupsMachine>, };
-type GroupsReadReq = { machines: Array<string>, };
+type GroupsReadReq = Record<symbol, never>;
 type HistoryMachineRead = { "is": "ok", notice: string | null, } | { "is": "stale", why: string, at: string, } | { "is": "failed", why: string, } | { "is": "unread" };
 type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type MemberFacts = { 
@@ -4452,9 +4490,17 @@ name: Words,
  */
 tip: Words, 
 /**
- * 没有会话事实时的状态一句。
+ * 状态一句（定格的字，不带时长）：活着、记录读得到 ⇒ 那台照记录写（在跑的那一步 · 等的种类 · 后台那一句 …）；否则是那一态的那一句。
  */
-line: Words, tone: Tone, 
+line: Words, 
+/**
+ * 会走的那一截（同一句、时长那一截留 `{dur}` ＋ 起点，出口按此刻填）；没有 ⇒ 不上线，照 `line`。
+ */
+clock?: FactsClock, 
+/**
+ * 悬停卡那一句（在等 ⇒ 等的那一步 · 在跑 ⇒ 那一步 · 空闲 / 后台 ⇒ 最后一句）；没有 ⇒ 不上线。
+ */
+peek?: Words, tone: Tone, 
 /**
  * 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5。
  */
@@ -4502,6 +4548,7 @@ type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
 type CanTerminal = { near: TermWay, far: TermWay, };
+type FactsClock = { text: Words, from: number, };
 type GroupCount = { dot: SessionDot, n: number, word: string, 
 /**
  * 组头那一句（「需手动 2」那样，出口照摆）。
@@ -4617,9 +4664,17 @@ name: Words,
  */
 tip: Words, 
 /**
- * 没有会话事实时的状态一句。
+ * 状态一句（定格的字，不带时长）：活着、记录读得到 ⇒ 那台照记录写（在跑的那一步 · 等的种类 · 后台那一句 …）；否则是那一态的那一句。
  */
-line: Words, tone: Tone, 
+line: Words, 
+/**
+ * 会走的那一截（同一句、时长那一截留 `{dur}` ＋ 起点，出口按此刻填）；没有 ⇒ 不上线，照 `line`。
+ */
+clock?: FactsClock, 
+/**
+ * 悬停卡那一句（在等 ⇒ 等的那一步 · 在跑 ⇒ 那一步 · 空闲 / 后台 ⇒ 最后一句）；没有 ⇒ 不上线。
+ */
+peek?: Words, tone: Tone, 
 /**
  * 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5。
  */
@@ -4664,8 +4719,7 @@ segs: Array<number>, };
 type Inl = string | InlNode;
 type InlNode = { "t": "b", k: Array<Inl>, } | { "t": "i", k: Array<Inl>, } | { "t": "del", k: Array<Inl>, } | { "t": "c", x: string, } | { "t": "m", tex: string, m: MathBox | null, } | { "t": "a", href: string, k: Array<Inl>, } | { "t": "img", src: string, alt: string, } | { "t": "br" } | { "t": "fn", n: number, } | { "t": "ref", x: string, ids: Array<string>, label: string, };
 type MathBox = { w: number, h: number, d: number, items: Array<MathItem>, };
-type MathFont = "ams" | "caligraphic_regular" | "fraktur_regular" | "fraktur_bold" | "main_regular" | "main_bold" | "main_italic" | "main_bold_italic" | "math_italic" | "math_bold_italic" | "sans_serif_regular" | "sans_serif_bold" | "sans_serif_italic" | "script_regular" | "size1" | "size2" | "size3" | "size4" | "typewriter" | "sys";
-type MathItem = { "t": "g", f: MathFont, u: number, x: number, y: number, s: number, } | { "t": "l", x: number, y: number, w: number, th: number, dash: boolean, } | { "t": "r", x: number, y: number, w: number, h: number, } | { "t": "p", x: number, y: number, fill: boolean, d: Array<MathPath>, };
+type MathItem = { "t": "g", f: string | null, u: number, x: number, y: number, s: number, } | { "t": "l", x: number, y: number, w: number, th: number, dash: boolean, } | { "t": "r", x: number, y: number, w: number, h: number, } | { "t": "p", x: number, y: number, fill: boolean, d: Array<MathPath>, };
 type MathPath = { "t": "m", x: number, y: number, } | { "t": "l", x: number, y: number, } | { "t": "c", x1: number, y1: number, x2: number, y2: number, x: number, y: number, } | { "t": "q", x1: number, y1: number, x: number, y: number, } | { "t": "z" };
 type MdAlign = "none" | "left" | "center" | "right";
 type MdAs = "prose" | "tool_result";
@@ -4715,7 +4769,7 @@ type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
 type CanTerminal = { near: TermWay, far: TermWay, };
-type ForkedFrom = { label: string, };
+type FactsClock = { text: Words, from: number, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
 type HistoryGroup = { key: string, agent: AgentKind, projectName: string, projectPath: string, projectDir: string, count: number, 
@@ -4781,11 +4835,7 @@ type HistoryRow = { agent: AgentKind, sessionId: string, projectPath: string, pr
 /**
  * 隐藏那一格（判定只住后端 `history/session_hidden.rs`）；不隐藏 ⇒ `null`（格恒在）。
  */
-hidden: Hidden | null, forkedFromSessionId?: string, 
-/**
- * 分叉来的：父会话那一行（显示标题）；不是分叉来的 · 父会话不在这台的清单里 ⇒ 缺（界面写「分叉自其他会话」）。
- */
-forkedFrom?: ForkedFrom, projectDir: string, group: string, lastAccount?: string, 
+hidden: Hidden | null, forkedFromSessionId?: string, projectDir: string, group: string, lastAccount?: string, 
 /**
  * 显示的标题：用户改过的 ＞ 标题 ＞ 第一句。
  */
@@ -4884,9 +4934,17 @@ name: Words,
  */
 tip: Words, 
 /**
- * 没有会话事实时的状态一句。
+ * 状态一句（定格的字，不带时长）：活着、记录读得到 ⇒ 那台照记录写（在跑的那一步 · 等的种类 · 后台那一句 …）；否则是那一态的那一句。
  */
-line: Words, tone: Tone, 
+line: Words, 
+/**
+ * 会走的那一截（同一句、时长那一截留 `{dur}` ＋ 起点，出口按此刻填）；没有 ⇒ 不上线，照 `line`。
+ */
+clock?: FactsClock, 
+/**
+ * 悬停卡那一句（在等 ⇒ 等的那一步 · 在跑 ⇒ 那一步 · 空闲 / 后台 ⇒ 最后一句）；没有 ⇒ 不上线。
+ */
+peek?: Words, tone: Tone, 
 /**
  * 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5。
  */
@@ -4941,7 +4999,7 @@ type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
 type CanTerminal = { near: TermWay, far: TermWay, };
-type ForkedFrom = { label: string, };
+type FactsClock = { text: Words, from: number, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
 type HistoryBrowseHead = { 
@@ -5033,11 +5091,7 @@ type HistoryRow = { agent: AgentKind, sessionId: string, projectPath: string, pr
 /**
  * 隐藏那一格（判定只住后端 `history/session_hidden.rs`）；不隐藏 ⇒ `null`（格恒在）。
  */
-hidden: Hidden | null, forkedFromSessionId?: string, 
-/**
- * 分叉来的：父会话那一行（显示标题）；不是分叉来的 · 父会话不在这台的清单里 ⇒ 缺（界面写「分叉自其他会话」）。
- */
-forkedFrom?: ForkedFrom, projectDir: string, group: string, lastAccount?: string, 
+hidden: Hidden | null, forkedFromSessionId?: string, projectDir: string, group: string, lastAccount?: string, 
 /**
  * 显示的标题：用户改过的 ＞ 标题 ＞ 第一句。
  */
@@ -5142,9 +5196,17 @@ name: Words,
  */
 tip: Words, 
 /**
- * 没有会话事实时的状态一句。
+ * 状态一句（定格的字，不带时长）：活着、记录读得到 ⇒ 那台照记录写（在跑的那一步 · 等的种类 · 后台那一句 …）；否则是那一态的那一句。
  */
-line: Words, tone: Tone, 
+line: Words, 
+/**
+ * 会走的那一截（同一句、时长那一截留 `{dur}` ＋ 起点，出口按此刻填）；没有 ⇒ 不上线，照 `line`。
+ */
+clock?: FactsClock, 
+/**
+ * 悬停卡那一句（在等 ⇒ 等的那一步 · 在跑 ⇒ 那一步 · 空闲 / 后台 ⇒ 最后一句）；没有 ⇒ 不上线。
+ */
+peek?: Words, tone: Tone, 
 /**
  * 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5。
  */
@@ -5281,7 +5343,7 @@ type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
 type CanTerminal = { near: TermWay, far: TermWay, };
-type ForkedFrom = { label: string, };
+type FactsClock = { text: Words, from: number, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
 type HistorySearchReply = { 
@@ -5394,10 +5456,6 @@ isBg: boolean,
  */
 can: Can, 
 /**
- * 分叉来的：父会话的显示标题（同历史清单那一格）；不是分叉来的 · 父会话这一趟没走到 ⇒ 缺。
- */
-forkedFrom?: ForkedFrom, 
-/**
  * 那台此刻对这个会话的说法（同历史清单那一行的 `face`）。
  */
 face: SessionFace, };
@@ -5461,9 +5519,17 @@ name: Words,
  */
 tip: Words, 
 /**
- * 没有会话事实时的状态一句。
+ * 状态一句（定格的字，不带时长）：活着、记录读得到 ⇒ 那台照记录写（在跑的那一步 · 等的种类 · 后台那一句 …）；否则是那一态的那一句。
  */
-line: Words, tone: Tone, 
+line: Words, 
+/**
+ * 会走的那一截（同一句、时长那一截留 `{dur}` ＋ 起点，出口按此刻填）；没有 ⇒ 不上线，照 `line`。
+ */
+clock?: FactsClock, 
+/**
+ * 悬停卡那一句（在等 ⇒ 等的那一步 · 在跑 ⇒ 那一步 · 空闲 / 后台 ⇒ 最后一句）；没有 ⇒ 不上线。
+ */
+peek?: Words, tone: Tone, 
 /**
  * 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5。
  */
@@ -5514,10 +5580,10 @@ type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
 type CanTerminal = { near: TermWay, far: TermWay, };
-type ForkedFrom = { label: string, };
+type FactsClock = { text: Words, from: number, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
-type HistorySearchMergeReq = { machines: Array<Machine>, search: HistorySearchReq, };
+type HistorySearchMergeReq = { search: HistorySearchReq, };
 type HistorySearchReq = { 
 /**
  * 搜索词（不分大小写，子串）。
@@ -5634,10 +5700,6 @@ isBg: boolean,
  */
 can: Can, 
 /**
- * 分叉来的：父会话的显示标题（同历史清单那一格）；不是分叉来的 · 父会话这一趟没走到 ⇒ 缺。
- */
-forkedFrom?: ForkedFrom, 
-/**
  * 那台此刻对这个会话的说法（同历史清单那一行的 `face`）。
  */
 face: SessionFace, };
@@ -5723,9 +5785,17 @@ name: Words,
  */
 tip: Words, 
 /**
- * 没有会话事实时的状态一句。
+ * 状态一句（定格的字，不带时长）：活着、记录读得到 ⇒ 那台照记录写（在跑的那一步 · 等的种类 · 后台那一句 …）；否则是那一态的那一句。
  */
-line: Words, tone: Tone, 
+line: Words, 
+/**
+ * 会走的那一截（同一句、时长那一截留 `{dur}` ＋ 起点，出口按此刻填）；没有 ⇒ 不上线，照 `line`。
+ */
+clock?: FactsClock, 
+/**
+ * 悬停卡那一句（在等 ⇒ 等的那一步 · 在跑 ⇒ 那一步 · 空闲 / 后台 ⇒ 最后一句）；没有 ⇒ 不上线。
+ */
+peek?: Words, tone: Tone, 
 /**
  * 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5。
  */
@@ -5816,9 +5886,13 @@ for: string,
  */
 content: Array<Block>, isError: boolean, 
 /**
- * 内容多少字节（各正文块的 UTF-8 字节 ＋ 各图的原图字节）：出口省掉内容之后照样有，界面写大小照它。
+ * 内容多少字节（各正文块的 UTF-8 字节 ＋ 各图的原图字节）：出口省掉内容之后照样有。
  */
-bytes: number, } | { "type": "image", 
+bytes: number, 
+/**
+ * `bytes` 写成给人看的一格（`3.0 KB`）：后端照字节写好，两端照抄、不自己换算。
+ */
+sizeText: Words, } | { "type": "image", 
 /**
  * 图片类型（`image/png` …）。
  */
@@ -5940,7 +6014,7 @@ id: string,
  */
 at?: string, 
 /**
- * `at` 在看的那一台钟上的钟面 `HH:MM`（出口那一下按请求 / 流带来的时区写，[`Record::stamp`]；界面照抄、不换算）；没有时刻 / 解不出 ⇒ 缺。
+ * `at` 在看的那一台钟上的钟面 `HH:MM`（出口那一下按请求 / 流带来的时区写，后端 `wire::stamp::RecordExt::stamp`；界面照抄、不换算）；没有时刻 / 解不出 ⇒ 缺。
  */
 timeText?: string, 
 /**
@@ -6017,22 +6091,12 @@ excerpt: string,
  */
 count: number, });
 type MathBox = { w: number, h: number, d: number, items: Array<MathItem>, };
-type MathFont = "ams" | "caligraphic_regular" | "fraktur_regular" | "fraktur_bold" | "main_regular" | "main_bold" | "main_italic" | "main_bold_italic" | "math_italic" | "math_bold_italic" | "sans_serif_regular" | "sans_serif_bold" | "sans_serif_italic" | "script_regular" | "size1" | "size2" | "size3" | "size4" | "typewriter" | "sys";
-type MathItem = { "t": "g", f: MathFont, u: number, x: number, y: number, s: number, } | { "t": "l", x: number, y: number, w: number, th: number, dash: boolean, } | { "t": "r", x: number, y: number, w: number, h: number, } | { "t": "p", x: number, y: number, fill: boolean, d: Array<MathPath>, };
+type MathItem = { "t": "g", f: string | null, u: number, x: number, y: number, s: number, } | { "t": "l", x: number, y: number, w: number, th: number, dash: boolean, } | { "t": "r", x: number, y: number, w: number, h: number, } | { "t": "p", x: number, y: number, fill: boolean, d: Array<MathPath>, };
 type MathPath = { "t": "m", x: number, y: number, } | { "t": "l", x: number, y: number, } | { "t": "c", x1: number, y1: number, x2: number, y2: number, x: number, y: number, } | { "t": "q", x1: number, y1: number, x: number, y: number, } | { "t": "z" };
 type MdAlign = "none" | "left" | "center" | "right";
 type MdBlock = { "t": "p", k: Array<Inl>, } | { "t": "h", level: number, k: Array<Inl>, } | { "t": "code", lang: string | null, x: string, cont: boolean, } | { "t": "math", tex: string, m: MathBox | null, } | { "t": "list", start: number | null, tight: boolean, items: Array<MdItem>, } | { "t": "quote", blocks: Array<MdBlock>, } | { "t": "alert", kind: AlertKind, blocks: Array<MdBlock>, } | { "t": "table", align: Array<MdAlign>, head: Array<Array<Inl>>, rows: Array<Array<Array<Inl>>>, } | { "t": "rule" } | { "t": "notes", items: Array<MdNote>, };
 type MdItem = { task: boolean | null, blocks: Array<MdBlock>, };
 type MdNote = { n: number, blocks: Array<MdBlock>, };
-type Pasted = { start: number, end: number, bodyStart: number, bodyEnd: number, 
-/**
- * 这一块要折成一行「粘贴的内容 · N 行」（点开就地展开）；否则照排。阈值只住产出那一处。
- */
-fold: boolean, 
-/**
- * 折起那一行写好的字（「粘贴的内容 · N 行」，产出那一处写）；不折 ⇒ 缺。
- */
-foldText?: string, };
 type PlanTitle = { 
 /**
  * 等着批。
@@ -6065,7 +6129,16 @@ record: LineRecord,
  * 它的对账键（界面拿它撤那个子运行的活卡）；没有 ⇒ 这一格不出现。
  */
 rid?: string, };
-type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, 
+type SaidPart = { text: string, 
+/**
+ * 这一段折着（[`TextFold`]）；照排 ⇒ 缺。
+ */
+fold?: TextFold, };
+type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, 
+/**
+ * 两份输出各自折不折（[`TextFold`]，按去掉两头空白之后的行数）；不折 ⇒ 缺。
+ */
+stdoutFold?: TextFold, stderrFold?: TextFold, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, 
 /**
  * 怎么收场的（那一家的状态词由适配层翻，只翻一处）；状态词认不出 · 没写 ⇒ 缺。
  */
@@ -6130,6 +6203,10 @@ answer?: Answer,
  */
 exitCode?: number, 
 /**
+ * 失败那一步的尾巴（「退出码 N」/「出错」，后端 `StepResult::written` 写）：结果块抬头照摆；没失败 ⇒ 缺。
+ */
+error?: string, 
+/**
  * 这次改动说的是哪个文件（结果里写着的路径，原样）。只有改文件那几类结果有。
  */
 file?: string, 
@@ -6157,6 +6234,7 @@ chars?: number,
  */
 kind?: ResultKind, };
 type TaskEnd = "done" | "failed" | "stopped";
+type TextFold = { shown: number, total: number, more: string, };
 type TitleBy = "agent" | "user";
 type ToolCard = "agent" | "interactive" | "diff" | "md" | "command";
 type ToolStep = { 
@@ -6201,12 +6279,14 @@ type UnreadWhy = "unknownType" | "parseFailed";
 type UserText = { speaker: Speaker, 
 /**
  * 要显示的正文（剥过注入、trim 过）：人说的话 · 压缩摘要 · 派给子 agent 的活；别的来源是空串。
+ * 粘贴块的标记原样留着（改这一句那一下照它）；上屏照 `parts`。
  */
 text: string, 
 /**
- * `text` 里人粘贴进来的块（UTF-16 下标，含两头的标记）。
+ * `text` 切好的段（`face_core::record` 切）：有 ⇒ 两端一段一段照排、不再看 `text`；缺 ⇒ `text` 整段照排、不折。
+ * 人粘贴进来的块单成一段（标记与两头的换行已去）；派活那段太长 ⇒ 一段带折法。
  */
-pasted?: Array<Pasted>, };
+parts?: Array<SaidPart>, };
 type Words = string;
 ```
 
@@ -6316,9 +6396,13 @@ for: string,
  */
 content: Array<Block>, isError: boolean, 
 /**
- * 内容多少字节（各正文块的 UTF-8 字节 ＋ 各图的原图字节）：出口省掉内容之后照样有，界面写大小照它。
+ * 内容多少字节（各正文块的 UTF-8 字节 ＋ 各图的原图字节）：出口省掉内容之后照样有。
  */
-bytes: number, } | { "type": "image", 
+bytes: number, 
+/**
+ * `bytes` 写成给人看的一格（`3.0 KB`）：后端照字节写好，两端照抄、不自己换算。
+ */
+sizeText: Words, } | { "type": "image", 
 /**
  * 图片类型（`image/png` …）。
  */
@@ -6424,7 +6508,7 @@ id: string,
  */
 at?: string, 
 /**
- * `at` 在看的那一台钟上的钟面 `HH:MM`（出口那一下按请求 / 流带来的时区写，[`Record::stamp`]；界面照抄、不换算）；没有时刻 / 解不出 ⇒ 缺。
+ * `at` 在看的那一台钟上的钟面 `HH:MM`（出口那一下按请求 / 流带来的时区写，后端 `wire::stamp::RecordExt::stamp`；界面照抄、不换算）；没有时刻 / 解不出 ⇒ 缺。
  */
 timeText?: string, 
 /**
@@ -6501,22 +6585,12 @@ excerpt: string,
  */
 count: number, });
 type MathBox = { w: number, h: number, d: number, items: Array<MathItem>, };
-type MathFont = "ams" | "caligraphic_regular" | "fraktur_regular" | "fraktur_bold" | "main_regular" | "main_bold" | "main_italic" | "main_bold_italic" | "math_italic" | "math_bold_italic" | "sans_serif_regular" | "sans_serif_bold" | "sans_serif_italic" | "script_regular" | "size1" | "size2" | "size3" | "size4" | "typewriter" | "sys";
-type MathItem = { "t": "g", f: MathFont, u: number, x: number, y: number, s: number, } | { "t": "l", x: number, y: number, w: number, th: number, dash: boolean, } | { "t": "r", x: number, y: number, w: number, h: number, } | { "t": "p", x: number, y: number, fill: boolean, d: Array<MathPath>, };
+type MathItem = { "t": "g", f: string | null, u: number, x: number, y: number, s: number, } | { "t": "l", x: number, y: number, w: number, th: number, dash: boolean, } | { "t": "r", x: number, y: number, w: number, h: number, } | { "t": "p", x: number, y: number, fill: boolean, d: Array<MathPath>, };
 type MathPath = { "t": "m", x: number, y: number, } | { "t": "l", x: number, y: number, } | { "t": "c", x1: number, y1: number, x2: number, y2: number, x: number, y: number, } | { "t": "q", x1: number, y1: number, x: number, y: number, } | { "t": "z" };
 type MdAlign = "none" | "left" | "center" | "right";
 type MdBlock = { "t": "p", k: Array<Inl>, } | { "t": "h", level: number, k: Array<Inl>, } | { "t": "code", lang: string | null, x: string, cont: boolean, } | { "t": "math", tex: string, m: MathBox | null, } | { "t": "list", start: number | null, tight: boolean, items: Array<MdItem>, } | { "t": "quote", blocks: Array<MdBlock>, } | { "t": "alert", kind: AlertKind, blocks: Array<MdBlock>, } | { "t": "table", align: Array<MdAlign>, head: Array<Array<Inl>>, rows: Array<Array<Array<Inl>>>, } | { "t": "rule" } | { "t": "notes", items: Array<MdNote>, };
 type MdItem = { task: boolean | null, blocks: Array<MdBlock>, };
 type MdNote = { n: number, blocks: Array<MdBlock>, };
-type Pasted = { start: number, end: number, bodyStart: number, bodyEnd: number, 
-/**
- * 这一块要折成一行「粘贴的内容 · N 行」（点开就地展开）；否则照排。阈值只住产出那一处。
- */
-fold: boolean, 
-/**
- * 折起那一行写好的字（「粘贴的内容 · N 行」，产出那一处写）；不折 ⇒ 缺。
- */
-foldText?: string, };
 type PlanTitle = { 
 /**
  * 等着批。
@@ -6565,7 +6639,16 @@ status?: number,
  */
 title: string, };
 type ResultKind = "launched" | "handback";
-type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, 
+type SaidPart = { text: string, 
+/**
+ * 这一段折着（[`TextFold`]）；照排 ⇒ 缺。
+ */
+fold?: TextFold, };
+type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, 
+/**
+ * 两份输出各自折不折（[`TextFold`]，按去掉两头空白之后的行数）；不折 ⇒ 缺。
+ */
+stdoutFold?: TextFold, stderrFold?: TextFold, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, 
 /**
  * 怎么收场的（那一家的状态词由适配层翻，只翻一处）；状态词认不出 · 没写 ⇒ 缺。
  */
@@ -6630,6 +6713,10 @@ answer?: Answer,
  */
 exitCode?: number, 
 /**
+ * 失败那一步的尾巴（「退出码 N」/「出错」，后端 `StepResult::written` 写）：结果块抬头照摆；没失败 ⇒ 缺。
+ */
+error?: string, 
+/**
  * 这次改动说的是哪个文件（结果里写着的路径，原样）。只有改文件那几类结果有。
  */
 file?: string, 
@@ -6657,6 +6744,7 @@ chars?: number,
  */
 kind?: ResultKind, };
 type TaskEnd = "done" | "failed" | "stopped";
+type TextFold = { shown: number, total: number, more: string, };
 type TitleBy = "agent" | "user";
 type ToolCard = "agent" | "interactive" | "diff" | "md" | "command";
 type ToolStep = { 
@@ -6701,12 +6789,14 @@ type UnreadWhy = "unknownType" | "parseFailed";
 type UserText = { speaker: Speaker, 
 /**
  * 要显示的正文（剥过注入、trim 过）：人说的话 · 压缩摘要 · 派给子 agent 的活；别的来源是空串。
+ * 粘贴块的标记原样留着（改这一句那一下照它）；上屏照 `parts`。
  */
 text: string, 
 /**
- * `text` 里人粘贴进来的块（UTF-16 下标，含两头的标记）。
+ * `text` 切好的段（`face_core::record` 切）：有 ⇒ 两端一段一段照排、不再看 `text`；缺 ⇒ `text` 整段照排、不折。
+ * 人粘贴进来的块单成一段（标记与两头的换行已去）；派活那段太长 ⇒ 一段带折法。
  */
-pasted?: Array<Pasted>, };
+parts?: Array<SaidPart>, };
 type Words = string;
 ```
 
@@ -6840,9 +6930,13 @@ for: string,
  */
 content: Array<Block>, isError: boolean, 
 /**
- * 内容多少字节（各正文块的 UTF-8 字节 ＋ 各图的原图字节）：出口省掉内容之后照样有，界面写大小照它。
+ * 内容多少字节（各正文块的 UTF-8 字节 ＋ 各图的原图字节）：出口省掉内容之后照样有。
  */
-bytes: number, } | { "type": "image", 
+bytes: number, 
+/**
+ * `bytes` 写成给人看的一格（`3.0 KB`）：后端照字节写好，两端照抄、不自己换算。
+ */
+sizeText: Words, } | { "type": "image", 
 /**
  * 图片类型（`image/png` …）。
  */
@@ -6940,7 +7034,7 @@ id: string,
  */
 at?: string, 
 /**
- * `at` 在看的那一台钟上的钟面 `HH:MM`（出口那一下按请求 / 流带来的时区写，[`Record::stamp`]；界面照抄、不换算）；没有时刻 / 解不出 ⇒ 缺。
+ * `at` 在看的那一台钟上的钟面 `HH:MM`（出口那一下按请求 / 流带来的时区写，后端 `wire::stamp::RecordExt::stamp`；界面照抄、不换算）；没有时刻 / 解不出 ⇒ 缺。
  */
 timeText?: string, 
 /**
@@ -7017,22 +7111,12 @@ excerpt: string,
  */
 count: number, });
 type MathBox = { w: number, h: number, d: number, items: Array<MathItem>, };
-type MathFont = "ams" | "caligraphic_regular" | "fraktur_regular" | "fraktur_bold" | "main_regular" | "main_bold" | "main_italic" | "main_bold_italic" | "math_italic" | "math_bold_italic" | "sans_serif_regular" | "sans_serif_bold" | "sans_serif_italic" | "script_regular" | "size1" | "size2" | "size3" | "size4" | "typewriter" | "sys";
-type MathItem = { "t": "g", f: MathFont, u: number, x: number, y: number, s: number, } | { "t": "l", x: number, y: number, w: number, th: number, dash: boolean, } | { "t": "r", x: number, y: number, w: number, h: number, } | { "t": "p", x: number, y: number, fill: boolean, d: Array<MathPath>, };
+type MathItem = { "t": "g", f: string | null, u: number, x: number, y: number, s: number, } | { "t": "l", x: number, y: number, w: number, th: number, dash: boolean, } | { "t": "r", x: number, y: number, w: number, h: number, } | { "t": "p", x: number, y: number, fill: boolean, d: Array<MathPath>, };
 type MathPath = { "t": "m", x: number, y: number, } | { "t": "l", x: number, y: number, } | { "t": "c", x1: number, y1: number, x2: number, y2: number, x: number, y: number, } | { "t": "q", x1: number, y1: number, x: number, y: number, } | { "t": "z" };
 type MdAlign = "none" | "left" | "center" | "right";
 type MdBlock = { "t": "p", k: Array<Inl>, } | { "t": "h", level: number, k: Array<Inl>, } | { "t": "code", lang: string | null, x: string, cont: boolean, } | { "t": "math", tex: string, m: MathBox | null, } | { "t": "list", start: number | null, tight: boolean, items: Array<MdItem>, } | { "t": "quote", blocks: Array<MdBlock>, } | { "t": "alert", kind: AlertKind, blocks: Array<MdBlock>, } | { "t": "table", align: Array<MdAlign>, head: Array<Array<Inl>>, rows: Array<Array<Array<Inl>>>, } | { "t": "rule" } | { "t": "notes", items: Array<MdNote>, };
 type MdItem = { task: boolean | null, blocks: Array<MdBlock>, };
 type MdNote = { n: number, blocks: Array<MdBlock>, };
-type Pasted = { start: number, end: number, bodyStart: number, bodyEnd: number, 
-/**
- * 这一块要折成一行「粘贴的内容 · N 行」（点开就地展开）；否则照排。阈值只住产出那一处。
- */
-fold: boolean, 
-/**
- * 折起那一行写好的字（「粘贴的内容 · N 行」，产出那一处写）；不折 ⇒ 缺。
- */
-foldText?: string, };
 type PlanTitle = { 
 /**
  * 等着批。
@@ -7073,7 +7157,16 @@ status?: number,
  */
 title: string, };
 type ResultKind = "launched" | "handback";
-type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, 
+type SaidPart = { text: string, 
+/**
+ * 这一段折着（[`TextFold`]）；照排 ⇒ 缺。
+ */
+fold?: TextFold, };
+type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, 
+/**
+ * 两份输出各自折不折（[`TextFold`]，按去掉两头空白之后的行数）；不折 ⇒ 缺。
+ */
+stdoutFold?: TextFold, stderrFold?: TextFold, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, 
 /**
  * 怎么收场的（那一家的状态词由适配层翻，只翻一处）；状态词认不出 · 没写 ⇒ 缺。
  */
@@ -7138,6 +7231,10 @@ answer?: Answer,
  */
 exitCode?: number, 
 /**
+ * 失败那一步的尾巴（「退出码 N」/「出错」，后端 `StepResult::written` 写）：结果块抬头照摆；没失败 ⇒ 缺。
+ */
+error?: string, 
+/**
  * 这次改动说的是哪个文件（结果里写着的路径，原样）。只有改文件那几类结果有。
  */
 file?: string, 
@@ -7165,6 +7262,7 @@ chars?: number,
  */
 kind?: ResultKind, };
 type TaskEnd = "done" | "failed" | "stopped";
+type TextFold = { shown: number, total: number, more: string, };
 type TitleBy = "agent" | "user";
 type ToolCard = "agent" | "interactive" | "diff" | "md" | "command";
 type ToolStep = { 
@@ -7209,12 +7307,14 @@ type UnreadWhy = "unknownType" | "parseFailed";
 type UserText = { speaker: Speaker, 
 /**
  * 要显示的正文（剥过注入、trim 过）：人说的话 · 压缩摘要 · 派给子 agent 的活；别的来源是空串。
+ * 粘贴块的标记原样留着（改这一句那一下照它）；上屏照 `parts`。
  */
 text: string, 
 /**
- * `text` 里人粘贴进来的块（UTF-16 下标，含两头的标记）。
+ * `text` 切好的段（`face_core::record` 切）：有 ⇒ 两端一段一段照排、不再看 `text`；缺 ⇒ `text` 整段照排、不折。
+ * 人粘贴进来的块单成一段（标记与两头的换行已去）；派活那段太长 ⇒ 一段带折法。
  */
-pasted?: Array<Pasted>, };
+parts?: Array<SaidPart>, };
 type Words = string;
 ```
 
@@ -7293,9 +7393,13 @@ for: string,
  */
 content: Array<Block>, isError: boolean, 
 /**
- * 内容多少字节（各正文块的 UTF-8 字节 ＋ 各图的原图字节）：出口省掉内容之后照样有，界面写大小照它。
+ * 内容多少字节（各正文块的 UTF-8 字节 ＋ 各图的原图字节）：出口省掉内容之后照样有。
  */
-bytes: number, } | { "type": "image", 
+bytes: number, 
+/**
+ * `bytes` 写成给人看的一格（`3.0 KB`）：后端照字节写好，两端照抄、不自己换算。
+ */
+sizeText: Words, } | { "type": "image", 
 /**
  * 图片类型（`image/png` …）。
  */
@@ -7401,7 +7505,7 @@ id: string,
  */
 at?: string, 
 /**
- * `at` 在看的那一台钟上的钟面 `HH:MM`（出口那一下按请求 / 流带来的时区写，[`Record::stamp`]；界面照抄、不换算）；没有时刻 / 解不出 ⇒ 缺。
+ * `at` 在看的那一台钟上的钟面 `HH:MM`（出口那一下按请求 / 流带来的时区写，后端 `wire::stamp::RecordExt::stamp`；界面照抄、不换算）；没有时刻 / 解不出 ⇒ 缺。
  */
 timeText?: string, 
 /**
@@ -7478,22 +7582,12 @@ excerpt: string,
  */
 count: number, });
 type MathBox = { w: number, h: number, d: number, items: Array<MathItem>, };
-type MathFont = "ams" | "caligraphic_regular" | "fraktur_regular" | "fraktur_bold" | "main_regular" | "main_bold" | "main_italic" | "main_bold_italic" | "math_italic" | "math_bold_italic" | "sans_serif_regular" | "sans_serif_bold" | "sans_serif_italic" | "script_regular" | "size1" | "size2" | "size3" | "size4" | "typewriter" | "sys";
-type MathItem = { "t": "g", f: MathFont, u: number, x: number, y: number, s: number, } | { "t": "l", x: number, y: number, w: number, th: number, dash: boolean, } | { "t": "r", x: number, y: number, w: number, h: number, } | { "t": "p", x: number, y: number, fill: boolean, d: Array<MathPath>, };
+type MathItem = { "t": "g", f: string | null, u: number, x: number, y: number, s: number, } | { "t": "l", x: number, y: number, w: number, th: number, dash: boolean, } | { "t": "r", x: number, y: number, w: number, h: number, } | { "t": "p", x: number, y: number, fill: boolean, d: Array<MathPath>, };
 type MathPath = { "t": "m", x: number, y: number, } | { "t": "l", x: number, y: number, } | { "t": "c", x1: number, y1: number, x2: number, y2: number, x: number, y: number, } | { "t": "q", x1: number, y1: number, x: number, y: number, } | { "t": "z" };
 type MdAlign = "none" | "left" | "center" | "right";
 type MdBlock = { "t": "p", k: Array<Inl>, } | { "t": "h", level: number, k: Array<Inl>, } | { "t": "code", lang: string | null, x: string, cont: boolean, } | { "t": "math", tex: string, m: MathBox | null, } | { "t": "list", start: number | null, tight: boolean, items: Array<MdItem>, } | { "t": "quote", blocks: Array<MdBlock>, } | { "t": "alert", kind: AlertKind, blocks: Array<MdBlock>, } | { "t": "table", align: Array<MdAlign>, head: Array<Array<Inl>>, rows: Array<Array<Array<Inl>>>, } | { "t": "rule" } | { "t": "notes", items: Array<MdNote>, };
 type MdItem = { task: boolean | null, blocks: Array<MdBlock>, };
 type MdNote = { n: number, blocks: Array<MdBlock>, };
-type Pasted = { start: number, end: number, bodyStart: number, bodyEnd: number, 
-/**
- * 这一块要折成一行「粘贴的内容 · N 行」（点开就地展开）；否则照排。阈值只住产出那一处。
- */
-fold: boolean, 
-/**
- * 折起那一行写好的字（「粘贴的内容 · N 行」，产出那一处写）；不折 ⇒ 缺。
- */
-foldText?: string, };
 type PlanTitle = { 
 /**
  * 等着批。
@@ -7542,7 +7636,16 @@ status?: number,
  */
 title: string, };
 type ResultKind = "launched" | "handback";
-type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, 
+type SaidPart = { text: string, 
+/**
+ * 这一段折着（[`TextFold`]）；照排 ⇒ 缺。
+ */
+fold?: TextFold, };
+type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, 
+/**
+ * 两份输出各自折不折（[`TextFold`]，按去掉两头空白之后的行数）；不折 ⇒ 缺。
+ */
+stdoutFold?: TextFold, stderrFold?: TextFold, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, 
 /**
  * 怎么收场的（那一家的状态词由适配层翻，只翻一处）；状态词认不出 · 没写 ⇒ 缺。
  */
@@ -7607,6 +7710,10 @@ answer?: Answer,
  */
 exitCode?: number, 
 /**
+ * 失败那一步的尾巴（「退出码 N」/「出错」，后端 `StepResult::written` 写）：结果块抬头照摆；没失败 ⇒ 缺。
+ */
+error?: string, 
+/**
  * 这次改动说的是哪个文件（结果里写着的路径，原样）。只有改文件那几类结果有。
  */
 file?: string, 
@@ -7634,6 +7741,7 @@ chars?: number,
  */
 kind?: ResultKind, };
 type TaskEnd = "done" | "failed" | "stopped";
+type TextFold = { shown: number, total: number, more: string, };
 type TitleBy = "agent" | "user";
 type ToolCard = "agent" | "interactive" | "diff" | "md" | "command";
 type ToolStep = { 
@@ -7678,12 +7786,14 @@ type UnreadWhy = "unknownType" | "parseFailed";
 type UserText = { speaker: Speaker, 
 /**
  * 要显示的正文（剥过注入、trim 过）：人说的话 · 压缩摘要 · 派给子 agent 的活；别的来源是空串。
+ * 粘贴块的标记原样留着（改这一句那一下照它）；上屏照 `parts`。
  */
 text: string, 
 /**
- * `text` 里人粘贴进来的块（UTF-16 下标，含两头的标记）。
+ * `text` 切好的段（`face_core::record` 切）：有 ⇒ 两端一段一段照排、不再看 `text`；缺 ⇒ `text` 整段照排、不折。
+ * 人粘贴进来的块单成一段（标记与两头的换行已去）；派活那段太长 ⇒ 一段带折法。
  */
-pasted?: Array<Pasted>, };
+parts?: Array<SaidPart>, };
 type Words = string;
 ```
 
@@ -7718,7 +7828,7 @@ parts: Array<TurnPart>,
 span: TurnSpan, 
 /**
  * 这一段管到哪一条为止（不含）：段后面紧跟的那一条 —— 这一轮下一条露着的，或下一轮你那句（那一轮在不在主线上都一样：
- * 回退掉的那一轮不归上一轮的段）；还开着的最后一轮的尾巴那一段 ⇒ 没有（到记录尾）。
+ * 回退掉的那一轮不归上一轮的段）。只有最后一轮的尾巴那一段没有（到记录尾）：别的段都有，两端只照 `after` → `until` 收段、不另找边界。
  */
 until: string | null, 
 /**
@@ -7846,6 +7956,7 @@ type AskKind = "approve" | "answer" | "plan";
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
 type CanTerminal = { near: TermWay, far: TermWay, };
+type FactsClock = { text: Words, from: number, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
 type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
@@ -7900,7 +8011,7 @@ rank: number,
  */
 waitedMs: number | null, 
 /**
- * 这一条可以怎么答（挂着的待答请求，`control::asks`）：选项的字 · 语气 · 要不要附话都写好；没有挂着的 ⇒ `null`（只能去终端）。
+ * 这一条可以怎么答（挂着的待答请求，`control::asks`）：选项的字 · 样子 · 段 · 要不要附话都写好；没有挂着的 ⇒ `null`（只能去终端）。
  */
 ask: NeedsAsk | null, 
 /**
@@ -7954,15 +8065,24 @@ type NeedsChoice = {
 /**
  * 答的时候交回的那个词（闭集见 `control::asks::verdict_of`）。
  */
-id: string, text: Words, tone: Tone, 
+id: string, text: Words, 
+/**
+ * 长什么样（出口照它画，不按 id · 次序 · 段自己挑）。
+ */
+look: NeedsChoiceLook, 
 /**
  * 要不要附一句话：none · optional · required。
  */
 note: NeedsNote, 
 /**
- * 排在哪一段（出口照它分段，不按 id 认）。
+ * 排在哪一段（出口照它分段，不按 id 认；一段一行 / 一组）。
  */
-row: NeedsChoiceRow, };
+row: NeedsChoiceRow, 
+/**
+ * 答的时候带不带每题的答（`AnswerReq.picks`）：只有提交答案那一颗。
+ */
+picks: boolean, };
+type NeedsChoiceLook = "main" | "danger" | "plain" | "ghost";
 type NeedsChoiceRow = "main" | "hold" | "release";
 type NeedsClock = { 
 /**
@@ -7997,7 +8117,11 @@ type NeedsQuestion = {
 /**
  * `q0` · `q1` …（答的时候 `picks` 按它键）。
  */
-id: string, text: string, header: string | null, multi: boolean, options: Array<NeedsQuestionOption>, 
+id: string, text: string, 
+/**
+ * 题头那一句，写好的（多选带「多选」那一说法）；没有 ⇒ `null`。
+ */
+head: string | null, multi: boolean, options: Array<NeedsQuestionOption>, 
 /**
  * 恒 `true`：每题都许写自由文本（那一家框里的「Type something」）。
  */
@@ -8079,9 +8203,17 @@ name: Words,
  */
 tip: Words, 
 /**
- * 没有会话事实时的状态一句。
+ * 状态一句（定格的字，不带时长）：活着、记录读得到 ⇒ 那台照记录写（在跑的那一步 · 等的种类 · 后台那一句 …）；否则是那一态的那一句。
  */
-line: Words, tone: Tone, 
+line: Words, 
+/**
+ * 会走的那一截（同一句、时长那一截留 `{dur}` ＋ 起点，出口按此刻填）；没有 ⇒ 不上线，照 `line`。
+ */
+clock?: FactsClock, 
+/**
+ * 悬停卡那一句（在等 ⇒ 等的那一步 · 在跑 ⇒ 那一步 · 空闲 / 后台 ⇒ 最后一句）；没有 ⇒ 不上线。
+ */
+peek?: Words, tone: Tone, 
 /**
  * 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5。
  */
@@ -8115,6 +8247,7 @@ type AskKind = "approve" | "answer" | "plan";
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
 type CanTerminal = { near: TermWay, far: TermWay, };
+type FactsClock = { text: Words, from: number, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
 type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
@@ -8170,7 +8303,7 @@ rank: number,
  */
 waitedMs: number | null, 
 /**
- * 这一条可以怎么答（挂着的待答请求，`control::asks`）：选项的字 · 语气 · 要不要附话都写好；没有挂着的 ⇒ `null`（只能去终端）。
+ * 这一条可以怎么答（挂着的待答请求，`control::asks`）：选项的字 · 样子 · 段 · 要不要附话都写好；没有挂着的 ⇒ `null`（只能去终端）。
  */
 ask: NeedsAsk | null, 
 /**
@@ -8225,15 +8358,24 @@ type NeedsChoice = {
 /**
  * 答的时候交回的那个词（闭集见 `control::asks::verdict_of`）。
  */
-id: string, text: Words, tone: Tone, 
+id: string, text: Words, 
+/**
+ * 长什么样（出口照它画，不按 id · 次序 · 段自己挑）。
+ */
+look: NeedsChoiceLook, 
 /**
  * 要不要附一句话：none · optional · required。
  */
 note: NeedsNote, 
 /**
- * 排在哪一段（出口照它分段，不按 id 认）。
+ * 排在哪一段（出口照它分段，不按 id 认；一段一行 / 一组）。
  */
-row: NeedsChoiceRow, };
+row: NeedsChoiceRow, 
+/**
+ * 答的时候带不带每题的答（`AnswerReq.picks`）：只有提交答案那一颗。
+ */
+picks: boolean, };
+type NeedsChoiceLook = "main" | "danger" | "plain" | "ghost";
 type NeedsChoiceRow = "main" | "hold" | "release";
 type NeedsClock = { 
 /**
@@ -8251,7 +8393,7 @@ type NeedsItem = { "kind": "session", rank: number,
  */
 clock?: NeedsClock, session: NeedsRow, } | { "kind": "plan", rank: number, workspace: string, slice: string, cell?: NeedsCell, } | { "kind": "manual", rank: number, manual: ManualItem, };
 type NeedsKind = "approve" | "answer" | "plan" | "network" | "worker" | "goal" | "choose" | "unknown";
-type NeedsMergeReq = { machines: Array<Machine>, };
+type NeedsMergeReq = Record<symbol, never>;
 type NeedsMerged = { items: Array<NeedsAt>, total: number, 
 /**
  * 头那一句（入口 · 总览组头）：数说得准 ⇒「需手动 n」；说不准 ⇒「需手动」（不带数）。
@@ -8266,7 +8408,11 @@ type NeedsQuestion = {
 /**
  * `q0` · `q1` …（答的时候 `picks` 按它键）。
  */
-id: string, text: string, header: string | null, multi: boolean, options: Array<NeedsQuestionOption>, 
+id: string, text: string, 
+/**
+ * 题头那一句，写好的（多选带「多选」那一说法）；没有 ⇒ `null`。
+ */
+head: string | null, multi: boolean, options: Array<NeedsQuestionOption>, 
 /**
  * 恒 `true`：每题都许写自由文本（那一家框里的「Type something」）。
  */
@@ -8349,9 +8495,17 @@ name: Words,
  */
 tip: Words, 
 /**
- * 没有会话事实时的状态一句。
+ * 状态一句（定格的字，不带时长）：活着、记录读得到 ⇒ 那台照记录写（在跑的那一步 · 等的种类 · 后台那一句 …）；否则是那一态的那一句。
  */
-line: Words, tone: Tone, 
+line: Words, 
+/**
+ * 会走的那一截（同一句、时长那一截留 `{dur}` ＋ 起点，出口按此刻填）；没有 ⇒ 不上线，照 `line`。
+ */
+clock?: FactsClock, 
+/**
+ * 悬停卡那一句（在等 ⇒ 等的那一步 · 在跑 ⇒ 那一步 · 空闲 / 后台 ⇒ 最后一句）；没有 ⇒ 不上线。
+ */
+peek?: Words, tone: Tone, 
 /**
  * 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5。
  */
@@ -8485,17 +8639,11 @@ type FactsBySid = {
  */
 sid: string, };
 type FactsClock = { text: Words, from: number, };
-type FactsCost = { partial: boolean, text: Words, };
-type FactsLine = { for: SessionActivity, text: Words, clock: FactsClock | null, peek: Words | null, };
 type FactsReply = { 
 /**
  * 按 sid 找到的那份记录（全路径）；按路径问的 ⇒ 缺。
  */
 path?: string, 
-/**
- * 源会话 sid；不是分叉来的 ⇒ `null`。
- */
-forkedFrom: string | null, 
 /**
  * 写类工具碰过的文件（原样，可能相对 / Windows 路径），近因序：最近碰的在末尾。
  */
@@ -8580,10 +8728,6 @@ permissionModeText: Words | null,
  */
 tokens: TokenUse | null, 
 /**
- * 全会话花费（记录里那一家自己记的花费那一条，最后一条为准）；记录里没有 ⇒ `null`（不按定价自己算）。
- */
-cost: FactsCost | null, 
-/**
  * **后台任务运行中**：那台说一轮停了、后台命令还在跑 ⇒ 状态一句（不累加，每次现查）。不是这一态 ⇒ `null`。
  */
 background: FactsBackground | null, 
@@ -8619,12 +8763,7 @@ startedByText: Words | null,
 /**
  * 子会话那一句（「子会话 N」，[`set_kin`] 写）；一个都没有 ⇒ `null`。
  */
-childrenText: Words | null, 
-/**
- * **状态一句里会走的那一截**：pidfile 此刻说的那一态 ＋ 记录里的事实（在跑的那一步 · 等的种类与起点 · 最后一句的时刻），[`line_of`] 写。
- * 不活 ⇒ `null`。不累加，每次现查。
- */
-line: FactsLine | null, };
+childrenText: Words | null, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
 type HistoryFactsReq = FactsByPath | FactsBySid;
@@ -8701,7 +8840,7 @@ rank: number,
  */
 waitedMs: number | null, 
 /**
- * 这一条可以怎么答（挂着的待答请求，`control::asks`）：选项的字 · 语气 · 要不要附话都写好；没有挂着的 ⇒ `null`（只能去终端）。
+ * 这一条可以怎么答（挂着的待答请求，`control::asks`）：选项的字 · 样子 · 段 · 要不要附话都写好；没有挂着的 ⇒ `null`（只能去终端）。
  */
 ask: NeedsAsk | null, 
 /**
@@ -8754,15 +8893,24 @@ type NeedsChoice = {
 /**
  * 答的时候交回的那个词（闭集见 `control::asks::verdict_of`）。
  */
-id: string, text: Words, tone: Tone, 
+id: string, text: Words, 
+/**
+ * 长什么样（出口照它画，不按 id · 次序 · 段自己挑）。
+ */
+look: NeedsChoiceLook, 
 /**
  * 要不要附一句话：none · optional · required。
  */
 note: NeedsNote, 
 /**
- * 排在哪一段（出口照它分段，不按 id 认）。
+ * 排在哪一段（出口照它分段，不按 id 认；一段一行 / 一组）。
  */
-row: NeedsChoiceRow, };
+row: NeedsChoiceRow, 
+/**
+ * 答的时候带不带每题的答（`AnswerReq.picks`）：只有提交答案那一颗。
+ */
+picks: boolean, };
+type NeedsChoiceLook = "main" | "danger" | "plain" | "ghost";
 type NeedsChoiceRow = "main" | "hold" | "release";
 type NeedsKind = "approve" | "answer" | "plan" | "network" | "worker" | "goal" | "choose" | "unknown";
 type NeedsNote = "none" | "optional" | "required";
@@ -8770,7 +8918,11 @@ type NeedsQuestion = {
 /**
  * `q0` · `q1` …（答的时候 `picks` 按它键）。
  */
-id: string, text: string, header: string | null, multi: boolean, options: Array<NeedsQuestionOption>, 
+id: string, text: string, 
+/**
+ * 题头那一句，写好的（多选带「多选」那一说法）；没有 ⇒ `null`。
+ */
+head: string | null, multi: boolean, options: Array<NeedsQuestionOption>, 
 /**
  * 恒 `true`：每题都许写自由文本（那一家框里的「Type something」）。
  */
@@ -8909,9 +9061,17 @@ name: Words,
  */
 tip: Words, 
 /**
- * 没有会话事实时的状态一句。
+ * 状态一句（定格的字，不带时长）：活着、记录读得到 ⇒ 那台照记录写（在跑的那一步 · 等的种类 · 后台那一句 …）；否则是那一态的那一句。
  */
-line: Words, tone: Tone, 
+line: Words, 
+/**
+ * 会走的那一截（同一句、时长那一截留 `{dur}` ＋ 起点，出口按此刻填）；没有 ⇒ 不上线，照 `line`。
+ */
+clock?: FactsClock, 
+/**
+ * 悬停卡那一句（在等 ⇒ 等的那一步 · 在跑 ⇒ 那一步 · 空闲 / 后台 ⇒ 最后一句）；没有 ⇒ 不上线。
+ */
+peek?: Words, tone: Tone, 
 /**
  * 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5。
  */
@@ -9312,9 +9472,13 @@ for: string,
  */
 content: Array<Block>, isError: boolean, 
 /**
- * 内容多少字节（各正文块的 UTF-8 字节 ＋ 各图的原图字节）：出口省掉内容之后照样有，界面写大小照它。
+ * 内容多少字节（各正文块的 UTF-8 字节 ＋ 各图的原图字节）：出口省掉内容之后照样有。
  */
-bytes: number, } | { "type": "image", 
+bytes: number, 
+/**
+ * `bytes` 写成给人看的一格（`3.0 KB`）：后端照字节写好，两端照抄、不自己换算。
+ */
+sizeText: Words, } | { "type": "image", 
 /**
  * 图片类型（`image/png` …）。
  */
@@ -9461,7 +9625,7 @@ id: string,
  */
 at?: string, 
 /**
- * `at` 在看的那一台钟上的钟面 `HH:MM`（出口那一下按请求 / 流带来的时区写，[`Record::stamp`]；界面照抄、不换算）；没有时刻 / 解不出 ⇒ 缺。
+ * `at` 在看的那一台钟上的钟面 `HH:MM`（出口那一下按请求 / 流带来的时区写，后端 `wire::stamp::RecordExt::stamp`；界面照抄、不换算）；没有时刻 / 解不出 ⇒ 缺。
  */
 timeText?: string, 
 /**
@@ -9538,22 +9702,12 @@ excerpt: string,
  */
 count: number, });
 type MathBox = { w: number, h: number, d: number, items: Array<MathItem>, };
-type MathFont = "ams" | "caligraphic_regular" | "fraktur_regular" | "fraktur_bold" | "main_regular" | "main_bold" | "main_italic" | "main_bold_italic" | "math_italic" | "math_bold_italic" | "sans_serif_regular" | "sans_serif_bold" | "sans_serif_italic" | "script_regular" | "size1" | "size2" | "size3" | "size4" | "typewriter" | "sys";
-type MathItem = { "t": "g", f: MathFont, u: number, x: number, y: number, s: number, } | { "t": "l", x: number, y: number, w: number, th: number, dash: boolean, } | { "t": "r", x: number, y: number, w: number, h: number, } | { "t": "p", x: number, y: number, fill: boolean, d: Array<MathPath>, };
+type MathItem = { "t": "g", f: string | null, u: number, x: number, y: number, s: number, } | { "t": "l", x: number, y: number, w: number, th: number, dash: boolean, } | { "t": "r", x: number, y: number, w: number, h: number, } | { "t": "p", x: number, y: number, fill: boolean, d: Array<MathPath>, };
 type MathPath = { "t": "m", x: number, y: number, } | { "t": "l", x: number, y: number, } | { "t": "c", x1: number, y1: number, x2: number, y2: number, x: number, y: number, } | { "t": "q", x1: number, y1: number, x: number, y: number, } | { "t": "z" };
 type MdAlign = "none" | "left" | "center" | "right";
 type MdBlock = { "t": "p", k: Array<Inl>, } | { "t": "h", level: number, k: Array<Inl>, } | { "t": "code", lang: string | null, x: string, cont: boolean, } | { "t": "math", tex: string, m: MathBox | null, } | { "t": "list", start: number | null, tight: boolean, items: Array<MdItem>, } | { "t": "quote", blocks: Array<MdBlock>, } | { "t": "alert", kind: AlertKind, blocks: Array<MdBlock>, } | { "t": "table", align: Array<MdAlign>, head: Array<Array<Inl>>, rows: Array<Array<Array<Inl>>>, } | { "t": "rule" } | { "t": "notes", items: Array<MdNote>, };
 type MdItem = { task: boolean | null, blocks: Array<MdBlock>, };
 type MdNote = { n: number, blocks: Array<MdBlock>, };
-type Pasted = { start: number, end: number, bodyStart: number, bodyEnd: number, 
-/**
- * 这一块要折成一行「粘贴的内容 · N 行」（点开就地展开）；否则照排。阈值只住产出那一处。
- */
-fold: boolean, 
-/**
- * 折起那一行写好的字（「粘贴的内容 · N 行」，产出那一处写）；不折 ⇒ 缺。
- */
-foldText?: string, };
 type PlanTitle = { 
 /**
  * 等着批。
@@ -9594,7 +9748,16 @@ status?: number,
  */
 title: string, };
 type ResultKind = "launched" | "handback";
-type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, 
+type SaidPart = { text: string, 
+/**
+ * 这一段折着（[`TextFold`]）；照排 ⇒ 缺。
+ */
+fold?: TextFold, };
+type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, 
+/**
+ * 两份输出各自折不折（[`TextFold`]，按去掉两头空白之后的行数）；不折 ⇒ 缺。
+ */
+stdoutFold?: TextFold, stderrFold?: TextFold, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, 
 /**
  * 怎么收场的（那一家的状态词由适配层翻，只翻一处）；状态词认不出 · 没写 ⇒ 缺。
  */
@@ -9659,6 +9822,10 @@ answer?: Answer,
  */
 exitCode?: number, 
 /**
+ * 失败那一步的尾巴（「退出码 N」/「出错」，后端 `StepResult::written` 写）：结果块抬头照摆；没失败 ⇒ 缺。
+ */
+error?: string, 
+/**
  * 这次改动说的是哪个文件（结果里写着的路径，原样）。只有改文件那几类结果有。
  */
 file?: string, 
@@ -9687,6 +9854,7 @@ chars?: number,
 kind?: ResultKind, };
 type TailHow = "tail" | "resume" | "handoff" | "truncated" | "rewritten";
 type TaskEnd = "done" | "failed" | "stopped";
+type TextFold = { shown: number, total: number, more: string, };
 type TitleBy = "agent" | "user";
 type ToolCard = "agent" | "interactive" | "diff" | "md" | "command";
 type ToolStep = { 
@@ -9731,12 +9899,14 @@ type UnreadWhy = "unknownType" | "parseFailed";
 type UserText = { speaker: Speaker, 
 /**
  * 要显示的正文（剥过注入、trim 过）：人说的话 · 压缩摘要 · 派给子 agent 的活；别的来源是空串。
+ * 粘贴块的标记原样留着（改这一句那一下照它）；上屏照 `parts`。
  */
 text: string, 
 /**
- * `text` 里人粘贴进来的块（UTF-16 下标，含两头的标记）。
+ * `text` 切好的段（`face_core::record` 切）：有 ⇒ 两端一段一段照排、不再看 `text`；缺 ⇒ `text` 整段照排、不折。
+ * 人粘贴进来的块单成一段（标记与两头的换行已去）；派活那段太长 ⇒ 一段带折法。
  */
-pasted?: Array<Pasted>, };
+parts?: Array<SaidPart>, };
 type Words = string;
 ```
 
@@ -9837,7 +10007,11 @@ command: string,
 /**
  * 为什么做不到 —— **就是真调用那一刻会回的那个命令级 code**（如 `no_tmux`）。
  */
-code: string, };
+code: string, 
+/**
+ * 置灰时说的那一句（称呼那台、码不上屏），本机后端写好（见上「置灰那一句谁写」）。
+ */
+said: string, };
 ```
 
 码：`bad_args`
@@ -10063,11 +10237,7 @@ type FirstRun = { steps: Array<FirstRunStep>,
 skipped: boolean, };
 type FirstRunAct = { label: Words, go: FirstRunGo, };
 type FirstRunGo = "aliases" | "add_machine";
-type FirstRunReq = { 
-/**
- * 机器表里有几台远端（机器表住 monitor 那一侧，问的那一方带上）。
- */
-remotes: number, };
+type FirstRunReq = Record<symbol, never>;
 type FirstRunStep = { id: FirstRunStepId, done: boolean, name: Words, hint: Words, act: FirstRunAct, };
 type FirstRunStepId = "terminal" | "remote";
 type Words = string;
@@ -10110,9 +10280,11 @@ plate: Words,
  */
 kindLine: Words, 
 /**
- * 这个号「5h 那一格」写好的字（同 `quota-read` 那一格：账读不出 ⇒ `5h 读不到`）；没出过数 · 按量号 ⇒ `null`。
+ * 这个号的额度格（同一份 `quota-read` 成品里取，后端 `with_quota` 写，两端照摆）：订阅号一个语义位一格、照 5h · 7d 的次序，
+ * `text` 是整格的字（位名 · 值 · 重置），`tone` 是那一格的语气（数旧也画 warn）；按量号一格（`按量` · 被拒那一句，`slot` 空串）；
+ * 账读不出 ⇒ 一格 `5h 读不到`；没出过数的订阅号 · 账上没有 ⇒ 空。紧凑那一格（恢复菜单 · 新会话框）取第一格。
  */
-quota: Words | null, 
+slots: Array<SlotShow>, 
 /**
  * 选不了（`selectable: false`）的那一句：需登录 · 没配 key · 不隔离 · 号目录不在；选得了 ⇒ `null`。
  * 账号 0 不经选号（起它走「不指定号」那一条）⇒ 恒 `null`。
@@ -10165,7 +10337,7 @@ accounts: Array<AccountRow>,
  * 这台的 API key 凭据文件不是只给本人（宽在哪 ＋ 怎么修；查不出 ⇒ 为什么）；都没有 ⇒ `null`。
  */
 notice: string | null, };
-type Badge = { text: Words, warn: boolean, title: Words, };
+type Badge = { text: Words, warn: boolean, };
 type ChangedFile = { path: string, what: string, 
 /**
  * 撤回在哪（设置窗的页 · 栏 · 锚点）；没有 ⇒ `null`。
@@ -10335,6 +10507,31 @@ atMs: number,
  * 「采样于 12:03」（后端照文案表与那一台的钟写）。
  */
 said: Words, };
+type SlotShow = { slot: string, pct?: number, resetsAt?: number, 
+/**
+ * `resets_at` 距今（`+1h50m`；同上，只在还没到时有）。
+ */
+resetsAtRelText?: string, 
+/**
+ * 重置那一格写好的字（`↻18:30` · 已过 `↻13:10 已过`；同 `rows` 里那一格）；说不出几点 ⇒ 缺。
+ */
+resetText?: string, 
+/**
+ * 用满：这个窗口用到 100%、还没重置（画 `✕`；被拒而没用满画「{pct}% · 被拒」）。没用满 ⇒ 缺。
+ */
+full?: boolean, 
+/**
+ * 这一格的字（唯一写法 `slot_words`：超额在兜 `超额` · 上一窗已过 / 没数 `—` · 用满 `✕` · 被拒没用满 `58% · 被拒` · 否则 `58%`）。
+ */
+text: string, 
+/**
+ * 那一格的语气：用满 · 被拒 ⇒ `fail`；超额在兜 · 卡着的窗口快满 ⇒ `warn`；否则 `plain`。
+ */
+tone: "plain" | "fail" | "warn", 
+/**
+ * 这一格那个窗口「1% ≈ 多少用量」写好的字（`1% ≈ 2.1M`，同 [`WindowShow::per_pct_text`]）；量不到 ⇒ 缺。
+ */
+perPctText?: string, };
 type UndoAt = { page: string, tab?: string, anchor?: string, };
 type Words = string;
 ```
@@ -10467,7 +10664,7 @@ type ChoreState = "todo" | "done" | "expired" | "blocked" | "declined";
 type ChoreTag = { text: string, kind: ChoreKind, };
 type ChoreTone = "ok" | "bad" | "warn" | "muted";
 type ChoresAt = { origin: Machine, report?: DataReport, said?: string, };
-type ChoresMergeReq = { machines: Array<Machine>, client?: FootprintClient | null, };
+type ChoresMergeReq = { client?: FootprintClient | null, };
 type ChoresMerged = { total: ChoreCounts, machines: Array<ChoresAt>, };
 type DataReport = { 
 /**
@@ -11553,6 +11750,10 @@ present: boolean,
 conflictingFunctions: Array<AliasNameClash>, };
 type AliasListing = { 
 /**
+ * 候选是哪种 shell 的（`aliases-read` 里就是这台后端说的那一种，[`here_shell`]）：界面照它画平台那几格。
+ */
+shell: ShellKind, 
+/**
  * 这台机器上这种 shell 的启动文件候选（「那一行 source 加进哪份」·「别名块装进哪份」，同一批）。
  */
 rcCandidates: Array<AliasStartupFile>, 
@@ -11604,11 +11805,7 @@ policy: PsExecPolicy | null,
  */
 blockLines: number, };
 type AliasWins = "yours" | "list" | "unclear";
-type AliasesReadReq = { 
-/**
- * `posix` / `powershell`（这台后端不在 Windows ⇒ `powershell` 拒）。
- */
-shell: ShellKind, rcPath?: string | null, };
+type AliasesReadReq = { rcPath?: string | null, };
 type PsExecPolicy = { host: PsHost, 
 /**
  * 生效那一档的原词（`Get-ExecutionPolicy`）；问不到 ⇒ `None`，原因词在 `error`。
@@ -11645,6 +11842,11 @@ type NoArgs = Record<symbol, never>;
 type ProfileAccountPick = { "kind": "account", name: string, } | { "kind": "base" };
 type ProfileAccountShape = { account: string, form: "plain" | "tmux" | "hosted", };
 type ProfileCwdCase = { at: string, to: string, };
+type ProfileDrop = { label: string, kids: Array<string>, 
+/**
+ * 删的是盖着内置的那一段 ⇒ 删完那一条就回到内置（当场交、不藏不撤）。
+ */
+restores: boolean, };
 type ProfileForm = { name: string, from: string | null, account: ProfileAccountPick | null, tmux: ProfileTmuxPick | null, cwdIf: Array<ProfileCwdCase> | null, cwd: string | null, agent: string | null, 
 /**
  * 交给 agent 的那串（一格文本，写法同 shell：空白分词、引号里原样）。
@@ -11669,7 +11871,11 @@ type ProfileProblem = { line: number | null, message: string,
  * 复制详情（有下层原话时才有：TOML 解析器那一句）；没有 ⇒ `null`。
  */
 detail: string | null, };
-type ProfileRow = { name: string, from: string | null, own: Array<ProfileOwnItem>, agent: Array<string>, usable: boolean, problem: ProfileProblem | null, kind: ProfileKind, functionWhy: string | null, 
+type ProfileRow = { name: string, from: string | null, own: Array<ProfileOwnItem>, agent: Array<string>, usable: boolean, problem: ProfileProblem | null, 
+/**
+ * 内置的那一段 ⇒ 标上的那个字（「内置」）；其余 ⇒ `null`。
+ */
+badge: string | null, drop: ProfileDrop | null, kind: ProfileKind, functionWhy: string | null, 
 /**
  * 写成函数时写在哪份文件、写成什么。
  */
@@ -11701,10 +11907,6 @@ path: string,
  */
 pathShown: string, 
 /**
- * 配置文件在不在。
- */
-exists: boolean, 
-/**
  * 盘上那份的版本（不在 ⇒ `null`），存的时候当 `ifRev` 交回 `profiles-write`。
  */
 rev: string | null, 
@@ -11720,14 +11922,6 @@ fileProblem: ProfileProblem | null, profiles: Array<ProfileRow>,
  * 这台存好的几组会话（`[set."组名"]`，照写下的先后）；一组写错只那一组带 `problems`。
  */
 sets: Array<SetOut>, 
-/**
- * 配置文件不在时首建那几条的预览（在 ⇒ 空）：两条（`cc` · `cct`），没有 tmux 的那台只一条。
- */
-seed: Array<ProfileRow>, 
-/**
- * 空态那一块的说明与按钮字，随 `seed` 的条数（没有 tmux 的那台只建一条）；`seed` 空 ⇒ 空串。
- */
-seedHint: string, seedCreate: string, 
 /**
  * 链接住的目录（`~/.cc-monitor/bin`）。
  */
@@ -11826,50 +12020,6 @@ type Tab = "show" | "hide";
 
 码：`bad_args` · `refused`
 
-#### `profiles-from-line`
-
-一条自由命令行折成别名表单（头一个词是哪一家的启动器 · ccm 照它自己的解析器折）。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --profiles-from-line`
-
-入参 `ProfilesFromLineReq` · 回包 `ProfileForm`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type ProfileAccountPick = { "kind": "account", name: string, } | { "kind": "base" };
-type ProfileCwdCase = { at: string, to: string, };
-type ProfileForm = { name: string, from: string | null, account: ProfileAccountPick | null, tmux: ProfileTmuxPick | null, cwdIf: Array<ProfileCwdCase> | null, cwd: string | null, agent: string | null, 
-/**
- * 交给 agent 的那串（一格文本，写法同 shell：空白分词、引号里原样）。
- */
-args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, 
-/**
- * 标签页：显示 / 隐藏（`null` ＝ 继承）。
- */
-tab: Tab | null, 
-/**
- * 起出来的会话进哪个标签页组（`null` ＝ 继承）。
- */
-tabGroup: string | null, 
-/**
- * 开口那句：落在 tmux 里起新会话时交给 agent（`null` ＝ 继承）。
- */
-say: string | null, };
-type ProfileTmuxMode = "auto" | "fixed" | "base" | "hosted";
-type ProfileTmuxPick = { mode: ProfileTmuxMode, name: string, };
-type ProfilesFromLineReq = { name: string, 
-/**
- * 那一条命令原样（写法同 shell：空白分词、引号里原样）。
- */
-line: string, cwd?: string | null, 
-/**
- * 起在这个固定名的 tmux 会话里（缺 ⇒ 照命令行）。
- */
-sessionName?: string | null, };
-type Tab = "show" | "hide";
-```
-
-码：`bad_args` · `refused`
-
 #### `profiles-impact`
 
 这几处改动会让哪几段合下来变（改前改后）。
@@ -11900,7 +12050,7 @@ tabGroup: string | null,
  * 开口那句：落在 tmux 里起新会话时交给 agent（`null` ＝ 继承）。
  */
 say: string | null, };
-type ProfileOp = { "op": "set", was: string | null, form: ProfileForm, } | { "op": "remove", name: string, children?: ProfileChildren, } | { "op": "init", seed: boolean, } | { "op": "saveSet", was: string | null, set: SetEdit, } | { "op": "removeSet", name: string, };
+type ProfileOp = { "op": "set", was: string | null, form: ProfileForm, } | { "op": "remove", name: string, children?: ProfileChildren, } | { "op": "saveSet", was: string | null, set: SetEdit, } | { "op": "removeSet", name: string, };
 type ProfileSlotChange = { slot: ProfileSlotId, label: string, before: string, after: string, };
 type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "tab" | "tabGroup" | "say";
 type ProfileTmuxMode = "auto" | "fixed" | "base" | "hosted";
@@ -11959,7 +12109,7 @@ tabGroup: string | null,
  * 开口那句：落在 tmux 里起新会话时交给 agent（`null` ＝ 继承）。
  */
 say: string | null, };
-type ProfileOp = { "op": "set", was: string | null, form: ProfileForm, } | { "op": "remove", name: string, children?: ProfileChildren, } | { "op": "init", seed: boolean, } | { "op": "saveSet", was: string | null, set: SetEdit, } | { "op": "removeSet", name: string, };
+type ProfileOp = { "op": "set", was: string | null, form: ProfileForm, } | { "op": "remove", name: string, children?: ProfileChildren, } | { "op": "saveSet", was: string | null, set: SetEdit, } | { "op": "removeSet", name: string, };
 type ProfileTmuxMode = "auto" | "fixed" | "base" | "hosted";
 type ProfileTmuxPick = { mode: ProfileTmuxMode, name: string, };
 type ProfilesWriteDone = { rev: string | null, reload: string | null, };
@@ -12448,7 +12598,7 @@ type BusUnreadReq = { id: string, };
 
 #### `terminal-ssh`
 
-给一台远端开终端要跑的那一串。
+给一台机器开终端要跑的那一串。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --terminal-ssh`
 
@@ -12460,11 +12610,11 @@ type Sid = string;
 type SshCommand = { 
 /**
  * cc-monitor 自己开的窗里跑的那一整串，本机后端拼好：入参给了 `sid`、记录目录也在 ⇒ 前奏（跑它的 shell 把窗口标签记进本机后端的家）
- * ＋ `line` ＋ 收尾（那条 ssh 一退就删掉那份记录；里面是本机数据目录的绝对路径与这台终端方言的写法）；否则就是 `line`。
+ * ＋ `line` ＋ 收尾（那一行一退就删掉那份记录；里面是本机数据目录的绝对路径与这台终端方言的写法）；否则就是 `line`。
  */
 window: string, 
 /**
- * 这台电脑终端里跑的那一行（Windows：PowerShell `& '<ssh 全路径>' -t … -- 'bash -lic …'`；别处：同一组参数的 POSIX shell 一行）。
+ * 这台电脑终端里跑的那一行（远端：Windows PowerShell `& '<ssh 全路径>' -t … -- 'bash -lic …'`、别处同一组参数的 POSIX shell 一行；本机：那一串本身）。
  */
 line: string, };
 type TerminalSshReq = { 
@@ -14631,7 +14781,11 @@ hint: string,
 /**
  * 机器列表页头那一句（机器 N · 离线 a · 要更新 b；没有离线 · 要更新的那一段不出）。
  */
-count: string, };
+count: string, 
+/**
+ * 各台都报完了活会话清单（「连接这台」关着的不算；没连上 · 连上了还没报完 ⇒ 假）。主窗口「各台都报完」那一刻照它。
+ */
+allListed: boolean, };
 type MachineDot = "up" | "pending" | "warn" | "failed" | "off";
 type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install" | "use_key";
 type MachineFixButton = { fix: MachineFix, label: string, };
@@ -14952,7 +15106,7 @@ type MachineStopReq = { machine: string, };
 type MachineStopped = { stopped: string, pid: number | null, };
 ```
 
-码：`bad_args` · `stop_failed`
+码：`bad_args` · `unknown_machine` · `stop_failed`
 
 #### `place-verdict`
 
@@ -16030,6 +16184,7 @@ type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
 type CanTerminal = { near: TermWay, far: TermWay, };
+type FactsClock = { text: Words, from: number, };
 type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type PlanArchived = { id: string, title: string | null, kind: string | null, };
 type PlanAudit = { 
@@ -16524,9 +16679,17 @@ name: Words,
  */
 tip: Words, 
 /**
- * 没有会话事实时的状态一句。
+ * 状态一句（定格的字，不带时长）：活着、记录读得到 ⇒ 那台照记录写（在跑的那一步 · 等的种类 · 后台那一句 …）；否则是那一态的那一句。
  */
-line: Words, tone: Tone, 
+line: Words, 
+/**
+ * 会走的那一截（同一句、时长那一截留 `{dur}` ＋ 起点，出口按此刻填）；没有 ⇒ 不上线，照 `line`。
+ */
+clock?: FactsClock, 
+/**
+ * 悬停卡那一句（在等 ⇒ 等的那一步 · 在跑 ⇒ 那一步 · 空闲 / 后台 ⇒ 最后一句）；没有 ⇒ 不上线。
+ */
+peek?: Words, tone: Tone, 
 /**
  * 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5。
  */
@@ -16802,8 +16965,7 @@ segs: Array<number>, };
 type Inl = string | InlNode;
 type InlNode = { "t": "b", k: Array<Inl>, } | { "t": "i", k: Array<Inl>, } | { "t": "del", k: Array<Inl>, } | { "t": "c", x: string, } | { "t": "m", tex: string, m: MathBox | null, } | { "t": "a", href: string, k: Array<Inl>, } | { "t": "img", src: string, alt: string, } | { "t": "br" } | { "t": "fn", n: number, } | { "t": "ref", x: string, ids: Array<string>, label: string, };
 type MathBox = { w: number, h: number, d: number, items: Array<MathItem>, };
-type MathFont = "ams" | "caligraphic_regular" | "fraktur_regular" | "fraktur_bold" | "main_regular" | "main_bold" | "main_italic" | "main_bold_italic" | "math_italic" | "math_bold_italic" | "sans_serif_regular" | "sans_serif_bold" | "sans_serif_italic" | "script_regular" | "size1" | "size2" | "size3" | "size4" | "typewriter" | "sys";
-type MathItem = { "t": "g", f: MathFont, u: number, x: number, y: number, s: number, } | { "t": "l", x: number, y: number, w: number, th: number, dash: boolean, } | { "t": "r", x: number, y: number, w: number, h: number, } | { "t": "p", x: number, y: number, fill: boolean, d: Array<MathPath>, };
+type MathItem = { "t": "g", f: string | null, u: number, x: number, y: number, s: number, } | { "t": "l", x: number, y: number, w: number, th: number, dash: boolean, } | { "t": "r", x: number, y: number, w: number, h: number, } | { "t": "p", x: number, y: number, fill: boolean, d: Array<MathPath>, };
 type MathPath = { "t": "m", x: number, y: number, } | { "t": "l", x: number, y: number, } | { "t": "c", x1: number, y1: number, x2: number, y2: number, x: number, y: number, } | { "t": "q", x1: number, y1: number, x: number, y: number, } | { "t": "z" };
 type MdAlign = "none" | "left" | "center" | "right";
 type MdBlock = { "t": "p", k: Array<Inl>, } | { "t": "h", level: number, k: Array<Inl>, } | { "t": "code", lang: string | null, x: string, cont: boolean, } | { "t": "math", tex: string, m: MathBox | null, } | { "t": "list", start: number | null, tight: boolean, items: Array<MdItem>, } | { "t": "quote", blocks: Array<MdBlock>, } | { "t": "alert", kind: AlertKind, blocks: Array<MdBlock>, } | { "t": "table", align: Array<MdAlign>, head: Array<Array<Inl>>, rows: Array<Array<Array<Inl>>>, } | { "t": "rule" } | { "t": "notes", items: Array<MdNote>, };
@@ -16891,6 +17053,7 @@ type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
 type CanTerminal = { near: TermWay, far: TermWay, };
+type FactsClock = { text: Words, from: number, };
 type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type PlanReturnReply = { line: string, to: PlanWho | null, 
 /**
@@ -17007,9 +17170,17 @@ name: Words,
  */
 tip: Words, 
 /**
- * 没有会话事实时的状态一句。
+ * 状态一句（定格的字，不带时长）：活着、记录读得到 ⇒ 那台照记录写（在跑的那一步 · 等的种类 · 后台那一句 …）；否则是那一态的那一句。
  */
-line: Words, tone: Tone, 
+line: Words, 
+/**
+ * 会走的那一截（同一句、时长那一截留 `{dur}` ＋ 起点，出口按此刻填）；没有 ⇒ 不上线，照 `line`。
+ */
+clock?: FactsClock, 
+/**
+ * 悬停卡那一句（在等 ⇒ 等的那一步 · 在跑 ⇒ 那一步 · 空闲 / 后台 ⇒ 最后一句）；没有 ⇒ 不上线。
+ */
+peek?: Words, tone: Tone, 
 /**
  * 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5。
  */
@@ -17160,7 +17331,6 @@ alias?: string | null, };
 | `--history-browse` | ＝ 帧命令 `history-browse`：历史页那一列（几台并成一列） |
 | `--history-facts` | ＝ 帧命令 `history-facts`：会话事实 |
 | `--history-find` | ＝ 帧命令 `history-find`：会话内查找 |
-| `--history-forget` | ＝ 帧命令 `history-forget`：删一条历史注解 |
 | `--history-image` | ＝ 帧命令 `history-image`：按引用取回一张图 |
 | `--history-index` | ＝ 帧命令 `history-index`：会话骨架索引 |
 | `--history-lines` | ＝ 帧命令 `history-lines`：按行号取回一段 |
@@ -17210,7 +17380,6 @@ alias?: string | null, };
 | `--prefs-read` | ＝ 帧命令 `prefs-read`：读这台的偏好 |
 | `--prefs-set` | ＝ 帧命令 `prefs-set`：改这台的偏好，写完读回 |
 | `--profiles-bases` | ＝ 帧命令 `profiles-bases`：「基于」下拉能选的几段（选了不成圈） |
-| `--profiles-from-line` | ＝ 帧命令 `profiles-from-line`：一条自由命令行折成别名表单（头一个词是哪一家的启动器 · ccm 照它自己的解析器折） |
 | `--profiles-impact` | ＝ 帧命令 `profiles-impact`：这几处改动会让哪几段合下来变（改前改后） |
 | `--profiles-read` | ＝ 帧命令 `profiles-read`：读回配置文件整份：每段自己写的几项 · 能不能用 · 链接还是终端函数 · 表单回填 |
 | `--profiles-resolve` | ＝ 帧命令 `profiles-resolve`：一段合下来的合并表与「等于」那一行（可按未存的表单算） |
@@ -17219,7 +17388,6 @@ alias?: string | null, };
 | `--pubkey-push` | ＝ 帧命令 `pubkey-push`：把本机公钥推进那台的 `authorized_keys` |
 | `--quota-probe` | ＝ 帧命令 `quota-probe`：用某个号查一次额度 |
 | `--quota-read` | ＝ 帧命令 `quota-read`：这台的额度账 |
-| `--quota-warm` | ＝ 帧命令 `quota-warm`：给一个号开窗 |
 | `--resident-attach` | 小中继：连这台家里常驻后端的套接字，stdin → 套接字、套接字 → stdout 原样对拷，任一边断就退；断开 ⇒ stdout 一行 `{attach:"refused", reason: absent\|unreachable}`、退出 2 |
 | `--resident-call` `[--stdin-line] --within-ms <毫秒> [--tz <IANA 名>]` | 问这台的常驻后端一条帧命令（stdin 一行 `{cmd, args}`）：连套接字、握手（在看名单交空的）、发请求、等那一条应答，stdout 一行回包、退出 0；常驻答了失败 ⇒ stderr 一行它那一份失败信封、退出 2；没人在听 ⇒ `resident_absent`（不起冷进程顶上）；`--within-ms` 必给（等多久归发起方，缺 ⇒ `bad_args`），到期限没回 ⇒ `timed_out` |
 | `--resident-ensure` `[--replace]` | 确保这台的常驻后端在听：已在 ⇒ `{pid, replaced: false}`（pid 是套接字对端）；没在 ⇒ 起一个脱离的自己、回 `{pid, replaced}`；`--replace` 在听那一位比自己旧才停掉再起（只升不降） |
@@ -17272,7 +17440,7 @@ alias?: string | null, };
 | `--terminal-input` | ＝ 帧命令 `terminal-input`：往一个终端送字或送键（过身份门） |
 | `--terminal-preview` | ＝ 帧命令 `terminal-preview`：抓一个终端的一屏（只抓一次，轮询归调用方） |
 | `--terminal-release-input` | ＝ 帧命令 `terminal-release-input`：交还托管终端的输入 |
-| `--terminal-ssh` | ＝ 帧命令 `terminal-ssh`：给一台远端开终端要跑的那一串 |
+| `--terminal-ssh` | ＝ 帧命令 `terminal-ssh`：给一台机器开终端要跑的那一串 |
 | `--terminal-take-input` | ＝ 帧命令 `terminal-take-input`：替自报的前端接管托管终端的输入 |
 | `--terminals-board` | ＝ 帧命令 `terminals-board`：「终端」视图那张名单（问到各台、合成一份：每台一组 · 筛选四格的数） |
 | `--terminals-board-here` | ＝ 帧命令 `terminals-board-here`：这台「终端」视图那几行（只列 cc-monitor 起的，排好、字写好） |

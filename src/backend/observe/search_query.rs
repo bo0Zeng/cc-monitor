@@ -637,8 +637,6 @@ impl SearchIndex {
             .into_iter()
             .filter(|(path, _)| fence.admit(path).is_ok())
             .collect();
-        // 分叉来的那几行要父会话的显示标题：这一趟走到的每一份都记下（父会话没命中也认得出），走完再填、再交出去。
-        let mut labels: BTreeMap<String, String> = BTreeMap::new();
         let mut found: Vec<SessionHits> = Vec::new();
         // 〔perfC2〕一批批带到这一问：每批在几条线程上同时读（常驻装不下的那几份每问整份重读重解，这是大头），再按最近优先逐份搜。
         for batch in files.chunks(SEARCH_BATCH) {
@@ -670,9 +668,6 @@ impl SearchIndex {
                     _ => None,
                 };
                 let bg = entry.as_ref().is_some_and(|e| e.session().bg());
-                if let (Some(e), Some(sid)) = (&entry, path.file_stem().and_then(|s| s.to_str())) {
-                    labels.insert(sid.to_string(), label_of(e));
-                }
                 if let Some(e) = entry {
                     self.retain(&mut kept, path.clone(), e);
                 }
@@ -691,14 +686,7 @@ impl SearchIndex {
                 }
             }
         }
-        for mut session in found {
-            session.forked_from = session
-                .parent
-                .as_deref()
-                .and_then(|p| labels.get(p))
-                .map(|l| cmd_wire::listing::ForkedFrom {
-                    label: crate::common::cells::Words(l.clone()),
-                });
+        for session in found {
             push(session)?;
         }
         Ok(unreadable)
@@ -907,8 +895,6 @@ fn session_row(
         more_hits,
         hits_truncated: session_starved,
         is_bg: false,
-        forked_from: None,
-        parent: s.forked_from().map(str::to_string),
     }
 }
 

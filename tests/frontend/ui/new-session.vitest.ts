@@ -38,7 +38,6 @@ vi.mock("../../../src/comms/inward/chan", async (importOriginal) => {
 });
 vi.mock("../../../src/frontend/ui/ipc/commands", () => ({
   commands: {
-    backend_machines: vi.fn(async () => ["<local>", "devbox"]),
     backend_status: vi.fn(async () => ({ channel: true })),
     backend_start: vi.fn(async () => ""),
   },
@@ -61,7 +60,7 @@ vi.mock("../../../src/frontend/ui/account-reads", async () => {
 vi.mock("../../../src/frontend/ui/acct-center", () => ({ refreshQuota: vi.fn(async () => {}) }));
 vi.mock("../../../src/frontend/ui/behavior", () => ({ getBehavior: vi.fn(async () => ({ resumeCommand: "" })) }));
 vi.mock("../../../src/frontend/ui/machine-prefs", () => ({ readPrefs: vi.fn(async () => ({ state: "absent", prefs: { launchers: {}, resumeWhere: "managed", models: {}, permissionModes: {}, contextLimits: {} } })) }));
-const term = vi.hoisted(() => ({ openTerminal: vi.fn(async () => {}), openLocalTerminal: vi.fn(async () => {}) }));
+const term = vi.hoisted(() => ({ openTerminal: vi.fn(async () => {}) }));
 vi.mock("../../../src/frontend/ui/terminal-open", async (importOriginal) => ({ ...(await importOriginal<object>()), ...term }));
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(async () => {}), listen: vi.fn(async () => () => {}) }));
 const login = vi.hoisted(() => ({ openLoginDrawer: vi.fn() }));
@@ -137,7 +136,6 @@ beforeEach(() => {
   stall = false;
   boom = null;
   vi.mocked(commands.backend_status).mockClear();
-  vi.mocked(commands.backend_machines).mockClear();
   vi.mocked(commands.backend_start).mockClear();
   replies.set("machine-read", MACHINES);
   replies.set("session-open-facts", FACTS);
@@ -389,7 +387,7 @@ describe("点［新建］：交那台的那一份", () => {
     createBtn().click();
     await flush();
     expect(newRequests()[0].run).toBe("direct");
-    expect(term.openTerminal).toHaveBeenCalledWith("devbox", "ccm -- new", null);
+    expect(term.openTerminal).toHaveBeenCalledWith("devbox", "ccm -- new", null, "/home/u/x");
     expect(arriveAsks()).toEqual([arrival]);
   });
 
@@ -569,7 +567,6 @@ describe("换机器 · 换一家 · 那台问不到", () => {
     await flush();
     expect(sent.filter((x) => x.op === "machine-read").length).toBe(1);
     expect(commands.backend_status).not.toHaveBeenCalled();
-    expect(commands.backend_machines).not.toHaveBeenCalled();
     const items = optionsOf(sel(copyText("detail.label.machine")));
     expect(items.some((t) => t.includes("old")), "关着的不列").toBe(false);
     expect(items.find((t) => t.includes("gpu")), "断开的那台标着").toContain(copyText("machinePage.state.down"));

@@ -27,6 +27,8 @@ pub fn unseen(offline: Words) -> SessionFace {
         tone: Tone::Plain,
         order: 3,
         account: None,
+        clock: None,
+        peek: None,
         can: SessionCan {
             close: CanClose::Menu,
             resume: Allow::No {

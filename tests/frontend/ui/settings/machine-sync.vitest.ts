@@ -9,6 +9,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(), Channel: class {} }));
+// 本机后端机器表里「连接这台」开着的那几台远端（驾驶舱的下拉照它）。
+vi.mock("../../../../src/frontend/ui/machine-feed", async (orig) => ({ ...(await orig<object>()), readRemoteNames: () => Promise.resolve(["devbox", "nano"]) }));
 // 读面拆去了 `account-reads.ts`，规则留在 `accounts.ts`：两处各桩各的。
 vi.mock("../../../../src/frontend/ui/account-reads", () => ({
   fetchAccounts: vi.fn().mockResolvedValue({ accounts: [] }),
@@ -32,8 +34,6 @@ const ORIGINS = ["devbox", "nano"];
 
 function routeInvoke(cmd: string): unknown {
   switch (cmd) {
-    case "backend_machines":
-      return ["<local>", ...ORIGINS];
     case "read_cc_bus_state":
       return { agents: [], skipped: 0 };
     // 钩子诊断改走通道（`chan_call`）：本条不看它的结果，落 `default`。

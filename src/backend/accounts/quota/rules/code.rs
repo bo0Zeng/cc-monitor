@@ -289,8 +289,8 @@ fn shape(v: Dynamic) -> Result<Verdict, Fail> {
                     .and_then(|a| a.clone().into_string().ok())
                     .as_deref()
                 {
-                    Some("5h") => 0,
-                    Some("7d") => 1,
+                    Some(cmd_wire::quota::SLOT_5H) => 0,
+                    Some(cmd_wire::quota::SLOT_7D) => 1,
                     _ => return Err(bad("wake.when.w must be \"5h\" or \"7d\"")),
                 };
                 let n = m

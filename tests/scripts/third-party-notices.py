@@ -19,6 +19,7 @@
   · 仓里原样放进来的第三方文件（手机端 `src/mobile` 的预编库与字体 · 两端共用的 `src/shared` 里的字体，不经 cargo / npm 解析）：
     登记在 `VENDORED_FILES`，许可全文跟着放在仓里；每个发版附的整仓源码包里有它们。`VENDORED_ROOTS` 下被跟踪的二进制
     （aar · jar · so · 字体）每一份都得落在某一行的位置里，漏登记 ⇒ 生成失败。
+四家同一道：依赖的许可（SPDX 表达式）不在 `third-party-about.toml` 的 `accepted` 名单里 ⇒ 生成失败，点出是哪几个。
 
 用法（仓根下）：
     python3 tests/scripts/third-party-notices.py           # 重新生成两份
@@ -71,8 +72,7 @@ VENDORED_BINARY = re.compile(r"\.(aar|jar|so|ttf|otf|woff2?)$", re.I)
 MAVEN_LOCK = ROOT / "src/mobile/app/gradle.lockfile"
 MAVEN_CONF = "releaseRuntimeClasspath"
 MAVEN_TABLE = ROOT / "tests/scripts/third-party-maven.tsv"
-#: Maven 那一段的许可全文：许可 → (仓里那份全文, 组头写的名字)。`third-party-about.toml` 的 accepted 名单里的许可缺全文 ⇒ 生成失败；
-#: 名单外的照实列出、注明全文没随附（发版尺子 ⑰e 对它红）。
+#: Maven 那一段的许可全文：许可 → (仓里那份全文, 组头写的名字)。用到的许可缺全文 ⇒ 生成失败。
 MAVEN_TEXTS = {"Apache-2.0": ("src/mobile/libs/LICENSES/Apache-2.0.txt", "Apache License 2.0")}
 
 MIT_TEXT = """MIT License
@@ -129,6 +129,89 @@ def is_ours(pkg):
     return pkg.get("source") is None
 
 
+def accepted_licenses():
+    m = re.search(r"^accepted = \[(.*?)\]", CONFIG.read_text(encoding="utf-8"), re.M | re.S)
+    return set(re.findall(r'"([^"]+)"', m.group(1))) if m else set()
+
+
+def satisfied(expr, accepted):
+    """一条 SPDX 许可表达式照名单收不收：`OR` 有一支收就收 · `AND` 每一支都收才收 · `X WITH 例外` 整条照名单；认不出的写法不收。"""
+    toks = re.findall(r"\(|\)|[^\s()]+", expr or "")
+    pos = 0
+
+    def peek():
+        return toks[pos] if pos < len(toks) else None
+
+    def atom():
+        nonlocal pos
+        t = peek()
+        if t is None or t in ("OR", "AND", "WITH", ")"):
+            raise ValueError(expr)
+        pos += 1
+        if t == "(":
+            v = either()
+            if peek() != ")":
+                raise ValueError(expr)
+            pos += 1
+            return v
+        if peek() == "WITH":
+            pos += 1
+            ex = peek()
+            if ex is None or ex in ("OR", "AND", "WITH", "(", ")"):
+                raise ValueError(expr)
+            pos += 1
+            return "%s WITH %s" % (t, ex) in accepted
+        return t in accepted
+
+    def both():
+        nonlocal pos
+        v = atom()
+        while peek() == "AND":
+            pos += 1
+            v = atom() and v
+        return v
+
+    def either():
+        nonlocal pos
+        v = both()
+        while peek() == "OR":
+            pos += 1
+            v = both() or v
+        return v
+
+    try:
+        ok = either()
+    except ValueError:
+        return False
+    return ok and pos == len(toks)
+
+
+def refuse_off_list(source, items):
+    """`items`：[(依赖, 许可)]。有一个的许可不在名单里 ⇒ 生成失败，点出是哪几个（四家同一道）。"""
+    accepted = accepted_licenses()
+    off = sorted("%s (%s)" % (who, lic) for who, lic in items if not satisfied(lic, accepted))
+    if off:
+        die("%s 依赖的许可不在 %s 的 accepted 名单里：%s —— 换掉这个依赖，或人定了再把许可加进名单"
+            % (source, CONFIG.name, off))
+
+
+def rust_doc_groups(doc, manifest, groups):
+    """cargo-about 对一棵树的结果并进 `groups`（许可 → 用它的第三方包）。"""
+    unknown = sorted("%s %s" % (c["package"]["name"], c["package"]["version"])
+                     for c in doc["crates"] if c["license"] == "Unknown" and not is_ours(c["package"]))
+    if unknown:
+        die("这几个第三方包认不出许可（%s）：%s —— 在 %s 里给它们写 clarify" % (manifest, unknown, CONFIG.name))
+    picked = []
+    for lic in doc["licenses"]:
+        users = {"%s %s" % (u["crate"]["name"], u["crate"]["version"])
+                 for u in lic["used_by"] if not is_ours(u["crate"])}
+        picked += [(u, lic["id"]) for u in users]
+        if users:
+            groups.setdefault((lic["id"], lic["name"], lic["text"].strip("\n")), set()).update(users)
+    refuse_off_list("Rust（%s）" % manifest, picked)
+    return groups
+
+
 def rust_groups():
     exe = cargo_about()
     groups = {}
@@ -145,15 +228,7 @@ def rust_groups():
             if r.returncode != 0:
                 die("cargo-about 在 %s 上失败：\n%s" % (manifest, r.stderr[-4000:]))
             doc = json.loads(out.read_text(encoding="utf-8"))
-        unknown = sorted("%s %s" % (c["package"]["name"], c["package"]["version"])
-                         for c in doc["crates"] if c["license"] == "Unknown" and not is_ours(c["package"]))
-        if unknown:
-            die("这几个第三方包认不出许可（%s）：%s —— 在 %s 里给它们写 clarify" % (manifest, unknown, CONFIG.name))
-        for lic in doc["licenses"]:
-            users = {"%s %s" % (u["crate"]["name"], u["crate"]["version"])
-                     for u in lic["used_by"] if not is_ours(u["crate"])}
-            if users:
-                groups.setdefault((lic["id"], lic["name"], lic["text"].strip("\n")), set()).update(users)
+        rust_doc_groups(doc, manifest, groups)
     return groups
 
 
@@ -183,6 +258,7 @@ def npm_entries():
                 die("%s 没带许可全文（许可 %s）—— 补一条做法再生成" % (name, spdx))
             texts = [MIT_TEXT.format(holder=holder).strip("\n")]
         out.append((name, meta["version"], spdx, texts))
+    refuse_off_list("npm", [("%s %s" % (name, ver), spdx) for name, ver, spdx, _ in out])
     return out
 
 
@@ -202,12 +278,8 @@ def vendored_entries():
                    and not any(t == w or (w.endswith("/") and t.startswith(w)) for _, _, _, w, _, _ in VENDORED_FILES))
     if stray:
         die("%s 下这几份第三方二进制没登记许可：%s —— 在 VENDORED_FILES 里加一行" % (" · ".join(VENDORED_ROOTS), stray))
+    refuse_off_list("仓里原样放的文件", [("%s %s" % (name, ver), spdx) for name, ver, spdx, _, _, _ in out])
     return out
-
-
-def accepted_licenses():
-    m = re.search(r"^accepted = \[(.*?)\]", CONFIG.read_text(encoding="utf-8"), re.M | re.S)
-    return set(re.findall(r'"([^"]+)"', m.group(1))) if m else set()
 
 
 def maven_groups():
@@ -232,11 +304,11 @@ def maven_groups():
         die("锁里有、%s 里没有许可的：%s —— 照它自带的 POM 补一行" % (MAVEN_TABLE.name, sorted(locked - table.keys())))
     if table.keys() - locked:
         die("%s 里有、锁里没有的：%s —— 删掉这几行" % (MAVEN_TABLE.name, sorted(table.keys() - locked)))
-    accepted = accepted_licenses()
+    refuse_off_list("Maven", [(coord, table[coord][0]) for coord in sorted(locked)])
     groups = {}
     for coord in sorted(locked):
         lic, src = table[coord]
-        if lic in accepted and lic not in MAVEN_TEXTS:
+        if lic not in MAVEN_TEXTS:
             die("%s 用的许可 %s 在仓里没有全文 —— 在 MAVEN_TEXTS 里登记一份" % (coord, lic))
         groups.setdefault(lic, []).append((coord, src))
     return groups
@@ -281,13 +353,9 @@ def render():
             lines += ["", t, ""]
     lines += ["", "================================ Maven artifacts (mobile app) ================================"]
     for lic, users in sorted(maven_groups().items()):
-        lines += ["", "-------- %s (%s) --------" % (MAVEN_TEXTS.get(lic, ("", lic))[1], lic), "Used by:"]
+        lines += ["", "-------- %s (%s) --------" % (MAVEN_TEXTS[lic][1], lic), "Used by:"]
         lines += ["    maven: %s" % c for c, _ in users]
-        if lic in MAVEN_TEXTS:
-            lines += ["", (ROOT / MAVEN_TEXTS[lic][0]).read_text(encoding="utf-8").strip("\n"), ""]
-        else:
-            lines += ["", "License text not bundled in the repo; source:"] + ["    %s: %s" % (c, src) for c, src in users]
-            lines += [""]
+        lines += ["", (ROOT / MAVEN_TEXTS[lic][0]).read_text(encoding="utf-8").strip("\n"), ""]
     lines += ["", "=================== files vendored in the repo (src/mobile · src/shared) ==================="]
     for name, ver, spdx, where, note, text in vendored_entries():
         lines += ["", "-------- %s %s (%s) --------" % (name, ver, spdx), "    vendored: %s %s — %s" % (name, ver, where),

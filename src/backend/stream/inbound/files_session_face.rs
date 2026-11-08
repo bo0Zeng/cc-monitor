@@ -32,26 +32,41 @@ impl Command for FilesDeleteSession {
 }
 
 impl crate::wire::typed::Handle for FilesDeleteSession {
-    type Needs = crate::wire::typed::needs::Face;
+    type Needs = crate::wire::typed::needs::FaceOwn;
     fn run(
         req: wire::FilesDeleteSessionReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<wire::FilesPathReply, FilesDeleteSessionErr>>
            + Send
            + 'static {
-        let (_cx, needs) = cx.split();
-        async move {
-            let face = &needs;
-
-            crate::files::write::delete_session_of(face, req, &SESSION_PORT).map_err(|f| {
-                typed::of_fail(
-                    {
-                        let code = f.code_or_fallback().to_string();
-                        crate::wire::spec::fail(&code, f)
-                    },
-                    FilesDeleteSessionErr::BadArgs,
-                )
-            })
-        }
+        let (_cx, (face, own)) = cx.split();
+        async move { delete_then_forget(&face, &own, req, &SESSION_PORT) }
     }
 }
+
+/// 删那一份会话记录；删成了，这台那一条历史注解跟着删（删不掉只记一行：孤儿注解不害人，删会话照样算成）。
+fn delete_then_forget(
+    face: &crate::platform::fs::Face,
+    own: &crate::platform::Own,
+    req: wire::FilesDeleteSessionReq,
+    port: &crate::files::write::SessionPort,
+) -> Result<wire::FilesPathReply, FilesDeleteSessionErr> {
+    let sid = req.sid.clone();
+    let done = crate::files::write::delete_session_of(face, req, port).map_err(|f| {
+        typed::of_fail(
+            {
+                let code = f.code_or_fallback().to_string();
+                crate::wire::spec::fail(&code, f)
+            },
+            FilesDeleteSessionErr::BadArgs,
+        )
+    })?;
+    if let Err(e) = crate::history::history_annotations::forget_at(own, &sid) {
+        tracing::warn!("session {sid} deleted, its annotation was not: {e:?}");
+    }
+    Ok(done)
+}
+
+#[cfg(test)]
+#[path = "../../../../tests/backend/stream/inbound/files_session_face_tests.rs"]
+mod tests;

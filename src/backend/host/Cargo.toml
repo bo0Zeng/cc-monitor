@@ -1,4 +1,4 @@
-# 宿主口（终端住在哪种宿主里：tmux · 托管）与 ccm 这一行的词（旗标 · 解析 · 自己叫什么）。只引 agents · 帧面零件 · 纯工具 · 平台四层。
+# 宿主口（终端住在哪种宿主里：tmux · 托管）。只引帧面零件（含 ccm 这一行的词）· 纯工具 · 平台三层。
 [package]
 name = "backend-host"
 version = "0.0.0"
@@ -12,17 +12,14 @@ path = "mod.rs"
 workspace = true
 
 [features]
-# 只给上层测试用的那几样（ccm 行的拆分夹具 · 托管终端的沙箱夹具）：上层的 `[dev-dependencies]` 开它。
+# 只给上层测试用的那几样（托管终端的沙箱夹具）：上层的 `[dev-dependencies]` 开它。
 # 托管终端的夹具把数据目录建在测试进程的沙箱根底下 ⇒ 随它带上 `test-home`。
 test-support = ["dep:test-home"]
 
 [dependencies]
-backend-agents = { path = "../agents" }
 backend-wire = { path = "../wire" }
 backend-common = { path = "../common" }
 backend-platform = { path = "../platform" }
-# `--account-dir` 那一格认不认（账号目录的形）。
-acct-core = { path = "../../common/acct-core" }
 # 终端名单那一行的线上形（宿主 · 输入归谁）。
 cmd-wire = { path = "../../common/cmd-wire" }
 copy-core = { path = "../../common/copy-core" }
@@ -31,7 +28,6 @@ own-chan = { path = "../../common/own-chan" }
 relay-route-core = { path = "../../common/relay-route-core" }
 # 有上限读（读上限 `Cap` · 同步整读）的唯一一份；零依赖。
 cap-core = { path = "../../common/cap-core" }
-shell-quote-core = { path = "../../common/shell-quote-core" }
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

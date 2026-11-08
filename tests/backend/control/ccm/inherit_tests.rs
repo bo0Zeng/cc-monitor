@@ -322,7 +322,8 @@ fn the_from_section_is_comment_lines_only() {
     assert_eq!(render_from(&from_rows(&o, &g, &env(), &t, &plan)), "");
 }
 
-/// 额度预热那一句的发法只住后端一处（`accounts::quota::warm`，轮换判完开窗也走它）：脚本只调 `ccm -- --quota-warm`，
+/// 额度预热那一句的发法只住后端一处（`accounts::quota::warm`，轮换判完开窗也走它）：脚本只经 `ccm -- --resident-call`
+/// 问这台的常驻 `quota-warm`（「15 分钟只发一次」那一本只住常驻），不走一次性的 `--quota-warm`；
 /// 自己不拼 claude 的旗标、不设那一发的环境、不点名 ccm 的起号旗标，也不按名字剥环境（那是继承表的第二份判法）。
 #[test]
 fn quota_warm_sends_through_the_backend_command_only() {
@@ -334,8 +335,13 @@ fn quota_warm_sends_through_the_backend_command_only() {
         .collect::<Vec<_>>()
         .join("\n");
     assert!(
-        guard_core::contains_word(&code, "\"--quota-warm\""),
-        "预热脚本没调后端那一条"
+        guard_core::contains_word(&code, "\"--resident-call\"")
+            && guard_core::contains_word(&code, "\"quota-warm\""),
+        "预热脚本没经常驻调后端那一条"
+    );
+    assert!(
+        !guard_core::contains_word(&code, "\"--quota-warm\""),
+        "预热脚本还走一次性的 `--quota-warm`：那一本不在一次性进程里"
     );
     for own in [
         "\"MAX_THINKING_TOKENS\"",
@@ -560,8 +566,10 @@ fn no_rotation_presets_the_session_id_it_hands_the_agent() {
 }
 
 /// 额度预热的号单与发那一句只经后端：不给 `--accounts` ⇒ 号单照 `quota-read` 的 `candidates`（出过数的 ＋ 账号库里没出过数的，
-/// `_` 不在里面）—— 不自己去扫账号库目录；每个号交 `--quota-warm` 一段 `{agent, account}`。
-/// 隔离的家目录里只有一个假 `ccm`（答 `--quota-read`、把 `--quota-warm` 收到的那一段记下来），没有一份登录文件。
+/// `_` 不在里面）—— 不自己去扫账号库目录；每个候选按 `(agent, account)` 配它那一条 `warm`，交常驻 `quota-warm` 一段
+/// `{agent, account}`（codex 的号交出去的是 codex；两家同名的号各照各的判）。
+/// 隔离的家目录里只有一个假 `ccm`（只认 `--resident-call`：答 `quota-read`、把 `quota-warm` 收到的那一行记下来），没有一份登录文件；
+/// 脚本跑完家里的 `.cc-monitor` 下不多一份文件（不写日志、锁住 `$XDG_RUNTIME_DIR`）。
 #[cfg(unix)]
 #[test]
 fn quota_warm_takes_its_accounts_from_quota_read_and_names_them_to_ccm() {
@@ -570,16 +578,22 @@ fn quota_warm_takes_its_accounts_from_quota_read_and_names_them_to_ccm() {
     std::fs::remove_dir_all(&home).ok();
     let bin = home.join(".cc-monitor/bin");
     std::fs::create_dir_all(&bin).expect("造 bin");
+    let run = home.join("run");
+    std::fs::create_dir_all(&run).expect("造 run");
     let sent = home.join("sent.txt");
+    let send = serde_json::json!({"act": "send", "text": "w"});
+    let wait = serde_json::json!({"act": "wait", "at": 4102444860_u64, "atText": "01-01 08:01", "text": "w"});
     let read = serde_json::json!({
         "accounts": [
-            {"account": "_", "seenAt": 0, "warm": {"act": "send", "text": "w"}},
-            {"account": "seen1", "seenAt": 0, "warm": {"act": "send", "text": "w"}},
+            {"agent": "claude", "account": "_", "seenAt": 0, "warm": send},
+            {"agent": "codex", "account": "seen1", "seenAt": 0, "warm": wait},
+            {"agent": "claude", "account": "seen1", "seenAt": 0, "warm": send},
         ],
-        "unseen": [{"account": "fresh", "warm": {"act": "send", "text": "w"}}],
+        "unseen": [{"agent": "codex", "account": "fresh", "warm": send}],
         "candidates": [
             {"agent": "claude", "account": "seen1", "kind": "sub"},
-            {"agent": "claude", "account": "fresh", "kind": "sub"},
+            {"agent": "codex", "account": "seen1", "kind": "sub"},
+            {"agent": "codex", "account": "fresh", "kind": "sub"},
         ],
     });
     std::fs::write(home.join("read.json"), read.to_string()).expect("写回包");
@@ -587,8 +601,10 @@ fn quota_warm_takes_its_accounts_from_quota_read_and_names_them_to_ccm() {
     std::fs::write(
         &ccm,
         format!(
-            "#!/bin/sh\ncase \" $* \" in *' --quota-read '*) cat '{r}'; exit 0;;\n\
-             *' --quota-warm '*) {{ cat; echo; }} >> '{s}'; echo '{{\"sent\":true,\"at\":1,\"resets_at\":4102444800}}'; exit 0;; esac\n\
+            "#!/bin/sh\ncase \" $* \" in *' --resident-call '*) ;; *) exit 9;; esac\n\
+             read -r line\n\
+             case \"$line\" in *'\"quota-read\"'*) cat '{r}'; exit 0;;\n\
+             *'\"quota-warm\"'*) printf '%s\\n' \"$line\" >> '{s}'; echo '{{\"sent\":true,\"at\":1,\"resets_at\":4102444800}}'; exit 0;; esac\n\
              exit 9\n",
             r = home.join("read.json").display(),
             s = sent.display()
@@ -602,29 +618,117 @@ fn quota_warm_takes_its_accounts_from_quota_read_and_names_them_to_ccm() {
         .arg("once")
         .env_clear()
         .env("HOME", &home)
+        .env("XDG_RUNTIME_DIR", &run)
         .env("PATH", "/usr/bin:/bin")
         .output()
         .expect("跑得起预热脚本");
+    let sent = std::fs::read_to_string(&sent).unwrap_or_default();
+    // 日志不另起一份、锁住 `$XDG_RUNTIME_DIR`：家里旧的那两处不在，锁在 run 里。
+    let left = (
+        home.join(".cc-monitor/logs").exists(),
+        home.join(".cc-monitor/quota-warm.lock").exists(),
+        run.join("quota-warm.lock").exists(),
+    );
+    std::fs::remove_dir_all(&home).ok();
     assert!(
         out.status.success(),
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    let sent = std::fs::read_to_string(&sent).unwrap_or_default();
-    std::fs::remove_dir_all(&home).ok();
     let got: Vec<serde_json::Value> = sent
         .lines()
         .filter(|l| !l.trim().is_empty())
-        .map(|l| serde_json::from_str(l).expect("交的是一段 JSON"))
+        .map(|l| serde_json::from_str(l).expect("交的是一行 {cmd, args}"))
         .collect();
-    let want: Vec<serde_json::Value> = ["seen1", "fresh"]
+    let want: Vec<serde_json::Value> = [("claude", "seen1"), ("codex", "fresh")]
         .iter()
-        .map(|n| serde_json::json!({"agent": "claude", "account": n}))
+        .map(|(a, n)| serde_json::json!({"cmd": "quota-warm", "args": {"agent": a, "account": n}}))
         .collect();
     assert_eq!(
         got, want,
-        "号单该是 seen1 · fresh，每个号交一段 {{agent, account}}"
+        "该发的是 claude/seen1 · codex/fresh（codex/seen1 在等），每个号交一段 {{agent, account}}"
     );
+    assert_eq!(
+        left,
+        (false, false, true),
+        "(家里有日志目录, 家里有锁, 锁在 $XDG_RUNTIME_DIR)"
+    );
+}
+
+/// 隔离的家里放一个假 `ccm`（`body` 是它的 sh 正文），起预热脚本 ⇒ (家, 子进程)。
+#[cfg(unix)]
+fn quota_warm_with_fake_ccm(
+    tag: &str,
+    body: &str,
+    args: &[&str],
+) -> (std::path::PathBuf, std::process::Child) {
+    use std::os::unix::fs::PermissionsExt;
+    let home = std::env::temp_dir().join(format!("quota-warm-{tag}-{}", std::process::id()));
+    std::fs::remove_dir_all(&home).ok();
+    let bin = home.join(".cc-monitor/bin");
+    std::fs::create_dir_all(&bin).expect("造 bin");
+    std::fs::create_dir_all(home.join("run")).expect("造 run");
+    let ccm = bin.join("ccm");
+    std::fs::write(&ccm, format!("#!/bin/sh\n{body}\n")).expect("写假 ccm");
+    std::fs::set_permissions(&ccm, std::fs::Permissions::from_mode(0o755)).expect("可执行");
+    let script = guard_core::addr::repo_root().join("src/shared/quota-warm/scripts/quota-warm");
+    let child = std::process::Command::new("python3")
+        .arg(&script)
+        .args(args)
+        .env_clear()
+        .env("HOME", &home)
+        .env("XDG_RUNTIME_DIR", home.join("run"))
+        .env("PATH", "/usr/bin:/bin")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("跑得起预热脚本");
+    (home, child)
+}
+
+/// 常驻没在跑（`--resident-call` 回 `resident_absent`）：`status` 照那一句说、退出非零，不吐 Python 的调用栈。
+#[cfg(unix)]
+#[test]
+fn quota_warm_status_says_the_resident_is_absent_in_one_line() {
+    let (home, child) = quota_warm_with_fake_ccm(
+        "absent",
+        "echo '{\"code\":\"resident_absent\",\"said\":\"常驻没在跑\"}' >&2; exit 2",
+        &["status"],
+    );
+    let out = child.wait_with_output().expect("等得到");
+    std::fs::remove_dir_all(&home).ok();
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(!out.status.success());
+    assert!(!err.contains("Traceback"), "吐了调用栈：{err}");
+    assert!(err.contains("resident_absent"), "没照常驻那一句说：{err}");
+}
+
+/// `run --dry-run` 里每个号都该发（只判不发）：照常隔一阵再看，不当成「没有要看的号」退出。
+#[cfg(unix)]
+#[test]
+fn quota_warm_dry_run_keeps_running_when_every_account_should_send() {
+    let read = r#"{"accounts":[{"agent":"claude","account":"a","warm":{"act":"send","text":"w"}}],"unseen":[],"candidates":[{"agent":"claude","account":"a","kind":"sub"}]}"#;
+    let (home, mut child) = quota_warm_with_fake_ccm(
+        "dry",
+        &format!("read -r line; echo '{read}'"),
+        &["run", "--dry-run"],
+    );
+    // 跑完一趟、要睡之前印「下次 …」；自己退了 ⇒ 读到头也没有那一行。不按墙钟等。
+    use std::io::BufRead;
+    let mut seen = Vec::new();
+    let mut sleeps = false;
+    for line in std::io::BufReader::new(child.stdout.take().expect("接了 stdout")).lines() {
+        let line = line.unwrap_or_default();
+        sleeps = line.starts_with("下次");
+        seen.push(line);
+        if sleeps || seen.iter().any(|l| l.contains("退出")) {
+            break;
+        }
+    }
+    child.kill().ok();
+    child.wait().ok();
+    std::fs::remove_dir_all(&home).ok();
+    assert!(sleeps, "dry-run 下没接着睡：{seen:?}");
 }
 
 /// 经别名起的那一发记下别名名字（合并那一处取最末那一层）：直路便条带它；容器路照 `--ccm-alias` 交给窗格那一趟；

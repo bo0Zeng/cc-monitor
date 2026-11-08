@@ -162,9 +162,11 @@ fn s7_the_real_chain_from_this_process_finds_the_session_whose_pidfile_names_an_
         None,
         "没有 pidfile ⇒ 不在会话里"
     );
+    // 记下父进程真的启动时刻：身份核上就是活的（父进程是 cargo 之类，cmdline 不像那一家）。
+    let ticks = crate::platform::proc::proc_starttime(parent).expect("读得到父进程的启动时刻");
     std::fs::write(
         sessions.join(format!("{parent}.json")),
-        r#"{"sessionId":"s-live","cwd":"/w"}"#,
+        format!(r#"{{"sessionId":"s-live","cwd":"/w","procStart":"{ticks}"}}"#),
     )
     .unwrap();
     assert_eq!(

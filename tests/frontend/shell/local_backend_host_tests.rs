@@ -3478,9 +3478,9 @@ fn hx2_the_handed_names_are_exactly_what_the_backend_echoes() {
     let mut backend: Vec<String> = Vec::new();
     for (needle, file, decl) in [
         (
-            "crate::relay::ENV_PORT",
-            "backend/relay/listen.rs",
-            "pub const ENV_PORT: &str = \"",
+            "child_env::RELAY_PORT",
+            "backend/platform/child_env.rs",
+            "pub const RELAY_PORT: &str = \"",
         ),
         (
             "creds_core::store::DATA_DIR_ENV",

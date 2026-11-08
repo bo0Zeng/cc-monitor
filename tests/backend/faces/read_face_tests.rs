@@ -540,7 +540,7 @@ fn facts_name_every_live_process_writing_the_session() {
         "{\"type\":\"user\",\"uuid\":\"w-1\",\"message\":{\"content\":\"q\"}}\n",
     )
     .unwrap();
-    let pids = crate::observe::watcher::pidfile_dir(&home);
+    let pids = crate::agents::pidfile_dir(&home);
     std::fs::create_dir_all(&pids).unwrap();
     let pidfile = |pid: u32, ticks: u64| {
         let body = format!(
@@ -607,7 +607,7 @@ fn facts_say_what_the_session_is_waiting_for() {
         "{\"type\":\"assistant\",\"timestamp\":\"t1\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"b1\",\"name\":\"Bash\",\"input\":{\"command\":\"rm -rf build/\"}}]}}\n",
     )
     .unwrap();
-    let pids = crate::observe::watcher::pidfile_dir(&home);
+    let pids = crate::agents::pidfile_dir(&home);
     std::fs::create_dir_all(&pids).unwrap();
     // 「没挂答题口」那一句照持着它的进程的环境与命令行现判：环境不从本进程继承那两格（本进程的环境是全局的），
     // 等它真 exec 完再问（见 `held`）。
@@ -1326,7 +1326,7 @@ fn sessions_needs_lists_the_waiting_sessions_each_with_its_history_facts_needs()
         "{\"type\":\"assistant\",\"timestamp\":\"t1\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"b1\",\"name\":\"Bash\",\"input\":{\"command\":\"rm -rf build/\"}}]}}\n",
     )
     .unwrap();
-    let pids = crate::observe::watcher::pidfile_dir(&home);
+    let pids = crate::agents::pidfile_dir(&home);
     std::fs::create_dir_all(&pids).unwrap();
     let mut kids = Vec::new();
     let mut put_as = |sid: &str, status: &str, wait: &str, since: u64| {
@@ -1403,7 +1403,7 @@ fn sessions_needs_lists_the_waiting_sessions_each_with_its_history_facts_needs()
 #[test]
 fn a_hidden_background_session_still_lists_its_needs() {
     let home = scratch("needs-bg-hidden");
-    let pids = crate::observe::watcher::pidfile_dir(&home);
+    let pids = crate::agents::pidfile_dir(&home);
     std::fs::create_dir_all(&pids).unwrap();
     let mut kids = Vec::new();
     let mut put_as = |sid: &str, kind: &str| {
@@ -1635,7 +1635,7 @@ fn a_session_whose_answer_hook_could_not_be_hung_says_so() {
         "{\"type\":\"assistant\",\"timestamp\":\"t1\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"b1\",\"name\":\"Bash\",\"input\":{\"command\":\"true\"}}]}}\n",
     )
     .unwrap();
-    let pids = crate::observe::watcher::pidfile_dir(&home);
+    let pids = crate::agents::pidfile_dir(&home);
     std::fs::create_dir_all(&pids).unwrap();
     let facts_with = |off: Option<&str>| {
         // 持着会话的那个进程活到这里亲手停它为止（`cat` 等着读它的标准输入，那一头在这里攥着）：
@@ -1725,7 +1725,7 @@ fn a_session_started_elsewhere_says_why_it_cannot_be_answered_here() {
         "{\"type\":\"assistant\",\"timestamp\":\"t1\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"b1\",\"name\":\"Bash\",\"input\":{\"command\":\"true\"}}]}}\n",
     )
     .unwrap();
-    let pids = crate::observe::watcher::pidfile_dir(&home);
+    let pids = crate::agents::pidfile_dir(&home);
     std::fs::create_dir_all(&pids).unwrap();
     let data = crate::platform::paths::data_home().expect("测试档有数据目录");
     let own = crate::platform::fs::Own::issue_data_at(&data);
@@ -2009,7 +2009,7 @@ fn a_session_whose_launcher_dropped_the_environment_says_so() {
         "{\"type\":\"assistant\",\"timestamp\":\"t1\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"b1\",\"name\":\"Bash\",\"input\":{\"command\":\"true\"}}]}}\n",
     )
     .unwrap();
-    let pids = crate::observe::watcher::pidfile_dir(&home);
+    let pids = crate::agents::pidfile_dir(&home);
     std::fs::create_dir_all(&pids).unwrap();
     let data = crate::platform::paths::data_home().expect("测试档有数据目录");
     let own = crate::platform::fs::Own::issue_data_at(&data);
@@ -2125,43 +2125,164 @@ fn facts_name_the_model_of_the_last_reply() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
-/// ★ 账号清单每号带的「5h 那一格」就是 `quota-read` 那一格（同一份成品里取，按 kind ＋ 号名对）：账读不出 ⇒ 顶上那一格；
-/// 别家的同名号 · 账上没有的号 ⇒ 没有。
-#[test]
-fn each_listed_account_carries_its_five_hour_cell_from_the_quota_read() {
+/// 账号清单：号 `a` · `z` 各一行（别的格照占位）。
+fn listed(names: &[&str]) -> crate::accounts::manage::library::AccountsList {
     let row = |name: &str| {
         serde_json::json!({"name": name, "label": name, "email": "", "configDir": "/d", "isDefault": false, "mode": "isolated",
             "exists": true, "loggedIn": true, "authKind": "subscription", "authReady": true, "selectable": true, "color": 0,
-            "keyMasked": null, "baseUrl": null, "badge": {"text": "", "warn": false, "title": ""}, "plate": "x", "kindLine": "", "quota": null, "unselectable": null, "login": false, "newSession": true})
+            "keyMasked": null, "baseUrl": null, "badge": {"text": "", "warn": false, "title": ""}, "plate": "x", "kindLine": "", "slots": [], "unselectable": null, "login": false, "newSession": true})
     };
-    let mut list: crate::observe::accounts_query::AccountsList = serde_json::from_value(serde_json::json!({
-        "meta": {"enabled": true, "acctsDir": "", "manifestPath": "", "updatedAt": null, "sharedStore": null, "count": 2,
+    serde_json::from_value(serde_json::json!({
+        "meta": {"enabled": true, "acctsDir": "", "manifestPath": "", "updatedAt": null, "sharedStore": null, "count": names.len(),
             "error": null, "unsupported": null, "nextDefault": null, "effectiveDefault": null, "home": null},
-        "accounts": [row("a"), row("z")], "notice": null}))
-    .expect("清单形状");
-    let mut q = crate::faces::quota_read::specimen();
-    q.five_hour = None;
-    let agent = q.accounts[0].head.agent.as_str().to_string();
-    with_quota(&mut list, &q, &agent);
-    let cells = |l: &crate::observe::accounts_query::AccountsList| {
-        l.accounts
-            .iter()
-            .map(|r| r.quota.as_ref().map(|w| w.0.clone()))
-            .collect::<Vec<_>>()
+        "accounts": names.iter().map(|n| row(n)).collect::<Vec<_>>(), "notice": null}))
+    .expect("清单形状")
+}
+
+/// 真出口造一份 `quota-read`：号 `a` 一条，5h 这一格照 `pct` · `state` · `stale`，7d 那一格 41%；重置都在 `now` 之后一小时 · 一天。
+fn read_one(
+    state: crate::accounts::quota::show::QuotaState,
+    pct5: u32,
+    stale: bool,
+) -> crate::faces::quota_read::QuotaRead {
+    use crate::accounts::quota::facts::Kind;
+    use crate::accounts::quota::ledger::ReadState;
+    use crate::accounts::quota::rules::decide::{WarmVerdict, WarmWhy};
+    use crate::accounts::quota::show::{LoginState, QuotaShow, SlotShow, Usage};
+    use crate::faces::quota_read::{reply_of, Base, Seen};
+    let now = 1_800_000_000;
+    let slot = |s: &str, pct: u32, at: u64, window: &str| SlotShow {
+        slot: s.into(),
+        pct: Some(pct),
+        resets_at: Some(at),
+        resets_at_text: None,
+        resets_at_rel_text: None,
+        reset_text: None,
+        full: pct >= 100,
+        text: crate::common::cells::Words::default(),
+        tone: crate::common::cells::Tone::Plain,
+        per_pct_text: None,
+        window: window.into(),
     };
-    assert_eq!(
-        cells(&list),
-        [q.accounts[0].five_hour.as_ref().map(|w| w.0.clone()), None]
-    );
-    with_quota(&mut list, &q, "another-agent");
-    assert_eq!(cells(&list), [None, None], "别家的同名号不对上");
-    q.five_hour = Some(cmd_wire::cells::Words("5h 读不到".into()));
+    let show = QuotaShow {
+        kind: Kind::Sub,
+        state,
+        stale,
+        limiting: Some(cmd_wire::quota::SLOT_5H.into()),
+        slots: vec![
+            slot(cmd_wire::quota::SLOT_5H, pct5, now + 3_600, "five_hour"),
+            slot(cmd_wire::quota::SLOT_7D, 41, now + 86_400, "seven_day"),
+        ],
+        login: LoginState::Ok,
+        windows: Vec::new(),
+        usage: Usage::default(),
+    };
+    reply_of(
+        Base {
+            state: ReadState::Present,
+            reason: None,
+            detail: None,
+            path: None,
+            now,
+            usable: vec![],
+            earliest: None,
+        },
+        vec![Seen {
+            agent: "agent".into(),
+            account: "a".into(),
+            seen_at: now,
+            reading: crate::agents::QuotaReading {
+                status: None,
+                refused: false,
+                limiting: Some("five_hour".into()),
+                resets_at: Some(now + 3_600),
+                windows: vec![],
+                overage: None,
+            },
+            show,
+            warm: WarmVerdict::Wait {
+                until: None,
+                why: WarmWhy::Ticking,
+            },
+        }],
+        vec![],
+        &crate::common::time::TextClock::new(now, &crate::common::time::Tz::default()),
+    )
+}
+
+/// 每号那几格（字 · 语气）。
+fn listed_cells(
+    l: &crate::accounts::manage::library::AccountsList,
+) -> Vec<Vec<(String, crate::common::cells::Tone)>> {
+    l.accounts
+        .iter()
+        .map(|r| r.slots.iter().map(|s| (s.text.0.clone(), s.tone)).collect())
+        .collect()
+}
+
+/// ★ 账号清单每号带的额度格从同一份 `quota-read` 成品里取（按 kind ＋ 号名对）：一格一个语义位、字是整格（位名 · 值 · 重置），
+/// 语气照后端那一判；5h 超额在兜且用满 ⇒ warn（不是 fail）。别家的同名号 · 账上没有的号 ⇒ 没有；账读不出 ⇒ 每号一格「5h 读不到」。
+#[test]
+fn each_listed_account_carries_its_written_slots_from_the_quota_read() {
+    use crate::accounts::quota::show::QuotaState;
+    use crate::common::cells::Tone;
+    let mut list = listed(&["a", "z"]);
+    let mut q = read_one(QuotaState::OverageInUse, 100, false);
+    let agent = q.accounts[0].head.agent.as_str().to_string();
+    let s5 = &q.accounts[0].head.show.slots[0];
+    let reset = s5.reset_text.clone().expect("5h 那一格有重置时刻").0;
     with_quota(&mut list, &q, &agent);
+    let cells = listed_cells(&list);
+    assert_eq!(cells[0].len(), 2, "{cells:?}");
     assert_eq!(
-        cells(&list),
-        [Some("5h 读不到".into()), Some("5h 读不到".into())],
-        "账读不出 ⇒ 顶上那一格"
+        cells[0][0].1,
+        Tone::Warn,
+        "超额在兜且用满 ⇒ warn：{cells:?}"
     );
+    assert!(
+        cells[0][0].0.ends_with(&reset),
+        "5h 那一格带重置时刻：{cells:?}"
+    );
+    assert!(cells[0][0].0.contains(&s5.text.0), "{cells:?}");
+    assert!(
+        !cells[0][1].0.contains(
+            &q.accounts[0].head.show.slots[1]
+                .reset_text
+                .clone()
+                .unwrap()
+                .0
+        ),
+        "7d 不是卡人的那一格 ⇒ 不带重置：{cells:?}"
+    );
+    assert!(cells[1].is_empty(), "账上没有的号 ⇒ 没有");
+    with_quota(&mut list, &q, "another-agent");
+    assert_eq!(listed_cells(&list), [vec![], vec![]], "别家的同名号不对上");
+    q.state = cmd_wire::quota::ReadState::Unreadable;
+    with_quota(&mut list, &q, &agent);
+    let unreadable =
+        crate::faces::quota_rows::head_five_hour(cmd_wire::quota::ReadState::Unreadable)
+            .unwrap()
+            .0;
+    assert_eq!(
+        listed_cells(&list),
+        [
+            vec![(unreadable.clone(), Tone::Plain)],
+            vec![(unreadable.clone(), Tone::Plain)]
+        ],
+        "账读不出 ⇒ 每号一格"
+    );
+}
+
+/// ★ 数旧 ⇒ 本来 plain 的格画 warn；已经是 fail 的照旧。
+#[test]
+fn stale_slots_turn_plain_into_warn() {
+    use crate::accounts::quota::show::QuotaState;
+    use crate::common::cells::Tone;
+    let mut list = listed(&["a"]);
+    let q = read_one(QuotaState::Ok, 100, true);
+    with_quota(&mut list, &q, q.accounts[0].head.agent.as_str());
+    let tones: Vec<Tone> = listed_cells(&list)[0].iter().map(|c| c.1).collect();
+    assert_eq!(tones, [Tone::Fail, Tone::Warn]);
 }
 
 /// ★ 终端没了时换的那一项还算数 ⇒ 会话事实的模型 · 权限档写它（字取清单里那一项）；只记了一样 ⇒ 另一样照记录；没记 ⇒ 不动。

@@ -54,11 +54,13 @@ fn results(at_ms: Option<i64>, of: &[&str]) -> Record {
             who: UserText {
                 speaker: Speaker::ToolResult,
                 text: String::new(),
-                pasted: Vec::new(),
+                parts: Vec::new(),
             },
             blocks: of
                 .iter()
-                .map(|id| Block::tool_result(id.to_string(), Vec::new(), false))
+                .map(|id| {
+                    Block::tool_result(id.to_string(), Vec::new(), false, copy_core::size_text)
+                })
                 .collect(),
             results: of
                 .iter()

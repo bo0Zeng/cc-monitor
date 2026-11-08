@@ -81,7 +81,8 @@ fn nothing_is_said_until_it_is_measured() {
     read(&few, "b", 0.10);
     send(&few, "b", 1, 0);
     read(&few, "b", 0.11);
-    for _ in 0..(MIN_SENDS - 1) {
+    // 至少 5 发才给：台阶之后只数到 4 发。
+    for _ in 0..4 {
         send(&few, "b", 100_000, 0);
     }
     assert_eq!(read(&few, "b", 0.20), None, "发数不够");

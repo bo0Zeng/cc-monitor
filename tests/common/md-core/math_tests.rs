@@ -1,7 +1,7 @@
 //! 公式排版的判据：仓里夹具那几条都排得出 · 分数有横线 · 行内比块级矮 · 排不出的给空 · 解析出的公式都带画单。
 
 use super::*;
-use crate::md::{Inl, InlNode, MathFont, MathItem, MdBlock};
+use crate::md::{Inl, InlNode, MathItem, MdBlock};
 use crate::parse;
 
 /// 仓里正文夹具（金样 · 两端判据）里出现过的公式。
@@ -38,13 +38,72 @@ fn letters_use_katex_math_italic() {
         m.items.iter().any(|i| matches!(
             i,
             MathItem::G {
-                f: MathFont::MathItalic,
+                f: Some(f),
                 u: 0x78,
                 ..
-            }
+            } if f == "Math-Italic"
         )),
         "x 应当是 Math-Italic 的 x：{m:?}"
     );
+}
+
+/// KaTeX 的十九族（RaTeX 的字体名就是 KaTeX 字体文件名去掉 `KaTeX_` 与 `.ttf`）。
+const KATEX: [&str; 19] = [
+    "AMS-Regular",
+    "Caligraphic-Regular",
+    "Fraktur-Regular",
+    "Fraktur-Bold",
+    "Main-Regular",
+    "Main-Bold",
+    "Main-Italic",
+    "Main-BoldItalic",
+    "Math-Italic",
+    "Math-BoldItalic",
+    "SansSerif-Regular",
+    "SansSerif-Bold",
+    "SansSerif-Italic",
+    "Script-Regular",
+    "Size1-Regular",
+    "Size2-Regular",
+    "Size3-Regular",
+    "Size4-Regular",
+    "Typewriter-Regular",
+];
+
+#[test]
+fn katex_names_give_their_own_stem_and_others_give_none() {
+    for name in KATEX {
+        assert_eq!(
+            font_stem(name).as_deref(),
+            Some(name),
+            "{name} 应当原样交主干"
+        );
+    }
+    for name in [
+        "",
+        "Sys",
+        "serif",
+        "main_regular",
+        "Main-regular",
+        "NotoSansCJK-Regular",
+    ] {
+        assert_eq!(
+            font_stem(name),
+            None,
+            "{name:?} 不是 KaTeX 的一族，应当缺格"
+        );
+    }
+}
+
+#[test]
+fn every_stem_has_its_file_in_the_shared_folder() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../shared/fonts/katex");
+    // 照源里那一份列表走：md-core 多认一族却没放文件，这条当场红。
+    for name in KATEX_FONTS {
+        let stem = font_stem(name).unwrap();
+        let file = dir.join(format!("KaTeX_{stem}.ttf"));
+        assert!(file.is_file(), "{stem} 在 {} 里没有字体文件", dir.display());
+    }
 }
 
 #[test]

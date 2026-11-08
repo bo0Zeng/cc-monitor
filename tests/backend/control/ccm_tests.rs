@@ -2,7 +2,7 @@ use super::*;
 
 // 那一格（终端里敲 `ccm` 走到哪）要起登录 shell，判它的在 `on_path_tests`；这里只比名片那几格。
 fn answer_probe() -> serde_json::Value {
-    let here = on_path::on_path(&on_path::Reach::Ours, "");
+    let here = on_path::on_path(&crate::platform::shell::Reach::Ours, "");
     serde_json::to_value(super::answer_probe_for(here)).unwrap()
 }
 
@@ -158,7 +158,7 @@ fn the_version_moved_because_the_implementation_did() {
 #[test]
 fn every_flag_we_accept_has_a_usage_line() {
     let src =
-        guard_core::production_code(include_str!("../../../src/backend/host/ccm_line/argv.rs"));
+        guard_core::production_code(include_str!("../../../src/backend/wire/ccm_line/argv.rs"));
     let mut flags: Vec<String> = Vec::new();
     let mut from = 0usize;
     while let Some(rel) = src[from..].find("\"--") {

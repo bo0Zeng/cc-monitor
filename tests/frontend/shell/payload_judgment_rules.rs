@@ -167,7 +167,7 @@ fn us1_the_monitor_holds_no_upstream_selection_and_no_route_grammar() {
         ),
         (
             "apikey_routed_subset",
-            "src/backend/observe/accounts_query.rs::list_product_with",
+            "src/backend/accounts/manage/library.rs::list_product_with",
         ),
     ];
     let literals: [(&str, &str); 4] = [

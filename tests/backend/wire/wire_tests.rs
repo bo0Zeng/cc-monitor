@@ -615,7 +615,7 @@ fn hx2_host_env_echoes_exactly_the_handed_names_and_nothing_else() {
         ("CCM_RELAY_PORT", "8788"),
         ("CCM_DATA_DIR", "/iso/home"),
         ("CCM_APIKEY_CREDENTIALS", "/d/apikey-credentials.json"),
-        (crate::wire::listen::ENV_RESIDENT, "1"),
+        (crate::platform::child_env::RESIDENT, "1"),
         ("HOME", "/home/u"),
     ]
     .into_iter()
@@ -638,7 +638,7 @@ fn hx2_the_echo_list_is_exactly_the_two_handed_names() {
     let want: std::collections::BTreeSet<&str> =
         ["CCM_RELAY_PORT", "CCM_DATA_DIR"].into_iter().collect();
     assert_eq!(names, want);
-    assert!(!names.contains(crate::wire::listen::ENV_RESIDENT));
+    assert!(!names.contains(crate::platform::child_env::RESIDENT));
 }
 
 /// 🔴 I1c：空表 ⇒ 省略（线上字节与既有冻结串逐字节相同）；有值 ⇒ 落在最后、键按名排序。生产那一行恰好一处、读的是真环境。

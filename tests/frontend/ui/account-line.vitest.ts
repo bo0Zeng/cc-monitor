@@ -1,15 +1,19 @@
 /**
- * 「号 ＋ 余量」小件：号牌 · 号名 · 那台写好的那一格余量；没有那一格只露号。余量取那台额度账里这个号那一格，
- * 账读不出 ⇒ 顶上那一格。字都是夹具里的「后端·…」样字，界面不拼。
+ * 「号 ＋ 余量」小件与它读的那一行：号牌 · 号名 · 那台写好的那一格余量；没有那一格只露号。号名与余量都照那台 `accounts-list`
+ * 那一行（`label` · `slots` 第一格），两台各照各的；那台那一行没有 ⇒ 号名照原名、不出余量。字都是夹具里的「后端·…」样字，界面不拼。
  */
 import { beforeEach, describe, expect, it } from "vitest";
-import { accountLine, quotaCellOf } from "../../../src/frontend/ui/account-line";
+import { accountLine, labelOf, quotaCellOf } from "../../../src/frontend/ui/account-line";
 import { appStore } from "../../../src/frontend/ui/app-store";
+import type { AccountsState } from "../../../src/frontend/ui/accounts";
 
-const read = (over: Record<string, unknown>) =>
-  ({ state: "present", reason: null, detail: null, path: null, now: 1, accounts: [], unseen: [], candidates: [], text: null, fiveHour: null, names: { accounts: {}, slots: {} }, verdict: null, ...over }) as never;
+const row = (name: string, label: string, slots: { text: string; tone: string }[] = []) => ({ name, label, slots: slots.map((s) => ({ slot: "5h", ...s })) });
+const listed = (origin: string, rows: ReturnType<typeof row>[]): [string, AccountsState] => [
+  origin,
+  { origin, available: true, error: null, oldBackend: false, meta: null, accounts: rows, notice: null } as unknown as AccountsState,
+];
 
-beforeEach(() => appStore.quota.set(new Map()));
+beforeEach(() => appStore.accounts.set(new Map()));
 
 describe("号 ＋ 余量", () => {
   it("★ 号牌 · 号名 · 余量一行；没有余量那一格 ⇒ 只露号", () => {
@@ -22,12 +26,19 @@ describe("号 ＋ 余量", () => {
     expect(bare.querySelector('[data-part="quota"]')).toBeNull();
   });
 
-  it("★ 余量取那台额度账里这个号那一格；账读不出 ⇒ 顶上那一格；还没问回来 ⇒ 没有", () => {
-    expect(quotaCellOf("<local>", "work")).toBeNull();
-    appStore.quota.set(new Map([["<local>", read({ accounts: [{ account: "work", fiveHour: "后端·work 那格" }] })]]));
+  it("★ 两台号名不同 ⇒ 各照那台那一行的 label；那台那一行没有 ⇒ 原名", () => {
+    appStore.accounts.set(new Map([listed("<local>", [row("0", "后端·本机的零号")]), listed("devbox", [row("0", "后端·devbox 的零号")])]));
+    expect(labelOf("<local>", "0")).toBe("后端·本机的零号");
+    expect(labelOf("devbox", "0")).toBe("后端·devbox 的零号");
+    expect(labelOf("devbox", "work")).toBe("work");
+    expect(labelOf("gpu-01", "0")).toBe("0");
+  });
+
+  it("★ 余量取那台那一行的第一格；没有格 · 那一行没有 · 那台没读过 ⇒ 没有", () => {
+    appStore.accounts.set(new Map([listed("<local>", [row("work", "work", [{ text: "后端·work 那格", tone: "plain" }, { text: "后端·7d", tone: "plain" }]), row("team", "team")])]));
     expect(quotaCellOf("<local>", "work")).toBe("后端·work 那格");
     expect(quotaCellOf("<local>", "team")).toBeNull();
-    appStore.quota.set(new Map([["<local>", read({ state: "unreadable", fiveHour: "后端·5h 读不到", accounts: [{ account: "work", fiveHour: "后端·旧" }] })]]));
-    expect(quotaCellOf("<local>", "work")).toBe("后端·5h 读不到");
+    expect(quotaCellOf("<local>", "nope")).toBeNull();
+    expect(quotaCellOf("devbox", "work")).toBeNull();
   });
 });

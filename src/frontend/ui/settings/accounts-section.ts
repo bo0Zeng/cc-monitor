@@ -2,7 +2,7 @@
  * 机器页「账号」栏：`{machine} 上的账号 · 新会话默认 X` ＋ 一张表（一号一行，44 高：头像 · 名 ＋ 默认 · 种类 · `5h` · `7d` · 动作 · ⋯），
  * 点行展开详情（命令 · API key · 默认模型 · 账号目录 · 删除）。本机远端同一张表，差别只在「打开账号目录」是文件夹还是文件窗口。
  *
- * 判定全在那台后端：清单与登录态（`accounts-list`）· 删了默认号之后谁接（`meta.nextDefault`）· 用量（`quota-read`）·
+ * 判定全在那台后端：清单与登录态（`accounts-list`，号名 `label` · 用量每格 `slots` 都在那一行里）· 删了默认号之后谁接（`meta.nextDefault`）·
  * 对不上的几处（`accounts-verify`，打开时顺手核一次）· 命令名（配置文件里认作这个号的那几段，`profiles-read` 的 `accountShape`）·
  * 能不能开终端窗口（壳那一处）。这里只排版、只认最后一趟回答（切机器快过读时，晚到的整份作废）。
  * 那台账号清单 / 凭据 / 用量一变，后端推一帧（`changed {accounts}` · `changed {quota}`），这一页自己重读。
@@ -15,13 +15,10 @@ import { accountRowKind, deriveUi, defaultAccount, type Account, type AccountsSt
 import { accountsAgentProfile, fetchAccounts, launchAgentId } from "../account-reads";
 import { readPrefs, setPrefs } from "../machine-prefs";
 import { accountAvatarEl } from "../account-color";
-import { readQuota } from "../quota-reads";
-import { slotLabel, slotText, type QuotaRead, accountLabel } from "../acct-words";
-import type { QuotaShow } from "../generated/QuotaShow";
 import { readProfiles } from "../profiles-reads";
 import { writeApikeyKey } from "../apikey-reads";
 import { openOnMachine } from "../file-window";
-import { findHostByOrigin, readRemoteConfig } from "../remote-config";
+import { readMachineNames, readMachines } from "../machine-feed";
 import { subscribeTopics } from "../events";
 import { openLoginDrawer } from "../login-drawer";
 import { accountsAdd, accountsInit, accountsRemove, accountsRepair, accountsRollback, accountsSetDefault, accountsVerify, type VerifyReport } from "../account-ops";
@@ -45,7 +42,6 @@ import { saidOf } from "../kit/detail";
 interface Facts {
   origin: Machine;
   state: AccountsState;
-  quota: QuotaRead | null;
   verify: VerifyReport | null;
   /** 号名 ⇒ 别名清单里认作它的那几条命令名。 */
   commands: Map<string, string[]>;
@@ -135,8 +131,8 @@ export class AccountsSection {
   private async subscribe(): Promise<void> {
     if (this.subscribed) return;
     this.subscribed = true;
-    // 机器表读不到：只订本机。
-    const origins: Machine[] = [LOCAL, ...(await readRemoteConfig()).hosts.map((r) => r.name)];
+    // 本机后端问不到：只订本机。
+    const origins: Machine[] = await readMachineNames().catch(() => [LOCAL]);
     try {
       await subscribeTopics(origins, ["accounts", "quota"], (origin) => {
         if (origin === this.origin) void this.reload(true);
@@ -173,19 +169,18 @@ export class AccountsSection {
   private async read(origin: Machine): Promise<Facts> {
     const empty = new Map<string, string[]>();
     if (!isLocalOrigin(origin)) {
-      // 机器表每一趟都问（表是本机后端的）；表是空的（没配远端，或读不到）就不核：读不到不等于这台不在。
-      const hosts = (await readRemoteConfig()).hosts;
-      if (hosts.length > 0 && findHostByOrigin(hosts, origin) === null) {
+      // 各台的成品每一趟都问（表是本机后端的）；问不到就不核：问不到不等于这台不在。
+      const known = await readMachines().catch(() => null);
+      if (known !== null && !(origin in known)) {
         const state: AccountsState = { origin, available: false, error: null, oldBackend: false, meta: null, accounts: [], notice: null };
-        return { origin, state, quota: null, verify: null, commands: empty, unknown: true };
+        return { origin, state, verify: null, commands: empty, unknown: true };
       }
     }
     const state = await fetchAccounts(origin);
     if (!state.available || deriveUi(state).kind !== "ready") {
-      return { origin, state, quota: null, verify: null, commands: empty, unknown: false };
+      return { origin, state, verify: null, commands: empty, unknown: false };
     }
-    const [quota, verify, book] = await Promise.all([
-      readQuota(origin).catch(() => null),
+    const [verify, book] = await Promise.all([
       accountsVerify(origin).catch(() => null),
       readProfiles(origin).catch(() => null),
     ]);
@@ -194,7 +189,7 @@ export class AccountsSection {
       const g = p.accountShape;
       if (g) commands.set(g.account, [...(commands.get(g.account) ?? []), p.name]);
     }
-    return { origin, state, quota, verify, commands, unknown: false };
+    return { origin, state, verify, commands, unknown: false };
   }
 
   // ───────────────────────────── 画 ─────────────────────────────
@@ -383,12 +378,11 @@ export class AccountsSection {
     list.className = "acct-table";
     list.setAttribute("role", "list");
     if (readonly) list.dataset.readonly = "true";
-    const agent = safeAgent();
-    for (const a of f.state.accounts) list.appendChild(this.row(f, a, f.quota ? quotaOf(f.quota, agent, a.name) : null, readonly));
+    for (const a of f.state.accounts) list.appendChild(this.row(f, a, readonly));
     return list;
   }
 
-  private row(f: Facts, a: Account, q: QuotaShow | null, readonly: boolean): HTMLElement {
+  private row(f: Facts, a: Account, readonly: boolean): HTMLElement {
     const origin = f.origin;
     const key = this.key(a.name, origin);
     const wrap = document.createElement("div");
@@ -406,12 +400,13 @@ export class AccountsSection {
     const line1 = document.createElement("div");
     line1.className = "acct-row-name";
     const nm = document.createElement("span");
-    nm.textContent = accountLabel(a.name);
+    nm.textContent = a.label ?? a.name;
     line1.appendChild(nm);
     const isDef = a.name === f.state.meta?.effectiveDefault;
     if (isDef) line1.appendChild(tag(copyText("resumeSelect.option.defaultBare")));
-    if (q?.login === "needsKey") {
-      const t = tag(copyText("acctPage.row.keyNotSaved"));
+    // 选不了的那一句（没配 key · 不隔离 · 号目录不在）是那台写好的；需登录那一句已在第二行、另有［登录…］，不再挂一次。
+    if (a.unselectable && accountRowKind(a) !== "notLoggedIn") {
+      const t = tag(a.unselectable);
       t.dataset.shade = "error";
       line1.appendChild(t);
     }
@@ -425,7 +420,7 @@ export class AccountsSection {
     u5.className = "acct-row-slot";
     const u7 = document.createElement("div");
     u7.className = "acct-row-slot";
-    fillUsage(u5, u7, q);
+    fillSlots([u5, u7], a.slots ?? []);
 
     const act = document.createElement("div");
     act.className = "acct-row-act";
@@ -744,14 +739,6 @@ function copyCmds(cmds: readonly string[]): void {
   void writeClipboard(cmds.join(" ")).catch((e: unknown) => failToast(copyText("detail.act.failed"), e, { level: "error" }));
 }
 
-function safeAgent(): string {
-  try {
-    return launchAgentId();
-  } catch {
-    return "";
-  }
-}
-
 function mono(t: string): HTMLElement {
   const e = document.createElement("code");
   e.className = "acct-detail-mono";
@@ -763,34 +750,13 @@ function revealLabel(origin: Machine): string {
   return isLocalOrigin(origin) ? copyText("data.item.reveal") : copyText("acctPage.menu.revealRemote");
 }
 
-/** 一个号在那台额度账上的显示态（出过数的那一格；账号库有、没出过数 ⇒ 无采样那一形）。 */
-function quotaOf(quota: QuotaRead, agent: string, account: string): QuotaShow | null {
-  const led = quota.accounts.find((x) => x.agent === agent && x.account === account);
-  if (led) return led;
-  const u = quota.unseen.find((x) => x.agent === agent && x.account === account);
-  return u ? { kind: u.kind, state: "unseen", stale: false, slots: [], login: u.login, usage: u.usage } : null;
-}
-
-/** `5h 63% ↻18:30` · `7d 41%`；用满 `5h ✕ ↻19:00`（红）· 被拒没用满 `5h 58% · 被拒`（红）；按量号 `按量`；没采样 `—`。 */
-function fillUsage(u5: HTMLElement, u7: HTMLElement, q: QuotaShow | null): void {
-  if (!q) return;
-  if (q.kind === "api") {
-    // 按量号那一格（`按量` · 被拒那一句）是额度账写好的（`usage_of`），照抄。
-    u5.textContent = q.usage.text;
-    if (q.state === "refused") u5.dataset.shade = "refused";
-    return;
-  }
-  for (const [slot, cell] of [
-    ["5h", u5],
-    ["7d", u7],
-  ] as const) {
-    const x = q.slots.find((v) => v.slot === slot);
-    const here = q.usage.slot === slot;
-    const parts = [slotLabel(slot), slotText(q, slot)];
-    if (x?.resetText && (slot === "5h" || (here && q.state === "refused"))) parts.push(x.resetText);
-    cell.textContent = parts.join(" ");
-    if (x?.full || (here && q.state === "refused")) cell.dataset.shade = "refused";
-    else if (here && (q.state === "near" || q.state === "overageInUse")) cell.dataset.shade = "warn";
-    if (q.stale) cell.dataset.stale = "true";
-  }
+/** 那一行写好的额度格照先后摆进几列（字与语气都是那台写的：`5h 63% ↻18:30` · `7d 41%` · `按量`）；语气 fail ⇒ 红 · warn ⇒ 黄。 */
+function fillSlots(cols: readonly HTMLElement[], slots: readonly { text: string; tone: string }[]): void {
+  cols.forEach((col, i) => {
+    const s = slots[i];
+    if (!s) return;
+    col.textContent = s.text;
+    if (s.tone === "fail") col.dataset.shade = "refused";
+    else if (s.tone === "warn") col.dataset.shade = "warn";
+  });
 }

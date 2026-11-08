@@ -35,11 +35,6 @@ const TOKEN_DEADLINE: std::time::Duration = std::time::Duration::from_millis(15_
 /// 号的路由段 · 配置目录 · 是不是按量号都照那一行现算（`route_id` · `config_dir` · `is_api_key`），这里不另存一张表。
 pub type BookAt = Arc<dyn Fn(&Path) -> Option<AccountBook> + Send + Sync>;
 
-/// 能当轮换里的号：过路由段闸、不是「没说是哪个号」那一格。
-pub fn account_ok(a: &str) -> bool {
-    crate::relay::segment_is_safe(a) && a != super::endpoint::UNDECLARED_ACCOUNT_SEGMENT
-}
-
 /// 备好的这一发去处（自有值：令牌与改写后的请求体跨出判定、在上游选择的锁里交给中转）。
 pub(crate) enum Go {
     /// 照起会话那个号走（那张决策表）。
@@ -101,7 +96,7 @@ pub struct Hop {
     pub adoptions: Arc<dyn Adoptions>,
     pub quota: Arc<Ledger>,
     pub(crate) home: Option<PathBuf>,
-    pub library: BookAt,
+    pub book: BookAt,
     pub(crate) token: Option<TokenEndpoint>,
     /// 这台此刻活着的会话。
     pub live: Live,
@@ -118,7 +113,7 @@ impl Hop {
         adoptions: &AdoptionsAt,
         quota: Arc<Ledger>,
         home: Option<PathBuf>,
-        library: BookAt,
+        book: BookAt,
         live: Live,
         token: Option<TokenEndpoint>,
     ) -> Self {
@@ -127,7 +122,7 @@ impl Hop {
             store,
             quota: quota.clone(),
             home,
-            library,
+            book,
             token,
             cache: Mutex::new(super::turn::Cache::new(quota.nodes())),
             live,
@@ -137,11 +132,11 @@ impl Hop {
 
     /// 这台的号表；没建账号库 / 读不懂 / 没有家目录 ⇒ `None`（只能用起会话那个号）。
     pub(crate) fn library_here(&self) -> Option<AccountBook> {
-        self.home.as_deref().and_then(|h| (self.library)(h))
+        self.home.as_deref().and_then(|h| (self.book)(h))
     }
 
     /// [`Self::library_here`]，没有就是空表（列事实、拼一个号的样子用；判换不换先看 `library_here`）。
-    pub fn library(&self) -> AccountBook {
+    pub fn book(&self) -> AccountBook {
         self.library_here().unwrap_or_default()
     }
 
@@ -157,7 +152,7 @@ impl Hop {
 
     /// 轮换里的号（[`Self::ids`]）：事实 · 新策略的号列表 · 清掉库里没有的号都照它。
     pub fn roster(&self) -> Vec<String> {
-        Self::ids(&self.library()).collect()
+        Self::ids(&self.book()).collect()
     }
 
     fn endpoint(&self, face: &LoginFace) -> Option<TokenEndpoint> {
@@ -192,7 +187,7 @@ impl Hop {
     pub(crate) fn recognize(&self, agent: &str, body: &[u8]) -> Option<String> {
         let face = crate::agents::route_named(agent).and_then(crate::agents::login_of)?;
         let uuid = (face.identity_of_body)(body)?;
-        let lib = self.library();
+        let lib = self.book();
         let mut hit = lib
             .accounts
             .iter()
@@ -349,7 +344,7 @@ impl Hop {
 
     /// 账号库里续令牌被拒、要重新登录的那几个号（需手动清单列它们）。
     pub fn needs_relogin(&self, agent: &str, now: u64) -> Vec<String> {
-        let lib = self.library();
+        let lib = self.book();
         lib.accounts
             .iter()
             .filter(|a| !a.is_api_key())
@@ -372,7 +367,7 @@ impl Hop {
         let kind = kind_with(row, lib, account);
         let login = match kind {
             // 起会话时没说是哪个号：是哪一份登录说不准 ⇒ 登录照起它的那个会话（它自己发得出去）。
-            Kind::Sub if account == super::endpoint::UNDECLARED_ACCOUNT_SEGMENT => LoginState::Ok,
+            Kind::Sub if account == relay_route_core::UNDECLARED_ACCOUNT_SEGMENT => LoginState::Ok,
             Kind::Api => {
                 if row(account) == Some(true) {
                     LoginState::Ok
@@ -402,7 +397,7 @@ impl Hop {
         now: u64,
         tz: &crate::common::time::Tz,
     ) -> Vec<crate::accounts::quota::facts::Fact> {
-        let lib = self.library();
+        let lib = self.book();
         Self::ids(&lib)
             .map(|id| self.fact_one(agent, &lib, &id, row, now, tz))
             .collect()
@@ -467,10 +462,10 @@ impl Hop {
                     .map(|w| w.name.clone())
             };
             x.past = crate::accounts::quota::rules::Past {
-                weekly_left_at_reset: name("7d")
+                weekly_left_at_reset: name(cmd_wire::quota::SLOT_7D)
                     .map(|n| o.weekly_left_at_reset(&n))
                     .unwrap_or_default(),
-                grid_up: name("5h")
+                grid_up: name(cmd_wire::quota::SLOT_5H)
                     .and_then(|n| o.window_grid(&n, crate::accounts::quota::rules::WINDOW_SECS[0])),
             };
         }

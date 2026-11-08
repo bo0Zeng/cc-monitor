@@ -27,11 +27,11 @@ import { toast, failToast } from "../kit/toast";
 import { dispatcher } from "../keybindings/registry";
 import { copyText } from "../copy-table";
 import { writeClipboard } from "../clipboard";
-import { commands } from "../ipc/commands";
 import { ChanError } from "../../../comms/inward/chan";
 import { ControlError, machineName, offlineSaid } from "../control-said";
 import { saidOf } from "../kit/detail";
 import { LOCAL, isRemoteOrigin, type Machine } from "../ipc/origin";
+import { readMachineNames } from "../machine-feed";
 import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
 import type { Tab } from "../tab-model";
 import { ackNeed, adoptRepo, fetchPlanList, fetchPlanNew, fetchPlanRead, planCommand, registerRepo, type PlanBlock, type PlanCell, type PlanNeed, type PlanList, type PlanRead, type PlanSlice, type PlanWho } from "../plan-reads";
@@ -208,7 +208,7 @@ export class PlanView {
     this.current ??= refOf(this.prefs.last);
     if (this.current && !this.reads.has(`${this.current.origin}\u0000${this.current.workspace}`)) this.read(this.current.origin, this.current.workspace);
     this.render();
-    this.machines = [LOCAL, ...(await commands.list_remote_mcp_origins().catch(() => [] as string[]))];
+    this.machines = await readMachineNames();
     // 关着时「需手动」的账已问过各台：先拿那一份画（问回来再换；那台这会儿离线就留着它、整体变淡）。
     for (const m of this.machines) {
       const known = this.book?.list(m);

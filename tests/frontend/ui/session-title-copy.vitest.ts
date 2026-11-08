@@ -34,7 +34,6 @@ function tab(over: Partial<Tab> = {}): Tab {
     background: true,
     projectDir: "/w/billing",
     face: goldenFace("live-idle"),
-    line: null,
     pinned: false,
     group: null,
     origin: LOCAL,

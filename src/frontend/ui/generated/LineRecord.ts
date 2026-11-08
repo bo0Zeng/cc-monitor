@@ -29,7 +29,7 @@ id: string,
  */
 at?: string, 
 /**
- * `at` 在看的那一台钟上的钟面 `HH:MM`（出口那一下按请求 / 流带来的时区写，[`Record::stamp`]；界面照抄、不换算）；没有时刻 / 解不出 ⇒ 缺。
+ * `at` 在看的那一台钟上的钟面 `HH:MM`（出口那一下按请求 / 流带来的时区写，后端 `wire::stamp::RecordExt::stamp`；界面照抄、不换算）；没有时刻 / 解不出 ⇒ 缺。
  */
 timeText?: string, 
 /**

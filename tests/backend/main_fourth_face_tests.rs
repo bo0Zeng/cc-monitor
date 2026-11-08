@@ -21,6 +21,31 @@ fn production_hello_fills_unavailable_from_this_machine() {
     );
 }
 
+/// 本机 hello 做不到的每一项带置灰那一句，按本机的名字写好（壳原样转，不按码取字）；两维都是。
+/// 两侧异源：左边是两维的产出，右边是本条照码与本机的名字现取的那一句。
+#[test]
+fn every_gap_here_carries_the_sentence_naming_this_machine() {
+    let here = copy_core::local_machine();
+    let gaps: Vec<_> = unavailable_from(Some(false))
+        .into_iter()
+        .chain(unix_mode_unavailable(false))
+        .collect();
+    assert!(gaps.iter().any(|u| u.code == NO_TMUX) && gaps.iter().any(|u| u.code == NO_UNIX_MODE));
+    for u in &gaps {
+        assert_eq!(
+            u.said,
+            copy_core::unavailable(&u.code, &here),
+            "{}",
+            u.command
+        );
+        assert!(
+            u.said.contains(&here) && !u.said.contains(&u.code),
+            "{}",
+            u.said
+        );
+    }
+}
+
 /// unix 权限位那一维两向：没有权限位 ⇒ 恰好是声明了 `no_unix_mode` 的那几条（今天 `files-chmod`）、码是它；有 ⇒ 空。
 /// 两侧异源：左边是 `unix_mode_unavailable` 的产出，右边是本条手写的名单。
 #[test]

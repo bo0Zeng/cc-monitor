@@ -144,14 +144,7 @@ class FilesResumeTest {
             rows: String,
         ) = """{"bar":[],"more":[]}"""
 
-        override fun clashRows(data: String) = "[]"
-
         override fun searchMerge(data: String) = ""
-
-        override fun answerOf(
-            keys: String,
-            answer: String?,
-        ) = "{}"
 
         override fun deploy(
             handle: Long,

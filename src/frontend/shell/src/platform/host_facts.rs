@@ -16,8 +16,6 @@ pub struct HostFacts {
     /// Wayland 会话照常显示、点了由壳照实说「这个桌面上切不了」并给［在 cc-monitor 里打开］（结局族 `desktop-wont-switch`）；
     /// macOS 上那几跳是桩 ⇒ 不显示。
     pub terminal_front: bool,
-    /// 本机 shell 说哪种方言（别名块按它写）：`posix` · `powershell`。
-    pub shell_dialect: String,
 }
 
 /// 这台此刻的那一份。
@@ -25,7 +23,6 @@ pub fn host_facts() -> HostFacts {
     HostFacts {
         os: host_core::OS.to_string(),
         terminal_front: cfg!(any(windows, target_os = "linux")),
-        shell_dialect: if cfg!(windows) { "powershell" } else { "posix" }.to_string(),
     }
 }
 

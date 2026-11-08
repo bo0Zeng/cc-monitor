@@ -8,7 +8,11 @@ export type NeedsQuestion = {
 /**
  * `q0` · `q1` …（答的时候 `picks` 按它键）。
  */
-id: string, text: string, header: string | null, multi: boolean, options: Array<NeedsQuestionOption>, 
+id: string, text: string, 
+/**
+ * 题头那一句，写好的（多选带「多选」那一说法）；没有 ⇒ `null`。
+ */
+head: string | null, multi: boolean, options: Array<NeedsQuestionOption>, 
 /**
  * 恒 `true`：每题都许写自由文本（那一家框里的「Type something」）。
  */

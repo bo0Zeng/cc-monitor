@@ -5,7 +5,7 @@
 //! escapes any inner newline as `\n` (two chars), so the only literal newline
 //! on the wire is the trailing terminator appended by [`to_line`].
 //!
-//! 这一份是**帧面的协议零件**那一层的根（只引 `platform` · `common` · `agents` · `relay`）：
+//! 这一份是**帧面的协议零件**那一层的根（只引 `platform` · `common` · `agents`）：
 //! 帧本身住这里，其余零件各一份子模块。命令表与接线（分派 · 门 · 期限 · 出口声明 · tap）住主 crate 的 `stream`。
 //!
 //! 独立的包 `backend-wire`：引了上层就编不过。上层只够得到这里的 `pub` 项。
@@ -24,30 +24,32 @@
     )
 )]
 
-// 包里照旧写 `crate::wire::…` · `crate::agents::…` · `crate::relay::…` · `crate::common::…` · `crate::platform::…`。
+// 包里照旧写 `crate::wire::…` · `crate::ccm_line::…` · `crate::agents::…` · `crate::common::…` · `crate::platform::…`。
 extern crate self as wire;
 use backend_agents as agents;
 use backend_common as common;
 use backend_platform as platform;
-use backend_relay as relay;
 
 // 测试档的家一开始就是沙箱（`src/common/test-home`）：这一行让链接器把它的启动段带进本包的测试二进制。
 #[cfg(test)]
 #[used]
 static TEST_HOME: fn() = test_home::linked;
 
+pub mod ccm_line; // `ccm` 这一行的词与解析（旗标 · 默认值 · 自己叫什么 · 配置的记号）：起会话 · 账号域 · 别名那一族都往下引它
 pub mod cli_words; // CLI 面的词：流模式显式词 · 子命令后面的选项词（与请求信封同名的那几格）· 帧命令名到子命令的拼法
 pub mod conn; // 连接本身那几条帧命令的类型（`ping` · `cancel` · `stream-watch`）
 pub mod detail; // 失败应答的「复制详情」那一格（时刻 · 机器 · 命令 · 码 · 原话）· 失败投到 CLI 面
 pub mod drain; // 流模式收场：退出之前先排空开跑之后停不下来的那一档（闸 · 票 · 期限）
 pub mod listen; // 常驻监听口的纯判定（判 attach · 拒绝那一行 · 分档 · 模式 · 常量；接受循环住 `stream/entry.rs`）
 pub mod spec; // 一条入方向命令的登记形状（各族命令表只 use 这一份）· 按档装处理器 `prepare`
+pub mod stamp; // 出口那一下写记录的钟面那几格（`timeText` · `atMs` · 重试那一行 · 收场通知那一行）
 pub mod topic; // 「X 变了 ⇒ 重读」那一种推送（`changed`）的主题表（只此一处：名字 · 可丢性 · 小成品上限）
 pub mod topic_hook; // 帧里的小成品怎么现算：进程里装的那一个函数（发端经它调；进程入口 `stream/entry.rs` 装 `stream::topic_body`）
 pub mod typed; // typed 命令：入参 · 回包 · 错误码各是一个 Rust 类型
 
-use crate::agents::record::RecordExt as _;
 use crate::common::cells::{Tone, Words};
+use crate::platform::child_env;
+use crate::stamp::RecordExt as _;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::ops::Range;
@@ -149,6 +151,17 @@ pub trait SessionFaceExt: Sized {
     fn attachable(self, attachable: Option<bool>) -> Self;
     /// 带上它住的那个终端的句柄（容器那一格，宣告时判的）：「在这里开」接的就是它；判不出 ⇒ 缺，交了由那台认。
     fn housed_in(self, c: Option<&SessionContainer>) -> Self;
+    /// 带上那台照记录写好的状态一句（填 `line` · `clock` · `peek` 三格，只经这一口）；`None` ⇒ 照原样（那一态的那一句）。
+    fn saying(self, said: Option<StateLine>) -> Self;
+}
+
+/// 一条活会话此刻的状态一句（那台照记录写好的、经 [`SessionFaceExt::saying`] 填进脸上 `line` · `clock` · `peek` 那三格）：
+/// 定格的字（不带时长）· 会走的那一截 · 悬停句。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StateLine {
+    pub text: Words,
+    pub clock: Option<cmd_wire::frame::Clock>,
+    pub peek: Option<Words>,
 }
 
 fn no(why: Words) -> Allow {
@@ -204,6 +217,15 @@ fn say_yes(hint: String) -> CanSay {
 }
 
 impl SessionFaceExt for SessionFace {
+    fn saying(mut self, said: Option<StateLine>) -> Self {
+        if let Some(s) = said {
+            self.line = s.text;
+            self.clock = s.clock;
+            self.peek = s.peek;
+        }
+        self
+    }
+
     fn under(mut self, account: Option<String>) -> Self {
         self.account = account;
         self
@@ -272,6 +294,8 @@ impl SessionFaceExt for SessionFace {
                     tone: Tone::Plain,
                     order: 4,
                     account: None,
+                    clock: None,
+                    peek: None,
                     can: SessionCan {
                         close: CanClose::No { why: running() },
                         resume: no(running()),
@@ -318,6 +342,8 @@ impl SessionFaceExt for SessionFace {
                     settled: true,
                     line: tip.clone(),
                     account: None,
+                    clock: None,
+                    peek: None,
                     can: SessionCan {
                         close: CanClose::Quiet,
                         resume: if gone { no(tip.clone()) } else { Allow::Yes },
@@ -360,6 +386,8 @@ impl SessionFaceExt for SessionFace {
                     tone: Tone::Plain,
                     order: 3,
                     account: None,
+                    clock: None,
+                    peek: None,
                     can: SessionCan {
                         close: CanClose::No { why: name.clone() },
                         resume: no(Words(copy_core::copy_text(
@@ -478,6 +506,8 @@ fn live_face(
         tone,
         order,
         account: None,
+        clock: None,
+        peek: None,
         can: SessionCan {
             close: CanClose::No { why: running() },
             resume: no(running()),
@@ -551,7 +581,7 @@ pub const REPLY_PAGE_BYTES: cap_core::Cap = cap_core::Cap {
 /// hello 回显哪几格宿主交来的环境（[`Frame::Hello`] 的 `host_env`）。**名单只有这两格** —— 中转端口 ·
 /// 家（`CCM_DATA_DIR`，只有隔离跑才交），都是本机 monitor 起常驻后端时交的（monitor 那一侧 `local_backend_host::HANDED_ENVS`，
 /// 两向对拍）。监听口的钥匙文件路径不在这里。
-pub const HOST_ECHO_ENVS: [&str; 2] = [crate::relay::ENV_PORT, creds_core::store::DATA_DIR_ENV];
+pub const HOST_ECHO_ENVS: [&str; 2] = [child_env::RELAY_PORT, creds_core::store::DATA_DIR_ENV];
 
 /// 按 [`HOST_ECHO_ENVS`] 从环境里取回显的那几格（没被交 / 空串的那一格不回显）。**纯函数**：环境由调用方给。
 pub fn host_env_from(

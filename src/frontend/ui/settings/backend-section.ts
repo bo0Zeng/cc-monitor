@@ -10,6 +10,7 @@
 
 import { commands, type StopAnswer } from "../ipc/commands";
 import { budgetWithin, callTyped } from "../ipc/chan-caller";
+import { readMachineNames } from "../machine-feed";
 import type { ExitPolicy } from "../generated/ExitPolicy";
 import type { LogTail } from "../generated/LogTail";
 import type { HealthFace } from "../generated/HealthFace";
@@ -135,7 +136,7 @@ export class BackendSection {
   private readonly stateOf: ((origin: string) => MachineState | null) | undefined;
   /** origin → 状态格上次照的那两样（离不离线 · 版本）：成品换了一份、这两样没变 ⇒ 不重问。 */
   private readonly paintedOf = new Map<string, string>();
-  /** 后端清单（`backend_machines`）。`null` = 还没问到 —— 那时寄居的四格先不画。 */
+  /** 后端清单（`readMachineNames`）。`null` = 还没问到 —— 那时寄居的四格先不画。 */
   private registered: Set<string> | null = null;
 
   /** 停之前那一问 · 数会话那一问（注入缝：判据换成同步答 / 假数据）。 */
@@ -279,13 +280,12 @@ export class BackendSection {
   }
 
   /**
-   * 机器清单问后端要（注册表就是源头），不自己按 label 拼：前端拼法与 Rust 的 origin 分叉过 ——
-   * 不 trim / 重复 label 后缀化 / 远端总开关关着时一个都没注册 / 启动后新增的机器不在注册表里。
+   * 机器清单问本机后端要（`machine-feed.ts`：它的机器表就是源头），不自己按 label 拼。
    * 本机永远在第一行：它只是不走 ssh 的那一台。
    */
   private async machines(): Promise<MachineEntry[]> {
     try {
-      const origins = await commands.backend_machines();
+      const origins = await readMachineNames();
       return origins.map((origin) => ({ origin, title: machineName(origin) }));
     } catch (e) {
       console.warn(`[P2s] 问后端要机器清单失败，只显示本机：${String(e)}`);

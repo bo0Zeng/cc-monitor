@@ -179,3 +179,18 @@ fn the_ccm_line_names_the_account_and_does_not_rotate() {
         .and_then(crate::agents::warm_of)
         .is_none());
 }
+
+/// ★ 认号同轮换那一个谓词（`relay_route_core::account_ok`）：过不了路由段闸的 · 「没说是哪个号」那一段（`_`）都当入参不对，不起进程。
+#[test]
+fn an_account_id_rotation_would_refuse_is_bad_args() {
+    let home = std::env::temp_dir().join(format!("ccm-warm-ids-{}", std::process::id()));
+    let own = crate::platform::fs::Own::issue_data_at(&home);
+    for bad in ["_", "", "../x", "a/b"] {
+        let req = QuotaWarmReq {
+            agent: crate::agents::AgentKind::new("claude"),
+            account: bad.into(),
+        };
+        let err = answer(&req, &own, T).expect_err(bad);
+        assert_eq!(err.code_or_fallback(), "bad_args", "{bad:?}");
+    }
+}

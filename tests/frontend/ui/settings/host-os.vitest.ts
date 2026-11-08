@@ -1,6 +1,6 @@
 /**
  * 本机能力（界面这一半）：只读壳注入的 `window.__CCM_HOST__`，不按 User-Agent 猜；读不到 / 形状不对 ⇒ 「认不出」那一份，
- * 失败方向往显示倒（↗ 照常显示、方言不猜）。
+ * 失败方向往显示倒（↗ 照常显示）。
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
@@ -20,16 +20,15 @@ describe("readHostFacts", () => {
     }
   });
 
-  it("★ 读不到 / 形状不对 ⇒ 认不出那一份：↗ 照常显示、方言不猜", () => {
+  it("★ 读不到 / 形状不对 ⇒ 认不出那一份：↗ 照常显示", () => {
     for (const v of [undefined, null, "linux", {}, { os: "linux" }, { os: "linux", terminalFront: "yes" }]) {
       expect(readHostFacts(v), JSON.stringify(v)).toEqual(UNKNOWN_HOST);
     }
-    expect(UNKNOWN_HOST).toMatchObject({ os: "unknown", terminalFront: true, shellDialect: null });
-    // 系统 / 方言认不出的那一格单独落「认不出」，别的格照收。
-    expect(readHostFacts({ os: "plan9", terminalFront: false, shellDialect: "fish" })).toEqual({
+    expect(UNKNOWN_HOST).toEqual({ os: "unknown", terminalFront: true });
+    // 系统认不出的那一格单独落「认不出」，别的格照收；壳那一份里没有 shell 那一格（那台后端在 aliases-read 里答），多给的也不留。
+    expect(readHostFacts({ os: "plan9", terminalFront: false, shellDialect: "posix" })).toEqual({
       os: "unknown",
       terminalFront: false,
-      shellDialect: null,
     });
   });
 

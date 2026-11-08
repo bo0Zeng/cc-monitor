@@ -8,8 +8,8 @@ use serde_json::json;
 fn product(terminal: bool, remotes: u64, skipped: bool) -> serde_json::Value {
     serde_json::to_value(super::product(terminal, remotes, skipped)).unwrap()
 }
-fn remotes_arg(a: &serde_json::Value) -> Result<u64, crate::common::said::Said> {
-    crate::wire::typed::take::<FirstRunReq>(a).map(|r| r.remotes)
+fn args(a: &serde_json::Value) -> Result<FirstRunReq, crate::common::said::Said> {
+    crate::wire::typed::take::<FirstRunReq>(a)
 }
 
 #[test]
@@ -54,24 +54,10 @@ fn 没有给登录命名那一步() {
 }
 
 #[test]
-fn 机器表的台数由问的那一方带上_不给或不是非负整数就拒() {
-    assert_eq!(remotes_arg(&json!({"remotes": 3})).unwrap(), 3);
+fn 入参是空的_台数不由问的那一方带() {
+    assert!(args(&json!({})).is_ok());
     assert_eq!(
-        remotes_arg(&json!({})).unwrap_err().code.as_deref(),
-        Some("bad_args")
-    );
-    assert_eq!(
-        remotes_arg(&json!({"remotes": -1}))
-            .unwrap_err()
-            .code
-            .as_deref(),
-        Some("bad_args")
-    );
-    assert_eq!(
-        remotes_arg(&json!({"remotes": "2"}))
-            .unwrap_err()
-            .code
-            .as_deref(),
+        args(&json!({"remotes": 3})).unwrap_err().code.as_deref(),
         Some("bad_args")
     );
 }

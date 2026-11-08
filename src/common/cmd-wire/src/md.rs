@@ -216,8 +216,10 @@ pub struct MathBox {
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub enum MathItem {
     /// 一个字形：字体 `f` 里码位 `u` 那个字，基线左端在 (`x`, `y`)，字号乘 `s` ‰（上下标更小）。
+    /// `f` 是 KaTeX 字体文件名主干（`Main-Regular`；两端各带同一份 `src/shared/fonts/katex/KaTeX_<f>.ttf`，认得哪几族只在 md-core 列）；
+    /// 缺 ⇒ KaTeX 里没有的字（汉字 · 表情），用系统字体。
     G {
-        f: MathFont,
+        f: Option<String>,
         u: u32,
         x: i32,
         y: i32,
@@ -271,35 +273,6 @@ pub enum MathPath {
         y: i32,
     },
     Z,
-}
-
-/// 画字形用的字体：KaTeX 那一套（两端各自带同一份字体文件，`src/shared/fonts/katex/`）；
-/// `Sys` ⇒ KaTeX 里没有的字（汉字 · 表情），用系统字体。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub enum MathFont {
-    Ams,
-    CaligraphicRegular,
-    FrakturRegular,
-    FrakturBold,
-    MainRegular,
-    MainBold,
-    MainItalic,
-    MainBoldItalic,
-    MathItalic,
-    MathBoldItalic,
-    SansSerifRegular,
-    SansSerifBold,
-    SansSerifItalic,
-    ScriptRegular,
-    Size1,
-    Size2,
-    Size3,
-    Size4,
-    Typewriter,
-    Sys,
 }
 
 /// 代码高亮的类：高亮三元组里第三格是这里的序号（`as u32`）。

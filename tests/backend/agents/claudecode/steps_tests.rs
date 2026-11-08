@@ -87,6 +87,10 @@ fn a_result_reads_counts_from_the_structured_result() {
         StepResult {
             ok: false,
             exit_code: Some(127),
+            error: Some(Words(copy_core::copy_text(
+                "stream.result.exitCode",
+                &[("n", "127")]
+            ))),
             text: Words(copy_core::copy_text("runs.state.failed", &[])),
             preview: Some("Exit code 127".into()),
             chars: Some(32),
@@ -95,14 +99,21 @@ fn a_result_reads_counts_from_the_structured_result() {
     );
     let err = json!({"type": "tool_result", "tool_use_id": "t", "content": "File does not exist.", "is_error": true});
     assert_eq!(
-        result_of(&err, None).exit_code,
-        None,
-        "没写退出码就不编一个"
+        (
+            result_of(&err, None).exit_code,
+            result_of(&err, None).error.map(|w| w.0)
+        ),
+        (None, Some(copy_core::copy_text("stream.result.error", &[]))),
+        "没写退出码就不编一个，尾巴只说出错"
     );
     let rej = json!({"type": "tool_result", "tool_use_id": "t", "is_error": true,
         "content": "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed."});
     let r = result_of(&rej, Some(&json!("User rejected tool use")));
-    assert_eq!((r.ok, r.rejected), (false, true));
+    assert_eq!(
+        (r.ok, r.rejected, r.error),
+        (false, true, None),
+        "人拒了不算出错"
+    );
 }
 
 #[test]

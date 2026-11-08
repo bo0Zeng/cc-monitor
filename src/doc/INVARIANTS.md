@@ -26,7 +26,7 @@
 
 **文件管理器不在本约管辖内**：原生文件窗口经后端文件管理写面改用户浏览到的任意文件（会话文件也能改），每次写都是一次直接的用户手势，没有自动 / 后台写。
 
-**多账号的读面**（`src/backend/observe/accounts_query.rs`，零写入、不 shell out）：账号清单 manifest 整份只读、`configDir` 逐条过白名单；`/proc/<pid>/environ` 只抠写死的两个键（`CLAUDE_CONFIG_DIR` · `ANTHROPIC_BASE_URL`，后者只折成「走不走本机中转」一个布尔）；`<configDir>/.claude.json` 只取 `projects[<cwd>].hasTrustDialogAccepted` 一个布尔，且 `configDir` 必须逐字是清单里的一个；`.credentials.json` 只 stat。`sessions/` 必须留在账号库的共享集里（判活靠它）。账号库的改动住 `accounts/manage/`，每次先备份。
+**多账号的读面**（`src/backend/accounts/manage/library.rs`，零写入、不 shell out）：账号清单 manifest 整份只读、`configDir` 逐条过白名单；`/proc/<pid>/environ` 只抠写死的两个键（`CLAUDE_CONFIG_DIR` · `ANTHROPIC_BASE_URL`，后者只折成「走不走本机中转」一个布尔）；`<configDir>/.claude.json` 只取 `projects[<cwd>].hasTrustDialogAccepted` 一个布尔，且 `configDir` 必须逐字是清单里的一个；`.credentials.json` 只 stat。`sessions/` 必须留在账号库的共享集里（判活靠它）。账号库的改动住 `accounts/manage/`，每次先备份。
 
 **发按键只进本工具建的 tmux 会话**：会话名由后端派生（`control/ccm/plan.rs`），`control/gate_rules.rs::is_ccm_tmux_name` 白名单门控送键；kill 只在精确命中 `@ccm_sid` 时做（§34）。
 
@@ -101,7 +101,7 @@
 
 ## 6. session 探活双重校验（PID + procStart）
 
-判「同一个活进程」要 PID ＋ 启动时刻两样，住后端：`observe/watcher.rs` 宣告前比 `procStart`，共享包 `pidwatch-core`（Linux pidfd · Windows 死亡事件）看守（「还是不是那个进程」由调用方传进去：后端问 `platform/proc.rs::session_alive`）。读法在 `platform/`（Windows `GetProcessTimes`，Linux `/proc/<pid>/stat` 第 22 字段，从最后一个 `)` 之后数），判定两平台共用 `liveness::is_same_live_process`。`procStart` 可缺（§18），缺了只看 PID。
+判「同一个活进程」要 PID ＋ 启动时刻两样，住后端：判法只在活会话表 `history/live_table.rs` 的 `author_check` 一处（watcher 加会话那一道闸也经它），共享包 `pidwatch-core`（Linux pidfd · Windows 死亡事件）看守（「还是不是那个进程」由调用方传进去：后端问 `platform/proc.rs::session_alive`）。读法在 `platform/`（Windows `GetProcessTimes`，Linux `/proc/<pid>/stat` 第 22 字段，从最后一个 `)` 之后数），判定两平台共用 `liveness::is_same_live_process`。`procStart` 可缺（§18）、也可能写法对不上；核不上时不只看 PID：pidfile 的修改时刻早于这个进程启动 ⇒ 不活，命令行认得出不是会话（备用进程）⇒ 不活。
 
 **为什么不能松动**：Windows 的 PID 短期复用很常见，只看进程在不在会把旧条目判成活的 ⇒ 僵尸 Tab。
 
@@ -525,7 +525,7 @@ webview 拿得到的 Tauri 权限只许是登记过的那一批；webview 里跑
 
 **为什么不能松动**：对端校验的是它自己的入口，本侧不判，拼错的那一段已经在路上了（收掉一个 agent 的后果是杀掉一棵进程树）；盘上真出现过没人预料的 id（一份名叫 `--help.jsonl` 的收件箱文件）。
 
-**谁在守**：`ccm_invocation_tests.rs::every_value_is_judged_before_it_becomes_a_ccm_argument` · `argv_tests.rs::a_session_id_is_judged_before_it_goes_anywhere` · `fork_write_tests.rs::the_fork_ids_are_whitelisted_at_the_frame_face` · `cc_bus_tests.rs::bus_ids_are_judged_here_before_they_reach_cc_bus` · `plan_tests.rs::a_session_name_that_would_confuse_tmux_is_refused` · `plan_tests.rs::free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold` · `plan_tests.rs::a_launcher_is_one_command_fragment_from_the_shared_whitelist` · `accounts_query_tests.rs::unsafe_config_dirs_are_dropped` · `dial_forwards_tests.rs::the_spec_fence_stands_before_any_lookup_or_dial` · `dial_terminal_tests.rs::the_open_terminal_cwd_passes_real_names_and_refuses_what_quote_cannot_hold` · `mcp_edit_tests.rs::relative_or_dotdot_project_dirs_are_refused` · `lib_invariant_population_tests.rs::every_file_that_quotes_a_value_into_a_shell_line_is_registered`（拼值进 shell 的文件逐份登记）。
+**谁在守**：`ccm_invocation_tests.rs::every_value_is_judged_before_it_becomes_a_ccm_argument` · `argv_tests.rs::a_session_id_is_judged_before_it_goes_anywhere` · `fork_write_tests.rs::the_fork_ids_are_whitelisted_at_the_frame_face` · `cc_bus_tests.rs::bus_ids_are_judged_here_before_they_reach_cc_bus` · `plan_tests.rs::a_session_name_that_would_confuse_tmux_is_refused` · `plan_tests.rs::free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold` · `plan_tests.rs::a_launcher_is_one_command_fragment_from_the_shared_whitelist` · `library_tests.rs::unsafe_config_dirs_are_dropped` · `dial_forwards_tests.rs::the_spec_fence_stands_before_any_lookup_or_dial` · `dial_terminal_tests.rs::the_open_terminal_cwd_passes_real_names_and_refuses_what_quote_cannot_hold` · `mcp_edit_tests.rs::relative_or_dotdot_project_dirs_are_refused` · `lib_invariant_population_tests.rs::every_file_that_quotes_a_value_into_a_shell_line_is_registered`（拼值进 shell 的文件逐份登记）。
 
 ---
 

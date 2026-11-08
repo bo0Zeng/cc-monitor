@@ -13,7 +13,7 @@ use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
 
 use super::profile::{self, Book, Change, Profile, ProfileEdit};
-use super::{door, links, Door, Shell};
+use super::{door, here_shell, links, Door, Shell};
 use crate::ccm_line::argv::{self, flag, Origin};
 use crate::common::said::Said;
 
@@ -414,73 +414,6 @@ pub fn edit_of_form(f: &ProfileForm) -> Result<ProfileEdit, String> {
     })
 }
 
-/// `profiles-from-line` 的入参：手机原来存的那一条启动配置（名字 · 命令 · 在哪个目录起 · 固定的会话名）。
-#[derive(Debug, Clone, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ProfilesFromLineReq {
-    pub(crate) name: String,
-    /// 那一条命令原样（写法同 shell：空白分词、引号里原样）。
-    pub(crate) line: String,
-    #[serde(default)]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
-    pub(crate) cwd: Option<String>,
-    /// 起在这个固定名的 tmux 会话里（缺 ⇒ 照命令行）。
-    #[serde(default)]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
-    pub(crate) session_name: Option<String>,
-}
-
-/// 一条自由命令行 ⇒ 别名表单（[`ProfilesFromLineReq`]）：头一个词是哪一家的启动器 ⇒ 后面那串原样交那一家；
-/// 是 `ccm` ⇒ 照 ccm 自己的解析器切两半、折成表单（与旧别名清单一次性迁移同一条路：[`super::edit_of_alias`]）；
-/// 别的 ⇒ 那一句。命令行里没写目录 · tmux ⇒ 照给的那两格填。
-pub fn form_of_line(req: &ProfilesFromLineReq) -> Answer<ProfileForm> {
-    let words = super::form::split_box(&req.line)
-        .map_err(|()| refused(copy_text("beAliasForm.passthru.unbalanced", &[])))?;
-    let Some((head, rest)) = words.split_first() else {
-        return Err(refused(copy_text("beProfile.line.notALaunch", &[])));
-    };
-    let name = req.name.trim().to_string();
-    let mut f = if head == crate::ccm_line::SUBCOMMAND_WORD {
-        let a = super::Alias::new(&name, rest.to_vec());
-        let text = profile::apply_changes(Some(""), &[Change::Set(super::edit_of_alias(&a, None))])
-            .map_err(refused)?;
-        let book = profile::parse_book(&text);
-        book.find(&name)
-            .map(form_of)
-            .ok_or_else(|| refused(copy_text("beProfile.line.notALaunch", &[])))?
-    } else if let Some(a) = crate::agents::REGISTRY
-        .iter()
-        .find(|a| a.launch.is_some_and(|l| l.default_launcher == head))
-    {
-        ProfileForm {
-            name: name.clone(),
-            agent: (a.kind != crate::agents::default_kind()).then(|| a.kind.to_string()),
-            args: (!rest.is_empty()).then(|| super::form::join_box(rest)),
-            ..ProfileForm::default()
-        }
-    } else {
-        return Err(refused(copy_text("beProfile.line.notALaunch", &[])));
-    };
-    let given = |v: &Option<String>| {
-        v.as_deref()
-            .map(str::trim)
-            .filter(|v| !v.is_empty())
-            .map(str::to_string)
-    };
-    if f.cwd.is_none() {
-        f.cwd = given(&req.cwd);
-    }
-    if f.tmux.is_none() {
-        f.tmux = given(&req.session_name).map(|name| TmuxPick {
-            mode: TmuxMode::Fixed,
-            name,
-        });
-    }
-    Ok(f)
-}
-
 /// 一段配置 ⇒ 表单（自己写了的那几格有值，其余继承）。
 pub(crate) fn form_of(p: &Profile) -> ProfileForm {
     let mut f = ProfileForm {
@@ -612,15 +545,6 @@ fn summary_of(p: &Profile, shell: Shell) -> String {
 // 成品
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// 这台说哪种 shell（链接只在 POSIX；Windows 上全是函数）。
-fn here_shell() -> Shell {
-    if cfg!(windows) {
-        Shell::PowerShell
-    } else {
-        Shell::Posix
-    }
-}
-
 /// 一段自己写的一项：配置文件里的键 · 归表单哪一格 · 值 · 第几行。
 #[derive(Debug, Serialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -671,6 +595,26 @@ pub(crate) enum ProfileKind {
     Function,
 }
 
+/// 树里那一行「删」那一格：字（自己的 ⇒ 删；盖着内置的 ⇒ 还原成内置）· 删它要先选怎么处置的那几段（基于它的；还原成内置的没有 ⇒ 空）。
+/// 内置的那一段删不掉 ⇒ 整格 `null`。
+#[derive(Debug, Serialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(
+        export,
+        rename = "ProfileDrop",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
+    )
+)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DropOut {
+    label: String,
+    kids: Vec<String>,
+    /// 删的是盖着内置的那一段 ⇒ 删完那一条就回到内置（当场交、不藏不撤）。
+    restores: bool,
+}
+
 /// 「账号那一形」：号与起在哪种终端里（直路 · tmux · 托管）按合并下来的算。
 #[derive(Debug, Serialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -710,6 +654,9 @@ pub(crate) struct ProfileOut {
     agent: Vec<String>,
     usable: bool,
     problem: Option<ProblemOut>,
+    /// 内置的那一段 ⇒ 标上的那个字（「内置」）；其余 ⇒ `null`。
+    badge: Option<String>,
+    drop: Option<DropOut>,
     kind: ProfileKind,
     function_why: Option<String>,
     /// 写成函数时写在哪份文件、写成什么。
@@ -723,7 +670,15 @@ pub(crate) struct ProfileOut {
     start: String,
 }
 
-fn profile_out(book: &Book, p: &Profile, shell: Shell, alias_file: &str, ccm: &str) -> ProfileOut {
+/// `bare`：只有内置那几段的清单（认「盖着内置」用）。
+fn profile_out(
+    book: &Book,
+    bare: &Book,
+    p: &Profile,
+    shell: Shell,
+    alias_file: &str,
+    ccm: &str,
+) -> ProfileOut {
     let resolved = profile::resolve(book, &p.name, &[]);
     let problem = resolved.as_ref().err().map(|e| ProblemOut {
         line: book
@@ -765,6 +720,25 @@ fn profile_out(book: &Book, p: &Profile, shell: Shell, alias_file: &str, ccm: &s
         agent: p.agent.clone(),
         usable: resolved.is_ok(),
         problem,
+        badge: p
+            .builtin
+            .then(|| copy_text("beSessionCommands.scope.builtin", &[])),
+        drop: match (p.builtin, overrides(bare, p)) {
+            (true, _) => None,
+            (false, true) => Some(DropOut {
+                label: copy_text("beProfile.drop.restore", &[]),
+                kids: Vec::new(),
+                restores: true,
+            }),
+            (false, false) => Some(DropOut {
+                label: copy_text("cfgPage.mcp.remove", &[]),
+                kids: profile::children_of(book, &p.name)
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect(),
+                restores: false,
+            }),
+        },
         kind: if fun {
             ProfileKind::Function
         } else {
@@ -914,8 +888,6 @@ pub struct ProfilesBook {
     path: String,
     /// `path` 的显示形（这台按自己的家目录写好的 `~/…`，界面照抄）。
     path_shown: String,
-    /// 配置文件在不在。
-    exists: bool,
     /// 盘上那份的版本（不在 ⇒ `null`），存的时候当 `ifRev` 交回 `profiles-write`。
     rev: Option<String>,
     /// 上次 cc-monitor 写过之后有人改过 ⇒ 那份的修改时刻（按看的那一台的时区写好）；没改过 ⇒ `null`。
@@ -925,11 +897,6 @@ pub struct ProfilesBook {
     profiles: Vec<ProfileOut>,
     /// 这台存好的几组会话（`[set."组名"]`，照写下的先后）；一组写错只那一组带 `problems`。
     sets: Vec<SetOut>,
-    /// 配置文件不在时首建那几条的预览（在 ⇒ 空）：两条（`cc` · `cct`），没有 tmux 的那台只一条。
-    seed: Vec<ProfileOut>,
-    /// 空态那一块的说明与按钮字，随 `seed` 的条数（没有 tmux 的那台只建一条）；`seed` 空 ⇒ 空串。
-    seed_hint: String,
-    seed_create: String,
     /// 链接住的目录（`~/.cc-monitor/bin`）。
     bin_dir: String,
     /// 这台的账号表（具名号，按账号库的顺序；表单「账号」那一格的选项）。
@@ -942,7 +909,7 @@ pub struct ProfilesBook {
     tmux_naming: Vec<TmuxNamingOut>,
 }
 
-/// `profiles-read` → 整份：每段的成品 ＋ 文件级错误 ＋ 版本 ＋ 手改过没有 ＋ 迁移说明 ＋ 空态那两条的预览 ＋ 这台有没有 tmux。
+/// `profiles-read` → 整份：合并后的清单（内置那几段 ＋ 用户的，每段的成品）＋ 文件级错误 ＋ 版本 ＋ 手改过没有 ＋ 这台有没有 tmux。
 /// `tz` ＝ 看的那一台的时区：手改时刻 `editedAt` 按它写。有没有 tmux 由宿主探好交进来（`faces::profiles_face`；判据喂定值）。
 pub fn read_with(
     d: &dyn Door,
@@ -954,11 +921,12 @@ pub fn read_with(
     let path = profile::path_in(&store.home);
     let alias_file = super::alias_file_in(&store.home, shell);
     let ccm = door::join_under(&store.home, relay_route_core::BACKEND_LANDING_REL);
+    let bare = super::book_in(&store.home, None);
     let profiles: Vec<ProfileOut> = store
         .book
         .profiles
         .iter()
-        .map(|p| profile_out(&store.book, p, shell, &alias_file, &ccm))
+        .map(|p| profile_out(&store.book, &bare, p, shell, &alias_file, &ccm))
         .collect();
     let file_problem = store
         .book
@@ -973,35 +941,12 @@ pub fn read_with(
                 .as_deref()
                 .map(|r| crate::wire::detail::of(Some("profiles-read"), "syntax", Some(r))),
         });
-    let seed: Vec<ProfileOut> = if store.text.is_none() {
-        let text = profile::apply_changes(Some(""), &seed_changes()).map_err(refused)?;
-        let b = profile::parse_book(&text);
-        b.profiles
-            .iter()
-            .map(|p| profile_out(&b, p, shell, &alias_file, &ccm))
-            .collect()
-    } else {
-        Vec::new()
-    };
-    // 随包那几条（`first_aliases`）至少两条（当前终端 · 托管），有 tmux 的再加一条。
-    let (seed_hint, seed_create) = if seed.is_empty() {
-        (String::new(), String::new())
-    } else {
-        (
-            copy_text("beProfile.seedHint.some", &[]),
-            copy_text("beProfile.seedCreate.some", &[]),
-        )
-    };
     Ok(ProfilesBook {
-        exists: store.text.is_some(),
         rev: super::rev_of(store.text.as_deref()),
         edited_at: edited_at(d, &store, &path, tz),
         file_problem,
         profiles,
         sets: store.book.sets.iter().map(set_out).collect(),
-        seed,
-        seed_hint,
-        seed_create,
         bin_dir: door::join_under(&store.home, links::bin_rel()),
         accounts: super::account_table(&store.home),
         tmux,
@@ -1010,24 +955,6 @@ pub fn read_with(
         path_shown: shown_in(&path, &store.home),
         path,
     })
-}
-
-/// 首建那几条（`cc` · `cct` 基于 `cc`，没有 tmux 的那台只 `cc`；名字由默认那一家的 wrapper 名派生）。
-fn seed_changes() -> Vec<Change> {
-    let first = super::first_aliases(here_shell());
-    let base = first.first().map(|a| a.name.clone());
-    first
-        .iter()
-        .enumerate()
-        .map(|(i, a)| {
-            let mut e = super::edit_of_alias(a, None);
-            if i > 0 {
-                e.from = base.clone();
-                e.ccm.retain(|w| w != flag::END);
-            }
-            Change::Set(e)
-        })
-        .collect()
 }
 
 // ── 合并表 ──
@@ -1195,7 +1122,7 @@ pub fn answer_resolve(
             match changes_of_set(&store.book, was.as_deref(), &e)
                 .and_then(|c| text_after(store.text.as_deref(), &c))
             {
-                Ok(t) => (profile::parse_book(&t), None),
+                Ok(t) => (super::book_in(&store.home, Some(&t)), None),
                 Err(e) => (store.book.clone(), Some(e)),
             }
         }
@@ -1253,8 +1180,6 @@ pub(crate) enum Op {
         #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         children: Option<Children>,
     },
-    /// 配置文件还不在时建出来：`seed` ⇒ 带首建那两条，否则一段都没有。
-    Init { seed: bool },
     /// 存一组（`was` ＝ `null` ⇒ 新建；名字变了 ⇒ 改名）。
     SaveSet {
         was: Option<String>,
@@ -1317,6 +1242,7 @@ fn changes_of_set(book: &Book, was: Option<&str>, e: &ProfileEdit) -> Result<Vec
     let mut out = Vec::new();
     match was {
         Some(w) if w != e.name => {
+            builtin_fixed(book, w)?;
             if book.find(&e.name).is_some() {
                 return Err(copy_text("addMachine.err.taken", &[("name", &e.name)]));
             }
@@ -1324,14 +1250,19 @@ fn changes_of_set(book: &Book, was: Option<&str>, e: &ProfileEdit) -> Result<Vec
                 from: w.to_string(),
                 to: e.name.clone(),
             });
-            for k in profile::children_of(book, w) {
+            // 内置的那几段不在用户文件里（改名的若盖着内置，它们照旧基于回到内置的那一条）。
+            for k in profile::children_of(book, w)
+                .into_iter()
+                .filter(|k| book.find(k).is_some_and(|p| !p.builtin))
+            {
                 out.push(Change::SetFrom {
                     name: k.to_string(),
                     from: Some(e.name.clone()),
                 });
             }
         }
-        None if book.find(&e.name).is_some() => {
+        // 新建一段与内置的同名 ⇒ 盖过内置（同改它）；与用户文件里的同名 ⇒ 拒。
+        None if book.find(&e.name).is_some_and(|p| !p.builtin) => {
             return Err(copy_text("addMachine.err.taken", &[("name", &e.name)]));
         }
         _ => {}
@@ -1374,6 +1305,7 @@ fn changes_of_remove(
     name: &str,
     children: Option<Children>,
 ) -> Result<Vec<Change>, String> {
+    builtin_fixed(book, name)?;
     let p = book
         .find(name)
         .ok_or_else(|| copy_text("beProfile.chain.unknown", &[("name", name)]))?;
@@ -1408,29 +1340,51 @@ fn changes_of_remove(
     Ok(out)
 }
 
-/// 线上那几种改动 ⇒ 配置文件的改动（`Init` 另说，不在这里）。
-/// **依次**判：每一条都在「盘上那份 ＋ 前面几条改完」那一份上判（后一条看得见前一条新增 / 改名的段）。
-fn changes_of(text: Option<&str>, ops: &[Op]) -> Result<Vec<Change>, String> {
+/// 线上那几种改动 ⇒ 配置文件的改动。
+/// **依次**判：每一条都在「盘上那份 ＋ 前面几条改完」合上内置那几段（`aliases::book_in`）那一份上判（后一条看得见前一条新增 / 改名的段）。
+fn changes_of(home: &str, text: Option<&str>, ops: &[Op]) -> Result<Vec<Change>, String> {
     let mut out = Vec::new();
     let mut cur = text.unwrap_or("").to_string();
-    let mut book = profile::parse_book(&cur);
+    let mut book = super::book_in(home, Some(&cur));
+    let bare = super::book_in(home, None);
     for op in ops {
         let step = match op {
             Op::Set { was, form } => {
                 let e = edit_of_form(form)?;
                 changes_of_set(&book, was.as_deref(), &e)?
             }
-            Op::Remove { name, children } => changes_of_remove(&book, name, *children)?,
-            Op::Init { seed: true } => seed_changes(),
-            Op::Init { seed: false } => continue,
+            Op::Remove { name, children } => {
+                // 删的是盖着内置的那一段 ⇒ 删完回到内置那一条，基于它的照旧基于它。
+                if book.find(name).is_some_and(|p| overrides(&bare, p)) {
+                    vec![Change::Remove(name.clone())]
+                } else {
+                    changes_of_remove(&book, name, *children)?
+                }
+            }
             Op::SaveSet { was, set } => changes_of_save_set(&book, was.as_deref(), set)?,
             Op::RemoveSet { name } => vec![Change::RemoveSet(name.clone())],
         };
         cur = profile::apply_changes(Some(&cur), &step)?;
-        book = profile::parse_book(&cur);
+        book = super::book_in(home, Some(&cur));
         out.extend(step);
     }
     Ok(out)
+}
+/// 用户文件里这一段与一条内置的同名（盖着它；删掉 ⇒ 回到内置）。`bare`：只有内置那几段的清单。
+fn overrides(bare: &Book, p: &Profile) -> bool {
+    !p.builtin
+        && bare
+            .profiles
+            .iter()
+            .any(|b| super::same_name_here(&b.name, &p.name))
+}
+
+/// 内置的那一段（用户文件里没有）删不掉、改不了名：改它就是在用户文件里写一段同名的盖过它。
+fn builtin_fixed(book: &Book, name: &str) -> Result<(), String> {
+    match book.find(name) {
+        Some(p) if p.builtin => Err(copy_text("beProfile.builtin.fixed", &[("name", name)])),
+        _ => Ok(()),
+    }
 }
 
 /// 每一段（与整份文件）此刻的坏处：`None` ＝ 文件级。
@@ -1512,9 +1466,9 @@ pub struct ProfilesImpact {
 pub fn answer_impact(d: &dyn Door, req: &ProfilesImpactReq) -> Answer<ProfilesImpact> {
     let ops = &req.changes;
     let store = super::load(d).map_err(refused)?;
-    let changes = changes_of(store.text.as_deref(), ops).map_err(refused)?;
+    let changes = changes_of(&store.home, store.text.as_deref(), ops).map_err(refused)?;
     let after_text = text_after(store.text.as_deref(), &changes).map_err(refused)?;
-    let after = profile::parse_book(&after_text);
+    let after = super::book_in(&store.home, Some(&after_text));
     let named: Vec<String> = changes
         .iter()
         .filter_map(|c| match c {
@@ -1703,22 +1657,9 @@ pub fn answer_write(d: &dyn Door, req: &ProfilesWriteReq) -> Answer<ProfilesWrit
             ),
         ));
     }
-    let changes = changes_of(store.text.as_deref(), ops).map_err(refused)?;
-    let base = match (
-        &store.text,
-        ops.iter().any(|o| matches!(o, Op::Init { .. })),
-    ) {
-        (Some(_), true) => {
-            return Err(refused(copy_text(
-                "beProfile.init.exists",
-                &[("path", &path)],
-            )))
-        }
-        (Some(t), false) => Some(t.as_str()),
-        (None, _) => None,
-    };
-    let text = profile::apply_changes(base, &changes).map_err(refused)?;
-    let after = profile::parse_book(&text);
+    let changes = changes_of(&store.home, store.text.as_deref(), ops).map_err(refused)?;
+    let text = profile::apply_changes(store.text.as_deref(), &changes).map_err(refused)?;
+    let after = super::book_in(&store.home, Some(&text));
     let was = broken(&store.book);
     let now = broken(&after);
     let mut fresh: Vec<String> = now
@@ -1738,7 +1679,7 @@ pub fn answer_write(d: &dyn Door, req: &ProfilesWriteReq) -> Answer<ProfilesWrit
         Err(super::WriteErr::Stale(e)) => return Err(Said::new("stale", e)),
         Err(super::WriteErr::Refused(e)) => return Err(refused(e)),
     }
-    let out = super::sync_outputs(d, &store.home, &profile::parse_book(&text), None);
+    let out = super::sync_outputs(d, &store.home, &after, None);
     if let Some(p) = out.problems.first() {
         return Err(refused(p.clone()));
     }
@@ -1848,26 +1789,6 @@ impl crate::wire::typed::Handle for ProfilesWrite {
 
             answer_write(files, &req).map_err(of_fail_with(ProfilesWriteErr::Refused))
         }
-    }
-}
-
-/// `profiles-from-line`：一条自由命令行 ⇒ 别名表单（判法 [`form_of_line`]；不读不写盘）。
-pub struct ProfilesFromLine;
-
-impl Command for ProfilesFromLine {
-    const NAME: &'static str = "profiles-from-line";
-    type Req = ProfilesFromLineReq;
-    type Reply = ProfileForm;
-    type Err = ProfilesErr;
-}
-
-impl crate::wire::typed::Handle for ProfilesFromLine {
-    type Needs = crate::wire::typed::needs::Nothing;
-    async fn run(
-        req: ProfilesFromLineReq,
-        _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> Result<ProfileForm, ProfilesErr> {
-        form_of_line(&req).map_err(of_fail_with(ProfilesErr::Refused))
     }
 }
 

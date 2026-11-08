@@ -427,7 +427,8 @@ export const SETTINGS_SCENES: Scene[] = [
     "gpu-01 断开：照本机后端记着的上次那一份画（改过你的文件 · cc-monitor 的文件）＋ 警告条说多旧 ［重试］",
     async () => {
       // 本机后端记一份 gpu-01 的上次值（它连着的时候读成过一次）：经产品那条路读回本机那份成品、记成 gpu-01 的。
-      const local = (await readChores([LOCAL])).machines[0]?.report;
+      const here = (await readChores()).machines.find((m) => m.origin === LOCAL);
+      const local = here === undefined ? undefined : here.report;
       if (!local) throw new Error("本机那份「文件与数据」没读回来，记不了上次值");
       await callTyped(LOCAL, "last-seen-write", { origin: "gpu-01", kind: "data", value: local }, budgetWithin(10_000));
       await placed("gpu-01");

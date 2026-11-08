@@ -72,6 +72,49 @@ async fn the_local_backend_asks_each_machine_its_needs_and_merges() {
     );
 }
 
+/// ★ 问哪几台不由问的一方给：入参是空的；本机后端照自己的机器表问本机 ＋ 「连接这台」开着的每一台（关着的那台不问）。
+#[tokio::test]
+async fn the_merge_asks_this_machine_and_every_connected_machine_in_its_own_table() {
+    assert!(serde_json::from_value::<NeedsMergeReq>(serde_json::json!({})).is_ok());
+    assert!(
+        serde_json::from_value::<NeedsMergeReq>(serde_json::json!({"machines": ["<local>"]}))
+            .is_err(),
+        "名单不是入参"
+    );
+    let off = <crate::dial::Host as serde::Deserialize>::deserialize(
+        &serde_json::json!({"label": "off", "host": "off", "user": "u", "connect": false}),
+    )
+    .expect("关着的那一台");
+    let t = crate::dial::remote_ask::Table::of(vec![
+        crate::dial::remote_ask::test_peers::host("devbox"),
+        off,
+        crate::dial::remote_ask::test_peers::host("pi"),
+    ]);
+    let asked = t.asked();
+    assert_eq!(
+        asked,
+        [cmd_wire::LOCAL, "devbox", "pi"]
+            .map(cmd_wire::Machine::named)
+            .to_vec()
+    );
+    let peers = Peers::new(&[
+        ("devbox", serde_json::to_string(&plan(5, "那台的")).unwrap()),
+        ("pi", serde_json::to_string(&plan(3, "又一台")).unwrap()),
+    ]);
+    let got = needs_merge_with(
+        &asked,
+        std::future::ready(Ok(plan(9, "本机的"))),
+        &Default::default(),
+        until(9_000),
+        &t,
+        &peers,
+    )
+    .await
+    .expect("合得出");
+    assert_eq!(got.total, 3, "本机与两台都问到了");
+    assert_eq!(peers.asked().len(), 2, "关着的那台没问");
+}
+
 /// 那台答了一个错（CLI 信封里的码与那一句原样转回来）的替身。
 struct Erring;
 

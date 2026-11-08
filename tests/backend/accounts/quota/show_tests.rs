@@ -139,7 +139,7 @@ fn slots_are_rounded_and_named_by_their_semantic_position() {
                 pct: Some(63),
                 resets_at: Some(LATER),
                 full: false,
-                text: copy_core::copy_text("acct.val.pct", &[("pct", "63")]).into(),
+                text: Words::default(),
                 tone: crate::common::cells::Tone::Plain,
                 per_pct_text: None,
                 window: "five_hour".into(),
@@ -152,7 +152,7 @@ fn slots_are_rounded_and_named_by_their_semantic_position() {
                 pct: Some(41),
                 resets_at: Some(NOW + 5 * 86_400),
                 full: false,
-                text: copy_core::copy_text("acct.val.pct", &[("pct", "41")]).into(),
+                text: Words::default(),
                 tone: crate::common::cells::Tone::Plain,
                 per_pct_text: None,
                 window: "seven_day".into(),
@@ -186,136 +186,6 @@ fn full_is_a_window_at_a_hundred_not_a_refusal() {
             .get("full")
             .is_none(),
         "没用满 ⇒ 缺"
-    );
-}
-
-/// ★ 一格的字与语气只住 `slot_words`：卡人的那一格按显示态换字；用满不管是不是卡人的那一格都 `✕`。
-#[test]
-fn a_slot_cell_is_written_once_by_state() {
-    use crate::common::cells::Tone;
-    let w = |state, here, pct, full| {
-        let (t, tone) = slot_words(state, here, pct, full);
-        (t.0, tone)
-    };
-    let c = |k: &str, a: &[(&str, &str)]| copy_core::copy_text(k, a);
-    assert_eq!(
-        w(QuotaState::OverageInUse, true, Some(40), false),
-        (c("acct.row.over", &[]), Tone::Warn)
-    );
-    assert_eq!(
-        w(QuotaState::ResetSinceSeen, true, Some(40), false),
-        (c("acct.val.none", &[]), Tone::Plain)
-    );
-    assert_eq!(
-        w(QuotaState::Ok, false, Some(100), true),
-        (c("acct.val.full", &[]), Tone::Fail)
-    );
-    assert_eq!(
-        w(QuotaState::Refused, true, Some(58), false),
-        (c("acct.val.refusedPct", &[("pct", "58")]), Tone::Fail)
-    );
-    assert_eq!(
-        w(QuotaState::Refused, true, None, false),
-        (c("reason.code.refused", &[]), Tone::Fail)
-    );
-    assert_eq!(
-        w(QuotaState::Refused, false, Some(10), false),
-        (c("acct.val.pct", &[("pct", "10")]), Tone::Plain)
-    );
-    assert_eq!(
-        w(QuotaState::Near, true, Some(85), false),
-        (c("acct.val.pct", &[("pct", "85")]), Tone::Warn)
-    );
-    assert_eq!(
-        w(QuotaState::Ok, true, None, false),
-        (c("acct.val.none", &[]), Tone::Plain)
-    );
-}
-
-/// ★★ 用量那一格（状态栏按钮 · 切号下拉 · 「下一个」）由核心写：窗口 · 值 · 重置 · 连成的一句 · 语气，出口照抄。
-/// 回包没说卡在哪一窗 ⇒ 画 `5h`（这一判也只在这里）。
-#[test]
-fn the_usage_cell_is_written_by_the_core() {
-    let t = |k: &str| copy_core::copy_text(k, &[]);
-    let clock = crate::common::time::TextClock::new(NOW, &crate::common::time::Tz::default());
-    let shown = |r: Option<&QuotaReading>, kind: Kind| {
-        let mut q = show(r.map(|r| (r, NOW)), facts(kind), NOW, &slot);
-        q.stamp(&clock);
-        q.usage
-    };
-    let five = crate::accounts::quota::name_words::slot_text("5h");
-    // 订阅 · 正常：`5h 50%`，常规色。
-    let u = shown(Some(&sub(0.5, LATER)), Kind::Sub);
-    assert_eq!(
-        (
-            u.slot.as_deref(),
-            u.window.as_ref().map(|w| w.0.as_str()),
-            u.reset.is_none(),
-            u.tone
-        ),
-        (Some("5h"), Some(five.as_str()), true, Tone::Plain)
-    );
-    assert_eq!(
-        u.text.0,
-        copy_core::copy_text("acct.usage.wv", &[("w", &five), ("v", &u.value.0)])
-    );
-    // 快满 ⇒ 警示色。
-    assert_eq!(shown(Some(&sub(0.9, LATER)), Kind::Sub).tone, Tone::Warn);
-    // 用满 ⇒ 失败色。
-    assert_eq!(shown(Some(&sub(1.0, LATER)), Kind::Sub).tone, Tone::Fail);
-    // 被拒 ⇒ 失败色 ＋ 几点重置（照卡着那一窗的时刻），连成 `5h ✕ ↻hh:mm`。
-    let mut refused = sub(1.0, LATER);
-    refused.refused = true;
-    let u = shown(Some(&refused), Kind::Sub);
-    let reset = copy_core::copy_text("acct.reset.at", &[("at", &clock.text(LATER).0)]);
-    assert_eq!(
-        (u.tone, u.reset.as_ref().map(|r| r.0.clone())),
-        (Tone::Fail, Some(reset.clone()))
-    );
-    assert_eq!(
-        u.text.0,
-        copy_core::copy_text(
-            "acct.usage.wvr",
-            &[("w", &five), ("v", &u.value.0), ("r", &reset)]
-        )
-    );
-    // 超额在兜 ⇒ 警示色、不写重置。
-    let mut over = sub(1.0, LATER);
-    over.overage = Some(QuotaOverage {
-        status: Some(QuotaStatus::Allowed),
-        resets_at: None,
-        disabled: None,
-        in_use: true,
-    });
-    let u = shown(Some(&over), Kind::Sub);
-    assert_eq!((u.tone, u.reset.is_none()), (Tone::Warn, true), "{u:?}");
-    // 回包没说卡在哪一窗 ⇒ 画 5h。
-    let mut free = sub(0.3, LATER);
-    free.limiting = None;
-    free.windows.retain(|w| w.name == "five_hour");
-    assert_eq!(shown(Some(&free), Kind::Sub).slot.as_deref(), Some("5h"));
-    // 没出过数 ⇒ `5h —`，常规色。
-    let u = shown(None, Kind::Sub);
-    assert_eq!(
-        (u.value.0.as_str(), u.tone),
-        (t("acct.val.none").as_str(), Tone::Plain)
-    );
-    // 按量 · 能发 ⇒ `按量`、没有窗口；按量 · 被拒 ⇒ `被拒 ↻hh:mm`、失败色。
-    let u = shown(Some(&sub(0.0, LATER)), Kind::Api);
-    assert_eq!(
-        (u.window.is_none(), u.text.0.as_str(), u.tone),
-        (true, t("acct.kind.api").as_str(), Tone::Plain)
-    );
-    let mut api = sub(0.0, LATER);
-    api.refused = true;
-    let u = shown(Some(&api), Kind::Api);
-    assert_eq!(
-        (u.value.0.as_str(), u.tone),
-        (t("reason.code.refused").as_str(), Tone::Fail)
-    );
-    assert_eq!(
-        u.text.0,
-        copy_core::copy_text("acct.usage.wv", &[("w", &u.value.0), ("v", &reset)])
     );
 }
 
@@ -356,36 +226,6 @@ fn observed() -> crate::accounts::quota::ledger::Observed {
     }
 }
 
-/// ★ 「1% ≈ 多少」写好的字：每个量过的窗口一格（短写的数）；语义位那一格照它取的那个窗口（7d 取用得多的 opus），没量过 ⇒ 缺。
-#[test]
-fn per_pct_is_written_for_windows_and_the_slot_that_took_them() {
-    let o = observed();
-    let key = |w: &str| crate::agents::claudecode::quota::key_of(w);
-    let mut sh = show(Some((&o.reading, o.seen_at)), facts(Kind::Sub), NOW, &slot);
-    sh.windows = windows_of(&o, &key, NOW);
-    per_pct_of_slots(&mut sh);
-    let pp = |n: &str| Some(Words(copy_core::copy_text("acct.val.perPct", &[("n", n)])));
-    let win_pp: Vec<_> = sh
-        .windows
-        .iter()
-        .map(|w| (w.name.as_str(), w.per_pct_text.clone()))
-        .collect();
-    assert_eq!(
-        win_pp,
-        vec![
-            ("five_hour", pp("2.1M")),
-            ("seven_day", None),
-            ("seven_day_opus", pp("25K"))
-        ]
-    );
-    let slot_pp: Vec<_> = sh
-        .slots
-        .iter()
-        .map(|s| (s.slot.as_str(), s.per_pct_text.clone()))
-        .collect();
-    assert_eq!(slot_pp, vec![("5h", pp("2.1M")), ("7d", pp("25K"))]);
-}
-
 /// ★ 语义位取哪个窗口与事实同一个挑法：用得多的那个已经重置 ⇒ 取还在计时的那个，用满也不照重置前的数判。
 #[test]
 fn a_slot_takes_the_live_window_not_one_already_reset() {
@@ -398,42 +238,5 @@ fn a_slot_takes_the_live_window_not_one_already_reset() {
     assert_eq!(
         (s.window.as_str(), s.pct, s.full),
         ("seven_day", Some(40), false)
-    );
-}
-
-/// ★ 语义位那一格的重置字（`resetText`）与 `rows` 里那一格同一个写法：还没到 ⇒ ↻时刻；已过 ⇒ ↻时刻 已过。
-/// 7d 那两个窗口都已重置 ⇒ 那一格照旧取其中一个、写「已过」。
-#[test]
-fn slot_reset_text_is_the_rows_reset_cell() {
-    let o = observed();
-    let clock = crate::common::time::TextClock::new(NOW, &crate::common::time::Tz::default());
-    let mut r = o.reading.clone();
-    r.windows[1].resets_at = Some(EARLIER);
-    r.windows[2].resets_at = Some(EARLIER);
-    let mut sh = show(Some((&r, o.seen_at)), facts(Kind::Sub), NOW, &slot);
-    sh.stamp(&clock);
-    let got: Vec<_> = sh
-        .slots
-        .iter()
-        .map(|s| (s.slot.as_str(), s.reset_text.clone().map(|w| w.0)))
-        .collect();
-    assert_eq!(
-        got,
-        vec![
-            (
-                "5h",
-                Some(copy_core::copy_text(
-                    "acct.reset.at",
-                    &[("at", &clock.text(LATER).0)]
-                ))
-            ),
-            (
-                "7d",
-                Some(copy_core::copy_text(
-                    "acct.reset.past",
-                    &[("at", &clock.text(EARLIER).0)]
-                ))
-            ),
-        ]
     );
 }

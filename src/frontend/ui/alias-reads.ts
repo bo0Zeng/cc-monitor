@@ -26,7 +26,7 @@ import type { OnPath } from "./generated/OnPath";
 import type { UserPath } from "./generated/UserPath";
 import type { UserPathOp } from "./generated/UserPathOp";
 
-/** 方言：别名文件、别名块、source 那一行问的是同一个问题。 */
+/** 哪种 shell：别名文件、别名块、source 那一行问的是同一个问题（那台后端答）。 */
 export type Shell = ShellKind;
 
 /** 同名两条里新开的终端敲它起的是哪一个：你写的 · 清单那条 · 说不清（后端比行号，界面按码取句）。 */
@@ -44,15 +44,15 @@ export type StartupFile = AliasStartupFile;
 /** `powershell-policy-set` 的成品：设完现问的那一份 ＋ 设的那一下没成的原因词（没报 ⇒ `null`）。 */
 export type PolicySet = PolicySetWire;
 
-/** 读回口的成品：启动文件候选。 */
+/** 读回口的成品：那台说哪种 shell（`shell`）＋ 那一种的启动文件候选。 */
 export type AliasListing = AliasListingWire;
 
 /** 这几问的期限：读几份小文件 / 写一份 / 起一次 PowerShell 问内建别名（秒级）。给 30 秒。 */
 const ALIAS_BUDGET_MS = 30_000;
 
-/** 读回那台上的启动文件候选；`rcPath` = 人另指的那一份（那台后端过围栏）。 */
-export function readAliases(origin: Machine, shell: Shell, rcPath: string | null): Promise<AliasListing> {
-  return callTyped(origin, "aliases-read", { shell, rcPath }, budgetWithin(ALIAS_BUDGET_MS));
+/** 读回那台上的启动文件候选（哪种 shell 由那台后端照自己的平台答）；`rcPath` = 人另指的那一份（那台后端过围栏）。 */
+export function readAliases(origin: Machine, rcPath: string | null): Promise<AliasListing> {
+  return callTyped(origin, "aliases-read", { rcPath }, budgetWithin(ALIAS_BUDGET_MS));
 }
 
 /** 那台终端里敲 `ccm` 走到的是不是 cc-monitor 放的那一份、给人读的那一句（那台后端现问新开终端的 `PATH`）。 */

@@ -298,7 +298,7 @@ fn a_refused_answer_is_resent_elsewhere_and_only_the_second_answer_goes_down() {
     );
 }
 
-/// ★ 不打转：上游选择每次都说「再换」，中转也至多重发 [`RETRY_HARD_CAP`] 次，然后把手上那个回包原样交下去。
+/// ★ 不打转：上游选择每次都说「再换」，中转也至多重发 8 次（一共 9 发），然后把手上那个回包原样交下去。
 #[test]
 fn the_relay_stops_resending_at_its_hard_cap() {
     fn answer(_auth: Option<&str>) -> String {
@@ -314,8 +314,11 @@ fn the_relay_stops_resending_at_its_hard_cap() {
     });
     let resp = shoot(relay_over(d), "/t/x/y/v1/messages", "", "{}");
     assert!(resp.starts_with("HTTP/1.1 429"), "{resp}");
-    let cap = comms_outward::test_support::server::RETRY_HARD_CAP;
-    assert_eq!(got.lock().expect("lock").len(), cap + 1);
+    assert_eq!(
+        got.lock().expect("lock").len(),
+        9,
+        "第一发 ＋ 至多重发 8 发"
+    );
 }
 
 /// 重发那一发断开 ⇒ 不再换，第一发那个拒绝原样交下去（不吞成 502）。

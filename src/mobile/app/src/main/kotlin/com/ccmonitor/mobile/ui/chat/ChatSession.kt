@@ -574,8 +574,10 @@ class ChatSession(
     /** 交那一句（见 [ChatOutbox.put]）；新建会话还没起好 ⇒ 先起（头一句随起交）。 */
     private suspend fun deliver(o: Outgoing) {
         // 正在交 · 两次再交排到了同一句、前一次已拿到回执 ⇒ 不再交。
-        if (o.inFlight || o.receipt) return
-        val s = sid ?: started(o)?.also { if (o.handed) return } ?: return fail(o, permanent = false, text = null)
+        // 交之前已撤出待发（断着那一趟一起撤回输入框，见 [withdrawDown]）⇒ 不再起。
+        if (o.inFlight || o.receipt || o !in outgoing) return
+        // 起不来 ⇒ 那一句标未送达；已撤回输入框的（断着没起，见 [withdrawDown]）不再标。
+        val s = sid ?: started(o)?.also { if (o.handed) return } ?: return if (o in outgoing) fail(o, permanent = false, text = null) else Unit
         box.put(o, s)
         edits.landed(o)
         // 回执到了 ⇒ 那一句此刻在哪照那台的名单（同桌面：回执那一下重问一次）。
@@ -609,8 +611,7 @@ class ChatSession(
     ) {
         _state.value = _state.value.copy(failedWhy = null, drafting = false)
         // 选项打开时问过那台（起哪一家 · 默认号 · 最近的目录）；问不到 ⇒ 照存的那一家、从哪进来的目录交，认不出由那台那一句说。
-        val p = picker ?: return
-        p.settled()
+        val p = picker?.takeIf { readyToStart(it) } ?: return
         val c = p.chosen()
         val args = SessionOpen.newIn(c.cwd, d.ticket, c.agent, first.text, c.account, c.rotation)
         val answer =
@@ -641,6 +642,24 @@ class ChatSession(
         _state.value = _state.value.copy(sid = arrived)
         syncHold()
         follow = scope.launch { attach(arrived, fresh = true) }
+    }
+
+    /**
+     * 等选项问完（[NewSessionPicker.settled]）；那台断着 ⇒ 不起（不照默认选项起在家目录）：撤回输入框（[withdrawDown]）、回 false。
+     * 接回之后再发照常起。
+     */
+    private suspend fun readyToStart(p: NewSessionPicker): Boolean {
+        p.settled()
+        if (link.state.value !is LinkLine.Down) return true
+        withdrawDown()
+        return false
+    }
+
+    /** 新建会话、那台断着：等着起的那几句撤出待发、字回到输入框（几句照先后另起一行接上），回到草稿、照核心那一句说。 */
+    private fun withdrawDown() {
+        val back = outgoing.toList().mapNotNull { box.cancel(it.localId, null) }
+        if (back.isNotEmpty()) recall(back.joinToString("\n"))
+        failSession(link.offline.value)
     }
 
     /** 会话那一层没成：那一句上屏；新建会话还没起成 ⇒ 回到草稿（选项回来，改了再发）。 */

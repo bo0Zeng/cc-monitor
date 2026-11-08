@@ -1,8 +1,7 @@
 /**
- * 状态栏最左那一枚「消息」：点开锚在它上方的浮层，列本次运行里最近 20 条提示（时刻 · 图标 · 一句 · 还能做的动作）；
+ * 状态栏最左那一枚「消息」：点开锚在它上方的浮层，列本次运行里最近 20 条提示（图标 · 一句 · 还能做的动作）；
  * 有没看过的出错提示时右上一个琥珀点。只在内存里（kit toast 的记录），不落盘。
  */
-import { clockFaceHere } from "./clock-face";
 import { chip, setChipOpen } from "./kit/chip";
 import { icon, type IconName } from "./kit/icon";
 import { button } from "./kit/button";
@@ -108,15 +107,11 @@ export class StatusMessages {
       row.className = s.smRow;
       row.dataset.level = r.level;
       row.dataset.smRow = "";
-      const time = document.createElement("span");
-      time.className = s.smTime;
-      // 几点出的：提示是界面自己出的事（不经后端），按这一台的钟面写（与核心「几点」同一套写法，`clock-face.ts`）。
-      time.textContent = clockFaceHere(r.at);
       const text = document.createElement("span");
       text.className = s.smText;
       text.textContent = r.detail ? copyText("statusBar.messages.line", { title: r.title, fact: r.detail.split("\n")[0] }) : r.title;
       text.title = r.detail ? `${r.title}\n${r.detail}` : r.title;
-      row.append(time, icon(LEVEL_ICON[r.level], "compact"), text);
+      row.append(icon(LEVEL_ICON[r.level], "compact"), text);
       const open = r.more.length > 0 && this.expanded.has(r);
       if (r.more.length > 0) {
         // 带逐条明细的：点这一行展开 / 收起。

@@ -151,9 +151,6 @@ pub fn main() {
         };
         match cmd {
             Cmd::Machines { machines } => {
-                crate::session_book::machines_changed(
-                    machines.iter().map(|m| m.origin.to_string()).collect(),
-                );
                 // 只起本机那一台：别台的常驻流归本机后端（台架那份假 ssh 由它自己去接），那台流上的事经本机这一条转来。
                 for m in machines.iter().filter(|m| m.origin.is_local()) {
                     start(m, &replay, &children);

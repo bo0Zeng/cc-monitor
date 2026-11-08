@@ -18,7 +18,7 @@ fn the_child_env_is_the_switch_plus_the_hosted_slots() {
         env,
         vec![
             (
-                crate::wire::listen::ENV_RESIDENT.to_string(),
+                crate::platform::child_env::RESIDENT.to_string(),
                 "1".to_string()
             ),
             ("CCM_RELAY_PORT".to_string(), "8788".to_string()),
@@ -57,7 +57,7 @@ fn the_sandbox_refusal_truth_table() {
         &[
             ("HOME", "/box"),
             (
-                crate::stderr_log::ENV,
+                crate::platform::child_env::STDERR_LOG,
                 "/home/u/.cc-monitor/logs/backend/stderr.log"
             )
         ],

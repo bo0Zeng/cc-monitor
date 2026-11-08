@@ -12,7 +12,6 @@
 //!   最后一格是 `Closed{Peer({"state":"done","bytes","sha256"})}`；流还没被取就收场的那一趟 ⇒ 恰好一格终局（快照合并）。
 //! - **停订就是撤**：经真通道停订 ⇒ 本机后端收到 `transfer-stop {id}`。
 //! - 没有这张票 / 第二次订阅 / 带了 `from` ⇒ 原位 `Closed{Peer}` 说清楚，不装作订阅成功。
-//! - 开单口：没有这台机器的配置 ⇒ `Peer{Refused{"no_such_origin"}}`（不起任何连接）。
 //!
 //! # 买不到什么
 //!
@@ -287,26 +286,6 @@ async fn a_bad_transfer_subscription_says_why_in_place() {
     assert_eq!(code_of(&items), "bad_args");
 }
 
-/// ★ 开单口：没有这台机器的配置 ⇒ `Peer{Refused{"no_such_origin"}}`，一条连接都不起。
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn opening_a_transfer_for_an_unknown_machine_is_refused_out_loud() {
-    let client = rig().await;
-    let r = client
-        .call(
-            &crate::chan::wire::Origin::named("判据里不存在的机器·transfer".to_string()),
-            &Op(crate::transfer_relay::TRANSFER_UPLOAD.to_string()),
-            Body(br#"{"local_path":"/nonexistent"}"#.to_vec()),
-            budget(5_000),
-        )
-        .await;
-    match r {
-        Err(CallError::Peer {
-            why: PeerFault::Refused { body },
-        }) => assert_eq!(body_json(&body)["code"], "no_such_origin"),
-        other => panic!("该是对端拒：{other:?}"),
-    }
-}
-
 /// 带码的失败经生产句柄原样到窗口：`{"state":"failed","code","said","detail"}` —— 窗口据 `sftp_home_mismatch` 换路。
 /// （「不一致 ⇒ 这台的上传改走后端链路分块写」）。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -336,33 +315,37 @@ async fn a_coded_failure_reaches_the_window_with_its_code() {
     );
 }
 
-/// 文件窗口「在此打开终端」那一问由生产句柄**自己接**（不转给那台后端）：
-/// 本机寻址 ⇒ `local_has_no_file_window`（文件窗口只开在远端上）· 没有这台的配置 ⇒ `no_such_origin`，都不碰后端、不开窗。
+/// 文件窗口「在此打开终端」那一问由生产句柄**自己接**（不转给那台后端）：本机也是一台 —— 不预判拒，
+/// 照名字（`<local>`）连那个目录问本机后端 `terminal-ssh`；它回的认不出 ⇒ 说 `bad_reply`、不开窗。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn the_terminal_ask_is_taken_by_the_monitor_and_refused_out_loud_when_it_cannot_be_done() {
+async fn the_terminal_ask_is_taken_by_the_monitor_and_this_machine_asks_the_local_backend_too() {
+    let _g = crate::inbound_client::local_origin_test_lock();
+    let mut be = backend_rig(&["terminal-ssh"]);
     let client = rig().await;
-    for (origin, code) in [
-        (cmd_wire::LOCAL, "local_has_no_file_window"),
-        ("判据里不存在的机器·terminal", "no_such_origin"),
-    ] {
-        let r = client
-            .call(
-                &crate::chan::wire::Origin::named(origin.to_string()),
-                &Op(filewin_contract::TERMINAL_OPEN_OP.to_string()),
-                Body(
-                    serde_json::to_vec(&filewin_contract::terminal_open_args(serde_json::json!(
-                        "/srv"
-                    )))
-                    .unwrap(),
-                ),
-                budget(5_000),
-            )
-            .await;
-        match r {
-            Err(CallError::Peer {
-                why: PeerFault::Refused { body },
-            }) => assert_eq!(body_json(&body)["code"], code, "{origin}"),
-            other => panic!("{origin}：该是 monitor 自己拒：{other:?}"),
-        }
+    let r = client
+        .call(
+            &crate::chan::wire::Origin::named(cmd_wire::LOCAL.to_string()),
+            &Op(filewin_contract::TERMINAL_OPEN_OP.to_string()),
+            Body(
+                serde_json::to_vec(&filewin_contract::terminal_open_args(serde_json::json!(
+                    "/srv"
+                )))
+                .unwrap(),
+            ),
+            budget(5_000),
+        )
+        .await;
+    let asked = be.next("terminal-ssh").await;
+    assert_eq!(
+        asked["args"],
+        serde_json::json!({ "machine": cmd_wire::LOCAL, "cwd": "/srv" }),
+        "本机那一问照名字交、带那个目录"
+    );
+    // 假后端只回 `ok`、不带那一行 ⇒ 认不出，monitor 说清、不开窗（不是「本机没有文件窗口」）。
+    match r {
+        Err(CallError::Peer {
+            why: PeerFault::Refused { body },
+        }) => assert_eq!(body_json(&body)["code"], "bad_reply"),
+        other => panic!("该是认不出后端回的：{other:?}"),
     }
 }

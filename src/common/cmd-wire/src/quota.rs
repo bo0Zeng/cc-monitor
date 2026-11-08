@@ -1,10 +1,15 @@
-//! `quota-read` 的回包线上形（这台的额度账：每号的显示态 · 写好的几行 · 开窗那一判 · 号名 / 位名表）—— 两侧同一份：
+//! `quota-read` 的回包线上形（这台的额度账：每号的显示态 · 写好的几行 · 开窗那一判 · 位名表）—— 两侧同一份：
 //! 后端照这里的类型回（判定 · 拼字 · 按钟写时刻字都在后端），手机按这里生成的 Kotlin 类解，
 //! 界面用从这里导出的类型（`src/frontend/ui/generated/`）。
 
 use crate::cells::{Tone, Words};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+
+/// 语义位「5 小时」（显示态 `slot` · 窗口键 · 策略设置与叫醒里的 `w` 都照它）。
+pub const SLOT_5H: &str = "5h";
+/// 语义位「7 天」（分档的窗口键是 `7d:<档>`）。
+pub const SLOT_7D: &str = "7d";
 
 /// 限流器对一发的结论（各家的值翻成这三档）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -287,7 +292,7 @@ pub struct WindowShow {
     pub tone: Tone,
 }
 
-/// 成品上的 `names` 那一格：`accounts` 只列与原名不同的号（今天只有 `_`），`slots` 列每个语义位。
+/// 成品上的 `names` 那一格：每个语义位的名字（号名在每号那一行的 `label`）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"),
@@ -298,7 +303,6 @@ pub struct WindowShow {
     )
 )]
 pub struct Names {
-    pub accounts: BTreeMap<String, Words>,
     pub slots: BTreeMap<String, Words>,
 }
 
@@ -384,9 +388,7 @@ pub struct QuotaRead {
     pub candidates: Vec<Candidate>,
     /// 读不出 / 一个号都没有 ⇒ 那一句（`--text` 拼字时放最前）；否则 `null`（`quota_rows::head_text`）。
     pub text: Option<Words>,
-    /// 读不出 ⇒「5h 那一格」写好的字（`5h 读不到`，`quota_rows::head_five_hour`）；否则 `null`（每号自己那一格）。
-    pub five_hour: Option<Words>,
-    /// 号名 / 位名表（出口画号名 · 位名只照它）。
+    /// 位名表（出口画位名只照它）。
     pub names: Names,
     /// 「现在还能不能发」那两行写好的字（用量页的结论 · 全满时那一句）；读不出 / 一个号都没有 ⇒ `null`（那时看 `text`）。
     pub verdict: Option<Verdict>,
@@ -424,8 +426,6 @@ pub struct QuotaAccount {
     #[cfg_attr(any(test, feature = "ts"), ts(flatten))]
     pub head: AccountHead,
     pub rows: Rows,
-    /// 「5h 那一格」（恢复菜单 · 新会话框每个号后面那一格）；按量号 ⇒ `null`。
-    pub five_hour: Option<Words>,
     pub warm: Warm,
 }
 
@@ -479,8 +479,6 @@ pub struct QuotaUnseen {
     #[cfg_attr(any(test, feature = "ts"), ts(flatten))]
     pub head: UnseenHead,
     pub rows: Rows,
-    /// 没出过数 ⇒ 恒 `null`（这一格只给出过数的订阅号）。
-    pub five_hour: Option<Words>,
     pub warm: Warm,
 }
 

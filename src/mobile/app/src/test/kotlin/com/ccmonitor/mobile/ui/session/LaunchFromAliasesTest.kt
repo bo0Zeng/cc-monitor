@@ -24,8 +24,6 @@ class LaunchFromAliasesTest {
                     row("cx", usable = true),
                 ),
             "seed" to listOf(row("seeded", usable = true)),
-            "seedHint" to "",
-            "seedCreate" to "",
             "migrated" to null,
             "binDir" to "/h/.cc-monitor/bin",
             "accounts" to emptyList<String>(),

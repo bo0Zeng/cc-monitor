@@ -67,7 +67,7 @@ fn live_here() -> Vec<Live> {
 
 /// 这台没有 tmux ⇒ `no_tmux`（一组只起在 tmux 里：这台自己当 ccm 起、`--detach`）。探不出 ⇒ 照做，起的那一步再说。
 fn no_tmux() -> Result<(), crate::common::said::Said> {
-    match crate::control::terminals::tmux_here() {
+    match crate::host::tmux::tmux_here() {
         Some(false) => Err(crate::common::said::Said::new(
             crate::wire::NO_TMUX,
             copy_core::copy_text("beSessionNew.place.noTmux", &[]),
@@ -122,7 +122,7 @@ fn open_req(
 ) -> Result<open::SessionOpenReq, Failed> {
     let resolved =
         crate::assets::aliases::profile::resolve(book, &r.alias, &[]).map_err(refused_launch)?;
-    let crate::host::ccm_line::argv::Parsed::Opts(o) = resolved.parsed else {
+    let crate::wire::ccm_line::argv::Parsed::Opts(o) = resolved.parsed else {
         return Err(refused_launch(copy_core::copy_text(
             "beSessionSet.alias.missing",
             &[("alias", &r.alias)],

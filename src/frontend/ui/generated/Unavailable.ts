@@ -24,11 +24,10 @@
  * 这一条由 `main_fourth_face_tests.rs::the_declared_code_is_one_the_registry_already_declares` 钉住：
  * 本表只许说 `inbound::REGISTRY` 里那条命令**自己登记过**的 code。
  *
- * # 为什么不带一句 `said`
+ * # 置灰那一句（`said`）谁写
  *
- * 那句人话今天归 monitor（见上）。再发一份等于给同一句话开第二个源头，
- * 而后端这一侧连用户的语言都不知道。**要诊断细节的场合走真调用**，那条路的 `said`
- * 本来就说得更细（`not_installed_message` 会列出查过哪几个目录）。
+ * 本机后端写：发本机 hello · `resync` 回包按本机的名字填，转别台 hello · 别台 `resync` 回包时换成那台的名字（都经 `copy_core::unavailable`）；
+ * 壳与界面原样摆，不按码取字。**要诊断细节的场合走真调用**，那条路的 `said` 说得更细。
  */
 export type Unavailable = { 
 /**
@@ -40,4 +39,8 @@ command: string,
 /**
  * 为什么做不到 —— **就是真调用那一刻会回的那个命令级 code**（如 `no_tmux`）。
  */
-code: string, };
+code: string, 
+/**
+ * 置灰时说的那一句（称呼那台、码不上屏），本机后端写好（见上「置灰那一句谁写」）。
+ */
+said: string, };

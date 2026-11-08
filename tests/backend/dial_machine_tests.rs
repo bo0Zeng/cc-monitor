@@ -1,9 +1,9 @@
 //! `ssh-dial/machine.rs` 的规则判据：一台机器（`Host`）的名字 · 地址四形态 · 判准 · 组拨号请求 · 跳板一路照表找（多跳；查无 / 环都拒）。
 use super::*;
 
-/// 线上那一形（键可缺）读成的一台。
+/// 线上那一形（键可缺）照 `Host` 的派生读成的一台。
 fn m(v: Value) -> Host {
-    loose(&v).unwrap()
+    <Host as serde::Deserialize>::deserialize(&v).unwrap()
 }
 
 fn ep(host: &str, port: u16) -> Endpoint {
@@ -72,24 +72,6 @@ fn one_machine_is_judged_by_one_rule() {
         check_table(&twin).map(|(c, h)| (c, h.host.as_str())),
         Some((MachineFaultCode::NameTaken, "b")),
         "名字去首尾空白后比"
-    );
-}
-
-#[test]
-fn the_wire_shape_tolerates_nulls_and_extra_keys_but_not_wrong_types() {
-    let h =
-        m(json!({"host": "h", "user": "u", "keyPath": null, "jump": null, "resumeCommand": "x"}));
-    assert_eq!(
-        (h.key(), h.jump_name(), h.port, h.connect),
-        (None, None, 22, true)
-    );
-    assert_eq!(
-        loose(&json!({"host": 1})).unwrap_err().code.as_deref(),
-        Some("bad_args")
-    );
-    assert_eq!(
-        loose(&json!({"port": "22"})).unwrap_err().code.as_deref(),
-        Some("bad_args")
     );
 }
 

@@ -30,6 +30,7 @@ pub mod aliases;
 pub(crate) mod exec;
 pub(crate) mod json_key;
 pub(crate) mod layout;
+pub mod library;
 pub(crate) mod mcp_logins;
 pub mod mcp_logins_exec;
 pub(crate) mod mcp_share;

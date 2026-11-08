@@ -48,8 +48,6 @@ export interface ToastRecord {
   title: string;
   detail: string;
   count: number;
-  /** 出来那一刻（毫秒）。 */
-  at: number;
   /** 还能做的动作（「重试」「查看」）；撤销期过了的「撤销」不在这里。 */
   actions: ToastAction[];
   /** 出错的那几条：在「消息」里看过没有。 */
@@ -136,7 +134,7 @@ function remember(r: ToastRecord): void {
 
 /** 只进状态栏「消息」、不弹出的一条（按键碰到做不了的事：那一句记下，不拽人）。 */
 export function noteMessage(title: string, detail: string): void {
-  remember({ level: "info", title, detail, count: 1, at: Date.now(), actions: [], seen: true, more: [], copy: [] });
+  remember({ level: "info", title, detail, count: 1, actions: [], seen: true, more: [], copy: [] });
 }
 
 /** 右侧抽屉开着时它的宽（toast 让到它左边）；`null` ＝ 没开着。 */
@@ -309,7 +307,6 @@ export function toast(title: string, detail: string, opts: ToastOptions = {}): (
     title,
     detail,
     count: 1,
-    at: Date.now(),
     actions: acts0,
     seen: level !== "error",
     more: opts.more ?? [],

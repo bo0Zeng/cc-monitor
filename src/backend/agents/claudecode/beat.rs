@@ -9,7 +9,7 @@
 //! | `system` ＋ `subtype == "api_error"` | `Retry` |
 //! | 「谁说的」（`text.user` 那一格，同一个函数） | `Said` |
 //! | assistant 的 `message.usage` ＋ `requestId` · `message.model` | `usage` · `model` |
-//! | `cost-state{totalCostUSD, hasUnknownModelCost}` · `permission-mode{permissionMode}` | `cost` · `mode` |
+//! | `permission-mode{permissionMode}` | `mode` |
 //! | user / assistant 的 `forkedFrom` | `forked_from`（[`super::branch::fork_origin`]） |
 
 use std::borrow::Cow;
@@ -17,7 +17,7 @@ use std::borrow::Cow;
 use serde_json::Value;
 
 use crate::agents::beat::{
-    contains, one_line, Act, Beat, CallAsk, CostSaid, RetrySaid, Side, StopWhy, Usage, Watch,
+    contains, one_line, Act, Beat, CallAsk, RetrySaid, Side, StopWhy, Usage, Watch,
 };
 
 /// 写类工具 → 取路径的键。Edit / Write / MultiEdit 用 `file_path`；NotebookEdit 用 `notebook_path`。
@@ -159,18 +159,6 @@ pub(crate) fn beat_of(v: &Value) -> Option<Beat<'_>> {
     if let Some(said) = super::text::user_text_of_record(v) {
         acts.push(Act::Said(said));
     }
-    let cost = (kind == Some("cost-state"))
-        .then(|| {
-            let usd = v
-                .get("totalCostUSD")
-                .and_then(Value::as_f64)
-                .filter(|x| x.is_finite() && *x >= 0.0)?;
-            Some(CostSaid {
-                micros: (usd * 1e6).round() as u64,
-                partial: v.get("hasUnknownModelCost").and_then(Value::as_bool) == Some(true),
-            })
-        })
-        .flatten();
     let mode = (kind == Some("permission-mode"))
         .then(|| str_of(v, "permissionMode").map(Cow::Borrowed))
         .flatten();
@@ -182,7 +170,6 @@ pub(crate) fn beat_of(v: &Value) -> Option<Beat<'_>> {
         acts,
         usage,
         model,
-        cost,
         mode,
         forked_from: super::branch::fork_origin(v).map(|(sid, _)| sid),
     })
@@ -220,7 +207,6 @@ fn could_matter(line: &[u8], w: &Watch) -> bool {
         || contains(line, b"\"permission-mode\"")
         // 认不出、又不成卡的行（`quiet_unread`）：没有链上身份 ⇒ 行里没有 `"uuid"` 字样（簿记行都短）。
         || !contains(line, b"\"uuid\"")
-        || contains(line, b"\"cost-state\"")
         || contains(line, b"\"usage\"")
         || contains(line, b"\"tool_use\"")
         || (contains(line, b"\"assistant\"") && contains(line, b"\"text\""))

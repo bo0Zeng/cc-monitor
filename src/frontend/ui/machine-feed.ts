@@ -8,7 +8,7 @@ import { listen } from "@tauri-apps/api/event";
 import { pushedProducts } from "./changed-stream";
 import { subscribeTopics } from "./events";
 import { budgetWithin, callTyped, noteMachine } from "./ipc/chan-caller";
-import { LOCAL } from "./ipc/origin";
+import { LOCAL, isRemoteOrigin, type Machine } from "./ipc/origin";
 import { commands } from "./ipc/commands";
 import type { LocalBackend } from "./generated/LocalBackend";
 import type { MachineState } from "./generated/MachineState";
@@ -64,6 +64,27 @@ export async function readMachines(): Promise<Record<string, MachineState>> {
 }
 
 /**
+ * 此刻要问的那几台：本机 ＋ 机器表里「连接这台」开着的（`machine-read` 回包的键，按名字排，本机恒第一；关着的那几台成品是 `disabled`）。
+ * 界面里「有哪几台」只从这里取；问不到 ⇒ 抛。
+ */
+export async function readMachineNames(): Promise<Machine[]> {
+  return namesOf(await readMachines());
+}
+
+/** 那一份成品 → 要问的那几台（本机恒第一；纯函数）。 */
+export function namesOf(machines: Record<string, MachineState>): Machine[] {
+  const remote = Object.entries(machines)
+    .filter(([o, m]) => isRemoteOrigin(o) && m.state !== "disabled")
+    .map(([o]) => o);
+  return [LOCAL, ...remote];
+}
+
+/** 此刻那几台远端（不含本机）：{@link readMachineNames} 去掉本机。 */
+export async function readRemoteNames(): Promise<Machine[]> {
+  return (await readMachineNames()).filter(isRemoteOrigin);
+}
+
+/**
  * 订一份：每来一台的一帧回调一次（先记下那台的名字与离线那一句，`machineName` · `offlineSaid` 照它）；
  * 给了 `fleet` ⇒ 各台合一次写好的那几句（`FleetLines`：首屏那一句 ＋ 机器列表计数那一句，本机后端合好的，`changed {empty}` · `machine-read` 回包的 `empty`）每来一次也回调。回退订函数。
  */
@@ -84,13 +105,15 @@ export function onMachineState(each: (origin: string, machine: MachineState) => 
       console.warn("[machine-state] 问不到远端各台：", e);
     }
   };
-  subscribeTopics([LOCAL], fleet ? ["machine", "empty"] : ["machine"], (_o, changes) => {
+  subscribeTopics([LOCAL], fleet ? ["machine", "empty", "machines"] : ["machine"], (_o, changes) => {
     if (dropped) return;
     const c = changes.get("machine");
     const e = changes.get("empty");
     const machines = c ? pushedProducts(c, "machine") : null;
     const faces = e ? pushedProducts(e, "empty") : null;
-    if (machines?.all || (machines?.ask.length ?? 0) > 0 || faces?.all || (faces?.ask.length ?? 0) > 0) void readAll();
+    // 机器表本身变了（加 · 删 · 改名 · 开关）：摘掉的那台不再推帧，那几句（「各台都报完」）只有整份重问才跟得上。
+    const table = changes.has("machines");
+    if (table || machines?.all || (machines?.ask.length ?? 0) > 0 || faces?.all || (faces?.ask.length ?? 0) > 0) void readAll();
     // 帧里那一份就是 `machine-read` 回包里那一台 · 那一句。
     for (const [key, m] of machines?.got ?? []) if (key !== null && key !== "") cb(key, m);
     const f = faces?.got.get(null);

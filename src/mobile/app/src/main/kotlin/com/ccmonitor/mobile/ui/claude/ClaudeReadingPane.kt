@@ -48,6 +48,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.asImageBitmap
@@ -77,6 +78,7 @@ import com.ccmonitor.mobile.core.ui.theme.monoBody
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.core.wire.gen.PendingCall
 import com.ccmonitor.mobile.core.wire.gen.StepWait
+import com.ccmonitor.mobile.core.wire.gen.TextFold
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
 
 /**
@@ -313,7 +315,7 @@ val LocalBriefFrom = staticCompositionLocalOf<String?> { null }
 
 /**
  * 派活的那段话（同桌面那张卡）：整宽、靠左、左边一道竖线、底色深一档；抬头「主会话派给它的话」（别的 agent 派的 ⇒ 它的名字）＋ 派出的时刻；
- * 正文小一号、次一级颜色，超过 [BRIEF_LINES] 行收起，［展开全部］·［收起］。搜索命中自动展开。
+ * 正文小一号、次一级颜色，那台给了折法 ⇒ 先露它说的那几行、展开那一颗照它那一句，［收起］。搜索命中自动展开。
  */
 @Composable
 private fun BriefCard(
@@ -323,7 +325,7 @@ private fun BriefCard(
     val tokens = LocalAppTokens.current
     val from = LocalBriefFrom.current
     var open by rememberExpandable(matched)
-    val long = unit.text.lines().size > BRIEF_LINES
+    val fold = unit.fold
     Column(
         Modifier
             .fillMaxWidth()
@@ -347,19 +349,16 @@ private fun BriefCard(
             unit.text,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = if (long && !open) BRIEF_LINES else Int.MAX_VALUE,
+            maxLines = if (fold != null && !open) fold.shown else Int.MAX_VALUE,
             overflow = TextOverflow.Ellipsis,
         )
-        if (long) {
+        if (fold != null) {
             SecondaryButton(onClick = { open = !open }) {
-                Text(if (open) copyText("kit.dock.close") else copyText("agentWindow.brief.more"))
+                Text(if (open) copyText("kit.dock.close") else fold.more)
             }
         }
     }
 }
-
-/** 派活卡正文超过几行收起（同桌面）。 */
-private const val BRIEF_LINES = 4
 
 /**
  * 另一个会话发来的话：左 2dp 琥珀条，抬头是那台写好的那一句（`title`，「会话「X」」，同桌面那一条；没有 ⇒ 不写）＋「消息」＋ 钟面，
@@ -534,25 +533,13 @@ private fun BashInputCard(
     }
 }
 
-/** `!bash` 输出：stdout 等宽、stderr 红标；超过阈值折叠（默认展开前 N 行加展开按钮）。搜索命中自动展开。 */
+/** `!bash` 输出：stdout 等宽、stderr 红标；那台给了折法的那一份先露它说的几行、加展开那一颗（字照那台写好的）。搜索命中自动展开。 */
 @Composable
 private fun BashOutputCard(
     unit: RenderUnit.BashOutput,
     matched: Boolean,
 ) {
     val tokens = LocalAppTokens.current
-    var expanded by rememberExpandable(matched)
-    val outLines = remember(unit) { unit.stdout.count { it == '\n' } + 1 }
-    val collapsible = outLines > BASH_OUTPUT_COLLAPSE_LINES
-    val shownStdout =
-        if (collapsible && !expanded) {
-            unit.stdout
-                .lineSequence()
-                .take(BASH_OUTPUT_HEAD_LINES)
-                .joinToString("\n")
-        } else {
-            unit.stdout
-        }
     Column(
         Modifier
             .fillMaxWidth()
@@ -566,28 +553,38 @@ private fun BashOutputCard(
             Spacer(Modifier.width(tokens.spacing.xs))
             Text(copyText("bash.output.title"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        if (unit.stdout.isNotEmpty()) {
-            Spacer(Modifier.padding(top = tokens.spacing.xs))
-            Text(shownStdout, style = monoBody, color = MaterialTheme.colorScheme.onSurface)
-        }
-        if (collapsible) {
-            Row(
-                Modifier.clickable { expanded = !expanded }.padding(top = tokens.spacing.xs),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Caret(expanded)
-                Spacer(Modifier.width(tokens.spacing.xs))
-                Text(
-                    if (expanded) copyText("kit.dock.close") else copyText("bash.output.showAll", "n" to outLines),
-                    style = monoSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        if (unit.stderr.isNotEmpty()) {
-            Spacer(Modifier.padding(top = tokens.spacing.xs))
-            Text(unit.stderr, style = monoBody, color = tokens.errorText)
-        }
+        if (unit.stdout.isNotEmpty()) OutputText(unit.stdout, unit.stdoutFold, MaterialTheme.colorScheme.onSurface, matched)
+        if (unit.stderr.isNotEmpty()) OutputText(unit.stderr, unit.stderrFold, tokens.errorText, matched)
+    }
+}
+
+/** 一份命令输出：有折法 ⇒ 先露 [fold] 说的那几行，展开那一颗写它那一句；没有 ⇒ 整份照排。 */
+@Composable
+private fun OutputText(
+    text: String,
+    fold: TextFold?,
+    color: Color,
+    matched: Boolean,
+) {
+    val tokens = LocalAppTokens.current
+    var expanded by rememberExpandable(matched)
+    val all = text.trim()
+    // 收着 ⇒ 那台说露的那几行（按行数，同桌面）；长行照常折行显示。
+    val head = remember(all, fold) { fold?.let { all.lineSequence().take(it.shown).joinToString("\n") } }
+    Spacer(Modifier.padding(top = tokens.spacing.xs))
+    Text(if (head != null && !expanded) head else all, style = monoBody, color = color)
+    if (fold == null) return
+    Row(
+        Modifier.clickable { expanded = !expanded }.padding(top = tokens.spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Caret(expanded)
+        Spacer(Modifier.width(tokens.spacing.xs))
+        Text(
+            if (expanded) copyText("kit.dock.close") else fold.more,
+            style = monoSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -629,9 +626,6 @@ private fun CompactSummaryCard(
         }
     }
 }
-
-private const val BASH_OUTPUT_COLLAPSE_LINES = 30
-private const val BASH_OUTPUT_HEAD_LINES = 20
 
 /**
  * 折叠卡的展开状态：`rememberSaveable` 持久，搜索命中（[matched]）自动展开。
@@ -789,7 +783,7 @@ private fun SaidPartView(
             var open by rememberExpandable(matched)
             Row(Modifier.clickable { open = !open }.padding(vertical = LocalAppTokens.current.spacing.xs), verticalAlignment = Alignment.CenterVertically) {
                 Caret(open)
-                // 收着那一行是那台写好的（`foldText`，「粘贴的内容 · N 行」）。
+                // 收着那一行是那台写好的（`fold.more`，「粘贴的内容 · N 行」）。
                 Text(part.text, style = monoBody, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             AnimatedVisibility(open) { Text(part.body, style = monoBody, color = MaterialTheme.colorScheme.onSurface) }

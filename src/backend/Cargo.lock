@@ -118,7 +118,6 @@ dependencies = [
  "backend-agents",
  "backend-common",
  "backend-history",
- "backend-host",
  "backend-platform",
  "backend-relay",
  "backend-wire",
@@ -181,7 +180,6 @@ dependencies = [
  "backend-dial",
  "backend-files",
  "backend-history",
- "backend-host",
  "backend-platform",
  "backend-wire",
  "cap-core",
@@ -193,7 +191,6 @@ dependencies = [
  "serde",
  "serde_json",
  "shell-quote-core",
- "ssh-dial",
  "test-home",
  "tokio",
  "toml_edit",
@@ -214,13 +211,14 @@ dependencies = [
  "deploy-contract",
  "guard-core",
  "jiff",
+ "plain-path-core",
  "relay-route-core",
  "ring",
  "serde",
  "serde_json",
  "shell-quote-core",
- "ssh-dial",
  "test-home",
+ "test-meters",
  "tracing",
  "tracing-subscriber",
  "ts-rs",
@@ -351,11 +349,10 @@ dependencies = [
  "flate2",
  "guard-core",
  "libc",
- "relay-route-core",
+ "plain-path-core",
  "serde",
  "serde_json",
  "sha2 0.11.0",
- "ssh-dial",
  "tar",
  "test-home",
  "test-meters",
@@ -373,9 +370,8 @@ dependencies = [
  "backend-agents",
  "backend-assets",
  "backend-common",
- "backend-control",
  "backend-history",
- "backend-observe",
+ "backend-host",
  "backend-platform",
  "backend-wire",
  "cap-core",
@@ -423,8 +419,6 @@ dependencies = [
 name = "backend-host"
 version = "0.0.0"
 dependencies = [
- "acct-core",
- "backend-agents",
  "backend-common",
  "backend-platform",
  "backend-wire",
@@ -436,7 +430,6 @@ dependencies = [
  "relay-route-core",
  "serde",
  "serde_json",
- "shell-quote-core",
  "test-home",
  "tokio",
  "tracing",
@@ -450,7 +443,6 @@ dependencies = [
  "acct-core",
  "backend-accounts",
  "backend-agents",
- "backend-assets",
  "backend-common",
  "backend-history",
  "backend-host",
@@ -482,7 +474,6 @@ version = "0.0.0"
 dependencies = [
  "backend-agents",
  "backend-common",
- "backend-footprint",
  "backend-history",
  "backend-observe",
  "backend-platform",
@@ -525,7 +516,6 @@ dependencies = [
  "serde",
  "serde_json",
  "shell-quote-core",
- "ssh-dial",
  "test-home",
  "test-meters",
  "tokio",
@@ -580,10 +570,10 @@ dependencies = [
 name = "backend-wire"
 version = "0.0.0"
 dependencies = [
+ "acct-core",
  "backend-agents",
  "backend-common",
  "backend-platform",
- "backend-relay",
  "cap-core",
  "cmd-wire",
  "comms-inward",
@@ -597,6 +587,7 @@ dependencies = [
  "resident-client",
  "serde",
  "serde_json",
+ "shell-quote-core",
  "test-home",
  "tokio",
  "tracing",
@@ -2607,6 +2598,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "plain-path-core"
+version = "0.1.0"
+
+[[package]]
 name = "platform-core"
 version = "0.1.0"
 dependencies = [
@@ -3477,6 +3472,7 @@ dependencies = [
  "flate2",
  "guard-core",
  "libc",
+ "plain-path-core",
  "rand 0.10.1",
  "ring",
  "russh",

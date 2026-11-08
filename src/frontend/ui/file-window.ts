@@ -25,66 +25,15 @@ import { failToast } from "./kit/toast";
 import { copyText } from "./copy-table";
 import { isLocalOrigin, type Machine } from "./ipc/origin";
 import { revealInFolder } from "./reveal-in-folder";
+import { THEME_TOKENS } from "./generated/filewin-theme-tokens";
 
 /**
- * 文件窗口要的那几格设计令牌：开窗那一刻 `:root` 上的计算值（含用户在设置里改过的）原样交给 Rust 侧，
- * 由它解成数放进开窗种子 —— 窗口照着画，自己不另有一份色值。名单与 Rust 侧那一份两向相等（判据钉）。
+ * 文件窗口要的那几格设计令牌此刻在 `:root` 上的计算值（含用户在设置里改过的），原样交给 Rust 侧，
+ * 由它解成数放进开窗种子 —— 窗口照着画，自己不另有一份色值。名单读契约那一份的生成物（`filewin_contract::THEME_TOKENS`）。
  */
-export const FILE_WINDOW_THEME_TOKENS = [
-  "--bg",
-  "--bg-2",
-  "--card",
-  "--text",
-  "--text-2",
-  "--text-faint",
-  "--accent",
-  "--accent-strong",
-  "--selected-bg",
-  "--hit-bg",
-  "--border-strong",
-  "--border-medium",
-  "--border-soft",
-  "--border-faint",
-  "--state-hover",
-  "--state-active",
-  "--field-bg",
-  "--success",
-  "--warn",
-  "--error",
-  "--error-strong",
-  "--error-text",
-  "--color-link",
-  "--font-base",
-  "--font-mono",
-  "--font-size-base",
-  "--font-size-mono",
-  "--font-size-small",
-  "--font-size-title",
-  "--space-1",
-  "--space-2",
-  "--space-3",
-  "--space-4",
-  "--space-5",
-  "--space-6",
-  "--space-7",
-  "--space-8",
-  "--radius-s",
-  "--radius-m",
-  "--radius-l",
-  "--radius-xl",
-  "--control-h",
-  "--control-h-compact",
-  "--row-h",
-  "--icon-size",
-  "--shadow-float",
-  "--shadow-modal",
-  "--overlay-dim",
-] as const;
-
-/** 此刻 `:root` 上那几格的计算值。 */
 export function fileWindowTheme(): Record<string, string> {
   const css = getComputedStyle(document.documentElement);
-  return Object.fromEntries(FILE_WINDOW_THEME_TOKENS.map((t) => [t, css.getPropertyValue(t).trim()]));
+  return Object.fromEntries(THEME_TOKENS.map((t) => [t, css.getPropertyValue(t).trim()]));
 }
 
 /** 窗口开在哪（不给 ＝ 那台机器的 home）。 */

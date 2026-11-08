@@ -177,7 +177,7 @@ impl<R: std::io::Read> Blocks<R> {
 
 // d（整份读按块）几份判据共用的夹具与量法住测试树：本包与上层的测试档（经 `test-support`）共用。
 #[cfg(any(test, feature = "test-support"))]
-#[path = "../../../tests/backend/common/streamed_read_support.rs"]
+#[path = "../../../tests/backend/common/append_read_support.rs"]
 #[expect(
     clippy::disallowed_methods,
     reason = "测试档夹具在沙箱目录里造一份待读的文件（同各包测试段放开碰盘）"
@@ -185,5 +185,5 @@ impl<R: std::io::Read> Blocks<R> {
 pub mod test_support;
 
 #[cfg(test)]
-#[path = "../../../tests/backend/common/streamed_read_tests.rs"]
+#[path = "../../../tests/backend/common/append_read_tests.rs"]
 mod tests;

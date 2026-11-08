@@ -170,13 +170,6 @@ pub(crate) const LEDGER: &[(&str, &str, Side, Own, &str)] = &[
         "这台后端通道在不在 ＋ 本机后端 pid / 重启次数 —— 起停引导那一格的读面",
     ),
     (
-        "backend_machines",
-        "backend.lifecycle",
-        Side::Both,
-        Own::Config,
-        "机器表 = monitor 配置里登记的远端 ＋ 本机，读的是 monitor 自己的注册表",
-    ),
-    (
         "backend_start",
         "backend.lifecycle",
         Side::Both,
@@ -233,13 +226,6 @@ pub(crate) const LEDGER: &[(&str, &str, Side, Own, &str)] = &[
         "↗ 出口那一跳没成的那一张，照 face_core::front 写（只写字，不碰后端）",
     ),
     (
-        "open_local_terminal",
-        "session.launch",
-        Side::Local,
-        Own::Window,
-        "开一个本机终端窗口跑那一行（`ccm …` 由本机后端 `session-open` 出成品；这里不判不拼，只开窗）",
-    ),
-    (
         "open_terminal_window",
         "terminal.window",
         Side::Both,
@@ -280,13 +266,6 @@ pub(crate) const LEDGER: &[(&str, &str, Side, Own, &str)] = &[
         Side::Remote,
         Own::Place,
         "删落点那一份后端字节（交本机后端 `deploy-uninstall`）",
-    ),
-    (
-        "list_remote_mcp_origins",
-        "mcp.list-origins",
-        Side::Remote,
-        Own::Config,
-        "已配置且启用的远端标签：读的是 monitor 自己的配置（名字里的 mcp 是第一个用户留下的）",
     ),
     (
         "chan_call",
@@ -355,9 +334,7 @@ pub(crate) const LEDGER: &[(&str, &str, Side, Own, &str)] = &[
 
 /// **不对称能力的理由**：每一条都是天然不对称（本地不需要这项能力，不是欠账）。键集合必须**恰好等于**从 `LEDGER` 算出来的不对称集合。
 const ASYMMETRY_REASONS: &[(&str, &str)] = &[
-    ("session.launch", "远端那一侧不是一条 Tauri 命令：界面只交那台的名字、经通道直问本机后端 `terminal-ssh` 渲那一行，开窗走同一条 `open_terminal_window`；本机这一侧要带起始目录，才有 `open_local_terminal`。"),
     ("backend.deploy", "本机也要后端（入方向通道、每台机开关、tmux 帧都靠它），而且会自部署 —— `local_backend.rs::extract_embedded_to`（exe 旁没有本机后端就把内嵌那份释放到 `~/.cc-monitor/bin`）。不对称只在一格：**本机那次释放不经一条 IPC 命令**，是宿主启动时自己做的（`lib.rs` 的启动段），所以命令面上没有本机对侧。天然不对称说的是「不需要一条命令」，不是「不需要后端」。"),
-    ("mcp.list-origins", "`list_remote_mcp_origins` 答的是「哪几台远端有 MCP 配置」——「有哪些 origin」这个问题在本机侧退化成一台，没有可列的集合。⚠ 注意它与 `backend_machines` 不同：那条**包含**本机（`cmd_wire::LOCAL`），因为它答的是「哪几台有后端」而本机也有。"),
     ("sftp.file-panel", "§40 天然不对称白名单第 1 条：本地有操作系统的文件管理器，不需要它。"),
     ("audit.monitor-own", "足迹里 **monitor 自己那台**那几行（`HostScope::Client`：本机 `ccm` 入口 · 终端 · shell profile …）的事实：monitor 只在一台机器上跑，远端那台没有 monitor，也就没有「它自己那几行」可答 —— 远端那一栏由那台后端自己答（`data-report` 不带 `client`，那一族不进人群）。不是欠一条对侧命令。"),
 ];
@@ -656,7 +633,7 @@ fn local_or_both_commands_take_no_remote_only_parameter() {
     //
     // `LEDGER` 里一行进出 `Local` / `Both`（新增、删掉、`Side` 改了），这个数就跟着变；
     //   同一条命令两侧收成一条路（`Remote` 改成 `Both`）也算，命令总数不动、这个数照样变。
-    const EXPECTED_LOCAL_OR_BOTH: usize = 40;
+    const EXPECTED_LOCAL_OR_BOTH: usize = 38;
     assert_eq!(
         checked, EXPECTED_LOCAL_OR_BOTH,
         "检到 {checked} 条 Local/Both 命令（Local {n_local} + Both {n_both}），\
@@ -772,7 +749,7 @@ enum FrameVerdict {
 ///
 /// ⚠ `scan_tree!` 的自摘在这一处恒空转，别把它算成一道保险。
 const REMOTE_ONLY_MARKS: &[&str] = &[
-    "machine_table::has(",
+    "remote_only(",
     "stream_source::",
     "refuse_local_write(",
     "transfer_relay::",
@@ -965,11 +942,11 @@ fn command_dispatch_class() -> BTreeMap<String, Derived> {
 /// 每格的数是**跑出来的**：改了某条命令的 `Side` 或体之后，先让 `hist == want` 那一比印出现打的直方图，照它写，
 /// 不按增减去算（算出来恰好相等不是判据）。
 const REMOTE_SIDE_SIGNOFF: &[(Derived, usize)] = &[
-    // 壳里一台远端只剩名字，装 · 卸先查 `machine_table::has`（`deploy.rs::remote_in_table`）。
+    // 装 · 卸只拦本机（`deploy.rs::remote_only`；表里有没有那台由本机后端答）。
     (Derived::RemoteOnly, 1),
     (Derived::FramePlane, 0),
-    (Derived::Mixed, 1), // `deploy_remote_backend`：两支都走，不是失败退回
-    (Derived::Unclassified, 2),
+    (Derived::Mixed, 1),
+    (Derived::Unclassified, 1),
 ];
 
 /// 派生器在**整张** `LEDGER` 上认出的 `FramePlane` 命令数（不分 `Side`）—— 候选集（`Remote` 那一栏里的
@@ -1014,7 +991,7 @@ fn the_remote_side_column_is_signed_off() {
     //    ⚠ 地板只守「这一栏没塌成空集」；**有牙的是下面那条直方图相等**，不是这个数。
     //    人群真的变少（一条 `Side::Remote` 命令删了、或并进带 origin 的 `Both`），照现打的数把地板改低。
     assert!(
-        remote_rows.len() >= 4,
+        remote_rows.len() >= 3,
         "`Side::Remote` 现打只有 {} 行 —— 本条的人群塌了，下面几条会空真地绿",
         remote_rows.len()
     );

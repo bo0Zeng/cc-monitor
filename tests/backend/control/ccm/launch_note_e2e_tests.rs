@@ -181,7 +181,6 @@ fn launch_note_child_entry_point() {
         &argv[1..],
         &argv[..1],
         &crate::platform::fs::Own::issue(),
-        |_| Vec::new(),
         crate::faces::launch_account_face::list_at,
     );
     panic!("ccm 没有 exec 掉自己（退出码 {code}）");

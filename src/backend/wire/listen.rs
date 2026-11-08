@@ -6,7 +6,7 @@
 //! 套接字住这台家里只给本人的目录（`relay_route_core::listen_socket_for`，目录 `0700`），收下的每条连接再核一次对端 uid
 //! （共享 crate `own-chan`）⇒ 连得上的只有本账号自己的进程，门由内核给，不另设钥匙。
 //! 远端经 ssh 跑一次 `ccm -- --resident-attach`（`control/resident.rs` 那个小中继）连它：ssh 已经证明了「是本人」。
-//! 起它的：本机 `src/frontend/shell/src/local_backend_host.rs`，远端 `--resident-ensure`（`control/resident.rs`）—— 同一种交法：只交 [`ENV_RESIDENT`]。
+//! 起它的：本机 `src/frontend/shell/src/local_backend_host.rs`，远端 `--resident-ensure`（`control/resident.rs`）—— 同一种交法：只交 [`crate::platform::child_env::RESIDENT`]。
 //!
 //! # 两档连接，hello 写在分档之前
 //!
@@ -24,14 +24,9 @@
 //! 2. 一个定时器都没有：`accept` 与读一行都阻塞在内核事件上（`src/backend/clippy.toml` 的 `disallowed-methods`）。
 //! 3. 别的 uid 连进来（root 例外不了：内核报的就是它的 uid）⇒ 关掉、出声，hello 都不给。
 
+use crate::platform::child_env::RESIDENT;
 use cap_core::{Cap, Over};
 use cmd_wire::attach::{AttachLine, AttachReply};
-
-/// 宿主告诉后端「你是常驻的那一个」的 env 名（值 `1`）。听哪个套接字不交：按家算，宿主与后端同一个函数。
-pub const ENV_RESIDENT: &str = crate::platform::child_env::RESIDENT;
-
-/// 远端 `--resident-ensure` 起常驻后端时交的中转口 env 名（常驻那一侧经这里读，同中转宿主的 `ENV_PORT`）。
-pub const RELAY_PORT_ENV: &str = crate::relay::ENV_PORT;
 
 /// 目录独占锁抢不到（已有一个常驻后端在听）的退出码。**与「起不来」区分开**：
 /// 宿主看到它就知道「已经有人在听了」，该去连而不是再起一个。
@@ -104,11 +99,11 @@ pub enum Mode {
 /// - `1` ⇒ [`Mode::Listen`]。
 /// - 别的值 ⇒ `Err`：多半是接线写错了，静默退回 stdio 会让「我明明开了常驻」变成一个查不出来的谜。
 pub fn mode_from(get: &dyn Fn(&str) -> Option<String>) -> Result<Mode, String> {
-    match get(ENV_RESIDENT).as_deref().map(str::trim) {
+    match get(RESIDENT).as_deref().map(str::trim) {
         None | Some("") => Ok(Mode::Stdio),
         Some("1") => Ok(Mode::Listen),
         Some(other) => Err(crate::common::contract::malformed(&format!(
-            "{ENV_RESIDENT}={other:?} is neither empty nor 1; refusing to guess the carrier"
+            "{RESIDENT}={other:?} is neither empty nor 1; refusing to guess the carrier"
         ))),
     }
 }

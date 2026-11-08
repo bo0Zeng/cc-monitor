@@ -21,15 +21,6 @@ fn check_origin(origin: &str) -> Result<(), Said> {
     Ok(())
 }
 
-/// 开关面该列哪几台机 —— 由本机后端的机器表说了算（壳记的最近一答里要连的那几台），前端只负责画。
-/// 本机（`<local>`）永远在第一行 —— 它只是不走 ssh 的那一台。
-#[tauri::command]
-pub fn backend_machines() -> Vec<String> {
-    let mut out = vec![LOCAL.to_string()];
-    out.extend(crate::machine_table::connected_names());
-    out
-}
-
 /// [`backend_status`] 的回包。
 #[derive(Debug, Clone, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -142,12 +133,6 @@ pub async fn backend_start(origin: String) -> Result<(), Failed> {
         .and_then(|r| r)
         .map_err(own);
     }
-    if !crate::machine_table::has(&origin) {
-        return Err(own(Said::of(
-            "rsBackendControl.handle.missing",
-            &[("origin", &origin.to_string())],
-        )));
-    }
     // 那台的常驻流（装 · 版本门 · 状态成品）住本机后端：叫醒它（停过的不再停着、断着的不等退避马上再接）。
     //   各处的［重新连接］走的就是这里；那台拒了（停用着 · 正在连 · 机器表里没有）· 本机后端不在 ⇒ 那一份失败原样回给界面。
     wake_backend_feed(&origin).await
@@ -180,13 +165,7 @@ pub async fn backend_stop(origin: String) -> Result<crate::remote_resident::Stop
             .and_then(|r| r)
             .map_err(own);
     }
-    if !crate::machine_table::has(&origin) {
-        return Err(own(Said::of(
-            "rsBackendControl.handle.missing",
-            &[("origin", &origin.to_string())],
-        )));
-    }
-    // 本机后端 `machine-stop`：先停它那一条常驻流，再在那台跑 `--resident-stop`；没停成 ⇒ 它交来的那一份原样。
+    // 本机后端 `machine-stop`：先查表（表里没有 ⇒ `unknown_machine`）、停它那一条常驻流，再在那台跑 `--resident-stop`；没停成 ⇒ 它交来的那一份原样。
     crate::remote_resident::stop(&origin).await
 }
 

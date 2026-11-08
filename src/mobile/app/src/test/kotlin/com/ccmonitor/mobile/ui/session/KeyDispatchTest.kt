@@ -2,6 +2,7 @@ package com.ccmonitor.mobile.ui.session
 
 import com.ccmonitor.mobile.core.data.db.AppAction
 import com.ccmonitor.mobile.core.data.db.KeyBinding
+import com.ccmonitor.mobile.core.data.db.KeyConverters
 import com.ccmonitor.mobile.core.data.db.KeyGroup
 import com.ccmonitor.mobile.core.data.db.KeyMod
 import com.ccmonitor.mobile.core.data.db.KeyPress
@@ -69,7 +70,6 @@ class KeyDispatchTest {
             onTmuxSessions = { hit += "tmux" },
             onPaste = { hit += "paste" },
             onCapture = { hit += "capture" },
-            onPushKey = { hit += "pushKey" },
             onShowKeyboard = { hit += "keyboard" },
             onEditKeys = { hit += "edit" },
             onNextGroup = { hit += "next" },
@@ -85,7 +85,7 @@ class KeyDispatchTest {
             KeyModifiers()
         }
         val ok = AppAction.entries.map { a -> dispatchBinding(KeyBinding.App(a, "g1"), { sent = it }, actions(), take) }
-        assertEquals(listOf("next", "goto:g1", "edit", "paste", "tabs", "palette", "tmux", "keyboard", "capture", "pushKey"), hit)
+        assertEquals(listOf("next", "goto:g1", "edit", "paste", "tabs", "palette", "tmux", "keyboard", "capture"), hit)
         assertEquals(AppAction.entries.map { null }, ok)
         assertNull("App 动作不出线字节", sent)
         assertEquals("App 动作不吃修饰键", 0, takes)
@@ -93,8 +93,8 @@ class KeyDispatchTest {
         val down = AppAction.entries.associateWith { a -> dispatchBinding(KeyBinding.App(a, "g1"), { sent = it }, actions(noBackend = "后端未连上"), take) }
         val gone = KeyActionFail.Unavailable("后端未连上")
         assertEquals(
-            "终端名单 · 抓屏 · 推公钥要那台后端",
-            mapOf(AppAction.TMUX_SESSIONS to gone, AppAction.CAPTURE to gone, AppAction.PUSH_KEY to gone),
+            "终端名单 · 抓屏要那台后端",
+            mapOf(AppAction.TMUX_SESSIONS to gone, AppAction.CAPTURE to gone),
             down.filterValues { it != null },
         )
         hit.clear()
@@ -104,6 +104,13 @@ class KeyDispatchTest {
         assertNull(dispatchBinding(KeyBinding.Input(listOf(KeyPress.Text("ls"))), { sent = it }, actions(), take))
         assertEquals("ls", String(sent!!))
         assertEquals("送输入取一次修饰键", 1, takes)
+    }
+
+    /** 键条上不再有「推公钥」这个动作：库里存着旧的那一格（`push_key`）读回来当没绑，别的动作照读。 */
+    @Test
+    fun storedPushKeySlotReadsAsUnbound() {
+        assertNull(KeyConverters().textToBinding("""{"app":"push_key"}"""))
+        assertEquals(KeyBinding.App(AppAction.CAPTURE), KeyConverters().textToBinding("""{"app":"capture"}"""))
     }
 
     private fun lit(
@@ -131,7 +138,7 @@ class KeyDispatchTest {
     fun keyBarInputSendsWithWhatIsLitAtThatMoment() {
         var sent: ByteArray? = null
         val noop = {}
-        val a = KeyActions(null, noop, noop, noop, noop, noop, noop, noop, noop, noop, { true })
+        val a = KeyActions(null, noop, noop, noop, noop, noop, noop, noop, noop, { true })
         dispatchBinding(KeyBinding.Input(listOf(sp(SpecialKey.RIGHT))), { sent = it }, a) { lit(KeyMod.CTRL, KeyMod.SHIFT) }
         assertEquals("\u001b[1;6C", String(sent!!, Charsets.ISO_8859_1))
     }

@@ -127,14 +127,6 @@ pub(crate) fn answer(
     }
 }
 
-/// 这台 `ccm` 所在目录（后端落点的上一级）；家目录说不出 ⇒ `None`。
-fn ccm_dir() -> Option<String> {
-    let entry = crate::platform::paths::installed_ccm_entry()?;
-    std::path::Path::new(&entry)
-        .parent()
-        .map(|d| d.display().to_string())
-}
-
 /// 这台此刻（起 PowerShell ⇒ 阻塞档）。
 pub(crate) fn here(op: UserPathOp) -> UserPath {
     use crate::platform::shell::powershell::{user_path_holds, user_path_set};
@@ -142,7 +134,7 @@ pub(crate) fn here(op: UserPathOp) -> UserPath {
     answer(
         op,
         crate::platform::shell::speaks_powershell(),
-        ccm_dir().as_deref(),
+        crate::platform::paths::installed_ccm_dir().as_deref(),
         &|d| user_path_holds(d).unwrap_or_else(|| Err(absent())),
         &|d, on| user_path_set(d, on).unwrap_or_else(|| Err(absent())),
     )

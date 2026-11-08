@@ -14,7 +14,8 @@
 //! - `quick-check.sh` 重的那四段（后端 · 壳 · vitest · 手机）照挑格那张表挑：前三段恒跑，手机那一段改到它读的东西才跑，没改到说一声；
 //!   手机读的仓外路径对着 `src/mobile` 里字面写到的核（`plan.py --cover mobile`），漏一处就红；
 //!   cargo 那几段的逐条耗时从慢到快存进 `.build/quick-check/cargo-times.tsv`，收尾印最慢三条；
-//!   收尾修剪 `.build`（同组旧出窗口的增量会话与测试二进制删掉）；外面给了编译锁（`CCM_BUILD_LOCK`）只套编译那几段。
+//!   收尾修剪 `.build`（同组旧出窗口的增量会话与测试二进制删掉）；外面给了编译锁（`CCM_BUILD_LOCK`）只套编译那几段；
+//! - 第三方许可生成器 `third-party-notices.py`：四家清单里有许可不在 accepted 名单里的依赖 ⇒ 生成失败。
 
 #[cfg(all(test, unix))]
 mod tests {
@@ -2534,5 +2535,93 @@ esac
             "next 上这一提交的那一趟已绿，却重跑了或没推成：{said}"
         );
         assert_eq!(remote_main, sha, "{said}");
+    }
+
+    /// 喂第三方许可生成器四家各一份清单（Rust 的 cargo-about 结果 · npm 锁与包 · Maven 锁与许可表 · 仓里原样放的文件），
+    /// 印每一份是收下（`passed`）还是生成失败（`refused <退出码>`）。
+    const NOTICES_DRIVER: &str = r#"
+import importlib.util, json, pathlib, sys
+gen, tmp, lic = sys.argv[1], pathlib.Path(sys.argv[2]), sys.argv[3]
+spec = importlib.util.spec_from_file_location("notices", gen)
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+real = m.ROOT
+def run(name, f):
+    try:
+        f()
+    except SystemExit as e:
+        print(name, "refused", e.code)
+        return
+    print(name, "passed")
+src = "registry+https://github.com/rust-lang/crates.io-index"
+dep = {"name": "dep-crate", "version": "1.0.0", "source": src}
+doc = {"crates": [{"package": dep, "license": lic}],
+       "licenses": [{"id": lic, "name": lic, "text": "text", "used_by": [{"crate": dep}]}]}
+run("rust", lambda: m.rust_doc_groups(doc, "x/Cargo.toml", {}))
+(tmp / "node_modules/dep-pkg").mkdir(parents=True)
+(tmp / "package-lock.json").write_text(json.dumps(
+    {"packages": {"": {}, "node_modules/dep-pkg": {"version": "1.0.0", "license": lic}}}))
+(tmp / "node_modules/dep-pkg/package.json").write_text(json.dumps({"license": lic}))
+(tmp / "node_modules/dep-pkg/LICENSE").write_text("text")
+m.ROOT = tmp
+run("npm", m.npm_entries)
+m.ROOT = real
+(tmp / "gradle.lockfile").write_text("com.example:dep-aar:1.0.0=releaseRuntimeClasspath\n")
+(tmp / "maven.tsv").write_text("com.example:dep-aar:1.0.0\t%s\thttps://example.invalid/dep-aar.pom\n" % lic)
+m.MAVEN_LOCK, m.MAVEN_TABLE = tmp / "gradle.lockfile", tmp / "maven.tsv"
+run("maven", m.maven_groups)
+m.VENDORED_ROOTS = ["tests/scripts"]
+m.VENDORED_FILES = [("dep-file", "1", lic, "tests/scripts/third-party-notices.py",
+                     "tests/scripts/third-party-notices.py", "note")]
+run("vendored", m.vendored_entries)
+"#;
+
+    /// 生成器喂一份许可是 `lic` 的四家清单：(stdout, stderr)。
+    fn notices_judge(lic: &str, tag: &str) -> (String, String) {
+        let d = test_home::scratch(&format!("notices-{tag}"));
+        let o = Command::new("python3")
+            .arg("-I")
+            .arg("-c")
+            .arg(NOTICES_DRIVER)
+            .arg(root().join("tests/scripts/third-party-notices.py"))
+            .arg(&d)
+            .arg(lic)
+            .current_dir(root())
+            .output()
+            .expect("python3 起不来");
+        let _ = std::fs::remove_dir_all(&d);
+        (
+            String::from_utf8_lossy(&o.stdout).into_owned(),
+            String::from_utf8_lossy(&o.stderr).into_owned(),
+        )
+    }
+
+    /// 第三方许可：四家一样，依赖的许可不在 `third-party-about.toml` 的 accepted 名单里 ⇒ 生成失败、点出是哪一个；
+    /// 名单里的（连 SPDX 的 `OR` 里有一个在名单里）照收。
+    #[test]
+    fn a_dependency_licensed_off_the_accepted_list_fails_generation_for_every_source() {
+        let all = |verdict: &str| -> String {
+            ["rust", "npm", "maven", "vendored"]
+                .iter()
+                .map(|s| format!("{s} {verdict}\n"))
+                .collect()
+        };
+        for (lic, tag) in [("GPL-3.0-only", "gpl"), ("MIT AND GPL-3.0-only", "and")] {
+            let (out, err) = notices_judge(lic, tag);
+            assert_eq!(out, all("refused 2"), "{lic}：四家该都生成失败：{err}");
+            for who in ["dep-crate", "dep-pkg", "com.example:dep-aar", "dep-file"] {
+                assert!(err.contains(who), "{lic}：失败那一句没点出 {who}：{err}");
+            }
+        }
+        let (out, err) = notices_judge("Apache-2.0", "ok");
+        assert_eq!(out, all("passed"), "名单里的许可该照收：{err}");
+        // 写成表达式的只有 npm 的 `license` 与手抄那几行（Rust 的由 cargo-about 拆成单个许可，Maven 表一行一个许可）。
+        let (out, err) = notices_judge("GPL-3.0-only OR Apache-2.0", "or");
+        for s in ["npm passed", "vendored passed"] {
+            assert!(
+                out.lines().any(|l| l == s),
+                "`OR` 里有一个在名单里该照收（{s}）：{out}{err}"
+            );
+        }
     }
 }

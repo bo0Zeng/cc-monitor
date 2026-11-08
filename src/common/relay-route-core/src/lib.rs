@@ -37,7 +37,7 @@
 //!   家那一族由后端列（[`OWN_HOME_ENTRIES`]），monitor 不另列。
 //! - 后端按家那一族落盘：`control/exit_policy` · `files/commit` · `control/resident` ·
 //!   `assets/skill_ledger` · `assets/asset_catalog` · `platform/shell/dialect`（两份别名文件）·
-//!   `accounts/manage`（账号库）；读账号库清单的还有 `observe/accounts_query` · `control/ccm`。
+//!   `accounts/manage`（账号库）；读账号库清单的还有 `control/ccm`。
 
 use cap_core::{Cap, Over};
 
@@ -64,9 +64,17 @@ pub fn listen_socket_for(data_home: &std::path::Path) -> std::path::PathBuf {
 /// `.cc-monitor` 下 ⇒ 拒绝起（后端 `control/resident.rs::sandbox_refusal`）。仓里起沙箱后端的每个入口都带它（判据钉）。
 pub const SANDBOX_ENV: &str = "CCM_SANDBOX";
 
+/// [`BACKEND_LANDING_REL`] 那一段字面量只写在这里（宏：足迹申报要 `concat!` 出带 `~/` 的那一形，`concat!` 只认字面量）。
+#[macro_export]
+macro_rules! backend_landing_rel {
+    () => {
+        ".cc-monitor/bin/ccm"
+    };
+}
+
 /// **后端的落点**（相对家目录）：那个文件就是后端二进制本身，名字叫 `ccm`；本机与远端同一个。
 /// 远端的 `backendPath`（可填的格）删了，monitor 与后端往那台拼命令、推字节都只认这一处。
-pub const BACKEND_LANDING_REL: &str = ".cc-monitor/bin/ccm";
+pub const BACKEND_LANDING_REL: &str = backend_landing_rel!();
 
 /// 换版本时被盖掉的那几份落点住的那一层的名字：在落点那层 `bin` 底下（[`BACKEND_LANDING_REL`] 的父目录；同一块盘），
 /// 里面一份一个 `ccm-<那一份自报的身份>`。后端 `control/place_self.rs` 在盖落点那一下之前留，有上限、过期删；
@@ -89,8 +97,8 @@ pub const PORT: u16 = 8788;
 /// 注入的 URL 不带钥匙本身，渲染成 `$(cat ~/<本常量>)` 在那台机器的 pane shell 里展开（RK1）。
 pub const KEY_FILE_REL: &str = ".cc-monitor/relay-key";
 
-/// 〔「一台机器一个家」〕后端的**上传暂存区**（相对家目录）：SFTP 传输台只往这里写 `<key>.part`，
-/// 传完由那台后端提交、挪进目标。后端按它落盘（`files/commit.rs::STAGING_DIR`），monitor 的数据位置页按它列出。
+/// 〔「一台机器一个家」〕后端的**暂存区**（相对家目录）：SFTP 传输台往这里写 `<key>.part`（上传件与下载半成品都放这里），
+/// 传完经 `common::staging::land` 挪进目标。后端按它落盘（`files/commit.rs::STAGING_DIR`），monitor 的数据位置页按它列出。
 pub const STAGING_DIR_REL: &str = ".cc-monitor/staging";
 
 /// monitor 的设置（monitor `config.rs::patch_config_at` 是唯一写者）。
@@ -104,7 +112,7 @@ pub const BACKEND_POLICY_REL: &str = ".cc-monitor/backend.json";
 pub const PREFS_REL: &str = ".cc-monitor/prefs.json";
 
 /// 〔同上〕这一端连各台用的机器表：每台的名字 · 地址 · 端口 · 用户 · 钥匙路径 · 备用地址 · 跳板 · 连不连
-/// （只有本机后端写，`control/machines.rs`；桌面的 monitor 只经 `machines-read` 读）。
+/// （只有本机后端写，`control/machines.rs`；读法在 `dial/machines.rs`；桌面的 monitor 只经 `machines-read` 读）。
 pub const MACHINES_REL: &str = ".cc-monitor/machines.json";
 
 /// 〔同上〕别名块文件：POSIX shell 读的那一份（后端 `platform/shell/dialect.rs` 写，rc 里那一行 source 它）。
@@ -131,30 +139,78 @@ pub const LAST_SEEN_REL: &str = ".cc-monitor/cache/last-seen.json";
 /// 〔同上〕这台的书签：文件窗口与手机收藏的这台上的目录（后端 `control/bookmarks.rs` 写；`bookmarks-read` / `-edit` 读写，本机与远端同形）。
 pub const BOOKMARKS_REL: &str = ".cc-monitor/bookmarks.json";
 
+/// [`SKILL_LEDGER_REL`] 那一段字面量只写在这里（宏：足迹申报要 `concat!` 出带 `~/` 的那一形，`concat!` 只认字面量）。
+#[macro_export]
+macro_rules! skill_ledger_rel {
+    () => {
+        ".cc-monitor/skill-installs.json"
+    };
+}
+
 /// 〔同上〕skill 装记录（后端 `assets/skill_ledger.rs` 写；卸的时候按它删）。
-pub const SKILL_LEDGER_REL: &str = ".cc-monitor/skill-installs.json";
+pub const SKILL_LEDGER_REL: &str = skill_ledger_rel!();
 
 /// 〔同上〕资产目录（后端 `assets/asset_catalog.rs` 写；各台机器之间自动对上）。
 pub const ASSET_CATALOG_REL: &str = ".cc-monitor/assets-catalog.json";
 
+/// [`EXT_BACKUPS_DIR_REL`] 那一段字面量只写在这里（宏：足迹申报要 `concat!` 出带 `~/` 的那一形，`concat!` 只认字面量）。
+#[macro_export]
+macro_rules! ext_backups_dir_rel {
+    () => {
+        ".cc-monitor/backups"
+    };
+}
+
 /// 从一台卸掉不是 cc-monitor 装的扩展之前，先挪（skill 目录）/ 抄（MCP 配置）到这里（后端 `assets/ext.rs` 经文件管理面写）。
-pub const EXT_BACKUPS_DIR_REL: &str = ".cc-monitor/backups";
+pub const EXT_BACKUPS_DIR_REL: &str = ext_backups_dir_rel!();
+
+/// [`ACCOUNTS_MCP_REL`] 那一段字面量只写在这里（宏：足迹申报要 `concat!` 出带 `~/` 的那一形，`concat!` 只认字面量）。
+#[macro_export]
+macro_rules! accounts_mcp_rel {
+    () => {
+        ".cc-monitor/accounts-mcp.json"
+    };
+}
 
 /// 这台账号库里各号共用的用户级 MCP（共享集合 ＋ 上次同步时各号的样子；后端 `accounts/manage/mcp_share_exec.rs` 写，0600）。
-pub const ACCOUNTS_MCP_REL: &str = ".cc-monitor/accounts-mcp.json";
+pub const ACCOUNTS_MCP_REL: &str = accounts_mcp_rel!();
+
+/// [`QUOTA_LEDGER_REL`] 那一段字面量只写在这里（宏：足迹申报要 `concat!` 出带 `~/` 的那一形，`concat!` 只认字面量）。
+#[macro_export]
+macro_rules! quota_ledger_rel {
+    () => {
+        ".cc-monitor/quota.json"
+    };
+}
 
 /// 〔「一台机器一个家」〕**额度账**（后端账号域写）：这台各号最近一次从回包头看到的额度快照 ＋ 看到的时刻。
-pub const QUOTA_LEDGER_REL: &str = ".cc-monitor/quota.json";
+pub const QUOTA_LEDGER_REL: &str = quota_ledger_rel!();
+
+/// [`ROTATION_REL`] 那一段字面量只写在这里（宏：足迹申报要 `concat!` 出带 `~/` 的那一形，`concat!` 只认字面量）。
+#[macro_export]
+macro_rules! rotation_rel {
+    () => {
+        ".cc-monitor/rotation.json"
+    };
+}
 
 /// 〔同上〕**账号轮换**（后端账号域写）：每个会话此刻在用哪个号 · 它载入的那份策略副本 · 拖出来的先后 · 策略交的 memo 与叫醒 ·
 /// 换号记录 · 新会话默认用哪份策略（`forNew`）。
-pub const ROTATION_REL: &str = ".cc-monitor/rotation.json";
+pub const ROTATION_REL: &str = rotation_rel!();
 
 /// 〔同上〕**会话血缘**（后端 `lineage.rs` 写，唯一写者是中转那一路）：谁起的谁 ＋ 起会话地址里每个来处绑给了哪个会话。
 pub const LINEAGE_REL: &str = ".cc-monitor/lineage.json";
 
+/// [`LAUNCH_ACCOUNTS_REL`] 那一段字面量只写在这里（宏：足迹申报要 `concat!` 出带 `~/` 的那一形，`concat!` 只认字面量）。
+#[macro_export]
+macro_rules! launch_accounts_rel {
+    () => {
+        ".cc-monitor/launch-accounts.json"
+    };
+}
+
 /// 〔同上〕**起会话用的号**（后端观测侧写）：每条会话上次用哪个号起的（`sid → 号`），跟随选号读它。
-pub const LAUNCH_ACCOUNTS_REL: &str = ".cc-monitor/launch-accounts.json";
+pub const LAUNCH_ACCOUNTS_REL: &str = launch_accounts_rel!();
 
 /// 〔同上〕**会话输入队**（后端 `history/session_queue.rs` 写）：一条会话一份 `<sid>.json`，还没送进会话的那几句与序号。
 pub const SESSION_QUEUE_DIR_REL: &str = ".cc-monitor/session-queue";
@@ -168,8 +224,16 @@ pub const KNOWN_HOSTS_REL: &str = ".cc-monitor/known_hosts";
 /// 〔同上〕**开终端那一行的 ssh 配置**（后端拨号侧写，`ssh -F` 用）：指到 [`KNOWN_HOSTS_REL`]，再照读用户与系统的 ssh 配置。
 pub const SSH_CONFIG_REL: &str = ".cc-monitor/ssh_config";
 
+/// [`LAUNCH_NOTES_DIR_REL`] 那一段字面量只写在这里（宏：足迹申报要 `concat!` 出带 `~/` 的那一形，`concat!` 只认字面量）。
+#[macro_export]
+macro_rules! launch_notes_dir_rel {
+    () => {
+        ".cc-monitor/launch-pending"
+    };
+}
+
 /// 〔同上〕**起会话便条**（`ccm` 最终那一跳写、观测侧认完即清）：一个进程一张 `<pid>.json`（号 ＋ 时刻）。
-pub const LAUNCH_NOTES_DIR_REL: &str = ".cc-monitor/launch-pending";
+pub const LAUNCH_NOTES_DIR_REL: &str = launch_notes_dir_rel!();
 /// 大记录的骨架（后端冷开扫描图在数据目录底下落的缓存，实时跟读起步也照它；删了照记录重建；`observe/skeleton.rs`）。
 pub const SKELETON_DIR_REL: &str = ".cc-monitor/cache/skeleton";
 /// 历史清单缓存（后端历史清单在数据目录底下落的一份：每份记录读到哪了、标题与条数那几格；重启照它接着认，删了照记录重建；`history/listing.rs`）。
@@ -185,8 +249,16 @@ pub const STRATEGIES_DIR_REL: &str = ".cc-monitor/strategies";
 /// 托管终端那一层：每个一个目录（事实 · 连接入口），按版本的程序副本在 `.bin/` 底下（声明 [`HOST_FACTS_FILE`] · [`HOST_PROGRAM_FILE`]）。
 pub const HOSTS_DIR_REL: &str = ".cc-monitor/hosts";
 
+/// [`ANSWER_PLUGIN_DIR_REL`] 那一段字面量只写在这里（宏：足迹申报要 `concat!` 出带 `~/` 的那一形，`concat!` 只认字面量）。
+#[macro_export]
+macro_rules! answer_plugin_dir_rel {
+    () => {
+        ".cc-monitor/answer-plugin"
+    };
+}
+
 /// 〔同上〕**答题插件**（`ccm` 换了启动器起会话时写、经 `CLAUDE_CODE_PLUGIN_DIRS` 交给那一家）：清单 ＋ 答题那一组 hook，内容由后端生成、随时可重写。
-pub const ANSWER_PLUGIN_DIR_REL: &str = ".cc-monitor/answer-plugin";
+pub const ANSWER_PLUGIN_DIR_REL: &str = answer_plugin_dir_rel!();
 
 /// 账号库目录（相对家目录）那一段字面量，**全仓只写在这里**。宏而不是常量：足迹那张静态表要
 /// `concat!` 出带 `~/` 的那一形，`concat!` 只认字面量。别处一律用 [`ACCOUNTS_DIR_REL`]。
@@ -319,6 +391,15 @@ pub fn segment_is_safe(seg: &str) -> bool {
         && seg
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
+/// `/t/` 路由第 2 段「起会话时**没表态**是哪个号」那一段（没建账号库的机器上本机起会话就是这一形），不是哪一个号的 id。
+/// 不借账号 0 的 `0`：没表态 ≠ 账号 0（建了账号库的机器上，没表态时 pane 可能落到 shell rc 里导出的那个配置根上），流标签不该替它说是哪个号。
+pub const UNDECLARED_ACCOUNT_SEGMENT: &str = "_";
+
+/// ★ 能当一个号的 id（唯一一处：轮换的号 · `quota-probe` · `quota-warm` 认号都问它）：过段闸、又不是 [`UNDECLARED_ACCOUNT_SEGMENT`]。
+pub fn account_ok(a: &str) -> bool {
+    segment_is_safe(a) && a != UNDECLARED_ACCOUNT_SEGMENT
 }
 
 /// 拼 `/<前缀>/<seg1>/<seg2>`。**任一段过不了 [`segment_is_safe`] ⇒ `None`**（fail-closed：

@@ -80,7 +80,7 @@ const LOG_FILE_SUFFIX: &str = "log";
 const BACKEND_STDERR_DIR: &str = "backend";
 const BACKEND_STDERR_FILE: &str = "stderr.log";
 
-/// 起脱离那条载体时交给后端的那一格（后端 `stderr_log::ENV` 同值，`logging_tests` 从后端源码现抠着对拍）。
+/// 起脱离那条载体时交给后端的那一格（后端 `platform::child_env::STDERR_LOG` 同值，`logging_tests` 从后端源码现抠着对拍）。
 pub const BACKEND_STDERR_LOG_ENV: &str = "CCM_BACKEND_STDERR_LOG";
 
 /// monitor 自己的滚动日志目录 `<数据目录>/logs/monitor/`。**唯一一处算它**（写的与设置页读的是同一个）。

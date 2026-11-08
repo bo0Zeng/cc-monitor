@@ -48,17 +48,17 @@ const sameSummary = (a: TabsSummary, b: TabsSummary): boolean =>
 /**
  * **「各台都报完了」那一刻**（会话流的 `listed` 格）：迁旧分组 · 「启动时记住的那一格」没等到就明说，都只认这一处。
  *
- * 每台一条会话流。壳说「各台都报完」（`listed.all`）是壳那一本账的判断，落在**某一台**那条流上；别的台那条流上
- * 它自己的宣告与「报完了」可能还在路上（就绪点重放一条订阅接一条交：本机那条的终局带着 `all`，远端那条的骨架排在它后面）。
- * ⇒ 壳说过、**而且**订着的每一台都在自己那条流上报完了，才算那一刻；回调一次。
+ * 每台一条会话流。「各台都报完」是本机后端照它的机器表算的（`FleetLines.allListed`，随 `changed {empty}` 推），与会话流不同路；
+ * 别的台那条流上它自己的宣告与「报完了」可能还在路上（就绪点重放一条订阅接一条交）。
+ * ⇒ 后端说过、**而且**订着的每一台都在自己那条流上报完了，才算那一刻；回调一次。
  */
 export class AllListed {
-  /** 订着会话流的那几台；空 ⇒ 只等壳那一刻（查看窗等不订整台的）。 */
+  /** 订着会话流的那几台；空 ⇒ 只等后端那一刻（查看窗等不订整台的）。 */
   private machines: string[] = [];
   /** 在自己那条流上报完了的那几台。 */
   private readonly seen = new Set<string>();
-  /** 壳说过「各台都报完」。 */
-  private shellSaid = false;
+  /** 后端说过「各台都报完」。 */
+  private backendSaid = false;
   private fired = false;
 
   /** `onSettled`：那一刻（只一次）。 */
@@ -76,15 +76,15 @@ export class AllListed {
     this.check();
   }
 
-  /** 壳说各台都报完了（那一格带 `all`）。 */
-  shellSays(): void {
-    this.shellSaid = true;
+  /** 本机后端说各台都报完了（`FleetLines.allListed`）。 */
+  backendSays(): void {
+    this.backendSaid = true;
     this.check();
   }
 
   /** 那一刻到了没有。 */
   get settled(): boolean {
-    return this.shellSaid && this.machines.every((o) => this.seen.has(o));
+    return this.backendSaid &&this.machines.every((o) => this.seen.has(o));
   }
 
   private check(): void {

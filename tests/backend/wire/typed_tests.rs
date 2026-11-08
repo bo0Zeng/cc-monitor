@@ -312,12 +312,6 @@ const UNCUT: &[(&str, &str, &str)] = &[
     ("TerminalPreviewReq", "scrollback", "终端往回看整条没有调用方，牵到托管终端那一侧（host/managed 要连带改（另排））"),
     ("Preview", "capped", "同 `TerminalPreviewReq.scrollback`：往回看那一截的回包"),
     ("Preview", "scrollback_lines", "同 `TerminalPreviewReq.scrollback`：往回看那一截的回包"),
-    ("SessionFacts", "forkedFrom", "两端只摆后端起好的 `forkedLine`，不读父会话号；后端起名要用它，该 `serde(skip)` 或删（后端那一路，另排）"),
-    ("FactsReply", "forkedFrom", "同 `SessionFacts.forkedFrom`"),
-    ("HistoryRow", "forkedFrom", "同 `SessionFacts.forkedFrom`：历史行只摆整行标题里的分叉记号"),
-    ("MergedRow", "forkedFrom", "同 `HistoryRow.forkedFrom`"),
-    ("SearchRow", "forkedFrom", "同 `HistoryRow.forkedFrom`"),
-    ("SessionHits", "forkedFrom", "同 `HistoryRow.forkedFrom`"),
 ];
 
 /// 去掉注释：`//` 到行尾 · `/* … */`；字符串原样留着（注释的记号在字符串里不算）。

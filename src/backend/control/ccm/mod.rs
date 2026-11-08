@@ -151,9 +151,6 @@ pub(crate) static USAGE: std::sync::LazyLock<String> =
 // 按哪一家起会有什么不同（默认启动器 · 嵌套标记 · cc-bus 身份 · 身份面 · pidfile）全是适配层那一格
 // （`agents::LaunchFace`），`plan::build_among` 一处问完；本模块不认识任何一家的名字。
 
-/// 入口注入的「此刻在跑的会话」扫描：入参 = 账号配置目录（`None` = agent 默认家目录），出 `(sid, pid)`。
-pub(crate) type RunningScan = fn(Option<&std::path::Path>) -> Vec<(String, u32)>;
-
 /// 入口注入的「这台的账号清单成品」（`accounts-list` 那一份，入参 = 家目录 · 起哪一家）：起会话用哪个号只经 `launch_account::pick` 判，
 /// 它要的「能不能用」在观测层算（control 不引用 observe）。只在真要判号的时候读。
 pub(crate) type AccountsScan = fn(&str, &str) -> AccountsList;
@@ -294,7 +291,6 @@ pub fn run(
     args: &[String],
     process_argv: &[String],
     own: &crate::platform::fs::Own,
-    running: RunningScan,
     accounts: AccountsScan,
 ) -> i32 {
     use std::io::IsTerminal;
@@ -351,9 +347,6 @@ pub fn run(
             0
         }
         Parsed::Opts(o) => {
-            let mut env = env;
-            // 这一家认不认得这份扫描由计划那一侧问适配层（`Adapter::live`）。
-            env.running_sessions = o.resumes.is_some().then_some(running);
             let Planned {
                 plan,
                 env,
@@ -548,7 +541,7 @@ impl crate::wire::typed::Handle for CcmProbe {
     ) -> Result<CcmCard, ProbeErr> {
         let here = tokio::task::spawn_blocking(on_path::here)
             .await
-            .unwrap_or_else(|_| on_path::on_path(&on_path::Reach::Unknown, ""));
+            .unwrap_or_else(|_| on_path::on_path(&crate::platform::shell::Reach::Unknown, ""));
         Ok(answer_probe_for(here))
     }
 }

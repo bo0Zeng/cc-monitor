@@ -90,7 +90,7 @@ impl Command for HooksDiagCmd {
     const NAME: &'static str = "hooks-diag";
     const TAKES_INPUT: bool = false;
     type Req = crate::wire::typed::NoArgs;
-    type Reply = crate::observe::cc_bus_hooks::HooksReport;
+    type Reply = crate::assets::cc_bus_hooks::HooksReport;
     type Err = HooksDiagErr;
 }
 
@@ -99,8 +99,8 @@ impl crate::wire::typed::Handle for HooksDiagCmd {
     async fn run(
         _req: crate::wire::typed::NoArgs,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> Result<crate::observe::cc_bus_hooks::HooksReport, HooksDiagErr> {
-        capped(crate::observe::cc_bus_hooks::answer()).map_err(HooksDiagErr::TooLarge)
+    ) -> Result<crate::assets::cc_bus_hooks::HooksReport, HooksDiagErr> {
+        capped(crate::assets::cc_bus_hooks::answer()).map_err(HooksDiagErr::TooLarge)
     }
 }
 

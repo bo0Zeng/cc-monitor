@@ -167,8 +167,10 @@ fn far(host: &str) -> crate::dial::Host {
 }
 
 fn named(name: &str, host: &str) -> crate::dial::Host {
-    crate::dial::machine::loose(&json!({ "label": name, "host": host, "port": 22, "user": "u" }))
-        .unwrap()
+    <crate::dial::Host as serde::Deserialize>::deserialize(
+        &json!({ "label": name, "host": host, "port": 22, "user": "u" }),
+    )
+    .unwrap()
 }
 
 /// 这几台的机器表（照给的先后）。

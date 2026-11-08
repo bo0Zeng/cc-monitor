@@ -12,7 +12,7 @@
 //! # 一格是什么
 //!
 //! - `kind`：`value`（机器要的值）· `text`（核心写好的字，类型是 [`Words`](crate::common::cells::Words)）· `tone`（语气，[`Tone`](crate::common::cells::Tone)）。
-//!   由这一格的 Rust 类型说，不按格名猜（`blocks[].text` 是原文、`cost.text` 是写好的字）。
+//!   由这一格的 Rust 类型说，不按格名猜（`blocks[].text` 是原文、`tokens.text` 是写好的字）。
 //! - `type`：`string` · `number` · `bool` · `enum`（闭集的一个词：Rust 枚举的单元变体）· `object`（原样透传的一团 · 登记成一团的结构体 [`WHOLE`]，不再往里分格）。
 //! - 路径写法（声明里点格用同一种写法）：`a.b` 嵌套 · `a[]` 列表的每一项 · `a.*` 以 id 为键的表的每一项 ·
 //!   `a[type=x]` 按判别格挑的那一种（只在成品登记了判别格时出现，见 [`Product::tags`]）。
@@ -694,14 +694,14 @@ mod specimens {
     use crate::agents::record::{Block, Body, Record, ReplyError, TitleBy};
     use crate::agents::{
         Answer, ApiReason, AskOption, AskQuestion, ChildRunTag, LineDiff, LineDiffKind,
-        LineDiffRow, McpStatus, Pasted, ResultKind, SessionActivity, Speaker, StepAsk, StepBody,
-        StepResult, ToolCard, ToolStep, UserText,
+        LineDiffRow, McpStatus, ResultKind, SaidPart, SessionActivity, Speaker, StepAsk, StepBody,
+        StepResult, TextFold, ToolCard, ToolStep, UserText,
     };
     use crate::agents::{PlanTitleExt as _, SpeakerExt as _};
     use crate::common::cells::Words;
     use crate::observe::recognize::facts::{
-        Cost, LastSay, LimitFrom, McpTrouble, Needs, NeedsKind, PendingCall, RetryOutcome,
-        RetryRun, SessionFacts, StepWait, TokenUse, UnclearWhy, UsageFact,
+        LastSay, LimitFrom, McpTrouble, Needs, NeedsKind, PendingCall, RetryOutcome, RetryRun,
+        SessionFacts, StepWait, TokenUse, UnclearWhy, UsageFact,
     };
     use crate::observe::recognize::index_row::IndexRow;
     use crate::wire::{Frame, Life, SessionContainer, SessionFace};
@@ -729,6 +729,8 @@ mod specimens {
             Speaker::BashOutput {
                 stdout: s("o"),
                 stderr: s("e"),
+                stdout_fold: Some(fold()),
+                stderr_fold: Some(fold()),
             },
             Speaker::CommandOutput,
             Speaker::TaskNotification {
@@ -768,14 +770,18 @@ mod specimens {
         UserText {
             speaker,
             text: s("x"),
-            pasted: vec![Pasted {
-                start: 0,
-                end: 1,
-                body_start: 0,
-                body_end: 1,
-                fold: true,
-                fold_text: Some(Words(s("f"))),
+            parts: vec![SaidPart {
+                text: s("p"),
+                fold: Some(fold()),
             }],
+        }
+    }
+
+    fn fold() -> TextFold {
+        TextFold {
+            shown: 1,
+            total: 2,
+            more: Words(s("m")),
         }
     }
 
@@ -808,6 +814,7 @@ mod specimens {
             files: Some(1),
             answer: Some(answer),
             exit_code: Some(0),
+            error: Some(Words(s("x"))),
             file: some("/f"),
             patch: Some(diff(true)),
             text: Words(s("t")),
@@ -842,7 +849,12 @@ mod specimens {
                 who: who(Speaker::Human),
                 blocks: vec![
                     Block::text(s("t")),
-                    Block::tool_result(s("c"), vec![Block::text(s("t")), image.clone()], false),
+                    Block::tool_result(
+                        s("c"),
+                        vec![Block::text(s("t")), image.clone()],
+                        false,
+                        copy_core::size_text,
+                    ),
                     image,
                 ],
                 results: one("c", result(Answer::Approved)),
@@ -1045,10 +1057,6 @@ mod specimens {
                         text: Words(s("1")),
                         last: None,
                     }),
-                    cost: Some(Cost {
-                        partial: false,
-                        text: Words(s("$0.01")),
-                    }),
                     bg_tasks: vec![crate::observe::recognize::facts::BgTask {
                         call: s("c"),
                         task: some("b"),
@@ -1122,15 +1130,6 @@ mod specimens {
                             },
                         ),
                     }],
-                    line: Some(crate::observe::recognize::facts::FactsLine {
-                        of: SessionActivity::Working,
-                        text: Words(s("t")),
-                        clock: Some(crate::observe::recognize::facts::Clock {
-                            text: Words(s("t {dur}")),
-                            from: 1,
-                        }),
-                        peek: Some(Words(s("p"))),
-                    }),
                     quiet_unread: Some(crate::observe::recognize::facts::QuietUnread {
                         text: Words(s("q")),
                         count: 1,
@@ -1284,6 +1283,14 @@ mod specimens {
                     .under(some("b"))
                     .housed_in(Some(&crate::wire::SessionContainer::Tmux {
                         terminal: Some(s("t")),
+                    }))
+                    .saying(Some(crate::wire::StateLine {
+                        text: Words(s("t")),
+                        clock: Some(crate::observe::recognize::facts::Clock {
+                            text: Words(s("t {dur}")),
+                            from: 1,
+                        }),
+                        peek: Some(Words(s("p"))),
                     })),
                     name_face: named(),
                     waiting_for: some("w"),

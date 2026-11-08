@@ -7,12 +7,17 @@
 //! 判哪句算契约错：值能不能来自用户手敲。会话名、目录、`--ccm-tmux=<名>` 这种用户打得出来的，不归这里，各自进表说人话；判不准的也不归这里。
 //! `detail` 里出现汉字 ⇒ 普查会把那个字面量数成对外文案 ⇒ `copy-ledgers.vitest.ts` 的 CP2（全仓对外字面量零条）红。
 
-/// 契约错的那一句（`malformed`）与拆它的那一处（`parts`）：本体住拨号核心（`ssh-dial/lib.rs`，手机同一份），这里只转用。
+/// 拆契约错那一串的一处（`parts`）与反方向（`joined`）：本体与分隔字符住 `copy_core::said`（全仓一份），这里只转用。
 /// 诊断跟着那一串走（隔一个分隔字符），由失败信封那一处（`parts`）拆开：句子照旧只有「请求格式不对」，
 /// 诊断进复制详情的「原话」那一行 —— 看的人知道缺的是哪一格、要什么形状，不必去翻那台的日志。
 /// 失败信封（`wire::detail::Failed` · `wire::spec::fail`）只经 `parts` 拆；没有诊断 ⇒ 原样。
-/// 反方向（那一句 ＋ 原话 ⇒ 一串，`joined`）与分隔字符同住那一处。
-pub use ssh_dial::{joined, malformed, parts};
+pub use copy_core::said::{joined, parts};
+
+/// 契约错的那一句（`detail`：英文诊断）：记一行 warn 日志（这台后端的日志），回那一串（`copy_core::said::malformed_said`）。
+pub fn malformed(detail: &str) -> String {
+    tracing::warn!("contract: malformed request: {detail}");
+    copy_core::said::malformed_said(detail)
+}
 
 // 判据读「契约错记进日志的那条诊断」的 `tests::diag`：本包与上层各族的测试档共用。
 #[cfg(any(test, feature = "test-support"))]

@@ -108,8 +108,9 @@ fn path_resolution_has_exactly_one_home() {
     }
 }
 
-/// ★ F2：observe 与 history 里点名围栏的读者 == `{history/listing.rs, observe/accounts_query.rs, observe/query/locate.rs, observe/search_query.rs, observe/skeleton.rs}`（两向相等；
-/// `skeleton.rs` 只拿 `fence::real_path` 规范化缓存的键，不靠它放行 —— 它读的是自家数据目录；`accounts_query.rs` 也只拿它解开各号那份设置的链接、比是不是同一份，不读内容）。
+/// ★ F2：observe 与 history 里点名围栏的读者 == `{history/listing.rs, observe/query/locate.rs, observe/search_query.rs, observe/skeleton.rs}`（两向相等；
+/// `skeleton.rs` 只拿 `fence::real_path` 规范化缓存的键，不靠它放行 —— 它读的是自家数据目录）。
+/// 账号库那一面（`accounts/manage/library.rs`）也拿 `fence::real_path` 解开各号那份设置的链接、比是不是同一份、不读内容：它不读会话，不在本条的面里。
 #[test]
 fn every_session_reader_goes_through_the_fence() {
     let users: BTreeSet<String> = reader_sources()
@@ -126,7 +127,6 @@ fn every_session_reader_goes_through_the_fence() {
         users,
         BTreeSet::from([
             "history/listing.rs".to_string(),
-            "observe/accounts_query.rs".to_string(),
             "observe/query/locate.rs".to_string(),
             "observe/search_query.rs".to_string(),
             "observe/skeleton.rs".to_string()

@@ -86,19 +86,19 @@ pub struct LoginWatch {
 /// 每个号的配置目录由宿主交进来（[`AccountDirs`]）。
 fn logins_dirs(
     home: &std::path::Path,
-    library: &AccountDirs,
+    account_dirs: &AccountDirs,
 ) -> (std::path::PathBuf, Vec<std::path::PathBuf>) {
     let manifest_dir = crate::platform::paths::home_join(home, relay_route_core::ACCOUNTS_DIR_REL);
-    (manifest_dir, library(home))
+    (manifest_dir, account_dirs(home))
 }
 
 fn logins_arm(
     home: std::path::PathBuf,
     tx: Nodes,
     held: std::sync::Arc<std::sync::Mutex<Option<crate::platform::watch_file::Watching>>>,
-    library: AccountDirs,
+    account_dirs: AccountDirs,
 ) -> Result<(), String> {
-    let (manifest_dir, dirs) = logins_dirs(&home, &library);
+    let (manifest_dir, dirs) = logins_dirs(&home, &account_dirs);
     let login_name = crate::agents::route_named(crate::agents::credentials_file_agent())
         .and_then(crate::agents::login_of)
         .map(|f| f.creds_file.to_string());
@@ -116,7 +116,7 @@ fn logins_arm(
         tx.clone(),
         home.clone(),
         manifest_dir,
-        library,
+        account_dirs,
     );
     let w =
         crate::platform::watch_file::watch(&watched, concerns, "rotation-accounts", move |hit| {
@@ -141,10 +141,14 @@ fn logins_arm(
 }
 
 impl LoginWatch {
-    /// 盯 `home` 下的账号库，节点发到 `tx`；`library` 是宿主交进来的每号配置目录（[`AccountDirs`]）。
-    pub fn start(home: &std::path::Path, tx: &Nodes, library: AccountDirs) -> Result<Self, String> {
+    /// 盯 `home` 下的账号库，节点发到 `tx`；`account_dirs` 是宿主交进来的每号配置目录（[`AccountDirs`]）。
+    pub fn start(
+        home: &std::path::Path,
+        tx: &Nodes,
+        account_dirs: AccountDirs,
+    ) -> Result<Self, String> {
         let held = std::sync::Arc::new(std::sync::Mutex::new(None));
-        logins_arm(home.to_path_buf(), tx.clone(), held.clone(), library)?;
+        logins_arm(home.to_path_buf(), tx.clone(), held.clone(), account_dirs)?;
         Ok(Self { held })
     }
 
@@ -158,8 +162,8 @@ impl LoginWatch {
 }
 
 /// 常驻 / 流那一路起来时调一次：盯这台的账号库，进程活着就一直盯。盯不上只出声。
-/// `library`：每号配置目录，宿主交（`faces::rotation_face::account_dirs`）。
-pub fn watch_logins_here(library: AccountDirs) {
+/// `account_dirs`：每号配置目录，宿主交（`faces::rotation_face::account_dirs`）。
+pub fn watch_logins_here(account_dirs: AccountDirs) {
     static HELD: std::sync::Mutex<Option<LoginWatch>> = std::sync::Mutex::new(None);
     let mut g = HELD.lock().unwrap_or_else(|e| e.into_inner());
     if g.is_some() {
@@ -169,7 +173,7 @@ pub fn watch_logins_here(library: AccountDirs) {
     let Some(home) = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into)) else {
         return;
     };
-    match LoginWatch::start(&home, bus(), library) {
+    match LoginWatch::start(&home, bus(), account_dirs) {
         Ok(w) if w.armed() => *g = Some(w),
         Ok(_) => {}
         Err(e) => tracing::warn!("[rotation] 盯不上账号库：{e}（登录变了要等下一发才看得见）"),

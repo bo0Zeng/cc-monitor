@@ -26,10 +26,10 @@ class UsageViewTest {
     ) = AccountRow(
         keyMasked = null,
         endpointHost = null,
-        badge = Badge("已登录", false, "已登录"),
+        badge = Badge("已登录", false),
         plate = plate,
         kindLine = "",
-        quota = null,
+        slots = emptyList(),
         unselectable = null,
         login = false,
         newSession = true,

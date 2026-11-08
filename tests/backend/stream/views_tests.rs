@@ -207,7 +207,7 @@ fn the_stream_view_trims_pushed_frames_and_leaves_the_rest_alone() {
             who: crate::agents::UserText {
                 speaker: crate::agents::Speaker::Human,
                 text: "x".into(),
-                pasted: Vec::new(),
+                parts: Vec::new(),
             },
             blocks: vec![Block::text("x".into())],
             results: Default::default(),

@@ -568,14 +568,14 @@ fn a_broken_set_is_refused_on_write() {
     assert_eq!(problems_after(&out).len(), 1, "{:?}", problems_after(&out));
 }
 
-/// 托管入口那一段写 `hosted = true`；`bcch` 基于它只写号 ⇒ 托管 ＋ 那个号。
+/// 托管入口那一段写 `hosted = true`；`labcch` 基于它只写号 ⇒ 托管 ＋ 那个号。
 #[test]
 fn a_hosted_profile_and_its_account_child_resolve_hosted() {
-    let book = "[cch]\nhosted = true\n\n[bcch]\nfrom = \"cch\"\naccount = \"b\"\n";
+    let book = "[cch]\nhosted = true\n\n[labcch]\nfrom = \"cch\"\naccount = \"lab\"\n";
     assert!(opts_of(&resolved(book, "cch", &[])).hosted);
-    let r = resolved(book, "bcch", &[]);
+    let r = resolved(book, "labcch", &[]);
     let o = opts_of(&r);
     assert!(o.hosted, "cch 的托管要传下来");
-    assert_eq!(o.account, "b");
+    assert_eq!(o.account, "lab");
     assert_eq!(origin_of(&r, flag::HOSTED), "cch");
 }

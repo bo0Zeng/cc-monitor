@@ -1,9 +1,8 @@
 /**
  * 在用户面前这台机器上开一个终端，跑 `command` —— 全仓开终端只有这一个家；命令都是后端出的成品，monitor 只开窗。
- * - 本机：`command` 已是本机后端渲好的那一串 ⇒ monitor 直接开窗（`open_terminal_window`；要起始目录的走
- *   {@link openLocalTerminal} → `open_local_terminal`）；
- * - 远端：① 本机后端 `terminal-ssh` 只收那台的名字，照它的机器表渲出这台终端方言的那一行
- *   （Windows 上 PowerShell `& '<ssh 全路径>' -t[ -J …] … -- '<bash -lic ''…''>'`，别处 POSIX 一行；本机没装 ssh 客户端 / 判不了 ⇒ 后端不出那一行、说一句）→ ② monitor 开窗。
+ * 本机远端同一条：① 本机后端 `terminal-ssh` 只收那台的名字（本机就是 `<local>`），渲出这台终端方言的那一行
+ * （远端：Windows 上 PowerShell `& '<ssh 全路径>' -t[ -J …] … -- '<bash -lic ''…''>'`，别处 POSIX 一行，本机没装 ssh 客户端 / 判不了 ⇒
+ * 后端不出那一行、说一句；本机：那一串本身）→ ② monitor 开窗（`open_terminal_window`）。
  *
  * 哪一步不成 ⇒ 抛一句人话（调用方出声）。这台开不了终端窗口时壳回 `noWindow`（带写好的那几句）⇒ 抛 {@link NoTerminalWindow}；
  * 调用方按类型判（照实说 ＋ 设置入口，不把命令塞进剪贴板），不按哪句话里的字判、也不按 OS 猜。
@@ -74,35 +73,30 @@ async function opened(command: string, got: Promise<TerminalOpened>): Promise<vo
   if (r.outcome === "noWindow") throw new NoTerminalWindow(command, r);
 }
 
-/** 开窗跑本机后端拼好的 `window`；开不了窗 ⇒ 交给［复制命令］的只有 `line`。 */
-async function openWindow({ window, line }: SshCommand): Promise<void> {
-  await opened(line, commands.open_terminal_window({ command: window }));
-}
-
-/** 在本机开一个终端窗口、起始目录 `cwd`，跑本机后端渲好的 `cmd`（本机起会话 · 批量各开一个）。 */
-export async function openLocalTerminal(cmd: string, cwd: string | null): Promise<void> {
-  await opened(cmd, commands.open_local_terminal({ cmd, cwd }));
+/** 开窗跑本机后端拼好的 `window`，起始目录 `cwd`；开不了窗 ⇒ 交给［复制命令］的只有 `line`。 */
+async function openWindow({ window, line }: SshCommand, cwd: string | null): Promise<void> {
+  await opened(line, commands.open_terminal_window({ command: window, cwd }));
 }
 
 /**
- * 在用户面前这台机器上开一个终端跑 `command`（`origin` = 命令要在哪台跑）。
- * `sid`：这个终端显示的那条会话（`session-open` 的成品带它）⇒ 本机后端拼的开窗那一串另带前奏与收尾：开的那个 shell 记下自己的窗口标签、
+ * 在用户面前这台机器上开一个终端跑 `command`（`origin` = 命令要在哪台跑；本机远端同一条）。
+ * `sid`：这个终端显示的那条会话（`session-open` 的成品带它）⇒ 远端那一串由本机后端另带前奏与收尾：开的那个 shell 记下自己的窗口标签、
  * 那条 ssh 一退就删，↗ 先照它在本机找；开不了窗时复制出去的只有那一行。
+ * `cwd`：那条会话在那台的目录。它只当这台窗口的起始目录（本机起会话的直路那一行不带 `--cwd`），所以只在那台就是这台时交给壳；
+ * 远端的目录在那台的那一行里。
  */
 export async function openTerminal(
   origin: Machine,
   command: string,
   sid: string | null = null,
+  cwd: string | null = null,
 ): Promise<void> {
-  if (isLocalOrigin(origin)) {
-    await openWindow({ window: command, line: command });
-    return;
-  }
-  // 只交名字：地址 · 跳板 · 先试哪条都照本机后端的机器表。
-  await openWindow(await lineOf({ machine: origin, command, ...(sid !== null ? { sid } : {}) }));
+  // 只交名字：地址 · 跳板 · 先试哪条都照本机后端的机器表；本机那一行也由它答。
+  const got = await lineOf({ machine: origin, command, ...(sid !== null ? { sid } : {}) });
+  await openWindow(got, isLocalOrigin(origin) ? cwd : null);
 }
 
 /** 在用户面前这台机器上开一个终端，进 `origin` 那台的登录 shell（本机 ⇒ 本机 shell；那一行是本机后端 `terminal-ssh` 渲的）。 */
 export async function openLoginShell(origin: Machine): Promise<void> {
-  await openWindow(await lineOf({ machine: origin }));
+  await openWindow(await lineOf({ machine: origin }), null);
 }

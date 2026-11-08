@@ -19,8 +19,8 @@ pub(crate) const PROC_FILE_CAP: cap_core::Cap = cap_core::Cap {
 
 /// Whether `pid` currently exists as a process on this host (existence only).
 ///
-/// Linux (the backend's real target): `/proc/<pid>` existence. This is the
-/// add-time gate; the reuse-proof check is [`session_alive`].
+/// Linux (the backend's real target): `/proc/<pid>` existence. 判活（`history::live_table::author_check`）先问它，
+/// 再判是不是写 pidfile 的那一条；pid 看守的复核是 [`session_alive`]。
 ///
 /// Windows：开得到句柄且退出码是 `STILL_ACTIVE` ⇒ 在；**「拒绝访问」也算在**
 /// （与 Linux 同契约：`/proc/<pid>` 对别的用户的进程照样存在 —— 这里问的是存在性，不是权限）；
@@ -71,7 +71,7 @@ pub enum EnvRead {
     Value(String),
     /// 环境**读得到**，而这个键不作数：没有这个键 / 它的值是空串（两支合并，见类型头注）。
     Unset,
-    /// 环境这一刻取不到：读失败，或读回 0 字节。它不是「没设」—— 当成没设，`observe/accounts_query.rs` 会把一条真跑在账号 Z 下的会话报成账号 0 的。
+    /// 环境这一刻取不到：读失败，或读回 0 字节。它不是「没设」—— 当成没设，`accounts/manage/library.rs` 会把一条真跑在账号 Z 下的会话报成账号 0 的。
     Unreadable,
 }
 
@@ -79,7 +79,7 @@ pub enum EnvRead {
 /// 这一刻读不出来（读失败 / 读回 0 字节）回 `Unreadable`。变量名是参数：`platform/` 不认识任何一个 agent 的环境变量。
 ///
 /// 调用形状（`proc_env_var(pid, <键>)` 这一串字面）是量点，别改：
-/// `observe/accounts_query_tests.rs::the_only_env_keys_this_module_reads_are_the_two_named_constants` 按这串字面数「backend 真读几个键」。
+/// `accounts/manage/library_tests.rs::the_only_env_keys_this_module_reads_are_the_two_named_constants` 按这串字面数「backend 真读几个键」。
 ///
 /// `warn!` 在这里而不在调用方：只有这里知道刚才走的是哪一支。
 pub fn proc_env_var(pid: u32, name: &str) -> EnvRead {
@@ -132,8 +132,8 @@ pub fn proc_env_var(pid: u32, name: &str) -> EnvRead {
 /// Linux: the `starttime` field (jiffies since boot) from `/proc/<pid>/stat`.
 /// Windows：`GetProcessTimes` 的创建时刻，FILETIME 原值（UTC、100ns、自 1601）。单位是平台原生的，与 Linux 的 jiffies 不可互比 ——
 /// 只拿来与同一个读法读出来的另一次比相等（`#34` 基线 · `pidwatch` 开句柄后的复核），或经 [`start_epoch_from_ticks`] 换成秒。
-/// 所以 `watcher.rs::add_time_verdict` 的「与 pidfile 里的 `procStart` 逐值相等」那一支在 Windows 上按构造不会命中
-/// （claude 在 Windows 上写的是 .NET 本地 ticks），落到它自己的兜底启发式（「进程起得比 pidfile 晚 ⇒ 冒名」）—— 保守方向。
+/// 所以活会话表判活（`history::live_table::add_time_verdict`）的「与 pidfile 里的 `procStart` 逐值相等」那一支在 Windows 上按构造不会命中
+/// （claude 在 Windows 上写的是 .NET 本地 ticks），落到它的兜底启发式（「进程起得比 pidfile 晚 ⇒ 冒名」· cmdline）—— 不判死、照活。
 /// 其余平台：`None`。`proc_cmdline` 在 Windows 上仍是 `None`（要读 PEB）。
 pub fn proc_starttime(pid: u32) -> Option<u64> {
     #[cfg(target_os = "linux")]

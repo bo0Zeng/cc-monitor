@@ -10,6 +10,7 @@ use crate::agents::{QuotaReading, QuotaWindow};
 
 /// 号的种类（线上 `sub` · `api`）：线上形住 `cmd-wire`。
 pub use cmd_wire::quota::Kind;
+use cmd_wire::quota::{SLOT_5H, SLOT_7D};
 /// 每个号的事实（`rotation-view` · `rotation-facts` 带它）：线上形住 `cmd-wire`。
 pub use cmd_wire::rotation::{Fact, FactBlocked, FactWhy, WinFact};
 
@@ -60,9 +61,9 @@ pub(crate) fn pick<'a>(
 }
 
 /// 一个窗口在额度账上量出来的那两样（按窗口原名问；调用方交）：用速（点 / 分）· 1% ≈ 多少用量。
-pub(crate) struct Measured<'a> {
-    pub(crate) rate: &'a dyn Fn(&str) -> Option<f64>,
-    pub(crate) per_pct: &'a dyn Fn(&str) -> Option<u64>,
+pub struct Measured<'a> {
+    pub rate: &'a dyn Fn(&str) -> Option<f64>,
+    pub per_pct: &'a dyn Fn(&str) -> Option<u64>,
 }
 
 /// 一个语义位此刻的窗口事实（[`pick`] 挑的那个在计时才算开着；量出来的那两样由调用方按窗口原名问额度账）。
@@ -105,7 +106,7 @@ fn win_of(
 }
 
 /// 周窗那一位：每个号有固定的每周重置时刻、跟用不用无关（5 小时窗由用触发，没有这回事）。
-const WEEK_SLOT: &str = "7d";
+const WEEK_SLOT: &str = SLOT_7D;
 const WEEK: u64 = 7 * 86_400;
 
 /// 周窗不在计时时交的重置：读数留着的那一刻还没到 ⇒ 照它；过了 ⇒ 往后推整几周，取第一个在此刻之后的。
@@ -154,7 +155,7 @@ fn barred_of(
     clippy::too_many_arguments,
     reason = "纯函数：一个号的几样事实（额度账那一条 · 种类 · 登录 · 再试时刻 · 此刻 · 槽位 · 时刻写法）逐样交进来，判据照样逐样喂"
 )]
-pub(crate) fn fact_of(
+pub fn fact_of(
     account: &str,
     r: Option<&QuotaReading>,
     seen_at: Option<u64>,
@@ -166,8 +167,8 @@ pub(crate) fn fact_of(
     m: &Measured<'_>,
     when: &dyn Fn(u64) -> String,
 ) -> Fact {
-    let w5h = win_of(r, "5h", now, slot_of, m, when);
-    let w7d = win_of(r, "7d", now, slot_of, m, when);
+    let w5h = win_of(r, SLOT_5H, now, slot_of, m, when);
+    let w7d = win_of(r, SLOT_7D, now, slot_of, m, when);
     let a = Acct {
         id: account.to_string(),
         api: kind == Kind::Api,
@@ -177,7 +178,7 @@ pub(crate) fn fact_of(
         barred: barred_of(r, kind, login, retry, now),
         rate: [w5h.rate, w7d.rate],
         per_pct: [w5h.tokens_per_pct, w7d.tokens_per_pct],
-        weekly: r.is_some_and(|r| r.windows.iter().any(|x| slot_of(&x.name) == Some("7d"))),
+        weekly: r.is_some_and(|r| r.windows.iter().any(|x| slot_of(&x.name) == Some(SLOT_7D))),
         others: None,
         past: Default::default(),
     };

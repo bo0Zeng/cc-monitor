@@ -89,6 +89,8 @@ pub struct Profile {
     pub from_line: usize,
     pub agent: Vec<String>,
     pub items: Vec<Setting>,
+    /// 内置的那一段（用户文件里没有、由后端照账号表现算，`accounts::with_builtins`）；用户文件里的 ⇒ `false`。
+    pub builtin: bool,
 }
 
 impl Profile {
@@ -316,6 +318,7 @@ pub fn parse_book(text: &str) -> Book {
             from_line: line,
             agent: Vec::new(),
             items: Vec::new(),
+            builtin: false,
         };
         for (k, v) in t.iter() {
             let (kk, _) = t.get_key_value(k).expect("key listed just above");
@@ -503,14 +506,14 @@ pub fn path_in(home: &str) -> String {
     crate::common::door::join_under(home, relay_route_core::PROFILES_REL)
 }
 
-/// ccm 那一趟直接读（一次性模式不经文件管理面）：不在 ⇒ 一段都没有；读不了 ⇒ 那一句。
+/// ccm 那一趟直接读（一次性模式不经文件管理面），合上内置那几段（`aliases::book_in`）：不在 ⇒ 只有内置的；读不了 ⇒ 那一句。
 pub fn read_at(home: &str) -> Result<Book, String> {
     let path = path_in(home);
     if matches!(Ro::metadata(&path), Err(e) if e.kind() == std::io::ErrorKind::NotFound) {
-        return Ok(Book::default());
+        return Ok(super::book_in(home, None));
     }
     Ro::read_string_capped(&path, PROFILES_CAP)
-        .map(|t| parse_book(&t))
+        .map(|t| super::book_in(home, Some(&t)))
         .map_err(|e| {
             e.wrap(|why| copy_text("reason.fs.readFailed", &[("path", &path), ("why", why)]))
                 .into_note()
@@ -965,8 +968,9 @@ pub(crate) fn apply_changes(text: Option<&str>, changes: &[Change]) -> Result<St
     Ok(doc.to_string())
 }
 
-/// 改完之后整份还合格吗：每一处写错、每一段合不下来的，都是一句（带段名）。空 ＝ 合格。
-pub fn problems_after(text: &str) -> Vec<String> {
+/// 改完之后整份还合格吗：每一处写错、每一段合不下来的，都是一句（带段名）。空 ＝ 合格（判据的对照）。
+#[cfg(test)]
+pub(crate) fn problems_after(text: &str) -> Vec<String> {
     let b = parse_book(text);
     let mut out: Vec<String> = b
         .problems
@@ -1009,16 +1013,6 @@ pub(crate) fn children_of<'a>(book: &'a Book, name: &str) -> Vec<&'a str> {
         .filter(|p| p.from.as_deref() == Some(name))
         .map(|p| p.name.as_str())
         .collect()
-}
-
-/// 这一段自己写的样子（设置窗的表单回填、旧帧那条清单都从这里取）。
-pub fn edit_of(p: &Profile) -> ProfileEdit {
-    ProfileEdit {
-        name: p.name.clone(),
-        from: p.from.clone(),
-        agent: p.agent.clone(),
-        ccm: p.ccm_words(),
-    }
 }
 
 #[cfg(test)]

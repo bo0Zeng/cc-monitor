@@ -324,7 +324,7 @@ pub struct Needs {
     /// 起点比那一刻还晚（那台的钟往回拨过）⇒ 0。没有起点 ⇒ `null`。会走的钟：各出口从收到那一刻起按本机钟接着加（时长读口对同一份金样）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]
     pub waited_ms: Option<u64>,
-    /// 这一条可以怎么答（挂着的待答请求，`control::asks`）：选项的字 · 语气 · 要不要附话都写好；没有挂着的 ⇒ `null`（只能去终端）。
+    /// 这一条可以怎么答（挂着的待答请求，`control::asks`）：选项的字 · 样子 · 段 · 要不要附话都写好；没有挂着的 ⇒ `null`（只能去终端）。
     pub ask: Option<Ask>,
     /// `ask` 为 `null` 时写好的那一句（「只能在终端里答」）；有 `ask` ⇒ `null`。
     pub manual_text: Option<Words>,
@@ -400,14 +400,36 @@ pub struct Choice {
     /// 答的时候交回的那个词（闭集见 `control::asks::verdict_of`）。
     pub id: String,
     pub text: Words,
-    pub tone: Tone,
+    /// 长什么样（出口照它画，不按 id · 次序 · 段自己挑）。
+    pub look: ChoiceLook,
     /// 要不要附一句话：none · optional · required。
     pub note: NoteNeed,
-    /// 排在哪一段（出口照它分段，不按 id 认）。
+    /// 排在哪一段（出口照它分段，不按 id 认；一段一行 / 一组）。
     pub row: ChoiceRow,
+    /// 答的时候带不带每题的答（`AnswerReq.picks`）：只有提交答案那一颗。
+    pub picks: bool,
 }
 
-/// 选项排在哪一段：照做那一族 · 不照做那一族（拒绝 · 继续规划）· 放开这一条（改到终端里答 · 有题时的不回答）。
+/// 一颗选项长什么样：主按钮（main 段第一颗，只这一颗）· 危险（停下整轮）· 普通 · 弱（改到终端里答 · 有题时的不回答）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(
+        export,
+        rename = "NeedsChoiceLook",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
+    )
+)]
+pub enum ChoiceLook {
+    Main,
+    Danger,
+    Plain,
+    Ghost,
+}
+
+/// 选项排在哪一段：批准分三段（照做 · 拒绝一族 · 改到终端里答）；批计划 · 有题的提问全在 main 一段。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -459,7 +481,8 @@ pub struct Question {
     /// `q0` · `q1` …（答的时候 `picks` 按它键）。
     pub id: String,
     pub text: String,
-    pub header: Option<String>,
+    /// 题头那一句，写好的（多选带「多选」那一说法）；没有 ⇒ `null`。
+    pub head: Option<String>,
     pub multi: bool,
     pub options: Vec<QuestionOption>,
     /// 恒 `true`：每题都许写自由文本（那一家框里的「Type something」）。

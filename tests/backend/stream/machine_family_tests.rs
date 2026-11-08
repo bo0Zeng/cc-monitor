@@ -26,7 +26,7 @@ fn the_terminal_line_the_shell_reads_keeps_its_wire_bytes() {
         json!({ "host": "hop.example", "user": "j", "port": 22, "label": "hop" }),
     ]
     .iter()
-    .map(|v| crate::dial::machine::loose(v).unwrap())
+    .map(|v| <crate::dial::Host as serde::Deserialize>::deserialize(v).unwrap())
     .collect();
     let args = json!({ "machine": "box-term", "command": "claude --resume abc" });
     let req = crate::wire::typed::take(&args).unwrap();
@@ -133,11 +133,8 @@ fn the_machine_family_refuses_what_its_request_types_do_not_have() {
             json!({ "from": "a", "to": "b", "act": "ask", "title": 3 }),
         ),
         ("bus-inbox", json!({ "id": "a_cc", "lines": "200" })),
-        (
-            "aliases-read",
-            json!({ "shell": "posix", "rcPath": null, "extra": 1 }),
-        ),
-        ("aliases-read", json!({ "shell": "fish" })),
+        ("aliases-read", json!({ "rcPath": null, "extra": 1 })),
+        ("aliases-read", json!({ "shell": "posix" })),
         (
             "aliases-block-render",
             json!({ "rcPath": "~/.bashrc", "extra": 1 }),
@@ -177,10 +174,10 @@ fn the_machine_family_refuses_what_its_request_types_do_not_have() {
         "该拒在版本的类型上：{:?}",
         f.raw
     );
-    // 还没存的那一台（推公钥测的那一台）多带的键照收：入参解得出、走到组请求那一步（跳板照表查无 ⇒ `bad_jump`，不是 `bad_args`）。
+    // 还没存的那一台（推公钥测的那一台）照 `Host` 解得出、走到组请求那一步（跳板照表查无 ⇒ `bad_jump`，不是 `bad_args`）。
     let got = run_any(
         "pubkey-push",
-        json!({ "machine": { "host": "h", "user": "u", "jump": "hop", "resumeCommand": "x" } }),
+        json!({ "machine": { "host": "h", "user": "u", "jump": "hop" } }),
     );
     assert_eq!(got.err().and_then(|f| f.code), Some("bad_jump".to_string()));
 }

@@ -205,14 +205,14 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 
 | 类 | 谁链 | 放什么 |
 |---|---|---|
-| 契约 | monitor 生产段可链 | 两侧必须对上的形状（路径 · 端口 · 文件格式 · 文案表 · 令牌形状 · 字节表键 · 线上类型），以及两端照同一份做的写字 · 问法 · 排法（face-core · batch-core · chunk-core · pick-core）；能不能做仍由那台在做的时候判 |
-| 判定 | 只后端生产段链，monitor 至多在 dev 侧链 | 裁决：账号能不能用（acct-core）· 正文怎么解析成块树（md-core）· 上游 URL 能不能用（upstream-url-core） |
+| 契约 | 两个核心与各出口都可链；它自己只链契约 | 线上类型与它的纯编解码（cmd-wire）· 常量与家的布局（relay-route-core · deploy-contract · filewin-contract）· 按键取文案表的那一句（copy-core）· 机制原语：锁 · 原子写 · 有上限读 · 引号 · Win32 路径形 · 等进程退出，只回系统原话与结构化结局（platform-core · cap-core · shell-quote-core · win-path-core · own-chan · pidwatch-core） |
+| 核心库 | 只两个核心链：每台的后端（桌面这一侧的拨号端核心也在本机后端里）· 手机嵌的核心 `core-rs`；它自己只链契约与核心库 | 判定 · 汇总 · 写句子 · 格式化：face-core · batch-core · pick-core · chunk-core · creds-core · plain-path-core · acct-core · md-core · upstream-url-core |
 | 判据原语 | 只在 dev 侧 | 测试的家（test-home）· 源码扫描判据的原语（guard-core） |
-| 前端宿主原语 | 两个前端（monitor · 文件窗口）链，后端不链 | 两个前端只该有一份的宿主那几件（host-core · win-manifest） |
+| 前端宿主原语 | 两个前端（monitor · 文件窗口）链，后端不链；它自己只链契约与前端宿主原语 | 两个前端只该有一份的宿主那几件（host-core · win-manifest） |
 
-monitor 生产段连同它的依赖闭包只许链契约与前端宿主原语，判定类出现即红、没有例外；部署判定只在后端 `deploy` crate（`place_verdict` 在 `control/deploy_plan.rs`）。共享常量让两侧「想不一致」得先把 import 删掉，漂移变成不可表示。
+每个出口（monitor · 文件窗口）的生产闭包只许链契约与前端宿主原语；出口眼下还链着的核心库照实登在 `OUTLET_DEBT`（与量到的两向相等，每行写由哪块删），新链一个即红。类之间的依赖方向也由同一份判据钉（编译器挡不住）。部署判定住后端 `deploy` crate（`place_verdict` 在 `control/deploy_plan.rs`）；deploy-contract 里还剩 `build_relation` 那几样判定，壳 `local_backend_host` 还调 `build_relation`（W32 删），挪进后端之前照实记在 `CRATES` 那一行。共享常量让两侧「想不一致」得先把 import 删掉，漂移变成不可表示。
 
-后端 crate 刻意不是 workspace 成员：它要能在目标机上原生构建（发版交叉编成 musl 静态二进制）。壳的 workspace 成员是 `monitor` ＋ 共享 crate ＋ 通信层 ＋ 文件窗口包，个数以 `src/frontend/shell/Cargo.toml` 现量为准。
+后端 crate 刻意不是壳 workspace 的成员：它要能在目标机上原生构建（发版交叉编成 musl 静态二进制）。壳的 workspace 成员是 `monitor` ＋ 共享 crate ＋ 通信层的 inward · outward · resident-client 三包 ＋ 文件窗口包，个数以 `src/frontend/shell/Cargo.toml` 现量为准；通信层的 egress · ssh-dial 与手机核心是后端那棵 workspace 的成员。
 
 代价：在 `src/frontend/shell` 里跑 `cargo test --workspace` / `cargo fmt --all` 覆不到后端 ⇒ 测试、格式、clippy 要两处分别跑（壳的 workspace · `src/backend`），门禁的 `cargo` · `backend` 两格就是这两处。
 
@@ -340,7 +340,7 @@ monitor 生产段连同它的依赖闭包只许链契约与前端宿主原语，
 **在终端里打开**（桌面）：
 
 - 远端：那台后端 `session-open` 回那一行（接回一个 tmux 会话就是 `ccm -- --attach <名>`）→ 本机后端 `terminal-ssh` 把它包成这台终端方言的一行 `ssh -t … -- 'bash -lic …'`（本体 `dial/terminal.rs`；Windows 上是 PowerShell 那一形，ssh 客户端用全路径）→ monitor `open_terminal_window` 开窗跑它。
-- 本机：本机后端 `session-open` 回那一行 → monitor 开窗。
+- 本机：同一条路，本机也是一台。本机后端 `session-open` 回那一行 → `terminal-ssh` 照本机方言渲成要跑的那一串（不走 ssh：命令原样，给了目录就进那个目录，都不给就是本机登录 shell；本体 `dial/terminal.rs` 的 `local_line`）→ monitor `open_terminal_window` 只开窗。
 - 界面只经 `src/frontend/ui/terminal-open.ts` 走这条，monitor 只开窗、不拼命令。开窗挑终端：设置里指定的 → 系统出口（`xdg-terminal-exec` · `x-terminal-emulator`）→ 常见终端逐个探；都没有就不开窗、说清楚去设置里指定（`launch_tests.rs::the_terminal_is_picked_by_setting_then_system_exits_then_common_ones` 钉着）。
 
 **在终端里打开**（手机）：手机开自己的终端（`core-terminal` ＋ 自己那条 SSH），在里面附着会话。进哪儿一问那台后端 `session-open`（恢复 · 接回 · 进 / 建一个空会话 · 只进一个目录四形，回那台渲好的那一行），手机原样敲进自己的终端（`src/mobile/core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/Sessions.kt` 的 `SessionOpen`）；列会话 · 结束 · 抓屏 · 送字 · 推公钥也都问那台核心（`terminals-list` · `kill` · `terminal-preview` · `terminal-input` · `authorized-keys-add`）。手机一条 shell 命令都不拼，有没有 tmux 也照那台 `session-open-facts` 说的。
@@ -403,7 +403,7 @@ monitor 生产段连同它的依赖闭包只许链契约与前端宿主原语，
 | 组员关系 · 固定 | 会话那一台的注解，条目上的 `groups` · `pinned` 两格 | 组员关系：那台后端 `groups-write move`（与那一片同一把锁里改）；固定：`history-annotate`（`pinned`） |
 
 谁调谁：
-- 读：出口问本机后端 `groups-read {machines}` → 本机后端经 `remote_ask::ask_each` 问各台 `groups-here`（本机同进程，别的台经 `--resident-call` 问它的常驻）→ 在这里合一次（`face_core::groups::merge`，纯函数，手机核心调同一份）：名字取 `named` 最新的那一片、组员照各台、组头计数（需手动 · 在跑 · 后台）在这里数。组 id 全局不重，注解上只记 id；某台这一问没答 ⇒ 用它上一次答的那份（本机后端内存里一份，也记进这台的上次值 `cache/last-seen.json`，本机后端新起时照盘上那份出）、那台的组员画成看不见、名字取自它的标「上次所知」；哪一片都没有记录、只有组员指着它 ⇒ 名字缺、组员照出。够不着的那台照实看不全，不经别台转问。
+- 读：出口问本机后端 `groups-read {}`（问哪几台照本机后端自己的机器表，`Table::asked`：本机 ＋「连接这台」开着的；出口不交名单）→ 本机后端经 `remote_ask::ask_each` 问各台 `groups-here`（本机同进程，别的台经 `--resident-call` 问它的常驻）→ 在这里合一次（`face_core::groups::merge`，纯函数，手机核心调同一份）：名字取 `named` 最新的那一片、组员照各台、组头计数（需手动 · 在跑 · 后台）在这里数。组 id 全局不重，注解上只记 id；某台这一问没答 ⇒ 用它上一次答的那份（本机后端内存里一份，也记进这台的上次值 `cache/last-seen.json`，本机后端新起时照盘上那份出）、那台的组员画成看不见、名字取自它的标「上次所知」；哪一片都没有记录、只有组员指着它 ⇒ 名字缺、组员照出。够不着的那台照实看不全，不经别台转问。
 - 写：建组只向本机要一个 id（`make`，不写盘：一个组员都没有的组不住任何一台）；进出组问组员那一台（`move`，带整份记录）；改名 · 解散交本机、带上组员所在的那几台（`rename` · `dissolve` `{machines}`），本机经 `ask_each` 发给各片、转过去的那一问只写那台自己，回包 `sent {missed}` 照实列出没送到的那几台与为什么；没送到的记进这一端的待补（`history/groups_owed.rs`，`groups-owed.json`），那台下一次答 `groups-here` 时照它那一片判一次、该补的补发。
 - 哪台的组那一片变了，那台 watcher 推 `changed {groups}`；本机后端那几条常驻流里哪台接上 · 断开也推一声（`control/feeds.rs`）。出口照它重问。跨台只走 `ask_each` 这一条，不另开问法。
 

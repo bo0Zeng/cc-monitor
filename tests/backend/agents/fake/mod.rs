@@ -125,8 +125,13 @@ pub fn trust_of_config(root: &Path, cwd: &str) -> Result<bool, String> {
 /// 能力 7：判活时"这个 cmdline 看起来像不像本 agent"。
 ///
 /// ⚠ 与 Claude 那家**方向相同但词表不同**（那边是「明显不像才判冒名」，含 `claude`/`node`）。
-pub fn cmdline_may_be_agent(lower: &str) -> bool {
-    lower.trim().is_empty() || lower.contains("fakeagent")
+pub fn cmdline_may_be_agent(lower: &str) -> crate::agents::CmdlineSays {
+    use crate::agents::CmdlineSays;
+    if lower.trim().is_empty() || lower.contains("fakeagent") {
+        CmdlineSays::Session
+    } else {
+        CmdlineSays::Unlike
+    }
 }
 
 /// 能力 10：默认启动器。
@@ -194,7 +199,7 @@ pub struct FakeCaps {
     pub pidfile_root: Option<fn(&Path) -> PathBuf>,
     pub account_dir_env: Option<&'static str>,
     pub trust_of_config: Option<TrustOfConfig>,
-    pub cmdline_may_be_agent: Option<fn(&str) -> bool>,
+    pub cmdline_may_be_agent: Option<fn(&str) -> crate::agents::CmdlineSays>,
     pub home: Option<fn() -> Option<PathBuf>>,
     pub default_command: Option<&'static str>,
     pub resume_token: Option<&'static str>,
@@ -433,7 +438,7 @@ fn session_id_of(p: &Path) -> Option<String> {
 /// 本机布局面。家目录：给了账号配置目录就是它，否则 [`home`]（没有默认 ⇒ 空路径）。
 fn local_face(
     pidfile_dir: fn(&Path) -> PathBuf,
-    cmdline_may_be_agent: fn(&str) -> bool,
+    cmdline_may_be_agent: fn(&str) -> crate::agents::CmdlineSays,
 ) -> crate::agents::LocalFace {
     crate::agents::LocalFace {
         home_at: |config_dir, _| {
@@ -597,8 +602,8 @@ pub fn walk(
             capability: "pidfile 目录",
         });
     }
-    if !(local.cmdline_may_be_agent)("fakeagent revive x")
-        || (local.cmdline_may_be_agent)("/usr/bin/vim")
+    if (local.cmdline_may_be_agent)("fakeagent revive x") != crate::agents::CmdlineSays::Session
+        || (local.cmdline_may_be_agent)("/usr/bin/vim") == crate::agents::CmdlineSays::Session
     {
         return Err(Stop::MissingCapability {
             stage: STAGES[2],

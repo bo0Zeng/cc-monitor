@@ -257,7 +257,7 @@ fn every_shell_command_fails_as_said_and_names_itself() {
             }
         }
     }
-    assert!(seen >= 30, "人群只扫到 {seen} 条 —— 取法坏了");
+    assert!(seen >= 29, "人群只扫到 {seen} 条 —— 取法坏了");
     assert!(
         bad.is_empty(),
         "这几条壳命令失败时复制详情里没有命令名：{bad:?}"

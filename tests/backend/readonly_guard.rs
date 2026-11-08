@@ -936,13 +936,6 @@ mod g6_dependency_signoff {
             "账号记录变换（纯数据），与 monitor 共用同一份；仓内 crate，现打 0 处写面",
         ),
         (
-            // 同一个依赖在测试构建里多开 `fixtures`（跨生产者对拍夹具，`accounts_query_tests.rs` 用）。
-            "acct-core",
-            DEV_DEPS,
-            MEASURED_CLEAN,
-            "同上一行那个仓内 crate，测试构建多开 `fixtures` feature（多出来的只是一张静态夹具表 ＋ 渲染它的纯函数），0 处写面",
-        ),
-        (
             "cmd-wire",
             DEPS,
             MEASURED_CLEAN,
@@ -1313,6 +1306,14 @@ mod g6_dependency_signoff {
             DEPS,
             MEASURED_CLEAN,
             "中转门牌：端口 · 钥匙文件相对路径两个 const ＋ 路由语法（拼 / 拆 / 段闸，纯字符串）；仓内 crate、只依赖 `cap-core`，现打 0 处写面、0 处 I/O",
+        ),
+        (
+            "plain-path-core",
+            DEPS,
+            UNMEASURED,
+            "相对路径拆成普通段的词法判定（交进来一串字节 ⇒ 回剩下的段或哪一形不对），后端只这样用它、不要它碰盘。\
+             仓内 crate（`src/common/plain-path-core`），可只经成员 `backend-common` · `backend-files` 的清单链进来、根清单里没有它那一行 ⇒ \
+             `已量·未见写面` 那一档的常驻重量够不着它，先落本档",
         ),
         (
             "cap-core",

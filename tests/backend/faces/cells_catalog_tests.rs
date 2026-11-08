@@ -228,18 +228,6 @@ fn corpus(name: &str) -> Vec<Value> {
             .unwrap();
             f["startedBy"]["face"] = live.clone();
             f["children"][0]["face"] = live;
-            // 金样那份会话不活（`line` 是 null）⇒ 用真判定现造一份（在跑、那一步没收场）。
-            let mut facts = crate::observe::recognize::facts::SessionFacts {
-                pending: pending.clone(),
-                ..Default::default()
-            };
-            facts.pending[0].at_ms = Some(1);
-            f["line"] = serde_json::to_value(crate::observe::recognize::facts::line_of(
-                Some(crate::agents::SessionActivity::Working),
-                &facts,
-                60_000,
-            ))
-            .unwrap();
             let base: Option<crate::observe::recognize::facts::Needs> =
                 serde_json::from_value(f["needs"].clone()).unwrap();
             let mut out = vec![f.clone()];
@@ -524,8 +512,9 @@ fn real_groups_read() -> cmd_wire::groups::GroupsRead {
 
 /// 用真判定现造的一份 `quota-read`（[`corpus`] 里补金样没有的那几格）。
 fn real_quota_read() -> crate::faces::quota_read::QuotaRead {
+    use crate::accounts::quota::rules::decide::{WarmVerdict, WarmWhy};
     use crate::accounts::quota::show;
-    use crate::faces::quota_read::{reply_of, Base, Seen, UnseenHead};
+    use crate::faces::quota_read::{reply_of, Base, Seen, Unseen, UnseenHead};
     let now: u64 = 1_791_189_600;
     let agent = "claude-code";
     let o: crate::accounts::quota::ledger::Observed = serde_json::from_value(serde_json::json!({
@@ -577,13 +566,20 @@ fn real_quota_read() -> crate::faces::quota_read::QuotaRead {
             seen_at: o.seen_at,
             reading: o.reading.clone(),
             show: sh,
+            warm: WarmVerdict::Wait {
+                until: Some(now + 3600),
+                why: WarmWhy::Ticking,
+            },
         }],
-        vec![UnseenHead {
-            agent: crate::agents::AgentKind::new(agent),
-            account: "b".into(),
-            kind: u.kind,
-            login: u.login,
-            usage: u.usage.into(),
+        vec![Unseen {
+            head: UnseenHead {
+                agent: crate::agents::AgentKind::new(agent),
+                account: "b".into(),
+                kind: u.kind,
+                login: u.login,
+                usage: u.usage.into(),
+            },
+            warm: WarmVerdict::Send(WarmWhy::NoWindow),
         }],
         &crate::common::time::TextClock::new(now, &crate::common::time::Tz::default()),
     )
@@ -594,6 +590,24 @@ const NEVER_WRITTEN: &[(&str, &str)] = &[
     ("facts", "startedBy.face.account"),
     ("facts", "children[].face.account"),
     ("needs_row", "face.account"),
+    // 状态一句那两格（会走的 · 悬停句）只有 watcher 推的活会话脸、记录读完之后才带：冷读的脸（血缘 · 需手动行 · 清单行 · 组员）、
+    // 宣告那一帧（记录还在预读）、离开那一帧（不活了）都不带。
+    ("facts", "startedBy.face.clock"),
+    ("facts", "startedBy.face.peek"),
+    ("facts", "children[].face.clock"),
+    ("facts", "children[].face.peek"),
+    ("needs_row", "face.clock"),
+    ("needs_row", "face.peek"),
+    ("session_added", "face.clock"),
+    ("session_added", "face.peek"),
+    ("session_left", "face.clock"),
+    ("session_left", "face.peek"),
+    ("history_list", "up.*.face.clock"),
+    ("history_list", "up.*.face.peek"),
+    ("groups_read", "groups[].members[].face.clock"),
+    ("groups_read", "groups[].members[].face.peek"),
+    ("groups_read", "pinned[].face.clock"),
+    ("groups_read", "pinned[].face.peek"),
     ("history_list", "up.*.face.account"),
     // 清单行是冷读出来的：被顶替那一格只有离开那一帧带。
     ("history_list", "up.*.face.life.by"),
@@ -711,12 +725,12 @@ fn a_cell_is_text_only_when_its_type_says_so() {
             .kind
     };
     assert_eq!(kind("facts", "tokens.text"), "text");
-    assert_eq!(kind("facts", "cost.text"), "text");
     assert_eq!(kind("record", "timeText"), "text");
     assert_eq!(kind("record", "{t=said}.blocks[type=text].text"), "value");
     assert_eq!(kind("record", "{t=title}.text"), "value");
     assert_eq!(kind("facts", "lastSay.text"), "value");
-    assert_eq!(catalog_of("facts")["line.for"].ty, "enum");
+    assert_eq!(kind("session_status", "face.clock.text"), "text");
+    assert_eq!(catalog_of("session_status")["face.clock.from"].ty, "number");
 }
 
 /// ★ 格目录的金样 ＝ [`catalog`] 真写出来的那一份（出口不起后端也能读）。改了成品就重打。

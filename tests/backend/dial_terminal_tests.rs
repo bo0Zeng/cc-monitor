@@ -1,4 +1,4 @@
-//! 远端拉起那串的 ssh 外壳（`ssh -t -J … host '<串>'` · PowerShell 窗口载荷）由本机后端渲，monitor 只开终端。
+//! 开终端那一行由本机后端渲，monitor 只开终端：远端是 ssh 外壳（`ssh -t -J … host '<串>'` · PowerShell 窗口载荷），本机是那一串本身（末尾一节）。
 //!
 //! 钉的是 ssh 外壳：基本形态 · 钥匙与口 · IPv6 · 跳板参数 · 坏输入 · 单引号过两层 ·
 //! 「拒双引号只拦 PowerShell 那条送法」·「同一个载荷只多两层包装」·
@@ -7,9 +7,10 @@
 use super::*;
 use serde_json::json;
 
-/// 线上那一形的一台（经拨号核心那一处读，[`crate::dial::machine::loose`]）；读不动 ⇒ 它的码与那一句。
+/// 线上那一形的一台（照 `Host` 的派生读）；读不动 ⇒ `bad_args` 与那一句。
 fn host_of(m: &Value) -> Result<crate::dial::Host, Said> {
-    crate::dial::machine::loose(m)
+    <crate::dial::Host as serde::Deserialize>::deserialize(m)
+        .map_err(|e| Said::new("bad_args", e.to_string()))
 }
 
 // 下面除末尾 POSIX 那一节外都量 PowerShell 那一形（Windows 上开终端的那一行）：按方言显式取，不随跑测试的这台机器变。
@@ -53,7 +54,7 @@ fn config_arg(p: Option<&std::path::Path>) -> String {
 }
 
 fn machine(host: &str, user: &str, port: u16, key: Option<&str>) -> Value {
-    json!({ "host": host, "user": user, "port": port, "keyPath": key, "label": host })
+    json!({ "host": host, "user": user, "port": port, "keyPath": key.unwrap_or_default(), "label": host })
 }
 
 /// 开终端那一行里 `-F` 那一段（测试档没装写句柄 ⇒ 没有那份配置、不带）。
@@ -764,7 +765,7 @@ fn a_sid_puts_the_record_step_in_front_of_the_powershell_line_and_nothing_else_c
 #[test]
 fn a_sid_without_a_command_is_refused() {
     let m = machine("192.0.2.2", "u", 22, None);
-    let hosts = vec![crate::dial::machine::loose(&m).unwrap()];
+    let hosts = vec![<crate::dial::Host as serde::Deserialize>::deserialize(&m).unwrap()];
     let req: TerminalSshReq =
         crate::wire::typed::take(&json!({ "machine": "192.0.2.2", "sid": "s1" })).unwrap();
     let e = answer_with(&req, &hosts, &[], true, &found(), None).unwrap_err();
@@ -829,4 +830,84 @@ fn the_posix_record_step_writes_the_label_of_the_shell_that_runs_the_line() {
     );
     assert!(!dir.join("opened-windows/s1.part").exists());
     assert!(forgotten, "ssh 退了 ⇒ 记录删了");
+}
+
+// ───── 本机：三形都回本机方言的那一行，不走 ssh（R5：本机就是一台远端，同一个出口） ─────
+
+/// 本机那一问：线上只交 `<local>`，机器表 · 别名都空，ssh 客户端没装（本机那一行用不着它）。
+fn local(
+    args: Value,
+    powershell: bool,
+    opened: Option<&std::path::Path>,
+) -> Result<SshCommand, Said> {
+    let mut wire = args;
+    wire["machine"] = json!("<local>");
+    let req: TerminalSshReq =
+        crate::wire::typed::take(&wire).map_err(|f| Said::new("bad_args", f.said))?;
+    answer_with(&req, &[], &[], powershell, &SshClient::Missing, opened)
+}
+
+/// 本机 ＋ `command`：那一串就是本机后端渲好的成品 ⇒ 原样回，开窗跑的与复制的同一行；带 `sid` 也不接前奏
+/// （↗ 的本机记录只给远端那条 ssh）。两种方言一样。
+#[test]
+fn a_command_on_this_machine_comes_back_as_is() {
+    let dir = std::env::temp_dir().join(format!("cc-term-local-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    for powershell in [false, true] {
+        for (sid, opened) in [(None, None), (Some("s1"), Some(dir.as_path()))] {
+            let mut args = json!({ "command": "ccm -- --resume s1" });
+            if let Some(s) = sid {
+                args["sid"] = json!(s);
+            }
+            let got = local(args, powershell, opened).unwrap();
+            assert_eq!(
+                got.line, "ccm -- --resume s1",
+                "ps={powershell} sid={sid:?}"
+            );
+            assert_eq!(got.window, got.line, "ps={powershell} sid={sid:?}");
+        }
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// 本机那一串经 `-EncodedCommand` / argv 交出去，不过 PowerShell 向原生程序传参那一关 ⇒ 双引号照回；空 · 控制符照拒。
+#[test]
+fn a_local_command_is_checked_for_what_any_terminal_cannot_hold() {
+    let q = r#"ccm -- --prompt "hi""#;
+    assert_eq!(local(json!({ "command": q }), true, None).unwrap().line, q);
+    let long = "x".repeat(MAX_COMMAND.bytes as usize + 1);
+    for bad in ["  ", "ls\nrm -rf ~", long.as_str()] {
+        let e = local(json!({ "command": bad }), false, None).expect_err("该拒");
+        assert_eq!(e.code.as_deref(), Some("refused"), "{bad:?}");
+    }
+}
+
+/// 本机 ＋ `cwd`：POSIX 进那个目录起登录 shell（与远端那一形同一串）；PowerShell 窗口本身就是 shell ⇒ 只 `Set-Location`，
+/// 路径照 Windows 的绝对形判。坏目录照拒、说是哪个；空目录 ⇒ 登录 shell 那一形。
+#[test]
+fn a_cwd_on_this_machine_is_the_local_shell_entering_it() {
+    assert_eq!(
+        local(json!({ "cwd": "/srv/a b" }), false, None)
+            .unwrap()
+            .line,
+        "cd '/srv/a b' && exec ${SHELL:-bash} -l"
+    );
+    let ps = local(json!({ "cwd": r"C:\Users\u\it's" }), true, None).unwrap();
+    assert_eq!(
+        ps.line,
+        format!(
+            "Set-Location -LiteralPath {}",
+            ps_literal(r"C:\Users\u\it's")
+        )
+    );
+    assert_eq!(ps.window, ps.line);
+    for (bad, powershell) in [("relative", false), (r"C:rel", true), (r"C:\a\..\b", true)] {
+        let e = local(json!({ "cwd": bad }), powershell, None).expect_err(bad);
+        assert_eq!(e.code.as_deref(), Some("refused"), "{bad:?}");
+        assert!(e.said.contains(&format!("{bad:?}")), "{e:?}");
+    }
+    assert_eq!(
+        local(json!({ "cwd": " " }), false, None).unwrap().line,
+        "exec ${SHELL:-bash} -l"
+    );
 }

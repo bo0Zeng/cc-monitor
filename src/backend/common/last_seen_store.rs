@@ -11,6 +11,19 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use std::path::{Path, PathBuf};
 
+/// 上次值那一格（[`cmd_wire::cells::SeenAt`]）：`at_ms` 那一刻按这把钟写成「采样于 12:03」（`beLastSeen.said.sampled`，时刻经 [`crate::common::time::fmt_at`]）。
+/// 足迹（界面那两样）与计划（读成的那一刻）都照它写。
+pub fn seen_at(at_ms: u64, clock: &crate::common::time::TextClock) -> cmd_wire::cells::SeenAt {
+    let time = clock.text(at_ms / 1000);
+    cmd_wire::cells::SeenAt {
+        at_ms,
+        said: crate::common::cells::Words(copy_text(
+            "beLastSeen.said.sampled",
+            &[("time", &time.0)],
+        )),
+    }
+}
+
 /// 一样最大多少字节（序列化后）。
 pub const MAX_VALUE_BYTES: cap_core::Cap = cap_core::Cap {
     bytes: 256 * 1024,

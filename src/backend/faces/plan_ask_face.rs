@@ -9,8 +9,8 @@
 
 use crate::assets::aliases::profile::{self, Book};
 use crate::common::said::Said;
-use crate::host::ccm_line::argv::{flag, Parsed};
 use crate::plan::needs;
+use crate::wire::ccm_line::argv::{flag, Parsed};
 use crate::wire::typed::{self, Command, Cx, Handle};
 use cmd_wire::plan::PlanRead;
 use copy_core::copy_text;
@@ -146,7 +146,7 @@ fn ask_here(
         &doc,
         &store.book,
         review.ask(),
-        crate::control::terminals::tmux_here(),
+        crate::host::tmux::tmux_here(),
         &keep,
     )
 }

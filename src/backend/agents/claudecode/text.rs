@@ -106,7 +106,7 @@ pub(crate) fn stringify_json(v: &Value) -> String {
     }
 }
 
-use crate::agents::{Pasted, Speaker, UserText};
+use crate::agents::{Speaker, UserText};
 
 /// 剥掉的 CLI 注入包装（人话里夹着它们时只剥它们，人话留着）。
 const INJECTED_WRAPPERS: [&str; 5] = [
@@ -144,8 +144,6 @@ const LIMIT_RESET_LEAD: &str = "Your claude.ai usage limit has reset.";
 const FORK_OPEN: &str = "<fork-boilerplate>";
 const PASTE_OPEN: &str = "<pasted_content";
 const PASTE_CLOSE: &str = "</pasted_content";
-/// 粘贴块的正文超过这么多行 ⇒ 折成一行（`Pasted::fold`）。
-const PASTE_FOLD_LINES: u32 = 12;
 
 /// 判「谁说的」要看的几格（解析成品与通用层的已解析 JSON 各取一份，判定是同一个函数）。
 pub(crate) struct Facts<'a> {
@@ -275,7 +273,7 @@ pub(crate) fn user_text(f: &Facts) -> UserText {
         return UserText::of(system(&raw));
     }
     if f.is_sidechain && !f.has_parent && f.origin.is_none() {
-        return shown(Speaker::AgentTask, &raw);
+        return brief(&raw);
     }
     spoken(&raw)
 }
@@ -404,7 +402,7 @@ fn framed(raw: &str, sidechain: bool) -> Option<UserText> {
         return Some(compact(t));
     }
     if sidechain && t.starts_with(FORK_OPEN) {
-        return Some(shown(Speaker::AgentTask, t));
+        return Some(brief(t));
     }
     None
 }
@@ -442,9 +440,12 @@ fn spoken(raw: &str) -> UserText {
                     .collect::<String>(),
             )
         };
+        let (stdout, stderr) = (pick("bash-stdout"), pick("bash-stderr"));
         return UserText::of(Speaker::BashOutput {
-            stdout: pick("bash-stdout"),
-            stderr: pick("bash-stderr"),
+            stdout_fold: face_core::record::output_fold(&stdout),
+            stderr_fold: face_core::record::output_fold(&stderr),
+            stdout,
+            stderr,
         });
     }
     human(clean)
@@ -453,7 +454,7 @@ fn spoken(raw: &str) -> UserText {
 fn human(text: String) -> UserText {
     UserText {
         speaker: Speaker::Human,
-        pasted: pasted_spans(&text),
+        parts: face_core::record::said_parts(&text, &paste_spans(&text)),
         text,
     }
 }
@@ -465,15 +466,17 @@ fn compact(raw: &str) -> UserText {
     UserText {
         speaker: Speaker::compact(&text),
         text,
-        pasted: Vec::new(),
+        parts: Vec::new(),
     }
 }
 
-fn shown(speaker: Speaker, raw: &str) -> UserText {
+/// 派的活：正文剥注入，太长 ⇒ 一段带折法（`face_core::record::brief_parts`）。
+fn brief(raw: &str) -> UserText {
+    let text = strip_injected(raw);
     UserText {
-        speaker,
-        text: strip_injected(raw),
-        pasted: Vec::new(),
+        speaker: Speaker::AgentTask,
+        parts: face_core::record::brief_parts(&text),
+        text,
     }
 }
 
@@ -679,9 +682,8 @@ fn unescape(s: &str) -> String {
     out
 }
 
-/// 人粘贴进来的块：`<pasted_content id="…">…</pasted_content id="…">`（下标是 UTF-16 的，界面按它切）。
-fn pasted_spans(text: &str) -> Vec<Pasted> {
-    let utf16 = |i: usize| u32::try_from(text[..i].encode_utf16().count()).unwrap_or(u32::MAX);
+/// 人粘贴进来的块：`<pasted_content id="…">…</pasted_content id="…">` 的界（字节下标）；切段与折不折归 `face_core::record::said_parts`。
+pub(crate) fn paste_spans(text: &str) -> Vec<face_core::record::PasteSpan> {
     let mut out = Vec::new();
     let mut from = 0;
     while let Some(k) = text[from..].find(PASTE_OPEN) {
@@ -702,21 +704,11 @@ fn pasted_spans(text: &str) -> Vec<Pasted> {
             break;
         };
         let end = body + j + close.len();
-        let inner = text[body..body + j].trim_matches(['\n', '\r']);
-        let lines = u32::try_from(inner.lines().count()).unwrap_or(u32::MAX);
-        let fold = lines > PASTE_FOLD_LINES;
-        out.push(Pasted {
-            start: utf16(start),
-            end: utf16(end),
-            body_start: utf16(body),
-            body_end: utf16(body + j),
-            fold,
-            fold_text: fold.then(|| {
-                crate::common::cells::Words(copy_core::copy_text(
-                    "speaker.paste.fold",
-                    &[("n", &lines.to_string())],
-                ))
-            }),
+        out.push(face_core::record::PasteSpan {
+            start,
+            end,
+            body_start: body,
+            body_end: body + j,
         });
         from = end;
     }

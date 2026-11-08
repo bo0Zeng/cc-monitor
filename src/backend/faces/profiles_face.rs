@@ -1,5 +1,5 @@
 //! 配置文件那两条要问控制面的命令（typed）：`profiles-read`（这台有没有 tmux）· `profiles-resolve`（渲 ccm 那一行）。
-//! 本体住 `assets::aliases::page`；探 tmux（`control::terminals::tmux_here`）与起会话那一整套计划与渲染
+//! 本体住 `assets::aliases::page`；探 tmux（`host::tmux::tmux_here`）与起会话那一整套计划与渲染
 //! （本文件的 `preview_resolved`：控制面那一份并上这台的账号清单成品）由这里交进去。两边只在这里接上：资产域不认识控制面（资产那个包排在控制面之下，不依赖它）。
 
 use crate::assets::aliases::page::{
@@ -29,7 +29,7 @@ impl crate::wire::typed::Handle for ProfilesRead {
             let cx = &cx;
             let files = needs;
 
-            read_with(files, crate::control::terminals::tmux_here(), &cx.tz)
+            read_with(files, crate::host::tmux::tmux_here(), &cx.tz)
                 .map_err(of_fail_with(ProfilesErr::Refused))
         }
     }
@@ -88,7 +88,7 @@ impl crate::wire::typed::Handle for CcmPrint {
 
 /// 别名页「等于」那一行（`assets::aliases::page::RenderLine`）：同 `ccm @名 -- --ccm-print` 那一份计划，号照这台的账号清单成品判。
 pub fn preview_resolved(
-    p: crate::host::ccm_line::argv::Parsed,
+    p: crate::wire::ccm_line::argv::Parsed,
     home: &str,
     at: Option<&str>,
 ) -> Result<(String, String), String> {

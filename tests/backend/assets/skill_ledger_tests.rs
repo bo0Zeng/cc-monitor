@@ -299,6 +299,8 @@ fn the_file_name_has_exactly_one_home_in_all_production_code() {
     let needle = format!("{}-{}.json", "skill", "installs");
     // 字面量挪进契约 crate ⇒ 按「字面量或契约常量名」认谁叫得出它。
     let via_const = format!("{}_{}_REL", "SKILL", "LEDGER");
+    // 足迹申报照布局宏拼（`concat!` 只认字面量）⇒ 宏名也算叫得出它。
+    let via_macro = format!("{}_{}_rel!", "skill", "ledger");
     let mut scanned = 0usize;
     let mut homes: std::collections::BTreeSet<String> = Default::default();
     for (path, body) in guard_core::scan_tree_excluding(&src, &["rs", "ts", "sh"], &[]) {
@@ -308,7 +310,10 @@ fn the_file_name_has_exactly_one_home_in_all_production_code() {
             Some("ts") => guard_core::strip_comment_lines(&body),
             _ => guard_core::strip_hash_comment_lines(&body),
         };
-        if code.contains(needle.as_str()) || code.contains(via_const.as_str()) {
+        if code.contains(needle.as_str())
+            || code.contains(via_const.as_str())
+            || code.contains(via_macro.as_str())
+        {
             homes.insert(
                 path.strip_prefix(&src)
                     .unwrap_or(&path)
@@ -338,10 +343,16 @@ fn the_file_name_has_exactly_one_home_in_all_production_code() {
         guard_core::addr::repo_root().join("src/backend/agents/claudecode/footprint.rs"),
     )
     .unwrap();
-    let declared = format!("\"~/{}/{}\"", crate::common::own_dir::DIR_NAME, FILE_NAME);
+    // 申报照布局宏拼（字面量只在契约 crate 那个宏里）⇒ 数这一形，再核宏给的那一段就是本模块写的那一个。
+    assert_eq!(
+        relay_route_core::SKILL_LEDGER_REL,
+        format!("{}/{}", crate::common::own_dir::DIR_NAME, FILE_NAME),
+        "契约里的装记录路径与本模块写的那一个对不上"
+    );
+    let declared = "concat!(\"~/\", relay_route_core::skill_ledger_rel!())";
     assert_eq!(
         guard_core::production_code(&registry)
-            .matches(declared.as_str())
+            .matches(declared)
             .count(),
         1,
         "足迹里申报的装记录路径（{declared}）与本模块写的那一个对不上"

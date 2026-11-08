@@ -183,18 +183,6 @@ fn every_kind_of_ui_error_is_a_copy_keyed_sentence_and_the_log_line_stays_in_the
         3,
         "只记日志的应当恰好是 读坏/重起 · 没起来 两种 × 两格里的三格：{quiet:?}"
     );
-    let got = during(|| {
-        tell(UiError::MachinesUnreadable {
-            path: "/x/config.json".into(),
-            why: "y".into(),
-        })
-    });
-    assert_eq!(got.len(), 1);
-    assert_is_copy_not_log(&got[0]);
-    assert_eq!(
-        got[0]["said"],
-        copy_core::copy_text("rsUiError.machines.unreadable", &[])
-    );
 }
 
 /// 远端那四种（解不开的帧 · 拥塞丢帧 · 历史快照没拉下 · 文件窗口开了又退）也走这一个出口：
@@ -305,10 +293,6 @@ fn every_told_kind() -> Vec<UiError> {
         died(Death::Refused { code: 1 }, Then::Restarted),
         died(Death::Refused { code: 1 }, Then::Down),
         died(Death::Misread { detail: "x".into() }, Then::Down),
-        UiError::MachinesUnreadable {
-            path: "/x".into(),
-            why: "y".into(),
-        },
         UiError::FrameUnreadable {
             host: "h".into(),
             kind: "line".into(),

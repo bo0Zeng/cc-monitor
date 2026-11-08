@@ -144,7 +144,6 @@ internal fun actionIcon(a: AppAction): Ph =
         AppAction.TMUX_SESSIONS -> Ph.TerminalWindow
         AppAction.SHOW_KEYBOARD -> Ph.Keyboard
         AppAction.CAPTURE -> Ph.Selection
-        AppAction.PUSH_KEY -> Ph.Key
     }
 
 /** 选 App 动作：一列动作；「切到某一组 ›」进第二层列出全部组（存的是组的编号）。 */

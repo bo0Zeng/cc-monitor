@@ -79,14 +79,14 @@ describe("账号面板", () => {
     openAccountPanel("s1", "<local>", host);
     expect(panel().querySelector("[role=alert]")?.textContent).toContain("连接层那一句");
     expect(btn(copyText("front.act.retry"))).toBeDefined();
-    appStore.quota.set(new Map([["<local>", { state: "present", reason: null, detail: null, path: null, now: 1, accounts: [], unseen: [], candidates: [], text: null, fiveHour: null, names: { accounts: {}, slots: {} }, verdict: null }]]));
+    appStore.quota.set(new Map([["<local>", { state: "present", reason: null, detail: null, path: null, now: 1, accounts: [], unseen: [], candidates: [], text: null, names: { slots: {} }, verdict: null }]]));
     expect(btn(copyText("front.act.retry"))).toBeUndefined();
     expect(panel().querySelector("[data-rot-cfg], [data-rc-row], [data-rot-switch]")).toBeNull();
   });
 
   it("★ 那份账那台读不出 ⇒ 头下照抄后端写好的那一句（text），面板不自己补一句", () => {
     appStore.sessionRotation.set(new Map([["s1", { origin: "<local>", read: view }]]));
-    const unreadable = { state: "unreadable" as const, reason: "原因一句", detail: "D-detail", path: null, now: 1, accounts: [], unseen: [], candidates: [], text: "后端那一句", fiveHour: null, names: { accounts: {}, slots: {} }, verdict: null };
+    const unreadable = { state: "unreadable" as const, reason: "原因一句", detail: "D-detail", path: null, now: 1, accounts: [], unseen: [], candidates: [], text: "后端那一句", names: { slots: {} }, verdict: null };
     appStore.quota.set(new Map([["<local>", unreadable]]));
     openAccountPanel("s1", "<local>", host);
     expect(panel().textContent).toContain("后端那一句");

@@ -1,12 +1,12 @@
 //! ★ 开窗：号的 5 小时窗由第一发触发 —— 用那个号发一句最短的话，让它开始计时。实现只这一处，两个入口：
 //! 策略交回的 `warm`（判完由 `upstream_select::turn` 交来 [`kick`]，另起线程发、不等、不挡这一发）·
-//! 帧命令 `quota-warm`（quota-warm skill · AI 按需调，等那一发说完再答）。
+//! 帧命令 `quota-warm`（quota-warm skill 经 `--resident-call` · AI 按需调，等那一发说完再答；只在常驻里答，命令行面没有它）。
 //!
 //! - **怎么发**：本二进制当 ccm 跑 `ccm <适配层那几个参数> -- --account <号> --cwd <家里不出会话的目录> --no-rotation`
 //!   （参数住适配层 [`crate::agents::warm_of`]）⇒ 走本机中转（额度账由中转记下）· 这一发不轮换 · 不进历史页与会话列表。
-//! - **同一个号 15 分钟内只发一次**（[`AGAIN`]，判与命令共用这一本 [`book`]）：认下就记「发出的时刻」，
+//! - **同一个号 15 分钟内只发一次**（[`AGAIN`]，判与命令共用常驻进程里这一本 [`book`]；命令因此列在 `stream::cli::STREAM_ONLY`）：认下就记「发出的时刻」，
 //!   发完再记「回来的重置时刻」（额度账里那个号 5 小时窗的重置时刻；没读到 ⇒ 空）。
-//! - 收哪几个号（订阅号 · 发得出去 · 5 小时窗没在计时）由判那一侧定（[`crate::accounts::quota::rules::decide::warmable`]）；
+//! - 收哪几个号（订阅号 · 发得出去 · 5 小时窗没在计时）由判那一侧定（[`crate::accounts::quota::rules::decide::warm_verdict`]）；
 //!   命令那一形不判这一条：人或 AI 点名要发就发（15 分钟那一条照样管）。
 
 use crate::platform::child::{Child, Deadline};
@@ -132,21 +132,7 @@ pub(crate) fn send(agent: &str, account: &str, own: &Own) -> Result<Option<u64>,
                 copy_text("beQuotaWarm.agent.unsupported", &[("agent", agent)]),
             )
         })?;
-    let no_home =
-        || crate::wire::spec::fail("io_failed", copy_text("beQuotaLedger.read.noHome", &[]));
-    let cwd = own
-        .path(crate::common::own_dir::HIDDEN_WORK_DIR)
-        .map_err(|_| no_home())?;
-    own.ensure_dir(&cwd).map_err(|e| {
-        crate::wire::spec::fail(
-            "io_failed",
-            copy_text(
-                "beQuotaProbe.workDir.failed",
-                &[("why", &copy_core::io_reason(e.kind()))],
-            ),
-        )
-        .and_raw(Some(&e.to_string()))
-    })?;
+    let cwd = super::probe::hidden_work_dir(own)?;
     let me = std::env::current_exe().map_err(|e| {
         crate::wire::spec::fail(
             "failed",
@@ -209,7 +195,7 @@ fn resets_5h(quota: &super::ledger::Ledger, agent: &str, account: &str) -> Optio
         .reading
         .windows
         .iter()
-        .find(|w| slot(&w.name) == Some("5h"))?
+        .find(|w| slot(&w.name) == Some(cmd_wire::quota::SLOT_5H))?
         .resets_at
 }
 
@@ -255,7 +241,7 @@ crate::wire::typed::codes! {
         IoFailed = "io_failed",
         /// 账号库里没有这个号。
         NotFound = "not_found",
-        /// 这一家没有开窗那一形 · 按量号。
+        /// 这一家没有开窗那一形。
         Unsupported = "unsupported",
     }
 }
@@ -290,7 +276,7 @@ fn answer(req: &QuotaWarmReq, own: &Own, now: u64) -> Result<Warmed, Said> {
         )
     })?;
     let agent = route.id();
-    if !crate::relay::segment_is_safe(&req.account) {
+    if !relay_route_core::account_ok(&req.account) {
         return Err(crate::wire::spec::fail(
             "bad_args",
             crate::common::contract::malformed("`account` must be an account id"),

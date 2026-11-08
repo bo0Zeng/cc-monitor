@@ -78,6 +78,8 @@ pub(super) mod tests {
         // 各号共用的用户级 MCP：只换一个键 · 三方对照（纯）· 读改写 · 文件事件触发。账号库管理的一部分，与上游选择零引用。
         "manage/json_key.rs",
         "manage/layout.rs",
+        // 账号库的只读那一面：账号清单成品 · 会话归属哪个号。
+        "manage/library.rs",
         // 各号的 MCP 登录：三态对照（纯）· 在那一家的锁里逐条比对、只换那一条。与上游选择零引用（凭据文件的写口在 `oauth/store`）。
         "manage/mcp_logins.rs",
         "manage/mcp_logins_exec.rs",
@@ -106,6 +108,8 @@ pub(super) mod tests {
         "quota/ledger.rs",
         "quota/mod.rs",
         "quota/nodes.rs",
+        // quota-probe 的本体：起官方客户端报一次用量、记进额度账（帧面那一半住 faces）。
+        "quota/probe.rs",
         // 轮换的基础功能层（纯）：rotation.json 第四版的形 · 一判 · 推演 · 策略代码在沙箱里的调用 · 事实上发不发得出去。不认识上游选择与账号库管理。
         "quota/rules/book.rs",
         "quota/rules/code.rs",
@@ -157,8 +161,6 @@ pub(super) mod tests {
         "Base",
         "Destination",
         "Destinations",
-        // `ccm` 在最终 exec 那一处问「这一发注入哪个口」：交了 `CCM_RELAY_PORT` 就是那个口（与常驻后端起中转读的同一个变量名）。
-        "ENV_PORT",
         // 来处 ⇒ 那条会话的出网描述那只手的形状：`host_relay` 把读 `session_upstream` 的那一只递进 `host`。
         "EgressOf",
         "Mode",

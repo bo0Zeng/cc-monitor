@@ -6,14 +6,14 @@
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { settleTyped } from "./control-said";
-import { isLocalOrigin, LOCAL, type Machine } from "./ipc/origin";
+import { LOCAL, type Machine } from "./ipc/origin";
 import type { SessionsBatchReply } from "./generated/SessionsBatchReply";
 import type { SessionsOp } from "./generated/SessionsOp";
 import type { SessionItem } from "./generated/SessionItem";
 import { copyText } from "./copy-table";
 import type { Tab } from "./tab-model";
 import type { Launch } from "./generated/Launch";
-import { openLocalTerminal, openTerminal } from "./terminal-open";
+import { openTerminal } from "./terminal-open";
 import { failToast } from "./kit/toast";
 
 /** 一批的期限：底 10 秒；按个数放宽（那台逐个做），停那一样每个多给 6 秒。 */
@@ -50,11 +50,10 @@ export async function startMany(tabs: readonly Tab[], run: Launch): Promise<Sess
   return reply;
 }
 
-/** 开终端那一形：后端渲好的那一行，monitor 开窗（本机带起始目录，远端经 `openTerminal`，带上那条会话）。开不了 ⇒ 另出那一句。 */
+/** 开终端那一形：后端渲好的那一行，monitor 开窗（经 `openTerminal`，带上那条会话与起始目录）。开不了 ⇒ 另出那一句。 */
 async function openWindow(origin: Machine, cmd: string, cwd: string | null, sid: string): Promise<void> {
   try {
-    if (isLocalOrigin(origin)) await openLocalTerminal(cmd, cwd);
-    else await openTerminal(origin, cmd, sid);
+    await openTerminal(origin, cmd, sid, cwd);
   } catch (e) {
     failToast(copyText("tabBatch.why.windowFailed"), e);
   }

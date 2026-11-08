@@ -3,42 +3,111 @@
 //! 往 Kotlin 交的事：`batch {id, phase, title, …}`，字全由核心写好（标题 · 断开那一行 · 结局句 · 没成的那几行 · 复制详情）；
 //! 落盘那一份 `batch_keep {ticket, plan}`（进程没了再开，Kotlin 原样交回、这里照同一张票再问）。
 //!
-//! Kotlin 交的是「要做什么」（删 · 改权限 · 复制到 · 下到本机 · 重试 · 撤销），入参由这里拼；同名那一问的答经 [`answer`]，「停」经 [`stop`]。
+//! Kotlin 交的是「要做什么」（删 · 改权限 · 复制到 · 下到本机 · 上传 · 重试 · 撤销），入参由这里拼；同名那一问的答经 [`answer`]，「停」经 [`stop`]。
 //!
 //! 下到本机那一组（[`Verb::Pull`]）也是 `batch_core::run` 那一圈：「问那台」那一口在这一侧是本机那一圈（[`PhoneBoard::pull_round`]），
 //! 每项要本机那一份时交 `batch_local {open}`、等 Kotlin 经 [`answer`] 回描述符；Kotlin 只开 · 删本机那一份。
+//!
+//! 上传那一组（[`Verb::Upload`]）同样：本机那一圈是 [`PhoneBoard::put_round`] —— 逐项送块（`chunk_core::stage`）、再提交；
+//! 撞了同名经 `batch_core::run` 问一次，答了只再提交、块不重送。本机那几份的描述符在起组那一下由 Kotlin 交来、归这里。
 
 use crate::busy::Busy;
 use crate::resident::{self, OnEvent};
 use crate::transfer::{self, Halt};
 use batch_core::{Board, Phase, Plan, Rebuff, Tick, Verb};
 use chunk_core::Ask;
-use cmd_wire::batch::{BatchOutcome, BatchReply, Conflict, Decide, ItemState};
+use cmd_wire::batch::{BatchOutcome, BatchReply, Conflict, Conflicts, Decide, ItemState, OnExists};
 use cmd_wire::failed::Failed;
-use cmd_wire::files::WirePath;
+use cmd_wire::files::{FilesCommitUploadReq, Sha256Expect, Sha256Hex, WirePath};
+use cmd_wire::frame::{FilesBatch, Frame};
 use cmd_wire::phone::{
     BatchAnswer, BatchKeep, BatchLine, CallEnd, ClashRow, LocalAsk, LocalOpened,
 };
+use cmd_wire::transfer::Staged;
 use cmd_wire::Call;
 use resident_client::client::CallError;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex, OnceLock};
 
-/// 下到本机那一组在这一侧的那一圈：逐项结局（没轮到 ⇒ `None`）· 手上那一项（名字 · 几成）· 在等 Kotlin 开的那一份 · 撤了没有。
+/// 本机那一圈（下到本机 · 上传那两组）：逐项结局（没轮到 ⇒ `None`）· 手上那一项（名字 · 几成）· 在等 Kotlin 开的那一份 · 撤了没有；
+/// 上传那一组另有本机那几份（送完就关）与送进暂存区的那几份（答了同名再提交照用）。
 #[derive(Default)]
-struct Pulling {
+struct Leg {
     outcomes: Mutex<Vec<Option<BatchOutcome>>>,
     part: Mutex<Option<(String, f32)>>,
     opening: Mutex<Option<(String, tokio::sync::oneshot::Sender<LocalOpened>)>>,
     halt: Arc<Halt>,
+    files: Mutex<Vec<Option<std::fs::File>>>,
+    staged: Mutex<Vec<Option<Staged>>>,
 }
 
-/// 一项拉完是什么样（[`transfer::pull_with`] 那一行）。
-enum PullEnd {
-    Done(u64),
-    Failed(String, String),
+/// 本机那一圈问那台一趟的结局（[`CallEnd`] 那一行：拉一项 · 送一项的块 · 提交一项同一种分法）。
+enum Reached<T> {
+    Done(T),
+    /// 没成：码 · 那一句 · 详情 · `data`（提交撞了同名 ⇒ 同名清单在这里）。
+    Failed(Failed),
+    /// 断了 · 到点（连回来接着做）。
     Cut,
+    /// 撤了（［停］）。
     Stopped,
+}
+
+/// [`CallEnd`] 那一行 ⇒ [`Reached`]（成了的那一份照 `decode` 解；解不开 · 读不懂 ⇒ 没成、那一句是「读不懂」）。
+fn reached<T>(
+    line: &str,
+    halted: bool,
+    decode: impl FnOnce(serde_json::Value) -> Result<T, serde_json::Error>,
+) -> Reached<T> {
+    let unreadable = |detail: String| {
+        Reached::Failed(Failed {
+            detail,
+            ..Failed::local(copy_core::copy_text("reason.content.unparsable", &[]))
+        })
+    };
+    match serde_json::from_str::<CallEnd>(line) {
+        Ok(CallEnd::Ok { data, .. }) => match decode(data) {
+            Ok(v) => Reached::Done(v),
+            Err(e) => unreadable(e.to_string()),
+        },
+        Ok(CallEnd::Failed {
+            code,
+            said,
+            detail,
+            data,
+            ..
+        }) => Reached::Failed(Failed {
+            code,
+            said,
+            detail,
+            data,
+        }),
+        Ok(CallEnd::Cancelled { .. }) if halted => Reached::Stopped,
+        Ok(CallEnd::Timeout { .. } | CallEnd::Down { .. } | CallEnd::Cancelled { .. }) => {
+            Reached::Cut
+        }
+        Ok(CallEnd::Unreadable { detail, .. }) => unreadable(detail),
+        Err(e) => unreadable(format!("{e}: {line}")),
+    }
+}
+
+/// 上传那一组的入参：`{root, shown, items: [{name}]}`（`shown` ＝ 落到的目录在屏上那一串）。
+struct PutArgs {
+    root: WirePath,
+    names: Vec<String>,
+}
+
+impl PutArgs {
+    fn of(args: &serde_json::Value) -> Option<Self> {
+        Some(Self {
+            root: serde_json::from_value(args.get("root")?.clone()).ok()?,
+            names: args
+                .get("items")?
+                .as_array()?
+                .iter()
+                .map(|i| i.get("name")?.as_str().map(str::to_string))
+                .collect::<Option<Vec<_>>>()?,
+        })
+    }
 }
 
 /// 下到本机那一组的入参：`{items: [{path, name}], folder, here}`。
@@ -93,8 +162,8 @@ pub struct PhoneBoard {
     sent: Mutex<Option<serde_json::Value>>,
     /// 从落盘那一份接回来的（进程没了再开）：交的每一行带 `kept`，屏上没起过它也照画。
     kept: bool,
-    /// 下到本机那一组才有（[`Verb::Pull`]）。
-    pulling: Option<Pulling>,
+    /// 下到本机 · 上传那两组才有（[`Verb::Pull`] · [`Verb::Upload`]）。
+    leg: Option<Leg>,
     on_event: OnEvent,
 }
 
@@ -104,9 +173,10 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 
 impl PhoneBoard {
     pub fn new(id: i64, h: i64, plan: Plan, ticket: String, on_event: OnEvent) -> Self {
-        let pulling = (plan.verb == Verb::Pull).then(|| Pulling {
+        let leg = matches!(plan.verb, Verb::Pull | Verb::Upload).then(|| Leg {
             outcomes: Mutex::new(vec![None; plan.names.len()]),
-            ..Pulling::default()
+            staged: Mutex::new(vec![None; plan.names.len()]),
+            ..Leg::default()
         });
         Self {
             id,
@@ -119,7 +189,7 @@ impl PhoneBoard {
             ended: Mutex::default(),
             sent: Mutex::default(),
             kept: false,
-            pulling,
+            leg,
             on_event,
         }
     }
@@ -150,7 +220,7 @@ impl PhoneBoard {
             machine: machine.to_string(),
         };
         let b = Self::new(id, h, plan, ticket, on_event);
-        if let Some(p) = &b.pulling {
+        if let Some(p) = &b.leg {
             // 做完的那几项照落盘的记着，接回来不重下。
             let kept: Vec<Option<BatchOutcome>> =
                 serde_json::from_value(v.get("outcomes")?.clone()).ok()?;
@@ -166,6 +236,25 @@ impl PhoneBoard {
             bytes: None,
         };
         Some(Self { kept: true, ..b })
+    }
+
+    /// 上传那一组（[`upload_plan`]）：`files` 是本机那几份，与 `plan.names` 一一对上（Kotlin 起组时交的描述符，归这里）。
+    pub fn upload(
+        id: i64,
+        h: i64,
+        plan: Plan,
+        files: Vec<std::fs::File>,
+        on_event: OnEvent,
+    ) -> Self {
+        let b = Self::new(id, h, plan, String::new(), on_event);
+        if let Some(p) = &b.leg {
+            *lock(&p.files) = files.into_iter().map(Some).collect();
+        }
+        b
+    }
+
+    fn uploads(&self) -> bool {
+        self.plan.verb == Verb::Upload
     }
 
     /// 跑这一组（[`batch_core::run`]）：每次发之前入参变了 ⇒ 落盘那一份跟着换；收场 ⇒ 删。
@@ -190,12 +279,29 @@ impl PhoneBoard {
             }
             call(args)
         };
-        batch_core::run(self, sending, wait_up).await;
+        // 上传那一组：`batch_core::run` 此刻对 `Verb::Upload` 走「开了哪几单」那一支（`opens`），本机那一圈交回的是一组的结局 ⇒ 照它落。
+        if let Some(v) = batch_core::run(self, sending, wait_up).await {
+            self.set(match serde_json::from_value::<BatchReply>(v) {
+                Ok(r) => Phase::Ended(r),
+                Err(e) => Phase::Failed(Failed {
+                    detail: e.to_string(),
+                    ..Failed::local(copy_core::copy_text("reason.content.unparsable", &[]))
+                }),
+            });
+        }
+        // 收场（成了 · 没成 · 取消都算）：上传那一组手上还攥着的本机那几份当场关掉。
+        if let Some(p) = &self.leg {
+            lock(&p.files).clear();
+        }
         self.keep(false);
     }
 
     /// 交 Kotlin 落盘（`batch_keep {ticket, plan}`）：`plan` 是一串字，原样存、原样交回 [`start`]（`{kept: plan}`）；收场 ⇒ `plan: null`。
+    /// 上传那一组不落盘：进程没了，本机那几份的描述符也没了，接不回来。
     fn keep(&self, on: bool) {
+        if self.uploads() {
+            return;
+        }
         let plan = on.then(|| {
             let t = self.tick();
             let mut blob = serde_json::json!({
@@ -206,7 +312,7 @@ impl PhoneBoard {
                 "done": t.done,
                 "total": t.total,
             });
-            if let Some(p) = &self.pulling {
+            if let Some(p) = &self.leg {
                 blob["outcomes"] = serde_json::to_value(&*lock(&p.outcomes)).unwrap_or_default();
             }
             blob.to_string()
@@ -222,13 +328,17 @@ impl PhoneBoard {
         );
     }
 
-    /// 一格进度（帧那一侧）：`{done, total, current?, bytes_done?, bytes_total?}`。
-    pub fn progress(&self, cell: &serde_json::Value) {
-        let Some(t) = Tick::of_cell(cell) else { return };
-        let current = cell
-            .get("current")
-            .and_then(|c| c.as_str())
-            .map(str::to_string);
+    /// 一格进度（[`FilesBatch`] 帧）：手上那一项照显示形交（不是 UTF-8 的字节换成替代符）。
+    pub fn progress(&self, f: &FilesBatch) {
+        let t = Tick {
+            done: f.done,
+            total: f.total,
+            bytes: f.bytes_done.zip(f.bytes_total),
+        };
+        let current = f
+            .current
+            .as_ref()
+            .map(|c| String::from_utf8_lossy(c.bytes()).into_owned());
         *lock(&self.tick) = (t, current);
         self.emit(&Phase::Running);
     }
@@ -236,7 +346,7 @@ impl PhoneBoard {
     /// 同名那一问答了（[`decided`] 那一形）· 本机那一份开好了（[`LocalOpened`]，下到本机那一组在等它）。回值 ＝ 真有人在等这一答。
     pub fn answer(&self, text: Option<&str>) -> bool {
         let opened = text.and_then(|t| serde_json::from_str::<LocalOpened>(t).ok());
-        if let (Some(p), Some(got)) = (&self.pulling, opened) {
+        if let (Some(p), Some(got)) = (&self.leg, opened) {
             let for_key = match &got {
                 LocalOpened::Fd { key, .. } | LocalOpened::Refused { key, .. } => key.clone(),
             };
@@ -275,9 +385,9 @@ impl PhoneBoard {
         );
     }
 
-    /// 下到本机那一组：做完了几项（有结局的）· 其中成了几项。
+    /// 下到本机 · 上传那两组：做完了几项（有结局的）· 其中成了几项。
     fn settled(&self) -> Option<(usize, usize)> {
-        let p = self.pulling.as_ref()?;
+        let p = self.leg.as_ref()?;
         let o = lock(&p.outcomes);
         let ok = o
             .iter()
@@ -293,7 +403,7 @@ impl PhoneBoard {
         let (id, title, kept) = (self.id, batch_core::title_of(&self.plan), self.kept);
         let n = self.plan.names.len();
         match phase {
-            Phase::Running => match (&self.pulling, self.settled()) {
+            Phase::Running => match (&self.leg, self.settled()) {
                 // 下到本机：做完的项数连同手上那一项下到几成。
                 (Some(p), Some((done, _))) => {
                     let part = lock(&p.part).clone();
@@ -322,7 +432,7 @@ impl PhoneBoard {
                 title,
                 kept,
                 conflicts: match PullArgs::of(&self.plan.args) {
-                    Some(a) if self.pulling.is_some() => local_clashes(&a.names(), &a.here),
+                    Some(a) if self.plan.verb == Verb::Pull => local_clashes(&a.names(), &a.here),
                     _ => clash_rows(&lock(&self.asking)),
                 },
                 go: self.plan.verb.text(),
@@ -350,7 +460,8 @@ impl PhoneBoard {
                     ),
                     failed,
                     details: batch_core::copy_details(&self.plan, r),
-                    retry: batch_core::retry_plan(&self.plan, r).is_some(),
+                    // 上传那一组：本机那几份送过就关了，没有可再送的。
+                    retry: !self.uploads() && batch_core::retry_plan(&self.plan, r).is_some(),
                     undo: batch_core::undo_plan(&self.plan, r).is_some(),
                 }
             }
@@ -378,12 +489,12 @@ impl PhoneBoard {
 
     /// 撤了（［停］）：下到本机那一组的那一圈当场停。
     fn halt(&self) -> Option<Arc<Halt>> {
-        self.pulling.as_ref().map(|p| p.halt.clone())
+        self.leg.as_ref().map(|p| p.halt.clone())
     }
 
     /// 一项有了结局 ⇒ 记下、落盘那一份跟着换（进程没了再开，做完的不重下）。
     fn settle(&self, i: usize, o: BatchOutcome) {
-        if let Some(p) = &self.pulling {
+        if let Some(p) = &self.leg {
             if let Some(slot) = lock(&p.outcomes).get_mut(i) {
                 *slot = Some(o);
             }
@@ -395,7 +506,7 @@ impl PhoneBoard {
     /// 向 Kotlin 要本机那一份（`batch_local {open}`），等它经 [`answer`] 回；撤了 ⇒ `Err(None)`，开不了 ⇒ 那一句 · 系统原话。
     async fn open(
         &self,
-        p: &Pulling,
+        p: &Leg,
         folder: &str,
         key: &str,
         name: &str,
@@ -449,7 +560,7 @@ impl PhoneBoard {
             },
             cut: false,
         };
-        let (Some(p), Some(a)) = (&self.pulling, PullArgs::of(args)) else {
+        let (Some(p), Some(a)) = (&self.leg, PullArgs::of(args)) else {
             return Err(unreadable(args.to_string()));
         };
         let rows = local_clashes(&a.names(), &a.here);
@@ -517,15 +628,18 @@ impl PhoneBoard {
             };
             let line =
                 transfer::pull_with(ask, self.id, path.clone(), file, name, &mut moves).await;
-            match pulled(&line, p.halt.is()) {
-                PullEnd::Done(bytes) => self.settle(
+            let got = reached(&line, p.halt.is(), |v| {
+                serde_json::from_value::<cmd_wire::transfer::Pulled>(v).map(|p| p.bytes)
+            });
+            match got {
+                Reached::Done(bytes) => self.settle(
                     i,
                     BatchOutcome {
                         bytes: Some(bytes),
                         ..one(&key, ItemState::Done)
                     },
                 ),
-                PullEnd::Failed(said, detail) => {
+                Reached::Failed(f) => {
                     self.local(&LocalAsk::Drop {
                         id: self.id,
                         key: key.clone(),
@@ -533,13 +647,13 @@ impl PhoneBoard {
                     self.settle(
                         i,
                         BatchOutcome {
-                            reason: Some(said),
-                            detail: Some(detail),
+                            reason: Some(f.said),
+                            detail: Some(f.detail),
                             ..one(&key, ItemState::Failed)
                         },
                     );
                 }
-                PullEnd::Cut => {
+                Reached::Cut => {
                     self.local(&LocalAsk::Drop { id: self.id, key });
                     *lock(&p.part) = None;
                     return Err(rebuff_of(
@@ -548,7 +662,7 @@ impl PhoneBoard {
                         CallError::Disconnected,
                     ));
                 }
-                PullEnd::Stopped => {
+                Reached::Stopped => {
                     self.local(&LocalAsk::Drop { id: self.id, key });
                     break;
                 }
@@ -569,38 +683,220 @@ impl PhoneBoard {
     }
 }
 
-/// 一项拉完那一行（[`CallEnd`]）⇒ 成了 · 没成（那一句 · 详情）· 断了 · 撤了。
-fn pulled(line: &str, halted: bool) -> PullEnd {
-    match serde_json::from_str::<CallEnd>(line) {
-        Ok(CallEnd::Ok { data, .. }) => {
-            match serde_json::from_value::<cmd_wire::transfer::Pulled>(data) {
-                Ok(p) => PullEnd::Done(p.bytes),
-                Err(e) => PullEnd::Failed(
-                    copy_core::copy_text("reason.content.unparsable", &[]),
-                    e.to_string(),
+impl PhoneBoard {
+    /// 🔴 上传那一组「问一次」（[`batch_core::run`] 的 `ask`：答过同名之后入参带 `decide`）—— 从第一项没结局的起：
+    /// 还没送进暂存区 ⇒ 逐块送（断了 ⇒ 本机那一份倒回开头、回「断了」，连回来重送这一项）；送好了 ⇒ 提交（答了覆盖 · 保留两份 ⇒
+    /// 带 `on_exists`，答了跳过 ⇒ 不交、记跳过）。提交回 `exists` ⇒ 这一项先放着，这一圈收尾照后端同名那一形拒（键换成项的序号），
+    /// 答了再进这一圈：送好的不重送、只再提交。撤了 ⇒ 没轮到的记撤了。收场回一组的结局（结局句照 [`batch_core::said_of`]）。
+    pub async fn put_round<A: Ask<Err = String>>(
+        &self,
+        args: &serde_json::Value,
+        ask: &A,
+    ) -> Result<serde_json::Value, Rebuff> {
+        let unreadable = |detail: String| Rebuff {
+            failed: Failed {
+                detail,
+                ..Failed::local(copy_core::copy_text("reason.content.unparsable", &[]))
+            },
+            cut: false,
+        };
+        let (Some(p), Some(a)) = (&self.leg, PutArgs::of(args)) else {
+            return Err(unreadable(args.to_string()));
+        };
+        let decide: BTreeMap<String, Decide> = args
+            .get("decide")
+            .and_then(|d| serde_json::from_value(d.clone()).ok())
+            .unwrap_or_default();
+        let one = |key: &str, state: ItemState| BatchOutcome::bare(key, state);
+        let failed = |key: &str, said: String, detail: String| BatchOutcome {
+            reason: Some(said),
+            detail: Some(detail),
+            ..one(key, ItemState::Failed)
+        };
+        let mut clashes: Vec<Conflict> = Vec::new();
+        for (i, name) in a.names.iter().enumerate() {
+            if lock(&p.outcomes).get(i).is_some_and(Option::is_some) {
+                continue;
+            }
+            if p.halt.is() {
+                break;
+            }
+            let key = i.to_string();
+            let staged = lock(&p.staged).get(i).cloned().flatten();
+            let staged = match staged {
+                Some(s) => s,
+                None => match self.stage_one(p, i, name, ask).await {
+                    Reached::Done(s) => {
+                        if let Some(slot) = lock(&p.staged).get_mut(i) {
+                            *slot = Some(s.clone());
+                        }
+                        s
+                    }
+                    Reached::Failed(f) => {
+                        self.settle(i, failed(&key, f.said, f.detail));
+                        continue;
+                    }
+                    Reached::Cut => {
+                        *lock(&p.part) = None;
+                        return Err(rebuff_of(
+                            &self.plan.machine,
+                            self.plan.cmd,
+                            CallError::Disconnected,
+                        ));
+                    }
+                    Reached::Stopped => break,
+                },
+            };
+            let on_exists = match decide.get(&key) {
+                Some(Decide::Skip) => {
+                    self.settle(i, one(&key, ItemState::Skipped));
+                    continue;
+                }
+                Some(Decide::Overwrite) => Some(OnExists::Overwrite),
+                Some(Decide::KeepBoth) => Some(OnExists::KeepBoth),
+                None => None,
+            };
+            let req = FilesCommitUploadReq {
+                root: a.root.clone(),
+                rel: WirePath(name.as_bytes().to_vec()),
+                key: staged.key.clone(),
+                on_exists,
+                expect: Sha256Expect {
+                    sha256: Sha256Hex(staged.sha256.clone()),
+                },
+                chunks: Some(staged.chunks),
+                bytes: Some(staged.bytes),
+                single: Some(true),
+            };
+            match ask.ask(&req).await {
+                Ok(r) => self.settle(
+                    i,
+                    BatchOutcome {
+                        bytes: Some(r.bytes),
+                        path: Some(r.path),
+                        ..one(&key, ItemState::Done)
+                    },
                 ),
+                // 没成那一行（成了的那一形在上面 `Ok` 那一支；这里再见到「成了」⇒ 读不懂）。
+                Err(line) => match reached(&line, p.halt.is(), Ok) {
+                    Reached::Failed(f) if f.code == batch_core::EXISTS && on_exists.is_none() => {
+                        let theirs = f
+                            .data
+                            .and_then(|d| serde_json::from_value::<Conflicts>(d).ok())
+                            .map(|c| c.conflicts)
+                            .unwrap_or_default();
+                        // 一次提交只一项：那台的键换成这一项在组里的序号（答的时候照它认）。
+                        clashes.extend(theirs.into_iter().map(|c| Conflict {
+                            key: key.clone(),
+                            ..c
+                        }));
+                    }
+                    Reached::Failed(f) => self.settle(i, failed(&key, f.said, f.detail)),
+                    Reached::Done(v) => self.settle(
+                        i,
+                        failed(
+                            &key,
+                            copy_core::copy_text("reason.content.unparsable", &[]),
+                            v.to_string(),
+                        ),
+                    ),
+                    Reached::Stopped => break,
+                    Reached::Cut => {
+                        return Err(rebuff_of(
+                            &self.plan.machine,
+                            self.plan.cmd,
+                            CallError::Disconnected,
+                        ));
+                    }
+                },
             }
         }
-        Ok(CallEnd::Failed { said, detail, .. }) => PullEnd::Failed(said, detail),
-        Ok(CallEnd::Cancelled { .. }) if halted => PullEnd::Stopped,
-        Ok(CallEnd::Timeout { .. } | CallEnd::Down { .. } | CallEnd::Cancelled { .. }) => {
-            PullEnd::Cut
+        if !clashes.is_empty() && !p.halt.is() {
+            return Err(Rebuff {
+                failed: Failed {
+                    code: batch_core::EXISTS.into(),
+                    data: serde_json::to_value(Conflicts { conflicts: clashes }).ok(),
+                    ..Failed::default()
+                },
+                cut: false,
+            });
         }
-        Ok(CallEnd::Unreadable { detail, .. }) => PullEnd::Failed(
-            copy_core::copy_text("reason.content.unparsable", &[]),
-            detail,
-        ),
-        Err(e) => PullEnd::Failed(
-            copy_core::copy_text("reason.content.unparsable", &[]),
-            format!("{e}: {line}"),
-        ),
+        let outcomes: Vec<BatchOutcome> = {
+            let mut o = lock(&p.outcomes);
+            for (i, slot) in o.iter_mut().enumerate() {
+                if slot.is_none() {
+                    *slot = Some(one(&i.to_string(), ItemState::Cancelled));
+                }
+            }
+            o.iter().flatten().cloned().collect()
+        };
+        *lock(&p.part) = None;
+        let said =
+            batch_core::said_of(&self.plan.verb.text(), &outcomes, self.plan.into.as_deref());
+        serde_json::to_value(BatchReply { outcomes, said }).map_err(|e| unreadable(e.to_string()))
+    }
+
+    /// 第 `i` 项送进那台的暂存区（新键）：送成了本机那一份关掉；断了 ⇒ 倒回开头留着（连回来重送）。
+    async fn stage_one<A: Ask<Err = String>>(
+        &self,
+        p: &Leg,
+        i: usize,
+        name: &str,
+        ask: &A,
+    ) -> Reached<Staged> {
+        let not_read = |detail: String| {
+            Reached::Failed(Failed {
+                detail,
+                ..Failed::local(copy_core::copy_text(
+                    "mobFiles.local.readFailed",
+                    &[("name", name)],
+                ))
+            })
+        };
+        let Some(file) = lock(&p.files).get_mut(i).and_then(Option::take) else {
+            return not_read(String::new());
+        };
+        *lock(&p.part) = Some((name.to_string(), 0.0));
+        self.emit(&Phase::Running);
+        let mut random = [0u8; 16];
+        let _ = ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), &mut random);
+        let total = transfer::size_of(&file);
+        let mut moves = PartMoves {
+            board: self,
+            p,
+            name,
+        };
+        let line = transfer::stage_with(
+            ask,
+            self.id,
+            chunk_core::key_of(random),
+            (&file, total),
+            name,
+            &mut moves,
+        )
+        .await;
+        match reached(&line, p.halt.is(), serde_json::from_value::<Staged>) {
+            Reached::Cut => {
+                use std::io::Seek as _;
+                match (&file).rewind() {
+                    Ok(()) => {
+                        if let Some(slot) = lock(&p.files).get_mut(i) {
+                            *slot = Some(file);
+                        }
+                        Reached::Cut
+                    }
+                    Err(e) => not_read(e.to_string()),
+                }
+            }
+            other => other,
+        }
     }
 }
 
 /// 手上那一项下到几成（每一块报一次 ⇒ 那一格跟着换）；撤了 ⇒ 下一块不问。
 struct PartMoves<'a> {
     board: &'a PhoneBoard,
-    p: &'a Pulling,
+    p: &'a Leg,
     name: &'a str,
 }
 
@@ -640,6 +936,8 @@ impl Board for PhoneBoard {
         match &phase {
             // 同名那一问由 [`Board::ask`] 带着那几项交（这一步先落、那几项还没摆上）。
             Phase::Asking => return,
+            // 上传那一组：本机那一圈交回的是一组的结局，[`Self::go`] 照它落 `Ended`（这一格不交 Kotlin，不然浮卡先收一下）。
+            Phase::Opened => return,
             Phase::Ended(r) => *lock(&self.ended) = Some(r.clone()),
             // 断开时的完成数跟着落盘（进程没了再开，那一行照它写）。
             Phase::Cut(_) => self.keep(true),
@@ -661,7 +959,7 @@ impl Board for PhoneBoard {
 }
 
 /// 同名那一问的几行（抽屉照画）：键 · 名字 · 那一行的说明（核心写好）· 这一项能怎么答（那台给的，带字：[`batch_core::choices`]）。
-pub fn clash_rows(conflicts: &[Conflict]) -> Vec<ClashRow> {
+fn clash_rows(conflicts: &[Conflict]) -> Vec<ClashRow> {
     conflicts
         .iter()
         .map(|c| ClashRow {
@@ -814,6 +1112,44 @@ pub fn plan_of(want: &serde_json::Value, machine: &str) -> Option<Vec<Plan>> {
     })
 }
 
+/// 上传那一组：`{root, shown, items: [{name, fd}]}` ⇒ 计划（入参只留 `root` 与每项的名字，描述符不进入参）。读不动 ⇒ `None`。
+pub fn upload_plan(v: &serde_json::Value, machine: &str) -> Option<Plan> {
+    let a = PutArgs::of(v)?;
+    Some(Plan {
+        verb: Verb::Upload,
+        cmd: <FilesCommitUploadReq as Call>::NAME,
+        args: serde_json::json!({
+            "root": a.root,
+            "items": a.names.iter().map(|n| serde_json::json!({ "name": n })).collect::<Vec<_>>(),
+        }),
+        names: a.names,
+        into: Some(v.get("shown")?.as_str()?.to_string()),
+        machine: machine.to_string(),
+    })
+}
+
+/// 上传那一组每项的描述符 ⇒ 本机那几份（Kotlin `detachFd()` 交出的，此后归这里）；有一项读不出 ⇒ 读得出的也关掉、交空。
+fn upload_files(v: &serde_json::Value) -> Vec<std::fs::File> {
+    let fds: Vec<Option<i32>> = v
+        .get("items")
+        .and_then(|i| i.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .map(|i| i.get("fd")?.as_i64().and_then(|fd| i32::try_from(fd).ok()))
+                .collect()
+        })
+        .unwrap_or_default();
+    let files: Vec<Option<std::fs::File>> = fds
+        .into_iter()
+        .map(|fd| fd.and_then(crate::file_of))
+        .collect();
+    if files.iter().any(Option::is_none) {
+        return Vec::new();
+    }
+    files.into_iter().flatten().collect()
+}
+
 /// 问那台一次（带一个期限）：对端拒 ⇒ 码 · 那一句 · 详情 · `data`；流没通 · 到点 ⇒ 断了（同一张票再问）。
 fn rebuff_of(machine: &str, cmd: &str, e: CallError) -> Rebuff {
     let cut = matches!(
@@ -847,15 +1183,29 @@ fn rebuff_of(machine: &str, cmd: &str, e: CallError) -> Rebuff {
 /// 起一组：回编号（进度 · 同名那一问 · 结局经 `on_event` 的 `batch` 那一种交，落盘那一份经 `batch_keep`）；
 /// `{kept: plan}` ⇒ 接回落盘的那一组（同一张票再问）。这台不在 · 读不动 ⇒ 0。
 pub fn start(h: i64, want: &str, on_event: OnEvent) -> i64 {
-    let Some(f) = resident::feed(h) else { return 0 };
     let Ok(want) = serde_json::from_str::<serde_json::Value>(want) else {
         return 0;
     };
+    // 上传那一组交来的描述符先收下（这台不在 · 读不动 · 对不上 ⇒ 随这一下当场关，不漏）。
+    let files = want.get("upload").map(upload_files).unwrap_or_default();
+    let Some(f) = resident::feed(h) else { return 0 };
     if let Some(kept) = want.get("kept").and_then(|k| k.as_str()) {
         let id = resident::next_call();
         return match PhoneBoard::resumed(id, h, kept, f.machine(), on_event) {
             Some(b) => launch(Arc::new(b)),
             None => 0,
+        };
+    }
+    if let Some(v) = want.get("upload") {
+        return match upload_plan(v, f.machine()) {
+            Some(plan) if files.len() == plan.names.len() => launch(Arc::new(PhoneBoard::upload(
+                resident::next_call(),
+                h,
+                plan,
+                files,
+                on_event,
+            ))),
+            _ => 0,
         };
     }
     let Some(plans) = plan_of(&want, f.machine()) else {
@@ -916,7 +1266,7 @@ fn launch(b: Arc<PhoneBoard>) -> i64 {
             }
         };
         if let Some(halt) = b.halt() {
-            // 下到本机：「问那台」那一口是本机那一圈，逐块问那台走常驻流那一条（每块一个期限）。
+            // 下到本机 · 上传：「问那台」那一口是本机那一圈，逐块（与提交）问那台走常驻流那一条（每一问一个期限）。
             let ask = transfer::Halting {
                 ask: transfer::over(h, b.id, PULL_CHUNK),
                 halt,
@@ -924,11 +1274,19 @@ fn launch(b: Arc<PhoneBoard>) -> i64 {
             };
             let ask = &ask;
             let me = &b;
-            b.go(
-                |args| async move { me.pull_round(&args, ask).await },
-                wait_up,
-            )
-            .await;
+            if b.uploads() {
+                b.go(
+                    |args| async move { me.put_round(&args, ask).await },
+                    wait_up,
+                )
+                .await;
+            } else {
+                b.go(
+                    |args| async move { me.pull_round(&args, ask).await },
+                    wait_up,
+                )
+                .await;
+            }
             return;
         }
         b.go(
@@ -951,7 +1309,7 @@ fn launch(b: Arc<PhoneBoard>) -> i64 {
     id
 }
 
-/// 下到本机那一组逐块问那台，每一块等多久。
+/// 下到本机 · 上传那两组逐块（与提交）问那台，每一问等多久。
 const PULL_CHUNK: std::time::Duration = std::time::Duration::from_secs(20);
 
 /// 同名那一问的答（[`BatchAnswer`]：`{all: 答}` · `{each: {键: 答}}`；`null` · 读不动 ⇒ 取消）⇒ 每个键一格（`batch_core::answer_of`）。
@@ -971,12 +1329,6 @@ pub fn decided<'a>(
 /// 核心跑的那几组的答（[`decided`] 那一形）；那一组不在 ⇒ `false`。
 pub fn answer(id: i64, text: Option<&str>) -> bool {
     board(id).is_some_and(|b| b.answer(text))
-}
-
-/// 手机那一侧问的同名（下载 · 上传）：`keys` 是那几行的键（JSON 数组）⇒ 每个键一格（JSON）；取消 · 读不动 ⇒ `null`。
-pub fn decided_json(keys: &str, text: Option<&str>) -> String {
-    let keys: Vec<String> = serde_json::from_str(keys).unwrap_or_default();
-    serde_json::to_string(&decided(keys.iter().map(String::as_str), text)).unwrap_or_default()
 }
 
 /// 撤这一组（「停」）：同一张票发 `files-batch-stop`；那台做完手上那一项就停，剩下的回 `cancelled`。
@@ -1009,23 +1361,22 @@ pub fn stop(id: i64) -> bool {
     true
 }
 
-/// 流上来的一帧：是在做的某一组的进度（`files_batch`，按票）⇒ 这里接了、回 `true`（不交 Kotlin 的帧流）。
+/// 流上来的一帧：是在做的某一组的进度（[`Frame::FilesBatch`]，按票）⇒ 这里接了、回 `true`（不交 Kotlin 的帧流）。
+/// 先按字粗筛，再只切标签（`line` 帧带整条记录，不为它整行解），标签是 `files_batch` 的才照线上类型解；
+/// 解不开的也不交 Kotlin（它不读这一种）。
 pub fn took(line: &str) -> bool {
-    if !line.contains("\"files_batch\"") {
+    const KIND: &str = "files_batch";
+    if !line.contains(KIND) || cmd_wire::frame::kind_of(line).ok().as_deref() != Some(KIND) {
         return false;
     }
-    let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
-        return false;
-    };
-    if v.get("type").and_then(|t| t.as_str()) != Some("files_batch") {
-        return false;
-    }
-    let Some(t) = v.get("ticket").and_then(|t| t.as_str()) else {
-        return true;
-    };
-    let hit = lock(boards()).values().find(|b| b.ticket == t).cloned();
-    if let Some(b) = hit {
-        b.progress(&v);
+    if let Ok(Frame::FilesBatch(f)) = cmd_wire::frame::decode::<cmd_wire::record::Record>(line) {
+        let hit = lock(boards())
+            .values()
+            .find(|b| b.ticket == f.ticket)
+            .cloned();
+        if let Some(b) = hit {
+            b.progress(&f);
+        }
     }
     true
 }
@@ -1565,10 +1916,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// 🔴 同名那一问的答只在核心里认（整组一个答 · 逐项选、没点的照跳过 · 别的当取消）：下载 · 上传问的那一口（[`decided_json`]）
-    /// 与核心跑的那几组（[`answer`]，复制到… 走它）同一组答出同一个结果。
+    /// 🔴 同名那一问的答只在核心里认（[`answer`]）：整组一个答 · 逐项选、没点的照跳过 · 别的当取消。
     #[tokio::test]
-    async fn one_clash_answer_decides_the_same_on_every_path() {
+    async fn one_clash_answer_decides_each_key() {
         let conflict = |k: &str| -> Conflict {
             serde_json::from_value(serde_json::json!({"key": k, "name": "a", "kind": "file", "there": "file", "answers": ["overwrite", "skip", "keep_both"]}))
                 .unwrap()
@@ -1602,10 +1952,7 @@ mod tests {
             let asked = b.ask(vec![conflict("0"), conflict("1")]);
             assert!(answer(id, text), "{text:?}：有人在等这一答");
             lock(boards()).remove(&id);
-            let port: Option<BTreeMap<String, Decide>> =
-                serde_json::from_str(&decided_json(r#"["0","1"]"#, text)).unwrap();
-            assert_eq!(asked.await, want, "{text:?}：一组那一份");
-            assert_eq!(port, want, "{text:?}：下载 · 上传那一口");
+            assert_eq!(asked.await, want, "{text:?}");
         }
     }
 
@@ -1671,19 +2018,40 @@ mod tests {
             on,
         ));
         lock(boards()).insert(9001, b);
+        // 样本由线上类型的序列化器造（后端发的就是这一形）。
+        let frame = |ticket: &str, done: u64, current: Option<&[u8]>| {
+            let f: Frame = Frame::FilesBatch(FilesBatch {
+                ticket: ticket.into(),
+                done,
+                total: 4,
+                current: current.map(WirePath::from),
+                bytes_done: None,
+                bytes_total: None,
+            });
+            serde_json::to_string(&f).unwrap()
+        };
+        assert!(took(&frame("t-frame", 1, Some(b"a.txt"))));
+        assert!(took(&frame("t-nobody", 1, None)), "没人认的票也不交 Kotlin");
+        // 手上那一项不是 UTF-8（线上是 `{"b16": …}`）⇒ 照显示形交。
+        assert!(took(&frame("t-frame", 2, Some(b"b\xff"))));
+        // 标签不在行首也认；标签对、格解不开 ⇒ 也不交 Kotlin，进度不动。
         assert!(took(
-            r#"{"type":"files_batch","ticket":"t-frame","done":1,"total":4,"current":"a.txt"}"#
+            r#"{"ticket":"t-frame","kind":"files_batch","done":3,"total":4}"#
         ));
-        assert!(
-            took(r#"{"type":"files_batch","ticket":"t-nobody","done":1,"total":4}"#),
-            "没人认的票也不交 Kotlin"
-        );
-        assert!(!took(r#"{"type":"line","sid":"s","files_batch":1}"#));
+        assert!(took(r#"{"kind":"files_batch","ticket":"t-frame"}"#));
+        // 别的帧里带着 `files_batch` 这几个字也照交。
+        assert!(!took(r#"{"kind":"line","sid":"s","files_batch":1}"#));
+        assert!(!took(
+            r#"{"kind":"session_left","sid":"s","files_batch":1}"#
+        ));
         lock(boards()).remove(&9001);
         let seen = lock(&seen).clone();
-        assert_eq!(seen.len(), 1);
+        assert_eq!(seen.len(), 3);
         assert_eq!(seen[0]["current"], "a.txt");
         assert_eq!(seen[0]["frac"], 0.25);
+        assert_eq!(seen[1]["current"], "b\u{fffd}");
+        assert_eq!(seen[1]["frac"], 0.5);
+        assert_eq!(seen[2]["frac"], 0.75);
     }
 
     /// 两种事都收（`batch` · `batch_keep`），照到达先后。
@@ -1759,7 +2127,14 @@ mod tests {
                                 cut: false,
                             }),
                             _ => {
-                                b4.progress(&serde_json::json!({"done": 1, "total": 2}));
+                                b4.progress(&FilesBatch {
+                                    ticket: "t-1".into(),
+                                    done: 1,
+                                    total: 2,
+                                    current: None,
+                                    bytes_done: None,
+                                    bytes_total: None,
+                                });
                                 Err(rebuff_of("devbox", "files-delete", CallError::Disconnected))
                             }
                         }
@@ -1841,6 +2216,197 @@ mod tests {
             )
             .is_none(),
             "认不出的那一份不接"
+        );
+    }
+
+    /// 替身那台（上传那一组）：收块；提交那一问头一回回 `exists`（带同名清单，键是那台的 `0`），之后照收。
+    /// `cut` ⇒ 送块那一问回回都断（连回来也一样）。
+    #[derive(Default)]
+    struct Shelf {
+        chunks: Mutex<usize>,
+        commits: Mutex<Vec<cmd_wire::files::FilesCommitUploadReq>>,
+        cut: bool,
+    }
+
+    impl Ask for Shelf {
+        type Err = String;
+        async fn ask<C: Call + Sync>(&self, req: &C) -> Result<C::Reply, String> {
+            let v = serde_json::to_value(req).unwrap();
+            if self.cut {
+                return crate::transfer::typed::<C>(7, "devbox", Err(CallError::Disconnected));
+            }
+            let reply = if C::NAME == "files-stage-chunk" {
+                let r: cmd_wire::files::FilesStageChunkReq = serde_json::from_value(v).unwrap();
+                *lock(&self.chunks) += 1;
+                serde_json::json!({ "bytes": r.content.bytes().len() })
+            } else {
+                assert_eq!(C::NAME, "files-commit-upload");
+                let r: cmd_wire::files::FilesCommitUploadReq = serde_json::from_value(v).unwrap();
+                let first = {
+                    let mut c = lock(&self.commits);
+                    c.push(r.clone());
+                    c.len() == 1
+                };
+                if first {
+                    return crate::transfer::typed::<C>(
+                        7,
+                        "devbox",
+                        Err(CallError::Remote(Failed {
+                            code: "exists".into(),
+                            said: "同名 1 项".into(),
+                            detail: "d".into(),
+                            // 那台的键是它那一问里的序号（一次只一项）；组里认的是项在组里的序号。
+                            data: Some(
+                                serde_json::json!({"conflicts": [{"key": "9", "name": "up.bin",
+                                "kind": "file", "there": "file", "answers": ["overwrite", "keep_both"]}]}),
+                            ),
+                        })),
+                    );
+                }
+                serde_json::json!({ "path": "/w/up.bin", "bytes": r.bytes })
+            };
+            crate::transfer::typed::<C>(7, "devbox", Ok(serde_json::from_value(reply)))
+        }
+    }
+
+    /// 上传那一组：`/w` 底下一份 `up.bin`（本机那一份是 `body`），答 `answer`；交回那一组与替身那台。
+    async fn upload_go(
+        tag: &str,
+        body: &[u8],
+        answer: &'static str,
+    ) -> (
+        Arc<PhoneBoard>,
+        Arc<Shelf>,
+        Vec<(String, serde_json::Value)>,
+    ) {
+        upload_to(tag, body, Some(answer), Shelf::default()).await
+    }
+
+    async fn upload_to(
+        tag: &str,
+        body: &[u8],
+        answer: Option<&'static str>,
+        shelf: Shelf,
+    ) -> (
+        Arc<PhoneBoard>,
+        Arc<Shelf>,
+        Vec<(String, serde_json::Value)>,
+    ) {
+        let dir = folder(tag);
+        let src = dir.join("up.bin");
+        std::fs::write(&src, body).unwrap();
+        let file = std::fs::File::open(&src).unwrap();
+        let (on, seen) = kinds();
+        let plan = upload_plan(
+            &serde_json::json!({"root": "/w", "shown": "~/w", "items": [{"name": "up.bin"}]}),
+            "devbox",
+        )
+        .expect("上传那一组读得懂");
+        let b = Arc::new(PhoneBoard::upload(7, 1, plan, vec![file], on));
+        let shelf = Arc::new(shelf);
+        let b2 = b.clone();
+        let answering = tokio::spawn(async move {
+            let Some(answer) = answer else { return };
+            for _ in 0..20_000 {
+                if lock(&b2.answer).is_some() {
+                    assert!(b2.answer(Some(answer)));
+                    return;
+                }
+                tokio::task::yield_now().await;
+            }
+            panic!("等不到那一问");
+        });
+        let ask = Arc::new(crate::transfer::Halting {
+            ask: ShelfRef(shelf.clone()),
+            halt: b.halt().unwrap(),
+            id: b.id,
+        });
+        let b3 = b.clone();
+        b.go(
+            move |args| {
+                let (b4, ask) = (b3.clone(), ask.clone());
+                async move { b4.put_round(&args, &*ask).await }
+            },
+            || async {},
+        )
+        .await;
+        answering.await.unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        let seen = lock(&seen).clone();
+        (b, shelf, seen)
+    }
+
+    struct ShelfRef(Arc<Shelf>);
+
+    impl Ask for ShelfRef {
+        type Err = String;
+        async fn ask<C: Call + Sync>(&self, req: &C) -> Result<C::Reply, String> {
+            self.0.ask(req).await
+        }
+    }
+
+    /// 🔴 一组 upload：替身那台第一次提交回 `exists` ⇒ 交出一次问答；答覆盖 ⇒ 第二次提交带 `on_exists: overwrite`、
+    /// 同一份暂存件，`files-stage-chunk` 只发一轮；结局 `ended`、那一项做成、不给重试，不落盘。
+    #[tokio::test]
+    async fn an_upload_group_asks_once_on_a_clash_and_never_resends_the_chunks() {
+        let body: Vec<u8> = (0..chunk_core::CHUNK + 7)
+            .map(|i| (i % 199) as u8)
+            .collect();
+        let (b, shelf, seen) = upload_go("up-over", &body, r#"{"all":"overwrite"}"#).await;
+        assert_eq!(*lock(&shelf.chunks), 2, "块只送一轮");
+        let commits = lock(&shelf.commits).clone();
+        assert_eq!(commits.len(), 2);
+        assert_eq!(commits[0].on_exists, None, "头一回不说同名怎么办（那台问）");
+        assert_eq!(
+            commits[1].on_exists,
+            Some(cmd_wire::batch::OnExists::Overwrite)
+        );
+        assert_eq!(commits[0].key, commits[1].key, "同一份暂存件");
+        assert_eq!(commits[1].bytes, Some(body.len() as u64));
+        assert_eq!(commits[1].single, Some(true));
+        let shown = of_kind(&seen, "batch");
+        let asks: Vec<_> = shown.iter().filter(|e| e["phase"] == "asking").collect();
+        assert_eq!(asks.len(), 1, "只问一次：{shown:?}");
+        assert_eq!(asks[0]["conflicts"][0]["key"], "0");
+        assert_eq!(asks[0]["title"], batch_core::title_of(&b.plan));
+        let end = shown.last().unwrap();
+        assert_eq!(end["phase"], "ended", "{shown:?}");
+        assert_eq!(end["retry"], false, "描述符送过就关了：不给重试");
+        let ended = lock(&b.ended).clone().unwrap();
+        assert_eq!(
+            ended.outcomes.iter().map(|o| o.state).collect::<Vec<_>>(),
+            [ItemState::Done]
+        );
+        assert!(of_kind(&seen, "batch_keep").is_empty(), "上传那一组不落盘");
+    }
+
+    /// 🔴 送块回回都断、断到不再等 ⇒ 一组没成，本机那一份当场关掉（不留到这一组被挤出表才关）。
+    #[tokio::test]
+    async fn an_upload_that_never_gets_through_lets_go_of_the_local_file() {
+        let shelf = Shelf {
+            cut: true,
+            ..Shelf::default()
+        };
+        let (b, _, seen) = upload_to("up-cut", b"abc", None, shelf).await;
+        let shown = of_kind(&seen, "batch");
+        assert_eq!(shown.last().unwrap()["phase"], "failed", "{shown:?}");
+        let p = b.leg.as_ref().unwrap();
+        assert!(
+            lock(&p.files).iter().all(Option::is_none),
+            "本机那一份还攥着"
+        );
+    }
+
+    /// 🔴 撞了同名答跳过 ⇒ 不再提交，那一项记跳过。
+    #[tokio::test]
+    async fn an_upload_clash_answered_skip_commits_nothing_more() {
+        let (b, shelf, _) = upload_go("up-skip", b"abc", r#"{"all":"skip"}"#).await;
+        assert_eq!(lock(&shelf.commits).len(), 1);
+        assert_eq!(*lock(&shelf.chunks), 1);
+        let ended = lock(&b.ended).clone().unwrap();
+        assert_eq!(
+            ended.outcomes.iter().map(|o| o.state).collect::<Vec<_>>(),
+            [ItemState::Skipped]
         );
     }
 }

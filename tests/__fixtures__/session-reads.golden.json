@@ -24,18 +24,12 @@
     "background": null,
     "children": [],
     "childrenText": null,
-    "cost": {
-      "partial": false,
-      "text": "$0.42"
-    },
-    "forkedFrom": "src-0",
     "forkedLine": "分叉自「src-0」",
     "lastSay": {
       "at": "t5",
       "atMs": null,
       "text": "done"
     },
-    "line": null,
     "mcp": [
       {
         "at": null,

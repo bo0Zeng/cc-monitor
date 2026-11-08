@@ -32,7 +32,6 @@ relay-route-core = { path = "../../common/relay-route-core" }
 cap-core = { path = "../../common/cap-core" }
 shell-quote-core = { path = "../../common/shell-quote-core" }
 win-path-core = { path = "../../common/win-path-core" }
-ssh-dial = { path = "../../comms/ssh-dial" }
 jiff.workspace = true
 libc.workspace = true
 notify.workspace = true

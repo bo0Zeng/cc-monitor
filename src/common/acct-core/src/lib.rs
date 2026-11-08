@@ -1,8 +1,8 @@
 //! 账号库清单契约的**唯一定义**（清单常量 · 全仓唯一的号表类型 [`AccountBook`]），外加平台无关的名字安全判据。账号库那几条帧命令的线上形状住 `cmd-wire::accounts`。
 //!
 //! 今天的消费者：
-//! - 后端：`accounts/manage/`（写账号库）· `observe/accounts_query.rs`（读清单）· `accounts/upstream_select/file_face.rs` ·
-//!   `accounts/upstream_select/endpoint.rs` · `control/ccm/plan.rs`；号表由 `accounts/manage` 读清单时填，`accounts/upstream_select/rotate.rs`（换号）· `control/ccm/plan.rs`（起会话）· `observe/accounts_query.rs`（账号清单）读；
+//! - 后端：`accounts/manage/`（写账号库）· `accounts/manage/library.rs`（读清单）· `accounts/upstream_select/file_face.rs` ·
+//!   `accounts/upstream_select/endpoint.rs` · `control/ccm/plan.rs`；号表由 `accounts/manage` 读清单时填，`accounts/upstream_select/rotate.rs`（换号）· `control/ccm/plan.rs`（起会话）· `accounts/manage/library.rs`（账号清单）读；
 //! - 界面只经**生成物**用它：`tests/frontend/shell/payload_judgment_rules.rs` 从 [`AUTH_KINDS`] 现生成
 //!   `src/frontend/ui/generated/judgment-rules.ts`。
 //!
@@ -90,10 +90,10 @@ pub fn apikey_routed_subset(
         .collect()
 }
 
-/// 「鉴权方式这一维不再阻塞这个号被选中」。这是这条规则的唯一住址（几个生产者都调它，各填一个不同默认值在结构上不可表示）。
+/// 「鉴权方式这一维不再阻塞这个号被选中」。这是这条规则的唯一住址（读者：`src/backend/accounts/manage/library.rs`）。
 /// - 订阅号：凭据文件在不在。
 /// - api-key 号：恒真，它不用那个文件。
-/// `true` 不等于「真能连上」（徽章要把这个状态说出来，`src/backend/observe/accounts_query.rs::badge_of`），也不等于「凭据有效」（订阅那一支只 stat 存在性，过期 / 吊销看不出来）。
+/// `true` 不等于「真能连上」（徽章要把这个状态说出来，`src/backend/accounts/manage/library.rs::badge_of`），也不等于「凭据有效」（订阅那一支只 stat 存在性，过期 / 吊销看不出来）。
 pub fn auth_ready(auth_kind: &str, credentials_present: bool) -> bool {
     match auth_kind {
         k if k == AUTH_KIND_API_KEY => true,
@@ -103,7 +103,7 @@ pub fn auth_ready(auth_kind: &str, credentials_present: bool) -> bool {
 
 // ---------------------------------------------------------------- 能不能选 · 默认号是谁
 
-/// 「这个号能拿来起会话、能被选为默认」。这是这条判定的唯一住址：清单成品逐号写 `selectable`（后端 `observe/accounts_query.rs`），
+/// 「这个号能拿来起会话、能被选为默认」。这是这条判定的唯一住址：清单成品逐号写 `selectable`（后端 `accounts/manage/library.rs`），
 /// 起会话的判定（`control/launch_account.rs`）与界面都只读那一格。
 /// 四条都要：隔离模式（`in-place` 是逃生口、账号 0 是 `bare`）· 鉴权那一维就绪（[`auth_ready`]）· 号目录在 · 清单里写了号目录（账号 0 不经选号）。
 /// 跨三处的金样：`tests/__fixtures__/account-default.golden.json`。
@@ -194,119 +194,6 @@ impl AccountBook {
         self.accounts.insert(0, bare);
         self
     }
-}
-
-/// 跨生产者对拍夹具的**一格**：喂什么、该出什么。
-///
-/// 字段分两半：`manifest_auth_kind` / `credentials_present` 是**输入**，
-/// `expect_auth_kind` / `expect_auth_ready` 是**期望**（写成字面量，**不是**由
-/// [`auth_ready`] 算出来的 —— 算出来就成了循环自证）。两者的一致性由
-/// `tests::the_golden_matches_the_rule` 单独钉住：改了规则不改金样、或反过来，都红。
-/// 测试夹具 ⇒ 在 `fixtures` feature 后面（本 crate 自己的测试照带；后端 `[dev-dependencies]` 开它）：契约 crate 里不带夹具进发布二进制。
-#[cfg(any(test, feature = "fixtures"))]
-pub struct AuthKindParityCase {
-    /// 账号名，同时也是它在夹具根下的目录名。
-    pub name: &'static str,
-    /// manifest 里 `authKind` 键写什么；`None` = 这个键**不出现**。
-    pub manifest_auth_kind: Option<&'static str>,
-    /// 要不要在它的目录里放一个 [`CREDENTIALS_NAME`]。
-    pub credentials_present: bool,
-    /// 期望产出的 `authKind`（金样）。
-    pub expect_auth_kind: &'static str,
-    /// 期望产出的 `authReady`（金样）。
-    pub expect_auth_ready: bool,
-}
-
-/// 跨生产者对拍的唯一一份夹具。住在生产 crate 里：两个生产者住在两个不同的 crate（`src/backend` 刻意不进 workspace），唯一共享的就是本 crate；
-/// 在 `fixtures` feature 后面，只有测试构建开它 ⇒ 发布二进制里没有它。
-///
-/// | 格 | 它在守什么 |
-/// |---|---|
-/// | `sub-cred` | 正常订阅号 |
-/// | `sub-nocred` | 阴性对照：订阅号缺凭据仍然不可选 |
-/// | `api-nocred` | 正题：api-key 号缺凭据不被判不可用 |
-/// | `api-cred` | api-key 号有凭据文件也一样 —— 它不看那个文件 |
-/// | `legacy-nokind` | 旧 manifest（键缺席）⇒ 订阅 |
-/// | `bogus-kind` | 认不出的值 ⇒ 保守落订阅，不是落 api-key |
-#[cfg(any(test, feature = "fixtures"))]
-pub const AUTH_KIND_PARITY_CASES: [AuthKindParityCase; 6] = [
-    AuthKindParityCase {
-        name: "sub-cred",
-        manifest_auth_kind: Some(AUTH_KIND_SUBSCRIPTION),
-        credentials_present: true,
-        expect_auth_kind: AUTH_KIND_SUBSCRIPTION,
-        expect_auth_ready: true,
-    },
-    AuthKindParityCase {
-        name: "sub-nocred",
-        manifest_auth_kind: Some(AUTH_KIND_SUBSCRIPTION),
-        credentials_present: false,
-        expect_auth_kind: AUTH_KIND_SUBSCRIPTION,
-        expect_auth_ready: false,
-    },
-    AuthKindParityCase {
-        name: "api-nocred",
-        manifest_auth_kind: Some(AUTH_KIND_API_KEY),
-        credentials_present: false,
-        expect_auth_kind: AUTH_KIND_API_KEY,
-        expect_auth_ready: true,
-    },
-    AuthKindParityCase {
-        name: "api-cred",
-        manifest_auth_kind: Some(AUTH_KIND_API_KEY),
-        credentials_present: true,
-        expect_auth_kind: AUTH_KIND_API_KEY,
-        expect_auth_ready: true,
-    },
-    AuthKindParityCase {
-        name: "legacy-nokind",
-        manifest_auth_kind: None,
-        credentials_present: false,
-        expect_auth_kind: AUTH_KIND_SUBSCRIPTION,
-        expect_auth_ready: false,
-    },
-    AuthKindParityCase {
-        name: "bogus-kind",
-        manifest_auth_kind: Some("oauth-device"),
-        credentials_present: false,
-        expect_auth_kind: AUTH_KIND_SUBSCRIPTION,
-        expect_auth_ready: false,
-    },
-];
-
-/// 把 [`AUTH_KIND_PARITY_CASES`] 渲染成一份 schema v1 的 manifest（`root` = 夹具根的绝对路径）。
-///
-/// 两侧的测试都调它 ⇒ **喂进去的那份 JSON 逐字节相同**，不然「三者产出相同」就成了
-/// 「三者读的不是同一份输入」。目录与凭据文件由调用方按同一张表创建（见
-/// [`AuthKindParityCase::credentials_present`]）。
-#[cfg(any(test, feature = "fixtures"))]
-pub fn auth_kind_parity_manifest(root: &str) -> String {
-    let mut s =
-        String::from("{\"version\":1,\"updatedAt\":\"2026-08-24T00:00:00Z\",\"sharedStore\":\"");
-    s.push_str(root);
-    s.push_str("/shared\",\"accounts\":[");
-    for (i, c) in AUTH_KIND_PARITY_CASES.iter().enumerate() {
-        if i > 0 {
-            s.push(',');
-        }
-        s.push_str("{\"name\":\"");
-        s.push_str(c.name);
-        s.push_str("\",\"email\":\"");
-        s.push_str(c.name);
-        s.push_str("@x.test\",\"configDir\":\"");
-        s.push_str(root);
-        s.push('/');
-        s.push_str(c.name);
-        s.push_str("\",\"isDefault\":false,\"mode\":\"isolated\"");
-        if let Some(k) = c.manifest_auth_kind {
-            s.push_str(",\"authKind\":\"");
-            s.push_str(k);
-            s.push('"');
-        }
-        s.push('}');
-    }
-    s.push_str("]}");
-    s
 }
 
 /// 视觉欺骗字符：看不见或会改变渲染方向 / 边界的码位。账号名与 config dir 会进 UI、也会进命令串（一个夹带 RLO 的名字能在界面上显示成另一个账号），

@@ -28,7 +28,7 @@ fn filetime_converts_to_unix_seconds_against_an_outside_anchor() {
         unix_secs_from_filetime(Y2K_FILETIME),
         Some(Y2K_UNIX_SECS),
         "FILETIME → Unix 秒 对不上 2000-01-01 那个公知锚点 —— 偏移量或刻度写错了。\n\
-         这个值喂进 `watcher.rs::add_time_verdict` 的「进程起得比 pidfile 晚」那一格：\n\
+         这个值喂进 `history/live_table.rs::add_time_verdict` 的「进程起得比 pidfile 晚」那一格：\n\
          偏一个小时就会把活会话判成冒名、或把冒名放过去。"
     );
     // 纪元本身 ⇒ 0；早一个刻度 ⇒ 不是一个会话进程能有的起始时刻 ⇒ None（不编一个 0 出来）。

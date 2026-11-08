@@ -8,8 +8,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../../src/frontend/ui/copy-table", () => ({
   copyText: (k: string, a?: Record<string, unknown>) => (a ? `${k}(${Object.entries(a).map(([x, y]) => `${x}=${String(y)}`).join(",")})` : k),
 }));
-// 这台没有别的机器（开页先问的那一下）。
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(() => Promise.resolve([])) }));
+// 这台没有别的机器（开页先问的那一下：本机后端各台的成品）。
+vi.mock("../../../src/frontend/ui/machine-feed", async (orig) => ({ ...(await orig<object>()), readMachineNames: vi.fn(() => Promise.resolve(["<local>"])) }));
 vi.mock("../../../src/frontend/ui/plan-reads", async (orig) => ({ ...(await orig<object>()), fetchPlanList: vi.fn(), fetchPlanRead: vi.fn() }));
 vi.mock("../../../src/frontend/ui/kit/skeleton", () => ({
   skeletonRows: () => {

@@ -1503,25 +1503,6 @@ body.settings-window-mode .settings-panel {
   background: var(--error);
 }
 
-/* F08：别名生成器——折叠标记自绘 ▸/▾，不用原生三角。 */
-.ccm-alias-gen {
-  margin-top: 10px;
-}
-
-.ccm-alias-gen > summary {
-  font-size: var(--font-size-small);
-  color: var(--text-2);
-  cursor: pointer;
-  padding: 4px 0;
-  user-select: none;
-}
-
-
-.ccm-alias-gen > summary::before {
-  color: var(--text-faint);
-}
-
-
 /* === T03 待贴文本统一组件 ===
    三句话（贴到哪 / 怎么合并 / 怎样才生效）常驻屏幕而不是只在 toast 里闪一下；
    warning 用 warn 色——它说的是"你选的形态与盘上现状冲突"，是需要看见的提醒。 */
@@ -3118,12 +3099,6 @@ body.settings-window-mode .settings-panel {
   color: var(--text-2);
   font-size: var(--font-size-small);
   cursor: pointer;
-}
-.prof-empty-state > .cfg-hint {
-  margin: var(--space-4) 0;
-}
-.prof-empty-state .prof-trow {
-  cursor: default;
 }
 
 /* 通用页「高级：上下文上限」那一折：说明一行 ＋ 整宽的文本框。 */

@@ -1,5 +1,5 @@
 # 计划（planned-build）的读面：找 pb、跑 `pb dump`、加工成界面排版的成品、盯计划仓推 `changed {plan}`。只读，计划仓一个字节都不写。
-# 只引足迹 · 观测面 · 历史清单 · agents · 插件 · 帧面零件 · 纯工具 · 平台八层。
+# 只引观测面 · 历史清单 · agents · 插件 · 帧面零件 · 纯工具 · 平台八层。
 [package]
 name = "backend-plan"
 version = "0.0.0"
@@ -17,7 +17,6 @@ workspace = true
 test-support = []
 
 [dependencies]
-backend-footprint = { path = "../footprint" }
 backend-observe = { path = "../observe" }
 backend-history = { path = "../history" }
 backend-agents = { path = "../agents" }

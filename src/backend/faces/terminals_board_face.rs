@@ -1,9 +1,10 @@
 //! 「终端」视图那两条（typed）：`terminals-board-here`（这台那几行：终端名单 ＋ 这台的会话事实）·
 //! `terminals-board`（本机后端问到各台、合成一份）。本体在 `control/terminals_board.rs`。
 
-use crate::control::terminals::{self as t, On};
+use crate::control::terminals as t;
 use crate::control::terminals_board::{self as b, Got, SessionBits};
 use crate::control::terminals_wire::TerminalsListReq;
+use crate::host::tmux::On;
 use crate::wire::typed::{self, codes, Command};
 use cmd_wire::board::{BoardHere, TerminalsBoard};
 
@@ -65,7 +66,7 @@ pub(crate) fn here(req: &BoardHereReq) -> Result<BoardHere, BoardHereErr> {
     })?;
     let agent_home = crate::history::listing::agent_home();
     let doing = crate::history::live_table::now(&agent_home).doing();
-    let accounts = crate::observe::accounts_query::session_accounts_here(&agent_home);
+    let accounts = crate::accounts::manage::library::session_accounts_here(&agent_home);
     let annotations = match crate::history::history_annotations::load() {
         crate::history::history_annotations::Loaded::Read(t) => t,
         _ => Default::default(),

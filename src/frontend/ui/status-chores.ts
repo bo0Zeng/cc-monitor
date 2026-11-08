@@ -8,9 +8,8 @@ import { copyText } from "./copy-table";
 import type { ChoreCounts } from "./generated/ChoreCounts";
 
 export interface ChoresDeps {
-  machines(): Promise<string[]>;
-  /** 本机后端问到这几台、合一份；只读它的 `badge`。 */
-  read(machines: string[]): Promise<{ total: ChoreCounts }>;
+  /** 本机后端照它的机器表问到各台、合一份；只读它的 `badge`。 */
+  read(): Promise<{ total: ChoreCounts }>;
   open(): void;
 }
 
@@ -29,9 +28,9 @@ export class StatusChores {
     const gen = ++this.gen;
     let badge = 0;
     try {
-      badge = (await this.deps.read(await this.deps.machines())).total.badge;
+      badge = (await this.deps.read()).total.badge;
     } catch {
-      // 机器表 · 本机后端问不到 ⇒ 不出数（不猜）。
+      // 本机后端问不到 ⇒ 不出数（不猜）。
     }
     if (gen !== this.gen) return;
     if (badge <= 0) {

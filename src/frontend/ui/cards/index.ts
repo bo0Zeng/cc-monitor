@@ -29,7 +29,7 @@ import { buildDiffBody } from "./diff";
 import { buildInteractiveCard, settleInteractive } from "./interactive";
 import { attachStrip, fetchImage, type ImageRef } from "./attach-strip";
 import { markEditable } from "../said-edit";
-import type { Pasted } from "../generated/Pasted";
+import type { SaidPart } from "../generated/SaidPart";
 import type { ToolCard } from "../generated/ToolCard";
 import type { ChildRunTag } from "../generated/ChildRunTag";
 import type { ToolStep } from "../generated/ToolStep";
@@ -42,7 +42,6 @@ import type { RetryRun } from "../generated/RetryRun";
 import { buildApiErrorCard, buildApiRetryCard } from "./api-error";
 import { buildUnreadLine } from "./unread";
 import { LS_KEYS, safeGet, safeSet } from "../local-storage";
-import { sizeText } from "../format";
 import { openFileWindow } from "../file-window";
 import { isRemoteOrigin, type Machine } from "../ipc/origin";
 
@@ -273,7 +272,7 @@ export function renderMessage(rec: LineRecord, ctx: RenderContext, seq?: number)
           return { kind: "card", element: buildInterruptLine(time) };
         case "agentTask":
           // 派给子 agent 的活：不是用户说的，画成带抬头的框（谁派的 · 几点派的）。
-          return { kind: "card", element: buildBriefCard(said.text, time, ctx.briefFrom ?? null) };
+          return { kind: "card", element: buildBriefCard(said.text, said.parts?.[0]?.fold, time, ctx.briefFrom ?? null) };
         default: {
           // 人说的话：用户气泡；带的附件（图片块 · `attachments[]`）画在正文上方。图片来源一张都画不出 ⇒ 没东西可摆。
           const card = buildSaidCard(rec, ctx, time);
@@ -340,48 +339,34 @@ export function buildStepsCard(units: HTMLElement[]): HTMLElement {
 }
 
 /**
- * 人说的话（含粘贴进来的块）：粘贴块只露正文（两头的标记不露）；后端标了 `fold` 的折成后端写好的那一行（`foldText`），点开就地展开。
- * 块的边界、正文那一截、折不折与折起那一行都是后端的 `who.pasted`（UTF-16 下标），界面不认标记的写法、不自己数行、不自己拼字。
+ * 人说的话（含粘贴进来的块）：照后端切好的段（`who.parts`）一段一段排；折着的那段收成后端写好的那一行（`fold.more`），点开就地展开。
+ * 段界、标记、折不折与那一行都是后端的，界面不认标记的写法、不自己切、不自己数行。没有段 ⇒ 整段照排。
  */
-function fillSaid(body: HTMLElement, text: string, pasted: readonly Pasted[] | undefined): void {
+function fillSaid(body: HTMLElement, text: string, parts: readonly SaidPart[] | undefined): void {
   // 露在外面的每一段记下原文（照原文排）：里面提到的格由 `plan-refs.ts` 跟回复正文同一批问；折起的粘贴块不记 ⇒ 不送。
-  if (!pasted || pasted.length === 0) {
+  if (!parts || parts.length === 0) {
     body.innerHTML = renderPlainText(text);
     noteProse(body, text, renderPlainText);
     return;
   }
-  const plain = (s: string): void => {
-    if (!s) return;
-    const span = document.createElement("span");
-    span.innerHTML = renderPlainText(s);
-    noteProse(span, s, renderPlainText);
-    body.appendChild(span);
-  };
-  let at = 0;
-  let afterFold = false;
-  for (const p of pasted) {
-    const fold = p.fold;
-    // 折起来的那一行自己占一行：紧挨着它的那一个换行不再另起空行。
-    let before = text.slice(at, p.start);
-    if (afterFold) before = before.replace(/^\r?\n/, "");
-    if (fold) before = before.replace(/\r?\n$/, "");
-    plain(before);
-    afterFold = fold;
-    const inner = text.slice(p.bodyStart, p.bodyEnd).replace(/^[\r\n]+|[\r\n]+$/g, "");
-    if (fold) {
+  for (const p of parts) {
+    if (p.fold) {
       const d = document.createElement("details");
       d.className = "paste-fold";
       const s = document.createElement("summary");
-      s.textContent = p.foldText ?? "";
+      s.textContent = p.fold.more;
       const b = document.createElement("div");
       b.className = "paste-body";
-      b.innerHTML = renderPlainText(inner);
+      b.innerHTML = renderPlainText(p.text);
       d.append(s, b);
       body.appendChild(d);
-    } else plain(inner);
-    at = p.end;
+      continue;
+    }
+    const span = document.createElement("span");
+    span.innerHTML = renderPlainText(p.text);
+    noteProse(span, p.text, renderPlainText);
+    body.appendChild(span);
   }
-  plain(afterFold ? text.slice(at).replace(/^\r?\n/, "") : text.slice(at));
 }
 
 /** 人说的那一句：气泡（带的附件画在气泡外、上方；远端那台上的点开 ⇒ 文件窗口定位到那一份）。正文与附件都没有 ⇒ `null`。 */
@@ -391,7 +376,7 @@ function buildSaidCard(rec: Extract<LineRecord, { t: "said" }>, ctx: RenderConte
   const images = { load: (image: ImageRef) => fetchImage(ctx.origin, ctx.parentPath, rec.id, image), lazy: ctx.lazy === true };
   const strip = attachStrip(rec.blocks, rec.attachments ?? [], open, images);
   if (!rec.who.text && strip === null) return null;
-  const card = buildUserCard(time, rec.who.text, rec.who.pasted, strip);
+  const card = buildUserCard(time, rec.who.text, rec.who.parts, strip);
   if (ctx.editSaid !== undefined && rec.who.text) markEditable(card, { origin: ctx.origin, sid: ctx.editSaid.sid, id: rec.id, text: rec.who.text });
   return card;
 }
@@ -399,7 +384,7 @@ function buildSaidCard(rec: Extract<LineRecord, { t: "said" }>, ctx: RenderConte
 function buildUserCard(
   time: string,
   text: string,
-  pasted?: readonly Pasted[],
+  parts?: readonly SaidPart[],
   strip: HTMLElement | null = null,
 ): HTMLElement {
   const card = document.createElement("div");
@@ -407,7 +392,7 @@ function buildUserCard(
   card.appendChild(cardHeader(time, copyText("machineForm.field.user")));
   const body = document.createElement("div");
   body.className = "card-body";
-  if (text) fillSaid(body, text, pasted);
+  if (text) fillSaid(body, text, parts);
   // 只有字 ⇒ 卡本身就是气泡；带附件 ⇒ 卡是透明的一列：附件那一排在前，气泡另起一格（附件画在气泡外，同 Claude app）；没有字不画空气泡。
   if (strip === null) {
     if (text) card.appendChild(body);
@@ -693,8 +678,8 @@ function injectOrBuildToolResult(
       resultTextLedger.maxUnits = text.length;
     }
   }
-  // 大小是后端交的字节数（`bytes`，出口省掉内容之后照样有），界面不量。
-  const size = sizeText(block.bytes);
+  // 大小是后端照字节写好的那一格（`sizeText`，出口省掉内容之后照样有），界面不量、不换算。
+  const size = block.sizeText;
   const sizeOrNothing = (): string => (block.bytes > 0 ? ` · ${size}` : "");
   const bodyInto = (el: HTMLElement): void => {
     if (text !== null) {
@@ -718,18 +703,15 @@ function injectOrBuildToolResult(
     host.addEventListener("toggle", open);
     open();
   };
-  const exitCode = facts.results[block.for]?.exitCode ?? null;
+  // 报错尾巴是后端写好的那一格（`results[id].error`：「退出码 N」/「出错」）；没失败 ⇒ 缺。
+  const failed = facts.results[block.for]?.error;
   // 首行预览是核心出的一格（`results[id].preview`，截法只在核心一处）：出口省掉结果正文之后照样有。
   const preview = facts.results[block.for]?.preview ?? "";
   const seen = ctx.toolUseNames.get(block.for);
   const toolName = seen?.name ?? "tool";
   // 结果默认怎么画按后端给的卡型（`md`），不按工具名自己判。
   const mdByDefault = seen?.card === "md";
-  const errTag = block.isError
-    ? exitCode !== null
-      ? ` · exit ${exitCode}`
-      : " · error"
-    : "";
+  const errTag = failed ? ` · ${failed}` : "";
 
   const host = ctx.toolUseElements.get(block.for);
   // 派出子运行的那次调用：交回的结果 / 报错收进派出卡（可展开）。
@@ -769,11 +751,7 @@ function injectOrBuildToolResult(
         host.classList.add("block-has-error");
       }
 
-      const labelPrefix = block.isError
-        ? exitCode !== null
-          ? `Error · exit ${exitCode}`
-          : "Error"
-        : "Output";
+      const labelPrefix = block.isError ? (failed ? `Error · ${failed}` : "Error") : "Output";
       const summary = document.createElement("summary");
       summary.className = "block-summary one-line";
       summary.textContent = preview ? `${labelPrefix} · ${preview}` : `${labelPrefix}${sizeOrNothing()}`;

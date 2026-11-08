@@ -97,7 +97,7 @@ impl Rig {
             Ok(NEW.into())
         };
         let library = || {
-            use crate::observe::accounts_query::test_support::{list, row_with};
+            use crate::accounts::manage::library::test_support::{list, row_with};
             list(vec![
                 row_with("work", |a| {
                     a.config_dir = Some("/h/.cc/work".into());
@@ -453,7 +453,7 @@ fn the_directory_question_answers_presence_and_the_name_this_machine_would_mint(
         })
     };
     let no = |_: &str, _: Option<&str>| -> Result<(bool, String), String> { unreachable!() };
-    let library = || crate::observe::accounts_query::test_support::list(Vec::new());
+    let library = || crate::accounts::manage::library::test_support::list(Vec::new());
     let accounts = la::Facts {
         has_accounts: false,
         library: &library,

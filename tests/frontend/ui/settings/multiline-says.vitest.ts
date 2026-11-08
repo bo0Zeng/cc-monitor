@@ -44,7 +44,7 @@ describe("设置窗 · 分行的说明照分行画", () => {
   });
 
   it("★ 机器页「别名与配置文件」页头那一句", () => {
-    const page = buildConfigPage({ platform: "posix", origin: () => "devbox", machine: () => "devbox" });
+    const page = buildConfigPage({ origin: () => "devbox", machine: () => "devbox" });
     expect(whiteSpaceOf(page, copyText("cfgPage.head.intro"))).toBe("pre-line");
   });
 });

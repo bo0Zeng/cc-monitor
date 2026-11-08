@@ -20,7 +20,6 @@ ts = ["dep:ts-rs", "cmd-wire/ts", "backend-platform/ts", "backend-dial/ts"]
 [dependencies]
 backend-accounts = { path = "../accounts" }
 backend-agents = { path = "../agents" }
-backend-host = { path = "../host" }
 backend-dial = { path = "../dial" }
 backend-history = { path = "../history" }
 backend-wire = { path = "../wire" }
@@ -36,8 +35,6 @@ relay-route-core = { path = "../../common/relay-route-core" }
 # 有上限读（读上限 `Cap` · 同步整读）的唯一一份；零依赖。
 cap-core = { path = "../../common/cap-core" }
 shell-quote-core = { path = "../../common/shell-quote-core" }
-# 机器表字段的宽松读法（同拨号核心那一份）。
-ssh-dial = { path = "../../comms/ssh-dial" }
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
@@ -64,5 +61,4 @@ backend-agents = { path = "../agents", features = ["test-support"] }
 backend-wire = { path = "../wire", features = ["test-support"] }
 backend-accounts = { path = "../accounts", features = ["test-support"] }
 backend-history = { path = "../history", features = ["test-support"] }
-backend-host = { path = "../host", features = ["test-support"] }
 backend-dial = { path = "../dial", features = ["test-support", "ts"] }

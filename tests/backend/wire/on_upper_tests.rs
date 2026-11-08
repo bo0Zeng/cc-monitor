@@ -52,6 +52,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 unavailable: vec![Unavailable {
                     command: s("tmux-list"),
                     code: s("no_tmux"),
+                    said: s("灰"),
                 }],
                 host_env: [(s("CCM_RELAY_PORT"), s("47001"))].into_iter().collect(),
                 shapes: [(s("ping"), s("0000abcd"))].into_iter().collect(),
@@ -161,7 +162,13 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 sid: s("s1"),
                 face: crate::wire::SessionFace::of(crate::wire::Life::Live { activity: Some(crate::agents::SessionActivity::NeedsYou), host: None })
                     .under(Some(s("b")))
-                    .housed_in(Some(&crate::wire::SessionContainer::Tmux { terminal: Some(s("tmux-3-7")) })),
+                    .housed_in(Some(&crate::wire::SessionContainer::Tmux { terminal: Some(s("tmux-3-7")) }))
+                    // 全格那一份：状态一句带会走的一截与悬停句（只经 `saying` 一个口写）。
+                    .saying(Some(crate::wire::StateLine {
+                        text: cmd_wire::cells::Words(s("l")),
+                        clock: Some(cmd_wire::frame::Clock { text: cmd_wire::cells::Words(s("l {dur}")), from: 1 }),
+                        peek: Some(cmd_wire::cells::Words(s("p"))),
+                    })),
                 name_face: crate::history::search_rules::name_face(
                     &crate::history::search_rules::LabelFacts {
                         title: Some(s("t")),

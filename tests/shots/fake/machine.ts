@@ -80,9 +80,9 @@ export function machineOps(): Record<string, OpHandler> {
     },
     // 停 / 重启 / 更新 / 卸载之前「会打断什么」（形状同 `tests/__fixtures__/machine-interrupts.golden.json`）：
     //   devbox 上两个会话的请求经它、一个活着；本机账上通往 devbox 的转发一条；别的台什么都不断。
-    //   界面只问本机后端（它问到那台、并好再答）：`machine` = 停的那台；`appExit` 带各台名单。
-    "machine-interrupts": (_origin, req) => {
-      const devbox = req.machine === "devbox" || (req.appExit === true && Array.isArray(req.machines) && req.machines.includes("devbox"));
+    //   界面只问本机后端（它问到那台、并好再答）：`machine` = 停的那台；`appExit` ＋ `fleet` ⇒ 它照自己的机器表问各台。
+    "machine-interrupts": (_origin, req, w) => {
+      const devbox = req.machine === "devbox" || (req.appExit === true && req.fleet === true && w.machines.includes("devbox"));
       return {
         relayedSessions: devbox ? 2 : 0,
         relayedMaybe: 0,
@@ -125,6 +125,7 @@ export function machineOps(): Record<string, OpHandler> {
     }),
     // 接入那一格：~/.bashrc 已接上（第 40 行），你在第 125 / 129 行自己写了 cc · cct（链接那一条恒是你写的生效）。
     "aliases-read": () => ({
+      shell: "posix",
       otherRc: null,
       rcCandidates: [
         {
@@ -211,7 +212,6 @@ export const HOST_KEYS: Record<string, { key: string; fingerprint: string }> = {
 
 export function machineCommands(): Record<string, CommandHandler> {
   return {
-    list_remote_mcp_origins: (_a, w) => w.machines.slice(1).filter((m) => !w.unseenMachines.includes(m)),
     // 形状照壳那一口（`BackendStatus`）：本机后端起没起来是壳的事实（`local`）；各台（含本机）的状态成品与名字都在本机后端（`machine-read` · `changed {machine}`），这一口不带。
     backend_status: (a, w): BackendStatus => ({
       origin: String(a.origin),

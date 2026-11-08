@@ -130,6 +130,29 @@ class TurnFoldsTest {
     }
 
     @Test
+    fun `段只照 after 到 until 收：另一段的 after 那一条自己不让前一段在它前面断；until 没有 ⇒ 到尾；本机还没进记录的那一句不入段`() {
+        val inner = listOf(said("u1"), tool("a1"), tool("a2"), text("a3"), tool("b1"))
+        val crossed = listOf(turn("u1", seg("u1", "a3")), turn("x", seg("a2", "a3")))
+        assertEquals("u1", TurnFolds.owner(inner, crossed, "a1#0"))
+        assertEquals("u1", TurnFolds.owner(inner, crossed, "a2#0"))
+        assertEquals(null, TurnFolds.owner(inner, crossed, "a3#0"))
+        val local = RenderUnit.UserText("local#0", "q", null)
+        val open = listOf(said("u1"), tool("a1"), tool("a2"), local, tool("b1"))
+        val tailTurns = listOf(turn("u1", seg("u1", null)))
+        assertEquals(listOf("u1", "u1"), listOf("a1#0", "a2#0").map { TurnFolds.owner(open, tailTurns, it) })
+        assertEquals(null, TurnFolds.owner(open, tailTurns, "local#0"))
+    }
+
+    @Test
+    fun `轮次比卡先到（后端已有新的一轮、流还没送到）：最上面不画那一轮的过程行，照拉到的折`() {
+        val ahead = listOf(turns[0], turn("u2", seg("u2", "u9")), turn("u9", seg("u9", null)))
+        assertEquals(
+            listOf("u1#0", "proc:u1:shut", "a3#0", "proc:a3:shut", "a5#0", "u2#0", "proc:u2:shut"),
+            shape(TurnFolds.fold(units, ahead, emptySet())),
+        )
+    }
+
+    @Test
     fun `没有分段（还没问到 · 问不到）⇒ 照原样逐条画`() {
         assertEquals(units.map { it.key }, shape(TurnFolds.fold(units, emptyList(), emptySet())))
     }

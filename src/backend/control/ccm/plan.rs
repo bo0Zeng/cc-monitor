@@ -292,9 +292,9 @@ pub struct Env {
     /// `agents::account_env_of(<这一趟的 agent>)` 取来 —— 本文件不认识任何 agent 的名字。
     pub account_env: String,
     pub self_argv: Vec<String>,
-    /// 问「此刻哪些会话在跑」的那一次扫描（观测层的，由入口注入 —— control 不引用 observe）。
-    /// 入参 = 这一趟要用的账号配置目录（`None` = agent 自己的默认家目录）。`None` = 这一趟不问（预览 / 不是 resume）。
-    pub running_sessions: Option<super::RunningScan>,
+    /// resume 之前问不问「这条会话此刻在不在别处跑着」（问的是这一趟那个账号目录的活会话表，`history::live_table::now`）：
+    /// 真跑 ⇒ 问；预览 · 判据 ⇒ 不问（`Default` 是不问）。
+    pub asks_live: bool,
     /// 这一发指到哪个中转地址（上游选择那张决策表，入口注入）。`None` = 不问（判据 / 不起 agent）。
     pub relay: Option<RelayAsk>,
     /// 〔会话血缘〕调用方是哪个会话的 shell：（那一家导的变量名, 会话编号）—— 某一家的「我是哪个会话」变量
@@ -392,7 +392,7 @@ impl Env {
             //   ⇒ 不需要环境变量补词。
             // argv 由调用方交（`stream/entry.rs` 取的那一次），本模块不自己读。
             self_argv: super::self_invocation(process_argv),
-            running_sessions: None,
+            asks_live: true,
             relay: Some(crate::accounts::upstream_select::endpoint::relay_for_exec),
             inherited_parent: parent_from(&|k| std::env::var(k).ok()),
             origin_token: Some(mint_origin()),
@@ -435,7 +435,7 @@ impl Env {
             inherited_config_dir: None,
             account_env: String::new(),
             self_argv: vec![super::SUBCOMMAND_WORD.to_string()],
-            running_sessions: None,
+            asks_live: false,
             relay: Some(crate::accounts::upstream_select::endpoint::relay_for_preview),
             // 预览是「从这台家目录里的一个新终端敲」：不在任何会话里，也不铸来处（每次预览都一样）。
             inherited_parent: None,
@@ -1175,12 +1175,13 @@ pub fn build_among(
         return Err(refuse(&env.account_env, &config_dir));
     }
     // ── resume 先查是否已在跑（「只看不吃 `--resume` 以复用 tmux 名」）──
-    //    判活是观测层起步初扫那一份（`observe::watcher::running_sessions`，入口注入），只对声明认 pidfile 的那几家问（`Adapter::live`）；
-    //    `None` = 问不了（预览 / 不认 pidfile 的那一家）。
-    let alive = match (o.resumes.as_deref(), env.running_sessions) {
-        (Some(sid), Some(scan))
-            if crate::agents::live_by_among(registry, &o.agent)
-                == crate::agents::LiveBy::Pidfiles =>
+    //    判活问这一趟那个账号目录的活会话表（`history::live_table::now(..).writers`），只对声明认 pidfile 的那几家问（`Adapter::live`）；
+    //    `None` = 问不了（预览 · 判据 / 不认 pidfile 的那一家）。
+    let alive = match o.resumes.as_deref() {
+        Some(sid)
+            if env.asks_live
+                && crate::agents::live_by_among(registry, &o.agent)
+                    == crate::agents::LiveBy::Pidfiles =>
         {
             let dir = if !config_dir.is_empty() {
                 Some(config_dir.as_str())
@@ -1189,12 +1190,8 @@ pub fn build_among(
             } else {
                 env.inherited_config_dir.as_deref()
             };
-            let mut pids: Vec<u32> = scan(dir.map(std::path::Path::new))
-                .into_iter()
-                .filter(|(s, _)| s == sid)
-                .map(|(_, pid)| pid)
-                .collect();
-            pids.sort_unstable();
+            let home = crate::agents::home_at(dir.map(std::path::Path::new), false);
+            let pids = crate::history::live_table::now(&home).writers(sid);
             // 已经不止一个进程在写它 ⇒ 接哪一个都不对、更不另起：明说是哪几个。
             if pids.len() > 1 {
                 let said: Vec<String> = pids.iter().map(u32::to_string).collect();

@@ -304,7 +304,7 @@ export async function recordReadReply(
 // 判据按两条命令名答话、回命令回包的形状（`{available, error, meta, accounts, notice}`）。
 // 这一问在线上是一发 `chan_call`（op = `accounts-list`）⇒ 本节把一发 `chan_call` 译回「哪一问 ＋ 旧形参」，
 // 把判据手里那份旧回包译成**后端的成品字节**（或通道的失败）。
-// ⚠ 译法逐格照生产：请求体键名是 `src/frontend/ui/accounts.ts` 发的那几个，成品键名是后端 `observe/accounts_query.rs::list_product`
+// ⚠ 译法逐格照生产：请求体键名是 `src/frontend/ui/accounts.ts` 发的那几个，成品键名是后端 `accounts/manage/library.rs::list_product`
 //   出的那几个（生成类型 `AccountsList`）。
 // ⚠ 旧回包里「老后端」那几种缺格（账号缺 `authKind` / `authReady`、`meta: null`）在成品里不存在 ⇒ 按旧消费侧的回落补齐：
 //   `authKind` 缺 ⇒ 订阅 · `authReady` 缺 ⇒ `loggedIn`（`accountReady` 那条旧回落）· `meta: null` ⇒ 没启用（`deriveUi` 那一档）。
@@ -350,7 +350,7 @@ function productAccount(a: Record<string, unknown>): Record<string, unknown> {
   out.selectable = a.selectable ?? true;
   out.keyMasked = a.keyMasked ?? null;
   out.endpointHost = a.endpointHost ?? null;
-  // 徽章是那台后端写好的一枚（`accounts_query::badge_of`）：夹具不写 ⇒ 给一枚占位（字不当真，判徽章的判据自己写）。
+  // 徽章是那台后端写好的一枚（`accounts::manage::library::badge_of`）：夹具不写 ⇒ 给一枚占位（字不当真，判徽章的判据自己写）。
   out.badge = a.badge ?? { text: "badge", warn: false, title: "" };
   // 号色是那台账号库里的一格（`Manifest::with_colors`）：夹具不写 ⇒ 第 0 格占位（判号色的判据自己写）。
   out.color = a.color ?? 0;
@@ -359,7 +359,7 @@ function productAccount(a: Record<string, unknown>): Record<string, unknown> {
   out.quota = a.quota ?? null;
   out.unselectable = a.unselectable ?? null;
   out.login = a.login ?? false;
-  // 进不进新建会话的选号表是那台后端写好的格（`accounts_query::new_session_of`）：夹具不写 ⇒ 照那台的样子（有目录、隔离 ⇒ 进）。
+  // 进不进新建会话的选号表是那台后端写好的格（`accounts::manage::library::new_session_of`）：夹具不写 ⇒ 照那台的样子（有目录、隔离 ⇒ 进）。
   out.newSession = a.newSession ?? (out.configDir !== null && out.mode === "isolated");
   return out;
 }
@@ -415,14 +415,13 @@ export function withAccountReads(
 // 历史清单与注解改走通道（问本机常驻后端）之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
-// 今天：改注解 / 删会话连带删注解 = `history-annotate` / `history-forget`（上次的号并进了 `session-account`）。
+// 今天：改注解 = `history-annotate`（上次的号并进了 `session-account`）；删会话连带删注解在那台后端 `files-delete-session` 里一并做完。
 // ⇒ 本节把这几发译回「哪一问 ＋ 旧形参」，把判据手里那份旧回包译成**本机后端的成品字节**（或通道的失败）。
 // ⚠ 请求体键名是 `src/frontend/ui/history-reads.ts` 发的那几个；旧回包里缺的格按旧消费侧的读法补齐（缺 ⇒ `null` / 缺省）。
 
-/** 历史那几问各自的名字（判据里的叫法 = 旧命令名；`history_forget` 是新的，旧世界里它是删会话那条命令的一部分）。 */
+/** 历史那几问各自的名字（判据里的叫法 = 旧命令名）。 */
 export type HistoryRead =
   | "update_history_metadata"
-  | "history_forget"
   // 删会话改走通道（`files-delete-session`，发给那一台）；判据里仍叫旧命令名，形参是 `{origin, sessionId}`。
   | "delete_history_session";
 
@@ -440,10 +439,6 @@ export function historyReadOf(
         "update_history_metadata",
         { sessionId: body.sid, patch: body.patch },
       ];
-    }
-    case "history-forget": {
-      const body = chanArgsJson(a) as Record<string, unknown>;
-      return ["history_forget", { sessionId: body.sid }];
     }
     case "files-delete-session": {
       const body = chanArgsJson(a) as Record<string, unknown>;
@@ -492,7 +487,6 @@ export function withHistoryReads(
       const a = args as ChanCallArgs;
       const body = [
         "history-annotate",
-        "history-forget",
         "files-delete-session",
       ].includes(a.op)
         ? (chanArgsJson(a) as Record<string, unknown>)
@@ -513,10 +507,6 @@ export function withHistoryReads(
           },
         });
       }
-      if (body && a.op === "history-forget") {
-        await settled(answer("history_forget", { sessionId: body.sid }));
-        return chanReply({ removed: true });
-      }
       if (body && a.op === "files-delete-session") {
         await answer("delete_history_session", { origin: a.origin, sessionId: body.sid });
         return chanReply({ path: `<替身>/${String(body.sid)}.jsonl` });
@@ -535,8 +525,8 @@ function wordsOf(e: unknown): string {
 // 开终端改成两步之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
-// 今天开终端（`src/frontend/ui/terminal-open.ts`）：远端两步 本机后端 `terminal-ssh {machine, command}`（只交名字，
-// 渲 `ssh -t …` 那一行）→ monitor `open_terminal_window {command}`；本机只有开窗那一步。
+// 今天开终端（`src/frontend/ui/terminal-open.ts`）：本机与远端都是两步 —— 先问本机后端 `terminal-ssh {machine, command}`
+// （只交名字，回要跑的那一行）→ 再 monitor `open_terminal_window {command}`。
 // 判据手里的替身按**旧的那一条**答话、断言（`launch_remote_terminal {origin, remoteCmd}`）⇒ 本节把这几步译回那一条：
 // - `terminal-ssh` **原样回**交进来的那串（ssh 外壳的字节归 Rust：`tests/backend/dial_terminal_tests.rs`，这里不重抄渲染）；
 // - 开窗那一步凭「上一次 `terminal-ssh` 问的是哪台」补回 origin；没问过 ⇒ 本机串 `<local>`；旧的那一条没抛 ⇒ 壳回「开了」。

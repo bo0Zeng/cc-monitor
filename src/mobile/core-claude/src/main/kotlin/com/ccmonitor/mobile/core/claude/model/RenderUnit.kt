@@ -4,9 +4,10 @@ import com.ccmonitor.mobile.core.wire.gen.Attachment
 import com.ccmonitor.mobile.core.wire.gen.Doc
 import com.ccmonitor.mobile.core.wire.gen.LineDiff
 import com.ccmonitor.mobile.core.wire.gen.NoticeRun
-import com.ccmonitor.mobile.core.wire.gen.Pasted
 import com.ccmonitor.mobile.core.wire.gen.RetryOutcome
 import com.ccmonitor.mobile.core.wire.gen.RetryRun
+import com.ccmonitor.mobile.core.wire.gen.TextFold
+import com.ccmonitor.mobile.core.wire.gen.SaidPart as WireSaidPart
 
 /**
  * 手机这边送出去、记录里还没出现的那一句的投递状态（历史记录恒为 `null`）。
@@ -40,7 +41,10 @@ data class SaidImage(
     val record: String,
 )
 
-/** 人说的那一句的一段：照排的字 · 折成一行的那一块（[text] 是收着时那一行，那台写好的 `foldText`；[body] 是点开后的正文）。 */
+/**
+ * 人说的那一句的一段（照记录成品的 `who.parts[]`，那台切好的，这里只换个画法用的名字）：
+ * 照排的字 · 折成一行的那一块（[text] 是收着时那一行，那台写好的 `fold.more`；[body] 是点开后的正文）。
+ */
 sealed interface SaidPart {
     data class Plain(
         val text: String,
@@ -50,45 +54,11 @@ sealed interface SaidPart {
         val text: String,
         val body: String,
     ) : SaidPart
-}
 
-/**
- * 照记录成品的 `pasted[]`（UTF-16 下标，含两头的标记）把 [text] 切成几段：标记不上屏，只露正文那一截（两头的换行去掉）；
- * 折不折照那一块的 `fold`。折起来的那一段自己占一行 ⇒ 紧挨着它的那一个换行不再另算。相邻照排的几段并成一段。没有粘贴的块 ⇒ 空（照 `text` 画）。
- */
-fun saidParts(
-    text: String,
-    pasted: List<Pasted>,
-): List<SaidPart> {
-    if (pasted.isEmpty()) return emptyList()
-    val out = ArrayList<SaidPart>()
-    val plain = StringBuilder()
-
-    fun flush() {
-        if (plain.isNotEmpty()) out += SaidPart.Plain(plain.toString())
-        plain.setLength(0)
+    companion object {
+        /** 记录里那一段 ⇒ 画法：带折法 ⇒ 折成一行，否则照排。 */
+        fun of(p: WireSaidPart): SaidPart = p.fold?.let { Folded(it.more, p.text) } ?: Plain(p.text)
     }
-    var at = 0
-    var afterFold = false
-    for (p in pasted.sortedBy { it.start }) {
-        var before = text.substring(at.coerceAtMost(p.start), p.start)
-        if (afterFold) before = before.removePrefix("\r\n").removePrefix("\n")
-        if (p.fold) before = before.removeSuffix("\n").removeSuffix("\r")
-        plain.append(before)
-        val body = text.substring(p.bodyStart, p.bodyEnd).trim('\r', '\n')
-        if (p.fold) {
-            flush()
-            out += SaidPart.Folded(p.foldText.orEmpty(), body)
-        } else {
-            plain.append(body)
-        }
-        afterFold = p.fold
-        at = p.end
-    }
-    val tail = text.substring(at.coerceAtMost(text.length))
-    plain.append(if (afterFold) tail.removePrefix("\r\n").removePrefix("\n") else tail)
-    flush()
-    return out
 }
 
 /**
@@ -181,23 +151,26 @@ sealed interface RenderUnit {
         override val sourceUuid: String?,
     ) : RenderUnit
 
-    /** `!bash` 输出（stdout/stderr 任一可空）。 */
+    /** `!bash` 输出（stdout/stderr 任一可空）；各自折不折、露几行、展开那一句照那台写好的 [stdoutFold] · [stderrFold]。 */
     data class BashOutput(
         override val key: String,
         val stdout: String,
         val stderr: String,
         override val sourceUuid: String?,
+        val stdoutFold: TextFold? = null,
+        val stderrFold: TextFold? = null,
     ) : RenderUnit
 
     /**
      * 派活的那段话（子运行记录里派出它的那一方交给它的活，`speaker.agentTask`）：不是人说的，画成整宽靠左的派活卡，
-     * 抬头写谁派的 ＋ [timeText]（核心写好的钟面）；超过四行收起。
+     * 抬头写谁派的 ＋ [timeText]（核心写好的钟面）；太长 ⇒ 照那台写好的 [fold] 先露几行。
      */
     data class Brief(
         override val key: String,
         override val text: String,
         val timeText: String?,
         override val sourceUuid: String?,
+        val fold: TextFold? = null,
     ) : Worded
 
     /** `/compact` 续接摘要，默认折叠（超长，点开看全文）。 */
@@ -231,7 +204,7 @@ sealed interface RenderUnit {
     ) : Worded
 
     /**
-     * 一串重试（记录 `t: retry`，相邻的几条并成一条细条）：[key] 是首条的 id（会话事实 `retries[]` 按它给那一串），
+     * 一串重试（记录 `t: retry`；接在后面的那几条那台出 `draw: none`，只首条成单元）：[key] 是首条的 id（会话事实 `retries[]` 按它给那一串），
      * [text] 是首条写好的那一行（`retry.text`）；事实到了照那一串画（[RetryLook.strip]）。
      */
     data class Retry(

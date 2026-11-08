@@ -227,7 +227,7 @@ fn heard_takes_agent_titles_and_the_first_said_only() {
         who: cmd_wire::record::UserText {
             speaker: cmd_wire::record::Speaker::Human,
             text: text.into(),
-            pasted: Vec::new(),
+            parts: Vec::new(),
         },
         blocks: vec![],
         results: Default::default(),

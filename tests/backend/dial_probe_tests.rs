@@ -508,7 +508,7 @@ async fn a_hello_that_answers_ping_is_all_green() {
         hello: hello(
             "b1",
             &["ping", "terminal-preview", "files-chmod"],
-            json!([{"command": "terminal-preview", "code": "no_tmux"}]),
+            json!([{"command": "terminal-preview", "code": "no_tmux", "said": "灰"}]),
         ),
         ping: None,
     })]);

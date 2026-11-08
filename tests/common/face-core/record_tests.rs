@@ -285,3 +285,81 @@ fn a_record_that_does_not_read_becomes_the_unread_one_and_the_frame_still_decode
     };
     assert!(matches!(l.record.unwrap().0.body, Body::Unread { .. }));
 }
+
+// ── 记录 → 卡片切好的段：粘贴块 · 派活那段 · 命令输出怎么折 · 重试那一串画几条（阈值只在这一层）。
+
+fn lines_of(n: usize) -> String {
+    (1..=n)
+        .map(|i| format!("l{i}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// 照标记在 `text` 里的字节位置给一块的界（适配层认标记，这里只吃界）。
+fn span(text: &str, open: &str, close: &str) -> PasteSpan {
+    let start = text.find(open).unwrap();
+    let body_start = start + open.len();
+    let body_end = body_start + text[body_start..].find(close).unwrap();
+    PasteSpan {
+        start,
+        end: body_end + close.len(),
+        body_start,
+        body_end,
+    }
+}
+
+#[test]
+fn a_said_text_with_pasted_blocks_comes_cut_into_parts() {
+    let long = lines_of(13);
+    let text = format!("看这段：\n<A>\n{long}\n</A>\n再看<B>甲\n乙</B>完");
+    let parts = said_parts(
+        &text,
+        &[span(&text, "<A>", "</A>"), span(&text, "<B>", "</B>")],
+    );
+    let shown: Vec<(&str, Option<(u32, u32)>)> = parts
+        .iter()
+        .map(|p| (p.text.as_str(), p.fold.as_ref().map(|f| (f.shown, f.total))))
+        .collect();
+    assert_eq!(
+        shown,
+        vec![
+            ("看这段：", None),
+            (long.as_str(), Some((0, 13))),
+            ("再看甲\n乙完", None),
+        ],
+        "标记不露、折起那块两头的换行不另起空行、照排的几段并成一段"
+    );
+    assert_eq!(
+        parts[1].fold.as_ref().unwrap().more.0,
+        copy_text("speaker.paste.fold", &[("n", "13")])
+    );
+    assert!(said_parts("没有粘贴", &[]).is_empty(), "没有粘贴块 ⇒ 不切");
+}
+
+#[test]
+fn a_long_command_output_folds_to_its_head() {
+    let f = output_fold(&format!("\n{}\n", lines_of(35))).expect("35 行要折");
+    assert_eq!((f.shown, f.total), (20, 35));
+    assert_eq!(f.more.0, copy_text("bash.output.showAll", &[("n", "35")]));
+    assert_eq!(output_fold(&lines_of(5)), None, "5 行不折");
+    assert_eq!(output_fold("  "), None);
+}
+
+#[test]
+fn a_long_brief_comes_as_one_folded_part() {
+    let parts = brief_parts(&lines_of(9));
+    assert_eq!(parts.len(), 1);
+    let f = parts[0].fold.as_ref().unwrap();
+    assert_eq!((f.shown, f.total), (4, 9));
+    assert_eq!(f.more.0, copy_text("agentWindow.brief.more", &[]));
+    assert!(brief_parts(&lines_of(2)).is_empty(), "短的不切");
+}
+
+#[test]
+fn two_retries_in_a_row_draw_only_one_bar() {
+    let draws: Vec<Draw> = [Some(1), Some(2), Some(3), None]
+        .into_iter()
+        .map(retry_draw)
+        .collect();
+    assert_eq!(draws, vec![Draw::Card, Draw::None, Draw::None, Draw::Card]);
+}

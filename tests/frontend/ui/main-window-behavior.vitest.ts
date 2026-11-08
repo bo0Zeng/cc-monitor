@@ -573,7 +573,7 @@ describe("一步一行：后端的 steps / results 排成一行", () => {
     ]);
   });
 
-  it("★ 退出码只读后端给的 `exitCode`：结果原文里写着「Exit code 1」而后端没给 ⇒ 不出 exit；给了 ⇒ 照写", () => {
+  it("★ 报错尾巴只照后端写好的 `error`：结果原文里写着「Exit code 1」、退出码也给了而尾巴没写 ⇒ 不出；写了 ⇒ 照摆", () => {
     const c = ctx();
     const use = toolCalls([
       { id: "e1", name: "Bash", input: {} },
@@ -586,12 +586,12 @@ describe("一步一行：后端的 steps / results 排成一行", () => {
         { id: "e1", text: "Exit code 1", error: true },
         { id: "e2", text: "Exit code 1", error: true },
       ]) as object),
-      results: { e1: { ok: false }, e2: { ok: false, exitCode: 2 } },
+      results: { e1: { ok: false, exitCode: 1 }, e2: { ok: false, exitCode: 2, error: "TAIL-2" } },
     } as unknown as LineRecord;
     renderMessage(res, c);
     const said = (i: number) => r.units[i].querySelector(".block-tool-result-inline summary")?.textContent ?? "";
-    expect(said(0)).not.toMatch(/exit/);
-    expect(said(1)).toMatch(/exit 2/);
+    expect(said(0)).not.toMatch(/exit|1/);
+    expect(said(1)).toMatch(/TAIL-2/);
   });
 
   it("认不出的工具 ⇒ 问号 ＋「未识别结果 · 原文」；人拒了 ⇒「未批准」；没有 steps ⇒ 工具名 ＋ 入参一句兜底", () => {

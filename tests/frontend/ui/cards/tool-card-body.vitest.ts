@@ -75,7 +75,7 @@ describe("工具卡展开照 `steps[id]` 画", () => {
       at: "2026-01-01T02:02:01.000Z",
       draw: "steps",
       who: { speaker: { kind: "toolResult" }, text: "" },
-      blocks: [{ type: "tool_result", for: "t1", content: [{ type: "text", text: "ok", bytes: 2 }], isError: false, bytes: 2 }],
+      blocks: [{ type: "tool_result", for: "t1", content: [{ type: "text", text: "ok", bytes: 2 }], isError: false, bytes: 2, sizeText: "2 B" }],
       results: { t1: { ok: true, text: "+1", patch: lineDiff([row("add", "FROM-RESULT")]) } },
     } as unknown as LineRecord;
     renderMessage(said, ctx as unknown as RenderContext);

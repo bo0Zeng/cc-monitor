@@ -8,8 +8,9 @@
 
 use crate::common::said::Said;
 use crate::control::terminal_follow::Watch;
-use crate::control::terminals::{self, On, Refused};
+use crate::control::terminals::{self, Refused};
 use crate::control::terminals_wire::{Sent, TerminalInputReq, TerminalPreviewReq};
+use crate::host::tmux::On;
 
 /// 按一下之后最多等几次重画（每次至多 `terminal_follow::REDRAW_WAIT`）才认定「没变」。
 pub const REDRAWS_PER_PRESS: usize = 4;

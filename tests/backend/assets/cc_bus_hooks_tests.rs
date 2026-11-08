@@ -1,6 +1,6 @@
 //! # 要求：「本机的钩子诊断仍是 monitor 自己读 `settings.json` …… 本机远端两条路、两个命令，与「一个能力一条命令、带 origin」不齐」
 //!
-//! 判定本体从 monitor `hooks_diag.rs` 原样搬来（B04 那几条形态判据随之搬家、断言不变）；
+//! 判定本体从 monitor `hooks_diag.rs` 原样搬来（那几条形态判据随之搬家、断言不变）；
 //! 新的一条是成品的跨语言金样（后端产出 == `tests/__fixtures__/hooks-diag.golden.json`，界面解码器读同一份）。
 //! 夹具只造结构（假 `settings.json` ＋ 空文件当程序），不采真盘内容。
 
@@ -227,7 +227,7 @@ fn the_snippet_points_at_the_installed_scripts_and_reads_back_as_installed() {
     let _ = std::fs::remove_dir_all(&other);
 }
 
-/// **B04 登记项②**：`trim_matches` 逐字符两端剥，会把不配对的也剥掉。
+/// **只剥配对的那一层引号**：`trim_matches` 逐字符两端剥，会把不配对的也剥掉。
 #[test]
 fn unquote_only_strips_a_matched_pair() {
     assert_eq!(unquote_once("\"x\""), "x");
@@ -254,7 +254,7 @@ fn unquote_only_strips_a_matched_pair() {
     );
 }
 
-/// **B04-4**：包装器写法必须判「无法判断」，不得判「未装」。
+/// **包装器写法**必须判「无法判断」，不得判「未装」。
 /// 源码注释写着"看不懂就返回 None 而不是猜"，但 None 落到 NotInstalled → UI 渲染成
 /// 确定性的"未装" → 用户去贴一份重复的钩子。**猜"未装"和猜"已装"一样是猜。**
 #[test]
@@ -285,7 +285,7 @@ fn wrapper_forms_are_unknown_not_not_installed() {
     );
 }
 
-/// **B04-3**：`${HOME}/` 花括号形态此前被判成「装了但路径不存在」——
+/// **花括号形态**：`${HOME}/`此前被判成「装了但路径不存在」——
 /// 正是本模块文档头声称要避免的那件事，只是换了个花括号写法就重现了。
 #[test]
 fn brace_home_form_is_not_a_false_alarm() {

@@ -4,11 +4,11 @@
  * - 一行：［＋］附件 · 字 · ➤；Enter 发、Shift+Enter 换行，组字时回车归输入法；Esc 焦点还给消息流。没发的字按会话各记一份。
  * - 一轮在跑（脸上 `can.stop`，那台判好）、框里没字也没附件 ⇒ ➤ 换成 ■（同手机，二选一）：点了交 `session-interrupt`（不进队、不靠持有输入）；
  *   送到了 · 不知道送没送到 ⇒ 不说（看记录）；那台拒了 · 没送成 ⇒ 框下写那台那一句。说不了（框灰着）也照样能停。
- * - 上方一排（`queue-row.ts`）：那台推来的整份队列名单（那台写的那一句 ·［撤回］）＋ 这一端的待发（`outbox.ts`：在飞 ⇒「发送中 · 等确认」；
+ * - 上方一排（`queue-row.ts`）：那台推来的整份队列名单（那台写的那一句 ·［撤回］）＋ 这一端的待发（`outbox.ts`：在飞 ⇒「发送中 · 等确认」；那台拒了 ⇒ 那台那一句（错误色）；
  *   交了没回执 ⇒ 那台离线照它成品的 `heldSaid`、连着说「排队 · 无应答」）；［撤回］撤掉之后字回到输入框（框里已有别的字 ⇒ 另起一行接在后面）。
  *   那台离线（机器成品，宿主经 `machineChanged` 交来）⇒ 照手上那一份淡着画、排头写名单是上次所知；
  *   再上一排是附件（`attach-row.ts`，拖到主区上（宿主经 `takeDrops` 交落点）· 粘贴 · ［＋］进同一排）。
- * - 交出只走 `session-queue-put`（经待发）：回执到了 ⇒ 字与 chip 一起清、框下写那台那一句；那台拒了 ⇒ 字留着、写那台那一句；
+ * - 交出只走 `session-queue-put`（经待发）：回执到了 ⇒ 字与 chip 一起清、框下写那台那一句；那台拒了 ⇒ 字留着，那一句留在那一排、那一行写那台那一句（错误色，撤或再发）；
  *   没回执 ⇒ 留在待发（那一排那一行说，框下不另起一行），那台接上照原编号重交（不挂在这条会话开没开着）。
  * - 能不能说只读脸上的 `can.say`（那台判好、`why` 写好）：不能 ⇒ 框灰着、占位就是那一句；去终端只有会话头「终端」那一颗，框旁不另放。
  *   那台离线照常可写可发（成待发，占位写「连上后送」）；已结束能恢复的 ⇒ 可写，发一句 ＝ 先恢复（落后台）再把这句交进它的队。
@@ -306,7 +306,7 @@ export class Composer {
 
   /**
    * 一句有了结局（头一次交 · 接上重交的都到这里）：是此刻对着的那条会话 ⇒ 回执到了清框（框里还是那一句）与附件、写那台那一句、重问名单；
-   * 那台拒了 ⇒ 字留着、写那台那一句。编辑已发的那一句由编辑框说，这里不管。
+   * 那台拒了 ⇒ 字留着；那一句留在那一排那一行说（标失败，可撤可重交），框下不另写。编辑已发的那一句由编辑框说，这里不管。
    */
   private settled(key: string, o: { text: string; rewind?: unknown }, end: { at: string; said: string }): void {
     if (o.rewind !== undefined) return;
@@ -315,10 +315,7 @@ export class Composer {
       if (end.at === "receipt") this.attachDrafts.get(key)?.clear();
       return;
     }
-    if (end.at !== "receipt") {
-      this.showNote({ text: end.said, tone: "error" });
-      return;
-    }
+    if (end.at !== "receipt") return;
     if (this.box.value === o.text) {
       this.box.value = "";
       this.drafts.delete(key);
@@ -329,15 +326,16 @@ export class Composer {
     this.showNote({ text: end.said, tone: "ok" });
   }
 
-  /** 撤待发里那一句：本地拿掉、字回到输入框；万一已交到那台，照编号请它撤（没撤成 ⇒ 写那台那一句，不吞）。 */
+  /** 撤待发里那一句：本地拿掉、字回到输入框；没被拒的万一已交到那台，照编号请它撤（没撤成 ⇒ 写那台那一句，不吞）。那台拒了的没进它的队，不问。 */
   private cancelPending(id: string, text: string): void {
     const t = this.host.active();
     if (!t) return;
-    // 编辑已发的那一句：字留在编辑框，不回输入框。
-    const edit = this.outbox.of(t.origin, t.sessionId).some((o) => o.id === id && o.rewind !== undefined);
+    const o = this.outbox.of(t.origin, t.sessionId).find((x) => x.id === id);
     this.outbox.drop(t.origin, t.sessionId, id);
     this.sending = false;
-    if (!edit) this.recall(text);
+    // 编辑已发的那一句：字留在编辑框，不回输入框。
+    if (o?.rewind === undefined) this.recall(text);
+    if (o?.refused !== undefined) return;
     const key = pendingKey(t.origin, t.sessionId);
     void this.reads.cancel(t.origin, t.sessionId, id).then(
       (r) => this.gotQueue(key, r.queue),
@@ -459,14 +457,17 @@ export class Composer {
 
   /**
    * 那条会话的待发那几行：在飞 ⇒「发送中 · 等确认」；交了没回执：那台此刻离线 ⇒ 那台成品的 `heldSaid`；那台连着（超时 · 回包读不出）⇒
-   * 「排队 · 无应答」（不借 heldSaid：连着时说离线是假话）。两种都是接上照原编号重交。
+   * 「排队 · 无应答」（不借 heldSaid：连着时说离线是假话）。两种都是接上照原编号重交。那台拒了 ⇒ 那台写的那一句（错误色），接上不重交。
    */
   private pendingLines(origin: Machine, sid: string): PendingLine[] {
     const ended = (): string =>
       (this.offline.has(origin) ? this.held.get(origin) : undefined) ?? copyText("beQueue.said.noAnswer");
-    return this.outbox.of(origin, sid).map((o) =>
-      this.outbox.inFlight(o.id) ? { id: o.id, text: o.text, said: copyText("beQueue.said.confirming"), held: false } : { id: o.id, text: o.text, said: ended(), held: true },
-    );
+    return this.outbox.of(origin, sid).map((o) => {
+      const line = { id: o.id, text: o.text };
+      if (this.outbox.inFlight(o.id)) return { ...line, said: copyText("beQueue.said.confirming"), held: false, refused: false };
+      if (o.refused !== undefined) return { ...line, said: o.refused, held: false, refused: true };
+      return { ...line, said: ended(), held: true, refused: false };
+    });
   }
 
   /** ➤ 与 ■ 二选一（打字 · 删字时也跟着换，不等整份重画）。 */

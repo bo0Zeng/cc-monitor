@@ -1063,7 +1063,7 @@ async fn the_hello_facts_decide_what_is_sent_and_what_is_withdrawn() {
     // `terminal-preview` · `terminals-list` · `ping` 是 typed 命令：那台交了与本份同一张形状指纹（形状对不上那一档另有判据），这一条只看能力事实。
     let shape = |c: &str| cmd_wire::shapes::shape_of(c).expect("typed 命令");
     let line = format!(
-        r#"{{"kind":"hello","build_id":"b","host_arch":"x86_64","commands":["cancel","ping","terminal-preview","terminals-list"],"unavailable":[{{"command":"terminal-preview","code":"no_tmux"}}],"shapes":{{"terminal-preview":"{}","terminals-list":"{}","ping":"{}"}}}}"#,
+        r#"{{"kind":"hello","build_id":"b","host_arch":"x86_64","commands":["cancel","ping","terminal-preview","terminals-list"],"unavailable":[{{"command":"terminal-preview","code":"no_tmux","said":"s"}}],"shapes":{{"terminal-preview":"{}","terminals-list":"{}","ping":"{}"}}}}"#,
         shape("terminal-preview"),
         shape("terminals-list"),
         shape("ping")
@@ -1125,7 +1125,7 @@ async fn the_hello_facts_decide_what_is_sent_and_what_is_withdrawn() {
 async fn a_resync_reply_refreshes_the_offer_with_the_facts_of_this_moment() {
     // `resync` 是 typed 命令：对端交了同一份形状指纹才发。
     let line = format!(
-        r#"{{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":["cancel","kill","resync"],"unavailable":[{{"command":"kill","code":"no_tmux"}}],"shapes":{{"resync":"{}"}}}}"#,
+        r#"{{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":["cancel","kill","resync"],"unavailable":[{{"command":"kill","code":"no_tmux","said":"s"}}],"shapes":{{"resync":"{}"}}}}"#,
         cmd_wire::shapes::shape_of("resync").expect("typed 命令")
     );
     let frame = crate::stream_source::decode(&line).expect("是 hello");

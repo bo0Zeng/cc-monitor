@@ -39,7 +39,7 @@
 //!
 //! 「这个 shell 怎么写 / 文件落在哪 / 名字怎么认」全在 `shell_dialect.rs`（POSIX 与 PowerShell
 //! 各一份实现）；这里留的是**判定的规则**（组合规则 · 能力闸 · 重名 · 有一条不合格整批不写）。
-//! 三条命令各带一个 `shell`：同一份清单，POSIX 落 `~/.cc-monitor/aliases.sh`、PowerShell 落
+//! 哪种 shell 由这台后端自己答（[`here_shell`]；`aliases-read` 回包里带它，别名块那几条照目标文件的扩展名）：同一份清单，POSIX 落 `~/.cc-monitor/aliases.sh`、PowerShell 落
 //! `~/.cc-monitor/aliases.ps1`，各自由那个 shell 的别名块里那一行 source 接上。
 
 use copy_core::copy_text;
@@ -158,33 +158,14 @@ pub(crate) fn render_file(shell: Shell, lines: &[String]) -> String {
 //      只由 `shell_dialect` 产出（审计 S-1：绝不让前端注入可执行的 shell），而「写的就是预览的那一份」
 //      由两跳调同一个 [`render`] 保证。
 
-/// 一条别名。`args` 是原样的 ccm argv（`["--ccm-tmux", "--account", "z"]`），渲染时由方言逐个按需加引号。
-/// `rest_to`：调用时跟的词交给谁（缺省 claude；交给 ccm 只许接回会话那一形，见 [`check_alias`]）。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct Alias {
-    pub name: String,
-    pub args: Vec<String>,
-    pub rest_to: RestTo,
-}
-
-impl Alias {
-    /// 调用时的词交给 claude 的那一形（绝大多数）。
-    pub(crate) fn new(name: &str, args: Vec<String>) -> Alias {
-        Alias {
-            name: name.to_string(),
-            args,
-            rest_to: RestTo::Agent,
-        }
-    }
-}
-
 /// 读回口的产物：启动文件候选（接入那一格）。清单在配置文件那一页（`page.rs::read_with`）。
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AliasListing {
+    /// 候选是哪种 shell 的（`aliases-read` 里就是这台后端说的那一种，[`here_shell`]）：界面照它画平台那几格。
+    pub shell: Shell,
     /// 这台机器上这种 shell 的启动文件候选（「那一行 source 加进哪份」·「别名块装进哪份」，同一批）。
     pub rc_candidates: Vec<StartupFile>,
     /// 人另指的那一份（`read_via` 的 `extra_rc`）过了围栏之后的绝对路径 —— 界面拿它在候选里认出「刚指的是哪一份」。
@@ -196,57 +177,9 @@ pub fn reload_hint(path: &str) -> String {
     copy_text("rsAccountAliases.install.reload", &[("path", path)])
 }
 
-/// 配置文件第一次被建出来时带上的那几条（之后和别的一样可改可删、删了不回补），名字由默认那一家的 wrapper 名派生
-/// （`agents::wrapper_alias`，Claude：`cc`）：`<它>`（当前终端里起）· `<它>t`（tmux 里起）· `<它>h`（托管终端里起，也是托管入口）。
-/// 没有 tmux 的目标不带 `<它>t`；默认那一家没有 wrapper ⇒ 一条都不带。
-pub(crate) fn first_aliases(shell: Shell) -> Vec<Alias> {
-    use crate::accounts::manage::aliases::Form;
-    let Some(wrapper) = crate::agents::wrapper_alias(crate::agents::default_kind()) else {
-        return Vec::new();
-    };
-    let mut v = vec![Alias::new(wrapper, Vec::new())];
-    if Caps::of(shell).tmux {
-        v.push(Alias::new(
-            &format!("{wrapper}{}", Form::Tmux.suffix()),
-            vec![flag::END.to_string(), flag::TMUX.to_string()],
-        ));
-    }
-    v.push(Alias::new(
-        &format!("{wrapper}{}", Form::Hosted.suffix()),
-        vec![flag::END.to_string(), flag::HOSTED.to_string()],
-    ));
-    v
-}
-
 /// 一条别名在别名文件里交给 ccm 的那一个词：`@<名>`。
 fn own_word(name: &str) -> String {
     format!("{}{name}", crate::ccm_line::PROFILE_SIGIL)
-}
-
-/// 一条别名（旧形状的帧面）⇒ 配置文件里那一段要写成的样子（`from` 由调用方给）。
-/// 打头的 `new` 是「起新会话」的显式写法、本来就是缺省 ⇒ 不进配置。
-pub(crate) fn edit_of_alias(a: &Alias, from: Option<String>) -> profile::ProfileEdit {
-    let (left, right) = match argv_split(&a.args) {
-        (l, Some(r)) => (l, r),
-        (l, None) => (l, &a.args[..0]),
-    };
-    let right = match right.first() {
-        Some(w) if w == flag::NEW => &right[1..],
-        _ => right,
-    };
-    profile::ProfileEdit {
-        name: a.name.clone(),
-        from,
-        agent: left.to_vec(),
-        ccm: right.to_vec(),
-    }
-}
-
-fn argv_split(args: &[String]) -> (&[String], Option<&[String]>) {
-    match crate::ccm_line::argv::last_end(args) {
-        Some(k) => (&args[..k], Some(&args[k + 1..])),
-        None => (args, None),
-    }
 }
 
 /// 别名文件的版本（盘上原样的字节：长度 ＋ FNV-1a 64）。不在 ⇒ `None`。
@@ -262,6 +195,36 @@ fn account_table(home: &str) -> Vec<String> {
         .flatten()
         .map(|m| m.managed().map(|a| a.name.clone()).collect())
         .unwrap_or_default()
+}
+
+/// 这台后端自己说的那种 shell（Windows ⇒ PowerShell，其余 ⇒ POSIX）。
+pub(crate) fn here_shell() -> Shell {
+    if cfg!(windows) {
+        Shell::PowerShell
+    } else {
+        Shell::Posix
+    }
+}
+
+/// **合并后的清单**：用户那份（`text`；不在 ⇒ 一段都没有）＋ 内置那几段（照这台的账号表现算，`accounts::with_builtins`）。
+/// 读清单的每一处（[`load`] · ccm 那一趟 `profile::read_at`）都经这里。
+pub(crate) fn book_in(home: &str, text: Option<&str>) -> profile::Book {
+    accounts::with_builtins(
+        text.map(profile::parse_book).unwrap_or_default(),
+        &account_table(home),
+        builtin_tmux(),
+        &same_name_here,
+    )
+}
+
+/// 两个名字在这台说的那种 shell 里是不是同一个（PowerShell 不分大小写）：认「同名盖过内置」的每一处都问它。
+pub fn same_name_here(a: &str, b: &str) -> bool {
+    here_shell().dialect().same_name(a, b)
+}
+
+/// 内置那几段带不带 tmux 那一形（这台说的那种 shell 的能力）：合清单与建号删号回执说名字都问这一处。
+pub fn builtin_tmux() -> bool {
+    Caps::of(here_shell()).tmux
 }
 
 /// 这台机器的**能力**—— 不是方言（`has_tmux()` 不进那一族）。
@@ -362,12 +325,12 @@ pub struct Store {
     pub book: profile::Book,
 }
 
-/// 读配置文件（不在 ⇒ 空清单）。
+/// 读配置文件，合上内置那几段（[`book_in`]；不在 ⇒ 只有内置的）。
 pub fn load(d: &dyn Door) -> Result<Store, String> {
     let home = door::home(d)?;
     let path = profile::path_in(&home);
     let text = read_profiles(d, &home, &path)?;
-    let book = text.as_deref().map(profile::parse_book).unwrap_or_default();
+    let book = book_in(&home, text.as_deref());
     Ok(Store { home, text, book })
 }
 
@@ -380,26 +343,61 @@ fn read_profiles(d: &dyn Door, home: &str, path: &str) -> Result<Option<String>,
     }
 }
 
-/// 后端起来时那一次（经本进程自己的文件管理面，门由 `stream::inbound::align_aliases` 递）：配置文件在、读得懂 ⇒
-/// 照它把别名文件 · 链接对齐一次（[`sync_outputs`]，内容一样一个字节不写）—— 写法变了的那一份不等人再改一次清单才换。
-/// 配置文件不在 ⇒ 什么都不做（旧形状的别名文件不转）。没做成只记日志，不挡起来。
+/// 后端起来时那一次（经本进程自己的文件管理面，门由 `stream::inbound::align_aliases` 递）：照合并后的清单把别名文件 · 链接
+/// 对齐一次（[`regenerate_via`]，内容一样一个字节不写）—— 写法变了的那一份不等人再改一次清单才换；配置文件不在也对齐
+/// （老装的机器升级后起来就有内置那几条）。没做成只记日志，不挡起来。
 pub fn align_here(d: &dyn Door) {
-    let res = door::home(d).and_then(|home| {
-        let path = profile::path_in(&home);
-        if let Some(text) = read_profiles(d, &home, &path)? {
-            // 整份写坏了（TOML 解不开）⇒ 读不出清单，不照「空清单」去删别名与链接。
-            let book = profile::parse_book(&text);
-            if book.file_problem().is_none() {
-                for p in sync_outputs(d, &home, &book, None).problems {
-                    tracing::warn!("{p}");
-                }
-            }
-        }
-        Ok(())
-    });
-    if let Err(e) = res {
-        tracing::warn!("{e}");
+    match regenerate_via(d) {
+        Ok(_) => {}
+        Err(RegenErr::Unparsed { .. }) => {}
+        Err(RegenErr::Failed(e)) => tracing::warn!("{e}"),
     }
+}
+
+/// 照合并后的清单重生成别名文件与链接没成。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RegenErr {
+    /// 配置文件整份写坏了（TOML 解不开）⇒ 读不出清单，不照「只有内置的」去删用户那几条的别名与链接（等人先改好）。
+    Unparsed {
+        path: String,
+        n: usize,
+    },
+    Failed(String),
+}
+
+/// 重生成的结局。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Regenerated {
+    /// 配置文件的路径（这一趟不写它）。
+    pub path: String,
+    /// 别名文件或链接动了没有。
+    pub changed: bool,
+    /// 动了的别名文件（已开的终端要重读它）。
+    pub rewrote: Vec<String>,
+    /// 合并后的清单（建号 / 删号那一刻据它说哪几条是内置的、哪几条被用户那段盖着）。
+    pub book: profile::Book,
+}
+
+/// **照合并后的清单重生成别名文件与链接**（建号 / 删号那一刻 · 后端起来那一次）：用户的配置文件一个字节不写。
+pub fn regenerate_via(d: &dyn Door) -> Result<Regenerated, RegenErr> {
+    let store = load(d).map_err(RegenErr::Failed)?;
+    let path = profile::path_in(&store.home);
+    if store.book.file_problem().is_some() {
+        return Err(RegenErr::Unparsed {
+            path,
+            n: store.book.problems.len(),
+        });
+    }
+    let out = sync_outputs(d, &store.home, &store.book, None);
+    if let Some(p) = out.problems.first() {
+        return Err(RegenErr::Failed(p.clone()));
+    }
+    Ok(Regenerated {
+        path,
+        changed: out.links_changed || !out.rewrote.is_empty(),
+        rewrote: out.rewrote,
+        book: store.book,
+    })
 }
 
 /// 这台说哪几种 shell（POSIX 恒有；Windows 上另有 PowerShell）⇒ 生成哪几份别名文件。
@@ -539,6 +537,7 @@ pub fn read_via(
     let extra = extra_rc.map(|raw| block::fence(&home, raw)).transpose()?;
     let names: Vec<String> = store.book.profiles.iter().map(|p| p.name.clone()).collect();
     Ok(AliasListing {
+        shell,
         rc_candidates: rc_candidates_via(d, &home, shell, extra.as_deref(), &names)?,
         other_rc: extra,
     })
@@ -566,81 +565,6 @@ fn look(d: &dyn Door, home: &str, abs: &str) -> Result<Look, String> {
             Some(_) => Look::Unreadable(said),
         }),
     }
-}
-
-/// 建号 / 删号那一刻改配置文件没成。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AmendErr {
-    /// 配置文件里有这么多处写错 ⇒ 不动它（等人先改好）。
-    Unparsed {
-        path: String,
-        n: usize,
-    },
-    Failed(String),
-}
-
-/// 改配置文件的结局。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Amended {
-    pub path: String,
-    pub wrote: bool,
-    /// 动了的别名文件（已开的终端要重读它）。
-    pub rewrote: Vec<String>,
-}
-
-/// 建号 / 删号那一刻：读配置文件（不在 ⇒ 从首建那几条起）→ `f` 给改动 → 写回，再照它生成别名；盘上被别处改过 ⇒ 重读重算一次。
-/// `f` 可能被叫不止一次（重读那一趟），它记的结果以最后一次为准。
-pub fn amend_via(
-    d: &dyn Door,
-    f: &mut dyn FnMut(&profile::Book) -> Vec<profile::Change>,
-) -> Result<Amended, AmendErr> {
-    for _ in 0..2 {
-        let store = load(d).map_err(AmendErr::Failed)?;
-        let path = profile::path_in(&store.home);
-        if !store.book.problems.is_empty() {
-            return Err(AmendErr::Unparsed {
-                path,
-                n: store.book.problems.len(),
-            });
-        }
-        let (base_text, base_book) = match &store.text {
-            Some(t) => (Some(t.clone()), store.book.clone()),
-            None => {
-                let first: Vec<profile::Change> = first_aliases(Shell::Posix)
-                    .iter()
-                    .map(|a| profile::Change::Set(edit_of_alias(a, None)))
-                    .collect();
-                let t = profile::apply_changes(None, &first).map_err(AmendErr::Failed)?;
-                let b = profile::parse_book(&t);
-                (Some(t), b)
-            }
-        };
-        let changes = f(&base_book);
-        let text =
-            profile::apply_changes(base_text.as_deref(), &changes).map_err(AmendErr::Failed)?;
-        if let Some(p) = profile::problems_after(&text).into_iter().next() {
-            return Err(AmendErr::Failed(p));
-        }
-        match write_profiles(d, &store.home, store.text.as_deref(), &text) {
-            Ok(wrote) => {
-                let out = sync_outputs(d, &store.home, &profile::parse_book(&text), None);
-                if let Some(p) = out.problems.first() {
-                    return Err(AmendErr::Failed(p.clone()));
-                }
-                return Ok(Amended {
-                    path,
-                    wrote: wrote || out.links_changed || !out.rewrote.is_empty(),
-                    rewrote: out.rewrote,
-                });
-            }
-            Err(WriteErr::Stale(_)) => continue,
-            Err(WriteErr::Refused(e)) => return Err(AmendErr::Failed(e)),
-        }
-    }
-    Err(AmendErr::Failed(copy_text(
-        "rsAccountAliases.install.changedElsewhere",
-        &[("path", "")],
-    )))
 }
 
 /// 这个名字是不是已经被占了。**只出声、不拦** —— 见 `§0c 问三`。怎么查由方言答（POSIX 查自带片段与 `PATH`；
@@ -785,23 +709,21 @@ fn refused(said: String) -> Said {
     Said::new("refused", said)
 }
 
-/// `aliases-read` 的入参：哪种 shell 的候选 · 人另指的那一份启动文件（`null` = 不指；过围栏后并进候选）。
+/// `aliases-read` 的入参：人另指的那一份启动文件（`null` = 不指；过围栏后并进候选）。
+/// 哪种 shell 不由问的一方给：这台后端照自己的平台答（[`here_shell`]），回包里说是哪一种。
 #[derive(Debug, Clone, serde::Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct AliasesReadReq {
-    /// `posix` / `powershell`（这台后端不在 Windows ⇒ `powershell` 拒）。
-    pub(crate) shell: Shell,
     #[serde(default)]
     #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     pub(crate) rc_path: Option<String>,
 }
 
-/// `aliases-read`：启动文件候选（接入那一格）。
+/// `aliases-read`：这台说的那种 shell 的启动文件候选（接入那一格）。
 pub(crate) fn answer_read(d: &dyn Door, req: &AliasesReadReq) -> Result<AliasListing, Said> {
-    dialect_here(req.shell).map_err(refused)?;
-    read_via(d, req.shell, req.rc_path.as_deref()).map_err(refused)
+    read_via(d, here_shell(), req.rc_path.as_deref()).map_err(refused)
 }
 
 /// 别名块那三条的入参：目标文件（方言由它的扩展名定：`.ps1` ⇒ PowerShell）。

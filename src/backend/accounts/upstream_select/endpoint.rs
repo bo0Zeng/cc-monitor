@@ -33,16 +33,10 @@
 use super::CREDENTIALS_FILE_AGENT;
 use crate::agents::{SettingsBaseUrl, SettingsEnvFace};
 use copy_core::copy_text;
-use relay_route_core::{base_url, RouteMode, PORT};
+use relay_route_core::{base_url, RouteMode, PORT, UNDECLARED_ACCOUNT_SEGMENT};
 
 /// 账号 0（不注入 `CLAUDE_CONFIG_DIR` 那一档）在 `/t/` 路由里的账号段。只是标签（`/t/` 从不查它的 key）。
 pub(crate) const BASE_ACCOUNT_SEGMENT: &str = acct_core::BARE_ACCOUNT;
-
-/// 起会话时**没表态**是哪个号（没建账号库的机器上本机起会话就是这一形）在 `/t/` 里的账号段。
-///
-/// 不借账号 0 的 `0`：没表态 ≠ 账号 0（建了账号库的机器上，没表态时 pane 可能落到 shell rc 里导出的那个配置根上），
-/// 流标签不该替它说是哪个号。与表里某一行同名的风险同 `0`，由决策表第 ⑤ 行挡。
-pub const UNDECLARED_ACCOUNT_SEGMENT: &str = "_";
 
 /// 起会话时说的是哪个号（线上 `account`：`{"kind":"named","configDir":…}` · `{"kind":"base"}` · 缺席 / `null`）。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -146,9 +140,9 @@ pub(crate) fn all_sessions_on(get: &dyn Fn(&str) -> Option<String>) -> bool {
     get(ALL_SESSIONS_ENV).is_none_or(|v| v != "0")
 }
 
-/// 同机中转住的口：常驻后端被交的那个（`crate::relay::ENV_PORT`）；没交 / 认不出 ⇒ 默认口。
+/// 同机中转住的口：常驻后端被交的那个（`crate::platform::child_env::RELAY_PORT`）；没交 / 认不出 ⇒ 默认口。
 pub fn relay_port(get: &dyn Fn(&str) -> Option<String>) -> u16 {
-    get(crate::relay::ENV_PORT)
+    get(crate::platform::child_env::RELAY_PORT)
         .and_then(|v| v.trim().parse::<u16>().ok())
         .filter(|p| *p != 0)
         .unwrap_or(PORT)

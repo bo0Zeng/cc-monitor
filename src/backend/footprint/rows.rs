@@ -21,6 +21,7 @@
 use super::registry::{EnvBacking, EnvEntry, EnvTier};
 use crate::agents::footprint_decl::{
     Carrier, EnvProbe, HostScope, ShellProfile, ToolDestination, ToolSpec, TouchedFile,
+    USER_PATH_TOKEN,
 };
 use std::path::{Path, PathBuf};
 
@@ -43,6 +44,8 @@ pub(crate) enum PathResolution {
     WindowsProfile,
     /// 路径由**用户配置**决定（用户选的 POSIX rc），本页查不到。
     NeedsUserConfig,
+    /// 这台用户级 `PATH` 里我们那一段（不是文件）：在不在照探针 [`FsProbe::user_path`] 答。
+    UserPath,
     /// **两端皆可**（`HostScope::Either`）：可以在本机查，但**"本机没找到" ≠ "不存在"**
     /// ——这东西也可能装在远端（Claude Code 跑在哪台，它就在哪台）。
     ///
@@ -78,6 +81,8 @@ pub(crate) struct FsProbe<'a> {
     pub meta: &'a dyn Fn(&Path) -> Option<(bool, u64)>,
     /// 列一层目录里的**文件名**；读不了返回 `None`（≠ 空目录）。
     pub list: &'a dyn Fn(&Path) -> Option<Vec<String>>,
+    /// `ccm` 所在目录在不在这台的用户级 `PATH` 上；问不出（不是那一台 · 起不了 PowerShell · 读不懂）返回 `None`（≠ 不在）。
+    pub user_path: &'a dyn Fn() -> Option<bool>,
 }
 
 /// **从哪台机器上看**这张表 —— 「足迹」per-origin 那一维。
@@ -215,6 +220,10 @@ fn resolve_by_destination(
         // ⇒ 照本机路径解析（`host` 是 `Either` 时 `project_onto_host` 会再包一层，
         //    于是「本机没找到」照样不会被说成「不存在」）。
         ToolDestination::NotInstalledByUs => resolve_local_home(declared, home, agent_home),
+        // 不是文件：申报路径只许是那一个占位（注册表里的位置），别的写法 ⇒ 自相矛盾。
+        ToolDestination::UserPath => {
+            (declared == USER_PATH_TOKEN).then_some(PathResolution::UserPath)
+        }
     }
 }
 
@@ -309,6 +318,11 @@ pub(crate) fn observe(res: &PathResolution, fs: &FsProbe) -> SurfaceState {
         PathResolution::Remote => SurfaceState::Undetermined,
         PathResolution::NeedsProjectDir => SurfaceState::Undetermined,
         PathResolution::WindowsProfile => SurfaceState::Undetermined,
+        PathResolution::UserPath => match (fs.user_path)() {
+            Some(true) => SurfaceState::Present,
+            Some(false) => SurfaceState::Absent,
+            None => SurfaceState::Undetermined,
+        },
     }
 }
 

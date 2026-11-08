@@ -3,11 +3,9 @@
 //! - [`tmux`]：tmux 那一形；起 `tmux` 进程只在那一份文件里。
 //! - [`managed`]：托管那一形（cc-monitor 自己持伪终端）。
 //!
-//! - [`ccm_line`]：`ccm` 这一行的词与解析（旗标 · 默认值 · 自己叫什么），起会话 · 账号域 · 别名那一族都往下引它。
-//!
 //! 口按名单里的句柄下手，不收宿主自己的目标串。`control/` 与 `observe/` 都引它。
 //!
-//! 独立的包 `backend-host`：只引 `agents` · `wire` · `common` · `platform`，引了上层就编不过。上层只够得到这里的 `pub` 项。
+//! 独立的包 `backend-host`：只引 `wire`（含 `ccm_line`）· `common` · `platform`，引了上层就编不过。上层只够得到这里的 `pub` 项。
 
 // 测试段可以直接问系统钟（量具、夹具的时刻）；生产段只许纯工具那一层的 `time::now`（`clippy.toml`）。
 // 测试段收尾时丢结果不写理由；生产段丢一个 `Result` 写 `.discard(Why::…)`。
@@ -23,9 +21,8 @@
     )
 )]
 
-// 包里照旧写 `crate::host::…` · `crate::ccm_line::…` · `crate::agents::…` · `crate::wire::…` · `crate::common::…` · `crate::platform::…`。
+// 包里照旧写 `crate::host::…` · `crate::wire::…` · `crate::common::…` · `crate::platform::…`。
 extern crate self as host;
-use backend_agents as agents;
 use backend_common as common;
 use backend_platform as platform;
 use backend_wire as wire;
@@ -35,7 +32,6 @@ use backend_wire as wire;
 #[used]
 static TEST_HOME: fn() = test_home::linked;
 
-pub mod ccm_line;
 pub mod managed;
 pub mod tmux;
 

@@ -1,5 +1,5 @@
 //! `common/views.rs` 的判据：每一问都照答换到手上（`Hand::apply`）、再与这一问此刻那一窗逐项相等；再看答的形（没变 · 只这几项 · 整份）。
-//! 金样 `sync-patch.golden.jsonl` 由这里真答出来写（Rust 与手机那两份 `apply` 照它逐条）。
+//! 金样 `sync-patch.golden.jsonl` 与这里真答出来的逐字比（只比不写；Rust 与手机那两份 `apply` 照它逐条）。
 
 use super::*;
 use cmd_wire::sync::Hand;
@@ -327,7 +327,7 @@ fn canon(h: &Option<Held>, names: &mut BTreeMap<String, String>) -> Value {
 
 /// 一段真答出来的过程（整份 · 没变 · 改一项 · 挤进来 · 换先后 · 窗口 · 只变总数 · 窗口挪了 · 记号作废），每一问一行：
 /// 问之前手上那份 · 那一答 · 此刻那一窗。记号换成 `h1` `h2` …（随进程变的那一段不进金样）。
-/// 形状是有意改的 ⇒ `REGOLD_SYNC_PATCH=1` 重打，Rust 与手机两份 `apply` 一起对。
+/// 不一致 ⇒ 现打的落 `.build/golden/`；形状是有意改的，对过后 `bash tests/scripts/bless-golden.sh` 拷回，Rust 与手机两份 `apply` 一起对。
 #[test]
 fn the_golden_is_what_the_views_really_answer() {
     let mut lines = Vec::new();
@@ -387,13 +387,9 @@ fn the_golden_is_what_the_views_really_answer() {
     w.held = Some(Held("stale".into()));
     step("held not ours: whole", &s, &mut w, win(1, 3), &mut names);
     let produced = lines.join("\n") + "\n";
-    let path = guard_core::addr::repo_root().join(GOLDEN);
-    if std::env::var_os("REGOLD_SYNC_PATCH").is_some() {
-        std::fs::write(&path, &produced).expect("写金样");
-    }
-    let on_disk = std::fs::read_to_string(&path).unwrap_or_default();
-    assert!(
-        on_disk == produced,
-        "带键集合的金样与真答的不一致（有意改的 ⇒ `REGOLD_SYNC_PATCH=1` 重打）：\n{produced}"
+    test_meters::golden::assert_golden(
+        GOLDEN,
+        &produced,
+        "带键集合的金样与真答的不一致（Rust 与手机两份 `apply` 照它逐条，改了要一起对）",
     );
 }

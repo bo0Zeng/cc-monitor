@@ -5,7 +5,7 @@
  */
 import { failToast } from "../kit/toast";
 import { saidOf } from "../kit/detail";
-import { readRemoteConfig } from "../remote-config";
+import { readRemoteNames } from "../machine-feed";
 
 // `connCount`：累计连接数，按**累计连接数**量纲算 2^53-1 条（每秒 1000 连接要 28.5 万年）⇒ `number` 够用。
 import { listForwards, startForward, stopForward, type ForwardStatus } from "../port-forward-reads";
@@ -101,16 +101,14 @@ class PortForwardPanel {
     dispatcher.pushOverlay(this.layer);
     this.originSel.innerHTML = "";
     try {
-      const { hosts } = await readRemoteConfig();
-      for (const h of hosts) {
-        const origin = h.name;
+      for (const origin of await readRemoteNames()) {
         const opt = document.createElement("option");
         opt.value = origin;
         opt.textContent = origin;
         this.originSel.appendChild(opt);
       }
     } catch {
-      /* 读配置失败 → 空下拉,用户仍可看列表 */
+      /* 本机后端问不到 → 空下拉,用户仍可看列表 */
     }
     await this.reload();
   }

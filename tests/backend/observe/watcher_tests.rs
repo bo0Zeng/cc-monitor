@@ -1229,128 +1229,6 @@ fn fully_unterminated_single_line_is_deferred() {
     assert_eq!(seqs.next(KEY), 0, "deferral must not consume a seq");
 }
 
-// === add-time imposter check ===
-
-#[test]
-fn imposter_when_proc_started_after_pidfile() {
-    // pidfile last written at t=1000, process started at t=2000 (> 1000+60).
-    let v = add_time_verdict(false, Some(2000), Some(1000), None);
-    assert_eq!(v, AddTimeVerdict::Imposter("started-after-pidfile"));
-    // Reboot case is the same shape: old mtime, post-boot start.
-    let v2 = add_time_verdict(
-        false,
-        Some(1_700_000_000),
-        Some(1_600_000_000),
-        Some("claude"),
-    );
-    assert_eq!(
-        v2,
-        AddTimeVerdict::Imposter("started-after-pidfile"),
-        "time evidence must win even with a claude-looking cmdline (a NEW claude did not write the OLD pidfile)"
-    );
-}
-
-#[test]
-fn alive_within_tolerance() {
-    // Started slightly after mtime but inside the 60s fuzz window.
-    assert_eq!(
-        add_time_verdict(false, Some(1030), Some(1000), None),
-        AddTimeVerdict::Alive
-    );
-    // Started before mtime (the normal case: claude starts, then writes).
-    assert_eq!(
-        add_time_verdict(false, Some(900), Some(1000), None),
-        AddTimeVerdict::Alive
-    );
-}
-
-#[test]
-fn imposter_by_cmdline() {
-    assert_eq!(
-        add_time_verdict(false, None, None, Some("tmux new-session -d")),
-        AddTimeVerdict::Imposter("cmdline")
-    );
-    assert_eq!(
-        add_time_verdict(false, Some(900), Some(1000), Some("-bash")),
-        AddTimeVerdict::Imposter("cmdline"),
-        "time check passing must not mask a non-claude cmdline"
-    );
-    // 并进来的样本（原 `agents/claudecode/liveness_tests.rs`，那一族退役）：
-    // 编辑器 · 登录 shell · sshd 会话 —— PID 被复用时最常见的那几种「明显不像」。
-    for foreign in ["/usr/bin/vim", "bash -l", "sshd: u@pts/0"] {
-        assert_eq!(
-            add_time_verdict(false, None, None, Some(foreign)),
-            AddTimeVerdict::Imposter("cmdline"),
-            "{foreign}"
-        );
-    }
-}
-
-#[test]
-fn imposter_by_bg_spare_before_exact_identity() {
-    // bg-spare 优先于 exact-identity——即便 procStart 自洽（recorded==current）
-    // 也判 Imposter（否则守护池停泊备用进程恒绿）。
-    assert_eq!(
-        add_time_verdict(true, None, None, Some("claude bg-spare")),
-        AddTimeVerdict::Imposter("bg-spare"),
-        "bg-spare 必须在 exact-identity Alive 之前拦下"
-    );
-    assert_eq!(
-        add_time_verdict(false, None, None, Some("/usr/bin/claude bg-spare --foo")),
-        AddTimeVerdict::Imposter("bg-spare")
-    );
-    // 普通 claude 会话不受影响（procStart 自洽仍 Alive）。
-    assert_eq!(
-        add_time_verdict(true, None, None, Some("claude --resume x")),
-        AddTimeVerdict::Alive
-    );
-}
-
-#[test]
-fn claude_like_cmdlines_pass() {
-    for cmd in [
-        "claude --resume abc",
-        "/usr/bin/node /home/u/.local/bin/claude",
-        "NODE_OPTIONS=x node cli.js",
-        // 只看得见解释器那一形（`liveness.rs` 头注：词表里有 `node` 就是为它）——
-        // 解释器不在行首（「`node` 只认行首」的写法两族都会放过这一格）。
-        "/usr/bin/node cli.js",
-        "node index.js",
-        "Claude", // case-insensitive
-    ] {
-        assert_eq!(
-            add_time_verdict(false, Some(900), Some(1000), Some(cmd)),
-            AddTimeVerdict::Alive,
-            "{cmd}"
-        );
-    }
-}
-
-#[test]
-fn missing_data_degrades_to_allow() {
-    assert_eq!(
-        add_time_verdict(false, None, None, None),
-        AddTimeVerdict::Alive
-    );
-    assert_eq!(
-        add_time_verdict(false, Some(2000), None, None),
-        AddTimeVerdict::Alive
-    );
-    assert_eq!(
-        add_time_verdict(false, None, Some(1000), None),
-        AddTimeVerdict::Alive
-    );
-    // Empty cmdline (kernel threads read as empty) is not evidence.
-    assert_eq!(
-        add_time_verdict(false, None, None, Some("")),
-        AddTimeVerdict::Alive
-    );
-    assert_eq!(
-        add_time_verdict(false, None, None, Some("   ")),
-        AddTimeVerdict::Alive
-    );
-}
-
 // === 远端会话生命周期 ===
 
 /// ★★ **「盯着的目录被换掉」这条路必须有人重挂 + 重扫。**
@@ -2299,47 +2177,6 @@ fn background_reads_through_the_adapter() {
     assert!(!is_background(br#"{"sessionId":"s","kind":"interactive"}"#));
     assert!(!is_background(br#"{"sessionId":"s"}"#), "不写 kind ⇒ 交互");
     assert!(!is_background(b"not json"));
-}
-
-#[test]
-fn procstart_identity_match_short_circuits_all_heuristics() {
-    // Recorded ticks == current ticks → author confirmed, even when the
-    // heuristics would individually scream imposter (stale mtime, bad
-    // cmdline): identity evidence is strictly stronger.
-    assert_eq!(
-        add_time_verdict(true, Some(9_999_999), Some(1000), Some("tmux")),
-        AddTimeVerdict::Alive
-    );
-}
-
-#[test]
-fn procstart_mismatch_falls_through_to_heuristics() {
-    // Mismatch + stale time evidence → imposter (the tmux reuse case).
-    assert_eq!(
-        add_time_verdict(false, Some(2000), Some(1000), None),
-        AddTimeVerdict::Imposter("started-after-pidfile")
-    );
-    // Mismatch alone with fresh mtime and claude-like cmdline → allow
-    // (defends against CC changing the procStart format: a hard reject
-    // would black out every real session).
-    assert_eq!(
-        add_time_verdict(false, Some(990), Some(1000), Some("claude")),
-        AddTimeVerdict::Alive
-    );
-}
-
-#[test]
-fn tolerance_exact_boundary() {
-    // start == mtime + 60 → still inside tolerance (uses >, not >=).
-    assert_eq!(
-        add_time_verdict(false, Some(1060), Some(1000), None),
-        AddTimeVerdict::Alive
-    );
-    // One second past → imposter.
-    assert_eq!(
-        add_time_verdict(false, Some(1061), Some(1000), None),
-        AddTimeVerdict::Imposter("started-after-pidfile")
-    );
 }
 
 #[test]
@@ -3715,55 +3552,6 @@ fn resync_for_one_sid_catches_up_its_jsonl_from_the_cursor() {
     assert_eq!((one, all), (1, 3), "补读行数（单 sid · 整机）不对");
 }
 
-/// `ccm` resume 要问「此刻哪些会话在跑」：一次性扫描与起步初扫同一条判活（pid 在 · 不是后台任务 ·
-/// add-time 冒名判定）。家目录放在非 ASCII 路径下（仓可能住在非 ASCII 的目录里）。
-#[cfg(target_os = "linux")]
-#[test]
-fn fix_the_one_shot_scan_sees_exactly_the_live_interactive_sessions() {
-    let home = std::env::temp_dir().join(format!("ccm-fix-文档-{}", std::process::id()));
-    let sessions = crate::agents::claudecode::paths::sessions_root(&home);
-    std::fs::create_dir_all(&sessions).expect("建目录");
-    let me = std::process::id();
-    let ticks = crate::platform::proc::proc_starttime(me).expect("读得到自己的 starttime");
-    let write = |pid: u32, body: serde_json::Value| {
-        std::fs::write(sessions.join(format!("{pid}.json")), body.to_string()).expect("写 pidfile")
-    };
-    write(
-        me,
-        serde_json::json!({"sessionId": "live-1", "procStart": ticks.to_string(), "kind": "interactive"}),
-    );
-    // 死进程（pid 上限之外，必不在）· 后台任务 · 冒名（procStart 对不上且 cmdline 不像 agent）。
-    write(4_194_300, serde_json::json!({"sessionId": "dead-1"}));
-    let bg = std::process::Command::new("sleep")
-        .arg("30")
-        .spawn()
-        .expect("起 sleep");
-    write(
-        bg.id(),
-        serde_json::json!({"sessionId": "bg-1", "kind": "bg"}),
-    );
-    let mut imp = std::process::Command::new("sleep")
-        .arg("30")
-        .spawn()
-        .expect("起 sleep");
-    write(
-        imp.id(),
-        serde_json::json!({"sessionId": "imp-1", "procStart": "1"}),
-    );
-    let got = running_sessions(&home);
-    let mut bg = bg;
-    let _ = bg.kill();
-    let _ = imp.kill();
-    let _ = bg.wait();
-    let _ = imp.wait();
-    std::fs::remove_dir_all(&home).ok();
-    assert_eq!(got, vec![("live-1".to_string(), me)]);
-    // 接线：`ccm` 入口注入的就是这一份扫描（恰一处）。
-    let main = guard_core::production_code(include_str!("../../../src/backend/stream/entry.rs"));
-    guard_core::find_pinned(&main, "observe::watcher::running_sessions(&home)")
-        .unwrap_or_else(|e| panic!("`stream/entry.rs` 注入的不是观测层那一份扫描：{e}"));
-}
-
 /// 〔要求住址 「`session.tasks` 推送改 `chan.subscribe(origin, …)`，监视进后端，monitor 那份 notify 删」〕
 /// 任务目录里的动静 ⇒ 按会话 sid 去重（第一段）；根目录自己 · 别处的路径不算。
 #[test]
@@ -4953,4 +4741,219 @@ fn a_sessions_dir_created_after_start_marks_the_live_table_dirty_on_rescan() {
         dirty,
         "后建的 `sessions/` 挂上时重扫宣告了会话，却没把活会话表标脏 —— `sessions-stop` 一直答「会话已结束」"
     );
+}
+
+// === 状态一句的读口（`locate::live_line`）：watcher 造脸时问它 ===
+
+/// 一份记录：一条回复里调了 Bash、还没结果（夹具只造结构：占位命令）。
+fn live_line_record(home: &Path, sid: &str) -> PathBuf {
+    let dir = home.join("projects").join("-w-proj");
+    std::fs::create_dir_all(&dir).unwrap();
+    let p = dir.join(format!("{sid}.jsonl"));
+    let body = [
+        r#"{"type":"user","uuid":"u-1","timestamp":"2026-10-05T12:00:00Z","cwd":"/w/proj","message":{"content":"q"}}"#,
+        r#"{"type":"assistant","uuid":"a-1","parentUuid":"u-1","timestamp":"2026-10-05T12:00:01Z","message":{"model":"m-x","content":[{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"x"}}]}}"#,
+    ]
+    .map(|l| format!("{l}\n"))
+    .concat();
+    std::fs::write(&p, body).unwrap();
+    p
+}
+
+/// ★ 活会话、记录里有一条没结果的 Bash 调用 ⇒ 状态一句是「运行中 · 调用 Bash · …」，会走的那一截照调用那一刻起；不活 ⇒ 没有这一句。
+#[test]
+fn live_line_says_the_running_step_from_the_record() {
+    let home = test_home::scratch("live-line");
+    let sid = "0b1c2d3e-aaaa-4bbb-8ccc-1234567890ab";
+    let p = live_line_record(&home, sid);
+    let path = p.to_string_lossy().into_owned();
+    let line = crate::observe::query::locate::live_line(
+        &home,
+        sid,
+        &path,
+        Some(crate::agents::SessionActivity::Working),
+        &Default::default(),
+    )
+    .expect("活会话该有状态一句");
+    let at = crate::common::time::parse_iso8601_ms("2026-10-05T12:00:01Z")
+        .and_then(|ms| u64::try_from(ms).ok())
+        .unwrap();
+    let clock = line.clock.as_ref().expect("调用有时刻 ⇒ 带会走的那一截");
+    assert_eq!(clock.from, at, "从调用那一刻起走");
+    assert_eq!(
+        clock.text.0,
+        copy_core::copy_text(
+            "sessionFace.state.runningFor",
+            &[("tool", "Bash"), ("dur", "{dur}")]
+        )
+    );
+    assert!(
+        line.text.0.starts_with(&copy_core::copy_text(
+            "sessionFace.state.running",
+            &[("tool", "Bash")]
+        )),
+        "状态一句：{:?}",
+        line.text
+    );
+    assert!(
+        crate::observe::query::locate::live_line(&home, sid, &path, None, &Default::default())
+            .is_none(),
+        "不活 ⇒ 没有这一句"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 推出去的脸带状态一句：活会话的记录里有一条没结果的 Bash 调用 ⇒ 读完那一帧之后紧跟一帧 `session_status`，脸上 `line` 是「运行中 · 调用 Bash」、
+/// 会走的从调用那一刻起；结果来了 ⇒ 状态一句变了，再一帧；之后的行不改这一句 ⇒ 不再发（补推不多于这三格真变的次数，也不多于行帧数）。
+#[cfg(target_os = "linux")]
+#[test]
+fn the_pushed_face_carries_the_state_line_and_repushes_only_when_it_changes() {
+    let dir = test_home::scratch("face-line");
+    let proj = dir.join("projects").join("-w-proj");
+    std::fs::create_dir_all(&proj).unwrap();
+    let sid = "0b1c2d3e-aaaa-4bbb-8ccc-0000000000f1";
+    let jsonl = proj.join(format!("{sid}.jsonl"));
+    let call = r#"{"type":"assistant","uuid":"a-1","parentUuid":"u-1","timestamp":"2026-10-05T12:00:01Z","message":{"model":"m-x","content":[{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"x"}}]}}"#;
+    std::fs::write(
+        &jsonl,
+        format!("{}\n{call}\n", r#"{"type":"user","uuid":"u-1","timestamp":"2026-10-05T12:00:00Z","cwd":"/w/proj","message":{"content":"q"}}"#),
+    )
+    .unwrap();
+    let pid = std::process::id();
+    let ticks = proc_starttime(pid).expect("own starttime");
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
+    let mut sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(dir.join("projects"));
+    let pidfile = dir.join(format!("{pid}.json"));
+    std::fs::write(
+        &pidfile,
+        format!(r#"{{"pid":{pid},"sessionId":"{sid}","cwd":"/w/proj","procStart":"{ticks}","status":"busy"}}"#),
+    )
+    .unwrap();
+    let drain = |rx: &mut FrameRx| {
+        let mut out = Vec::new();
+        while let Ok(f) = rx.try_recv() {
+            out.push(f);
+        }
+        out
+    };
+    let faces = |frames: &[Frame]| -> Vec<crate::wire::SessionFace> {
+        frames
+            .iter()
+            .filter_map(|f| match f {
+                Frame::SessionStatus(s) => Some(s.face.clone()),
+                _ => None,
+            })
+            .collect()
+    };
+    process_session_added(&pidfile, &mut state, &mut sink);
+    let first = faces(&drain(&mut rx));
+    let at = crate::common::time::parse_iso8601_ms("2026-10-05T12:00:01Z")
+        .and_then(|ms| u64::try_from(ms).ok())
+        .unwrap();
+    match first.as_slice() {
+        [f] => {
+            assert_eq!(
+                f.line.0,
+                copy_core::copy_text("sessionFace.state.running", &[("tool", "Bash")])
+            );
+            assert_eq!(
+                f.clock.as_ref().map(|c| c.from),
+                Some(at),
+                "会走的从调用那一刻起"
+            );
+        }
+        other => panic!("读完之后该恰好一帧带状态一句的 session_status：{other:?}"),
+    }
+    // 结果来了：没有在跑的那一步了 ⇒ 状态一句换成「运行中」、不带会走的。
+    let result = r#"{"type":"user","uuid":"u-2","parentUuid":"a-1","timestamp":"2026-10-05T12:00:02Z","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"ok"}]}}"#;
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(&jsonl)
+        .and_then(|mut f| std::io::Write::write_all(&mut f, format!("{result}\n").as_bytes()))
+        .unwrap();
+    process_jsonl(&jsonl, &mut state, &mut sink);
+    let after = faces(&drain(&mut rx));
+    match after.as_slice() {
+        [f] => {
+            assert_eq!(
+                f.line.0,
+                copy_core::copy_text("backend.status.connected", &[])
+            );
+            assert!(f.clock.is_none());
+        }
+        other => panic!("状态一句变了该恰好一帧：{other:?}"),
+    }
+    // 又一行、状态一句没变 ⇒ 只有行帧，不补推。
+    let note = r#"{"type":"user","uuid":"u-3","parentUuid":"u-2","timestamp":"2026-10-05T12:00:03Z","isMeta":true,"message":{"content":"m"}}"#;
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(&jsonl)
+        .and_then(|mut f| std::io::Write::write_all(&mut f, format!("{note}\n").as_bytes()))
+        .unwrap();
+    process_jsonl(&jsonl, &mut state, &mut sink);
+    let frames = drain(&mut rx);
+    assert!(
+        faces(&frames).is_empty(),
+        "状态一句没变不补推：{:?}",
+        faces(&frames)
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// pidfile 刚说在等的那一下，造脸用的活会话表还是之前那张（读不到在等什么 · 等了多久）：表重造发布那一下照新表重算、补推一帧，
+/// 脸上是等批准那一句、带会走的那一截。
+#[cfg(target_os = "linux")]
+#[test]
+fn the_waiting_line_is_repushed_once_the_live_table_is_published() {
+    let dir = test_home::scratch("face-wait");
+    let proj = dir.join("projects").join("-w-proj");
+    std::fs::create_dir_all(&proj).unwrap();
+    std::fs::create_dir_all(dir.join("sessions")).unwrap();
+    let sid = "0b1c2d3e-aaaa-4bbb-8ccc-0000000000f2";
+    let jsonl = proj.join(format!("{sid}.jsonl"));
+    std::fs::write(
+        &jsonl,
+        format!(
+            "{}\n{}\n",
+            r#"{"type":"user","uuid":"u-1","timestamp":"2026-10-05T12:00:00Z","cwd":"/w/proj","message":{"content":"q"}}"#,
+            r#"{"type":"assistant","uuid":"a-1","parentUuid":"u-1","timestamp":"2026-10-05T12:00:01Z","message":{"model":"m-x","content":[{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"x"}}]}}"#
+        ),
+    )
+    .unwrap();
+    let pid = std::process::id();
+    let ticks = proc_starttime(pid).expect("own starttime");
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
+    let mut sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(dir.join("projects"));
+    let pidfile = dir.join("sessions").join(format!("{pid}.json"));
+    let write = |status: &str, extra: &str| {
+        std::fs::write(
+            &pidfile,
+            format!(r#"{{"pid":{pid},"sessionId":"{sid}","cwd":"/w/proj","procStart":"{ticks}","status":"{status}"{extra}}}"#),
+        )
+        .unwrap();
+    };
+    write("busy", "");
+    process_session_added(&pidfile, &mut state, &mut sink);
+    publish_and_resay(&dir, &mut state, &mut sink);
+    while rx.try_recv().is_ok() {}
+    // pidfile 改成在等：造脸那一下发布着的还是说在跑的那张表。
+    write(
+        "waiting",
+        r#","waitingFor":"permission prompt","statusUpdatedAt":1791201602000"#,
+    );
+    process_session_added(&pidfile, &mut state, &mut sink);
+    publish_and_resay(&dir, &mut state, &mut sink);
+    let mut last = None;
+    while let Ok(f) = rx.try_recv() {
+        if let Frame::SessionStatus(s) = f {
+            last = Some(s.face);
+        }
+    }
+    let face = last.expect("该有 session_status");
+    let kind = copy_core::copy_text("beSession.needs.approve", &[]);
+    assert_eq!(face.line.0, kind, "等的种类照新表写");
+    assert!(face.clock.is_some(), "带已等多久那一截：{face:?}");
+    std::fs::remove_dir_all(&dir).ok();
 }

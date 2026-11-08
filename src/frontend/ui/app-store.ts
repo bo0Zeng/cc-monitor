@@ -10,7 +10,7 @@
  */
 import type { AccountsState } from "./accounts";
 import { LOCAL, type Machine } from "./ipc/origin";
-import type { QuotaRead } from "./acct-words";
+import type { QuotaRead } from "./generated/QuotaRead";
 import type { RotationViewReply } from "./generated/RotationViewReply";
 import type { SessionAccountReply } from "./generated/SessionAccountReply";
 
@@ -92,7 +92,7 @@ export const appStore = {
   accounts: new Slice<ReadonlyMap<Machine, AccountsState>>(new Map()),
   /** 每个会话的号（按 sid；还没问回来 ⇒ 不在里面）。 */
   sessionAccount: new Slice<ReadonlyMap<string, SessionAccountEntry>>(new Map()),
-  /** 每台的额度账（{@link QuotaSlot}：读到的账 · 整问失败那一句；还没问回来 ⇒ 不在里面）。只有 `acct-center.ts` 写；读经 {@link quotaOf} / {@link quotaReadOf}。 */
+  /** 每台的额度账（{@link QuotaSlot}：读到的账 · 整问失败那一句；还没问回来 ⇒ 不在里面）。只有 `acct-center.ts` 写；读经 {@link quotaOf}。 */
   quota: new Slice<ReadonlyMap<Machine, QuotaRead | QuotaFailed>>(new Map()),
   /** 每个会话的轮换（按 sid；标签页上的账号格照它画）。 */
   sessionRotation: new Slice<ReadonlyMap<string, SessionRotationEntry>>(new Map()),
@@ -108,10 +108,4 @@ export function putIn<K, V>(slice: Slice<ReadonlyMap<K, V>>, key: K, value: V): 
 /** 那台的额度账此刻是哪一形（没有那一格 ⇒ 还没问回来）。 */
 export function quotaOf(origin: Machine): QuotaSlot {
   return appStore.quota.get().get(origin) ?? { state: "pending" };
-}
-
-/** 那台读到的账；整问失败 · 还没问回来 ⇒ `null`（只要号的用量那几处用它）。 */
-export function quotaReadOf(origin: Machine): QuotaRead | null {
-  const q = quotaOf(origin);
-  return q.state === "failed" || q.state === "pending" ? null : q;
 }

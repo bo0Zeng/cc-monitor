@@ -63,10 +63,6 @@ const SYNC_ALLOWED: &[(&str, &str)] = &[
         "只往事件循环递一个「退出后重起」的请求（`request_restart`）就回，不起子进程、不等外面",
     ),
     (
-        "backend_control.rs::backend_machines",
-        "读进程内那张远端句柄表的名字（内存，锁只在这一下）",
-    ),
-    (
         "chan/webview.rs::chan_offer",
         "读进程内那台机器的能力事实（握手时记下的，内存）",
     ),
@@ -535,7 +531,7 @@ fn no_sync_command_waits_on_the_outside() {
         a.reach.is_empty(),
         "\n🔴 **同步 `#[tauri::command]` 的调用闭包里够得着「等外面」的写法**（`INVARIANTS §10`）：{:#?}\n\n\
          ⇒ 那条命令会在 IPC 派发线程上等（`block_on` / 同步连口），期间别的 IPC 全排队 ——\n\
-            改 `pub async fn` ＋ 同步那一截包 `spawn_blocking`（`§10` 实施口诀；先例 `launch.rs::open_local_terminal`）。",
+            改 `pub async fn` ＋ 同步那一截包 `spawn_blocking`（`§10` 实施口诀；先例 `launch.rs::open_terminal_window`）。",
         a.reach
     );
 }
@@ -563,13 +559,13 @@ fn every_sync_command_is_on_the_whitelist_with_a_reason() {
     }
 }
 
-/// 正控（真仓）：本机起会话那一条（今天是开终端窗口 `open_local_terminal`）与起后端那一条被认成 **async** 命令 —— 扫描器看得见属性，也读得出 `async` 那一格。
+/// 正控（真仓）：本机起会话那一条（今天是开终端窗口 `open_terminal_window`）与起后端那一条被认成 **async** 命令 —— 扫描器看得见属性，也读得出 `async` 那一格。
 #[test]
 fn the_two_local_launch_commands_are_seen_as_async_commands() {
     let a = analyze(&this_crate());
     for cmd in [
         // 本机起会话的计划与渲染搬进本机后端，monitor 那一跳只剩开终端窗口（阻塞那一截进 `spawn_blocking`）。
-        "launch.rs::open_local_terminal",
+        "launch.rs::open_terminal_window",
         "backend_control.rs::backend_start",
     ] {
         assert!(

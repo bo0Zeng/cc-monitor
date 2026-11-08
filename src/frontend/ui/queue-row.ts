@@ -1,7 +1,8 @@
 /**
  * **输入框上方那一排输入队**：会话那台那份名单 ＋ 这一端还没回执的那几句，每条一行：那一句此刻的样子 · 那一句开头 ·［撤回］。
  * 不写第几（先后就是上下顺序）、不写哪一端。名单那几条的那一句是会话那台写好的（`said`）；待发那几句的那一句由宿主交来
- * （在飞 ⇒「发送中 · 等确认」；交了没回执 ⇒ 那台离线照它成品的 `heldSaid`、连着说「排队 · 无应答」，那一行淡着）。这里不各自记、不按线上值挑字。
+ * （在飞 ⇒「发送中 · 等确认」；交了没回执 ⇒ 那台离线照它成品的 `heldSaid`、连着说「排队 · 无应答」，那一行淡着；那台拒了 ⇒ 那台那一句，
+ * 错误色同名单里没送进会话那一条）。这里不各自记、不按线上值挑字。
  * 最多露三行、多的框里滚（排版，不数条数）。那台离线 ⇒ 照手上那一份画、淡着，排头单独一行「名单为上次所知」（是哪台、为什么看机器条）。
  */
 import { copyText } from "./copy-table";
@@ -19,12 +20,13 @@ export interface QueueRowHost {
   cancelPending(id: string, text: string): void;
 }
 
-/** 待发里的一行：编号 · 那一句 · 此刻那一句样子（宿主写好的）· 交了没回执（淡着）。 */
+/** 待发里的一行：编号 · 那一句 · 此刻那一句样子（宿主写好的）· 交了没回执（淡着）· 那台拒了（错误色）。 */
 export interface PendingLine {
   id: string;
   text: string;
   said: string;
   held: boolean;
+  refused: boolean;
 }
 
 /** 一句开头最多几个字。 */
@@ -54,7 +56,9 @@ export class QueueRow {
     // 回执还没到、名单里已经有了的那一句只画一遍（照名单）。
     for (const o of pending) {
       if (items.some((it) => it.id === o.id)) continue;
-      lines.push(this.line(o.said, o.text, o.held ? "held" : "sending", () => this.host.cancelPending(o.id, o.text)));
+      // 拒了的那一行同名单里没送进会话那一条的样子（错误色）。
+      const at = o.refused ? "undelivered" : o.held ? "held" : "sending";
+      lines.push(this.line(o.said, o.text, at, () => this.host.cancelPending(o.id, o.text)));
     }
     this.lines.replaceChildren(...lines);
     if (stale && lines.length > 0) {

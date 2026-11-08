@@ -92,13 +92,13 @@ impl crate::wire::typed::Handle for SessionWindowCmd {
     }
 }
 
-/// 生产那一份「本机这个会话此刻由谁显示」：会话账里找它的进程号（没有 ⇒ `None`），再问 [`crate::observe::session_terminals::here_by`]。
+/// 生产那一份「本机这个会话此刻由谁显示」：活会话表里持着它的交互进程（`history::live_table::now(..).writers`，最小的那个；没有 ⇒ `None`），再问 [`crate::observe::session_terminals::here_by`]。
 fn local_here(sid: String) -> Result<Option<Here>, SessionWindowErr> {
     let home = crate::history::listing::agent_home();
-    let Some(pid) = crate::observe::watcher::running_sessions(&home)
-        .into_iter()
-        .find(|(s, _)| *s == sid)
-        .map(|(_, pid)| pid)
+    let Some(pid) = crate::history::live_table::now(&home)
+        .writers(&sid)
+        .first()
+        .copied()
     else {
         return Ok(None);
     };

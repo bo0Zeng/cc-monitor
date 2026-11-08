@@ -7,7 +7,7 @@ use copy_core::copy_text;
 use ssh_dial::pool::{LinkFacts, Way, Wire};
 
 fn host(v: serde_json::Value) -> Host {
-    ssh_dial::machine::loose(&v).expect("机器表那一行读不动")
+    <ssh_dial::machine::Host as serde::Deserialize>::deserialize(&v).expect("机器表那一行读不动")
 }
 
 /// `compressed` ⇒ 这一跳远（闸开着：远的那一跳 SSH 层压）。

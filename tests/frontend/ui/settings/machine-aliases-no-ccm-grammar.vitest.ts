@@ -7,7 +7,7 @@
  *
  * # 判法
  *
- * 旗标的全集取后端原文（`src/backend/host/ccm_line/argv.rs` 的 `mod flag` 里每一个常量，含 `--` 与 `new`）——
+ * 旗标的全集取后端原文（`src/backend/wire/ccm_line/argv.rs` 的 `mod flag` 里每一个常量，含 `--` 与 `new`）——
  * 与被扫的界面文件异源。别名页那两份生产文件（剥注释）里：
  * - 字符串字面量恰是某个旗标、或以「旗标=」打头 ⇒ 命中；
  * - 按空白切一串（`.split(/\s…/)`）⇒ 命中。
@@ -24,8 +24,8 @@ import { stripComments } from "../../../test-support/strip-comments";
 
 const FILES = ["src/frontend/ui/settings/machine-aliases.ts", "src/frontend/ui/alias-reads.ts", "src/frontend/ui/settings/profiles-list.ts", "src/frontend/ui/profiles-reads.ts"];
 
-/** 后端 ccm 那一行的解析口（宿主口那个包里）与它的旗标表那一段的开头。 */
-const ARGV_RS = "src/backend/host/ccm_line/argv.rs";
+/** 后端 ccm 那一行的解析口（帧面零件那个包里）与它的旗标表那一段的开头。 */
+const ARGV_RS = "src/backend/wire/ccm_line/argv.rs";
 const FLAG_MOD = "pub mod flag {";
 
 /** 后端 `argv.rs::flag` 里每一个常量的值。 */

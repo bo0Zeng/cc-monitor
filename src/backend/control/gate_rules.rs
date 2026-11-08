@@ -37,15 +37,8 @@ impl Gate2 {
     }
 }
 
-/// 本工具建的 tmux 会话名判定：`cc-<体>` 前缀，或 `<X>-cc` / `<X>-cc-<N>` 后缀，
-/// 且整名只含 `[A-Za-z0-9_-]`。
-///
-/// # 两种形状都要认，**一个都不许删**
-///
-/// - 新形 `<X>-cc`（撞名时 `<X>-cc-2`）是本工具今天起会话用的；
-/// - 老形 `cc-<sid8>` 必须一并保留：不写 `@ccm_sid` 的版本建的老 `cc-*` 会话**没有它**，
-///   只靠这条前缀判据仍必须可 kill/send-keys。删了就是把用户**正在跑的**会话
-///   变成 issue #76 那种「失管会话」。
+/// 本工具建的 tmux 会话名判定：`<X>-cc` / `<X>-cc-<N>`（撞名避让）那一形，且整名只含 `[A-Za-z0-9_-]`。
+/// 名字不是这一形的会话（用户自己起名的 · 别的形）照会话上的 `@ccm_sid` 判（[`gate2`] 的另一半）。
 ///
 /// # 字符集那一条不是洁癖
 ///
@@ -56,7 +49,6 @@ pub(crate) fn is_ccm_tmux_name(name: &str) -> bool {
     let charset_ok = name
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
-    let old_prefix = name.starts_with("cc-") && name.len() > 3;
     // 后缀形态：`<X>-cc` 或 `<X>-cc-<N>`（撞名避让）。要求 `<X>` 非空，
     // 否则裸 `-cc` 这种退化名也会命中。
     let new_suffix = name
@@ -67,7 +59,7 @@ pub(crate) fn is_ccm_tmux_name(name: &str) -> bool {
             || name
                 .rsplit_once("-cc-")
                 .is_some_and(|(_, n)| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit())));
-    charset_ok && (old_prefix || new_suffix)
+    charset_ok && new_suffix
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

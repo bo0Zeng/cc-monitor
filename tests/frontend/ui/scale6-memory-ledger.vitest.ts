@@ -140,7 +140,7 @@ function toolResultRec(toolUseId: string, text: string, recId: string): LineReco
     id: recId,
     at: "2026-09-18T12:00:01.000Z",
     who: { speaker: { kind: "toolResult" }, text: "" },
-    blocks: [{ type: "tool_result", for: toolUseId, content: [{ type: "text", text, bytes: 0 }], isError: false, bytes: 0 }],
+    blocks: [{ type: "tool_result", for: toolUseId, content: [{ type: "text", text, bytes: 0 }], isError: false, bytes: 0, sizeText: "0 B" }],
     draw: "steps",
     human: false,
   };

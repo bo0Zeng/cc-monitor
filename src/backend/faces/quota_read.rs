@@ -7,14 +7,15 @@
 use crate::accounts::quota::facts::Kind;
 use crate::accounts::quota::ledger::ReadState;
 use crate::accounts::quota::name_words::{account_text, is_candidate, names};
-use crate::accounts::quota::show::{QuotaShow, Stamp};
+use crate::accounts::quota::rules::decide::{WarmVerdict, WarmWhy};
+use crate::accounts::quota::show::QuotaShow;
 use crate::agents::{kind_of_route, QuotaReading};
 use crate::common::cells::{Tone, Words};
 use crate::common::time::TextClock;
-use crate::faces::quota_rows;
+use crate::faces::quota_rows::{self, Stamp};
 pub(crate) use cmd_wire::quota::{
     AccountHead, Candidate, QuotaAccount, QuotaRead, QuotaUnseen, ResetsAt, UnseenHead,
-    UnseenUsage, Verdict,
+    UnseenUsage, Verdict, SLOT_5H,
 };
 
 /// 「几点重置」那一格与旁边写好的字。
@@ -33,6 +34,14 @@ pub struct Seen {
     pub seen_at: u64,
     pub reading: QuotaReading,
     pub show: QuotaShow,
+    /// 开窗那一判（accounts 照这个号的事实判好的，`rules::decide::warm_verdict`）。
+    pub warm: WarmVerdict,
+}
+
+/// 没出过数的一个号交进出口的样子：那一截 ＋ 开窗那一判。
+pub(crate) struct Unseen {
+    pub(crate) head: UnseenHead,
+    pub(crate) warm: WarmVerdict,
 }
 
 /// 顶上那几格交进出口的样子。
@@ -50,6 +59,7 @@ pub(crate) struct Base {
 /// 出过数的一个号 ⇒ 成品那一条。
 pub fn account_of(s: Seen, clock: &TextClock) -> QuotaAccount {
     let mut show = s.show;
+    quota_rows::written(&mut show, s.reading.resets_at);
     show.stamp(clock);
     let head = AccountHead {
         agent: kind_of_route(&s.agent),
@@ -59,34 +69,20 @@ pub fn account_of(s: Seen, clock: &TextClock) -> QuotaAccount {
         resets_at: resets_at(s.reading.resets_at, clock),
         show,
     };
-    let five_hour = (head.show.kind != Kind::Api).then(|| {
-        let none = copy_core::copy_text("acct.val.none", &[]);
-        let text = head
-            .show
-            .slots
-            .iter()
-            .find(|x| x.slot == "5h")
-            .map_or(none, |x| x.text.0.clone());
-        Words(quota_rows::five_hour(&text))
-    });
     QuotaAccount {
         rows: quota_rows::seen_block(&head),
-        five_hour,
-        warm: quota_rows::stamped(
-            quota_rows::warm_of(head.show.login, Some(&head.show), clock.now),
-            clock,
-        ),
+        warm: quota_rows::warm_of(s.warm, Some(&head.show), clock),
         head,
     }
 }
 
 /// 没出过数的一个号 ⇒ 成品那一条。
-pub(crate) fn unseen_of(head: UnseenHead, clock: &TextClock) -> QuotaUnseen {
+pub(crate) fn unseen_of(mut u: Unseen, clock: &TextClock) -> QuotaUnseen {
+    u.head.usage = quota_rows::unseen_usage(u.head.kind);
     QuotaUnseen {
-        rows: quota_rows::unseen_block(&head),
-        five_hour: None,
-        warm: quota_rows::stamped(quota_rows::warm_of(head.login, None, clock.now), clock),
-        head,
+        rows: quota_rows::unseen_block(&u.head),
+        warm: quota_rows::warm_of(u.warm, None, clock),
+        head: u.head,
     }
 }
 
@@ -129,7 +125,7 @@ fn verdict_of(usable: &[String], earliest: Option<&(String, u64)>, clock: &TextC
 pub(crate) fn reply_of(
     base: Base,
     seen: Vec<Seen>,
-    unseen: Vec<UnseenHead>,
+    unseen: Vec<Unseen>,
     clock: &TextClock,
 ) -> QuotaRead {
     let text = quota_rows::head_text(
@@ -140,7 +136,11 @@ pub(crate) fn reply_of(
     let candidates = seen
         .iter()
         .map(|s| (kind_of_route(&s.agent), &s.account, s.show.kind))
-        .chain(unseen.iter().map(|u| (u.agent.clone(), &u.account, u.kind)))
+        .chain(
+            unseen
+                .iter()
+                .map(|u| (u.head.agent.clone(), &u.head.account, u.head.kind)),
+        )
         .filter(|(_, a, _)| is_candidate(a))
         .map(|(agent, account, kind)| Candidate {
             agent,
@@ -164,7 +164,6 @@ pub(crate) fn reply_of(
         verdict,
         candidates,
         text,
-        five_hour: quota_rows::head_five_hour(base.state),
         state: base.state,
         reason: base.reason,
         detail: base.detail,
@@ -198,11 +197,11 @@ pub(crate) fn specimen() -> QuotaRead {
     let clock = TextClock::new(1_000, &crate::common::time::Tz::default());
     let show = QuotaShow {
         kind: Kind::Sub,
-        state: QuotaState::Ok,
+        state: QuotaState::Refused,
         stale: false,
-        limiting: Some("5h".into()),
+        limiting: Some(SLOT_5H.into()),
         slots: vec![SlotShow {
-            slot: "5h".into(),
+            slot: SLOT_5H.into(),
             pct: Some(1),
             resets_at: Some(2_000),
             resets_at_text: None,
@@ -212,12 +211,12 @@ pub(crate) fn specimen() -> QuotaRead {
             text: Words("1%".into()),
             tone: Tone::Plain,
             per_pct_text: Some(Words("p".into())),
-            window: String::new(),
+            window: "five_hour".into(),
         }],
         login: LoginState::Ok,
         windows: vec![WindowShow {
             name: "five_hour".into(),
-            key: Some("5h".into()),
+            key: Some(SLOT_5H.into()),
             pct: Some(1),
             resets_at: Some(2_000),
             resets_at_text: None,
@@ -230,8 +229,8 @@ pub(crate) fn specimen() -> QuotaRead {
             tone: Tone::Plain,
         }],
         usage: crate::accounts::quota::show::Usage {
-            slot: Some("5h".into()),
-            window: Some(Words("5h".into())),
+            slot: Some(SLOT_5H.into()),
+            window: Some(Words(SLOT_5H.into())),
             value: Words("1%".into()),
             reset: None,
             text: Words("5h 1%".into()),
@@ -272,25 +271,33 @@ pub(crate) fn specimen() -> QuotaRead {
                 }),
             },
             show,
+            warm: WarmVerdict::Wait {
+                until: Some(2_000),
+                why: WarmWhy::Ticking,
+            },
         }],
-        vec![UnseenHead {
-            agent: crate::agents::AgentKind::new("agent"),
-            account: "b".into(),
-            kind: Kind::Sub,
-            login: LoginState::NeedsLogin,
-            usage: UnseenUsage {
-                slot: Some("5h".into()),
-                window: Some(Words("5h".into())),
-                value: Words("v".into()),
-                text: Words("5h v".into()),
-                tone: Tone::Plain,
+        vec![Unseen {
+            head: UnseenHead {
+                agent: crate::agents::AgentKind::new("agent"),
+                account: "b".into(),
+                kind: Kind::Sub,
+                login: LoginState::NeedsLogin,
+                usage: UnseenUsage {
+                    slot: Some(SLOT_5H.into()),
+                    window: Some(Words(SLOT_5H.into())),
+                    value: Words("v".into()),
+                    text: Words("5h v".into()),
+                    tone: Tone::Plain,
+                },
+            },
+            warm: WarmVerdict::Wait {
+                until: None,
+                why: WarmWhy::Login,
             },
         }],
         &clock,
     );
-    // 真出口在这一份里给不出的三格（读不出 · 一个号都没有时才有的那一句与那一格；没出过数的号那一格恒空）：样本照类型填上。
+    // 真出口在这一份里给不出的那一格（读不出 · 一个号都没有时才有的那一句）：样本照类型填上。
     r.text = Some(Words("t".into()));
-    r.five_hour = Some(Words("f".into()));
-    r.unseen[0].five_hour = Some(Words("f".into()));
     r
 }

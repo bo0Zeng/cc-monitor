@@ -10,8 +10,6 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { REPO_ROOT } from "../../../test-support/repo-root";
 import type { Account, AccountsState } from "../../../../src/frontend/ui/accounts";
-import type { QuotaRead } from "../../../../src/frontend/ui/acct-words";
-import { takeNames } from "../../../../src/frontend/ui/acct-words";
 
 const fetchAccounts = vi.fn();
 const readQuota = vi.fn();
@@ -19,7 +17,7 @@ const accountsVerify = vi.fn();
 const accountsRemove = vi.fn();
 const accountsSetDefault = vi.fn();
 const readProfiles = vi.fn();
-const readRemoteConfig = vi.fn();
+const readMachines = vi.fn();
 const emit = vi.fn();
 const setModelForAccount = vi.fn();
 const accountsInit = vi.fn();
@@ -37,9 +35,11 @@ vi.mock("../../../../src/frontend/ui/account-reads", () => ({
 }));
 vi.mock("../../../../src/frontend/ui/quota-reads", () => ({ readQuota: (...a: unknown[]) => readQuota(...a) }));
 vi.mock("../../../../src/frontend/ui/profiles-reads", () => ({ readProfiles: (...a: unknown[]) => readProfiles(...a) }));
-vi.mock("../../../../src/frontend/ui/remote-config", () => ({
-  readRemoteConfig: () => readRemoteConfig(),
-  findHostByOrigin: (rows: { name: string }[], o: string) => rows.find((r) => r.name === o) ?? null,
+// 各台此刻的成品（本机后端那张表里的每台）：判据照它摆「哪几台在表里」。
+vi.mock("../../../../src/frontend/ui/machine-feed", async (orig) => ({
+  ...(await orig<object>()),
+  readMachines: () => readMachines(),
+  readMachineNames: async () => Object.keys((await readMachines()) as Record<string, unknown>),
 }));
 vi.mock("../../../../src/frontend/ui/events", () => ({ subscribeTopics: () => Promise.resolve(() => {}) }));
 const getModelForAccount = vi.fn();
@@ -84,7 +84,7 @@ function refusal(code: string, message: string): ChanError {
 }
 
 function acct(p: Partial<Account>): Account {
-  return { name: "z", email: "z@x", configDir: "/h/.cc-monitor/accounts/z", configDirShown: "~/.cc-monitor/accounts/z", isDefault: false, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true, selectable: true, badge: { text: copyText("accounts.badge.signedIn"), warn: false, title: "" }, ...p };
+  return { name: "z", email: "z@x", configDir: "/h/.cc-monitor/accounts/z", configDirShown: "~/.cc-monitor/accounts/z", isDefault: false, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true, selectable: true, badge: { text: copyText("accounts.badge.signedIn"), warn: false }, ...p };
 }
 const META = { enabled: true, acctsDir: "/a", manifestPath: "/a/accounts.json", updatedAt: null, sharedStore: null, count: 3, error: null, unsupported: null, nextDefault: "personal", effectiveDefault: "work" };
 function state(p: Partial<AccountsState> = {}): AccountsState {
@@ -95,38 +95,17 @@ function state(p: Partial<AccountsState> = {}): AccountsState {
     error: null,
     notice: null,
     meta: META,
-    accounts: [acct({ name: "work", email: "work@example.com", isDefault: true, kindLine: "line-work" }), acct({ name: "personal", email: "me@example.com", kindLine: "line-personal" }), acct({ name: "api", authKind: "api-key", email: "", keyMasked: "••••••••a1b2", endpointHost: "HOST-BY-BACKEND", kindLine: "line-api" })],
+    accounts: [
+      acct({ name: "work", label: "后端·work", email: "work@example.com", isDefault: true, kindLine: "line-work", slots: [cell("后端·5h ✕ ↻13:00", "fail"), cell("后端·7d 78%")] }),
+      acct({ name: "personal", email: "me@example.com", kindLine: "line-personal", slots: [cell("后端·5h 63% ↻13:00"), cell("后端·7d 41%")] }),
+      acct({ name: "api", authKind: "api-key", email: "", keyMasked: "••••••••a1b2", endpointHost: "HOST-BY-BACKEND", kindLine: "line-api", slots: [cell("后端·按量")] }),
+    ],
     ...p,
   };
 }
-const NOW = 1_800_000_000;
-function quota(refusedAt?: number): QuotaRead {
-  const sub = (account: string, pct5: number, pct7: number, st = "ok") => ({
-    agent: "claude",
-    account,
-    seenAt: NOW - 60,
-    seenAtText: "11:59",
-    kind: "sub",
-    state: st,
-    stale: false,
-    limiting: "5h",
-    slots: [
-      // `full` 是那台后端的显示态（用满才有）；被拒没用满不带它。
-      // 那一格的字是核心写好的（用满 ✕ · 被拒没用满「{pct}% · 被拒」· 否则「{pct}%」），界面照抄。
-      { slot: "5h", pct: pct5, resetsAt: NOW + 3600, resetsAtText: "13:00", resetText: copyText("acct.reset.at", { at: "13:00" }), text: pct5 >= 100 ? "✕" : st === "refused" ? copyText("acct.val.refusedPct", { pct: pct5 }) : `${pct5}%`, tone: "plain", ...(pct5 >= 100 ? { full: true } : {}) },
-      { slot: "7d", pct: pct7, resetsAt: NOW + 86400, resetsAtText: "01-16 12:00", resetText: copyText("acct.reset.at", { at: "01-16 12:00" }), text: pct7 >= 100 ? "✕" : `${pct7}%`, tone: "plain", ...(pct7 >= 100 ? { full: true } : {}) },
-    ],
-    login: "ok",
-    usage: { slot: "5h", window: "5h", value: `${pct5}%`, text: `5h ${pct5}%`, tone: "plain" },
-  });
-  return {
-    state: "present",
-    reason: null,
-    path: null,
-    now: NOW,
-    accounts: [sub("work", 100, 78, "refused"), sub("personal", refusedAt ?? 63, 41, refusedAt === undefined ? "ok" : "refused"), { agent: "claude", account: "api", seenAt: NOW, kind: "api", state: "ok", stale: false, slots: [], login: "ok", usage: { value: copyText("acct.kind.api"), text: copyText("acct.kind.api"), tone: "plain" } }],
-    unseen: [],
-  } as unknown as QuotaRead;
+/** 那一行里写好的一格额度（字与语气都是那台后端写的，界面照摆）。 */
+function cell(text: string, tone: "plain" | "warn" | "fail" = "plain"): NonNullable<Account["slots"]>[number] {
+  return { slot: "5h", text, tone };
 }
 
 let confirmed: ConfirmSpec[] = [];
@@ -154,16 +133,13 @@ beforeEach(() => {
   setCurrentMachine("devbox");
   confirmed = [];
   answer = true;
-  for (const m of [fetchAccounts, readQuota, accountsVerify, accountsRemove, accountsSetDefault, readProfiles, readRemoteConfig, emit, setModelForAccount, accountsInit, accountsRepair, accountsAdd, writeApikeyKey, openLoginDrawer]) m.mockReset();
+  for (const m of [fetchAccounts, readQuota, accountsVerify, accountsRemove, accountsSetDefault, readProfiles, readMachines, emit, setModelForAccount, accountsInit, accountsRepair, accountsAdd, writeApikeyKey, openLoginDrawer]) m.mockReset();
   const change = (p: object = {}) => ({ applied: true, steps: ["一步"], notes: [], backup: null, account: null, aliasNames: ["teamcc", "teamcct"], keyMasked: null, keyProblem: null, aliases: [], ...p });
   accountsInit.mockResolvedValue(change());
   accountsRepair.mockResolvedValue(change());
   accountsAdd.mockResolvedValue(change());
-  readRemoteConfig.mockResolvedValue({ enabled: true, hosts: [{ name: "devbox", host: { label: "devbox" } }, { name: "gpu-01", host: { label: "gpu-01" } }] });
+  readMachines.mockResolvedValue({ "<local>": { state: "up" }, devbox: { state: "up" }, "gpu-01": { state: "up" } });
   fetchAccounts.mockResolvedValue(state());
-  readQuota.mockResolvedValue(quota());
-  // readQuota 整块是假的、不经 tookQuota 收表 ⇒ 这里交一张位名表（位名照表出、不拿码兜）。
-  takeNames({ accounts: {}, slots: { "5h": "5h", "7d": "7d" } });
   accountsVerify.mockResolvedValue({ pass: true, fails: 0, checks: [] });
   readProfiles.mockResolvedValue({
     profiles: [
@@ -181,42 +157,35 @@ beforeEach(() => {
 });
 
 describe("账号表", () => {
-  it("表头说是哪台、新会话默认谁；一号一行，默认号带「默认」，用量两列照那台的额度账", async () => {
+  it("表头说是哪台、新会话默认谁；一号一行，号名照那一行的 label，默认号带「默认」，用量两列照那一行写好的格", async () => {
     const el = await mount();
     expect(el.querySelector(".acct-head-title")!.textContent).toBe(copyText("acctPage.head.title", { machine: "devbox" }));
     expect(el.querySelector(".acct-head-sub")!.textContent).toBe(copyText("acctPage.head.default", { name: "work" }));
     expect([...el.querySelectorAll("[data-account]")].map((r) => (r as HTMLElement).dataset.account)).toEqual(["work", "personal", "api"]);
     const nameLine = (n: string) => rowOf(el, n).querySelector(".acct-row-name")!.textContent;
-    expect(nameLine("work")).toBe(`work${copyText("resumeSelect.option.defaultBare")}`);
+    expect(nameLine("work")).toBe(`后端·work${copyText("resumeSelect.option.defaultBare")}`);
     expect(nameLine("personal")).toBe("personal");
     const slots = (name: string) => [...rowOf(el, name).querySelectorAll<HTMLElement>(".acct-row-slot")];
-    expect(slots("work")[0].textContent).toBe("5h ✕ " + copyText("acct.reset.at", { at: "13:00" }));
-    expect(slots("work")[0].dataset.shade).toBe("refused");
-    expect(slots("work")[1].textContent).toBe("7d 78%");
-    expect(slots("personal")[0].textContent).toBe("5h 63% " + copyText("acct.reset.at", { at: "13:00" }));
-    expect(slots("personal")[1].textContent).toBe("7d 41%");
-    expect(slots("api")[0].textContent).toBe(copyText("acct.kind.api"));
+    expect(slots("work").map((c) => c.textContent)).toEqual(["后端·5h ✕ ↻13:00", "后端·7d 78%"]);
+    expect(slots("personal").map((c) => c.textContent)).toEqual(["后端·5h 63% ↻13:00", "后端·7d 41%"]);
+    expect(slots("api").map((c) => c.textContent)).toEqual(["后端·按量", ""]);
     expect(rowOf(el, "work").querySelector(".acct-row-kind")!.textContent).toBe("line-work");
+    expect(readQuota, "额度格在那一行里，不另问额度账").not.toHaveBeenCalled();
   });
 
-  it("★ 被拒没用满 ⇒ 写「{pct}% · 被拒」（红），不画成 ✕；用满才 ✕", async () => {
-    readQuota.mockResolvedValue(quota(58));
+  it("★ 每格的语气照那一行写好的 tone：fail ⇒ 红 · warn ⇒ 黄 · plain ⇒ 不标", async () => {
+    fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", slots: [cell("T5", "warn"), cell("T7", "fail")] }), acct({ name: "team", slots: [cell("P5")] })] }));
     const el = await mount();
-    const cell = rowOf(el, "personal").querySelectorAll<HTMLElement>(".acct-row-slot")[0];
-    expect(cell.textContent).toMatch(new RegExp(`^5h ${copyText("acct.val.refusedPct", { pct: 58 })} ↻\\d\\d:\\d\\d$`));
-    expect(cell.dataset.shade).toBe("refused");
+    const [c5, c7] = rowOf(el, "work").querySelectorAll<HTMLElement>(".acct-row-slot");
+    expect([c5.textContent, c5.dataset.shade]).toEqual(["T5", "warn"]);
+    expect([c7.textContent, c7.dataset.shade]).toEqual(["T7", "refused"]);
+    expect(rowOf(el, "team").querySelector<HTMLElement>(".acct-row-slot")!.dataset.shade).toBeUndefined();
   });
 
-  it("★ 按量号那一格照额度账写好的那一句（usage.text），界面不照 kind 另取字；被拒那一句也照抄", async () => {
-    const q = quota();
-    const api = (q.accounts as unknown as { account: string; state: string; usage: unknown }[]).find((a) => a.account === "api")!;
-    api.state = "refused";
-    api.usage = { value: "R-VAL", text: "R-VAL ↻19:00", tone: "fail" };
-    readQuota.mockResolvedValue(q);
+  it("★ 选不了的那一句（那台写好的 unselectable）挂在号名后面", async () => {
+    fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "api", authKind: "api-key", selectable: false, unselectable: "后端·没配 key" })] }));
     const el = await mount();
-    const cell = rowOf(el, "api").querySelectorAll<HTMLElement>(".acct-row-slot")[0];
-    expect(cell.textContent).toBe("R-VAL ↻19:00");
-    expect(cell.dataset.shade).toBe("refused");
+    expect(rowOf(el, "api").querySelector(".acct-row-name")!.textContent).toBe("api后端·没配 key");
   });
 
   it("非默认号那一行有［设为默认］，点了问那台 accounts-set-default 并说「新会话默认 X」", async () => {
@@ -366,7 +335,7 @@ describe("各态", () => {
   it("★ 机器表每一趟都问（界面不另存一份）：开着的时候那台从表里删了 ⇒ 刷新一下就是「未连接过」", async () => {
     const el = await mount();
     expect(rowOf(el, "work")).toBeTruthy();
-    readRemoteConfig.mockResolvedValue({ enabled: true, hosts: [{ name: "gpu-01", host: { label: "gpu-01" } }] });
+    readMachines.mockResolvedValue({ "<local>": { state: "up" }, "gpu-01": { state: "up" } });
     fetchAccounts.mockClear();
     buttonNamed(el, copyText("accountChip.menu.refresh")).click();
     await settle();

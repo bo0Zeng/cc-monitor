@@ -88,7 +88,7 @@
 
 use crate::agents::footprint_decl::{
     Carrier, EnvProbe, HostScope, Provisioning, ShellProfile, Text, ToolDestination, ToolSource,
-    ToolSpec, TouchEffect, TouchedFile, UnmanagedEnv,
+    ToolSpec, TouchEffect, TouchedFile, UnmanagedEnv, USER_PATH_TOKEN,
 };
 use copy_core::copy_text;
 
@@ -118,10 +118,12 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
                 },
                 // `.local/bin/ccm` → `.cc-monitor/bin/ccm`：远端写只许两处，入口是部署物；
                 //   也正是它的落点（本机那一条早就在那儿）。
-                destination: ToolDestination::RemoteHomeRelative(".cc-monitor/bin/ccm"),
+                destination: ToolDestination::RemoteHomeRelative(
+                    relay_route_core::BACKEND_LANDING_REL,
+                ),
                 touches: &[
                     TouchedFile {
-                        path: "~/.cc-monitor/bin/ccm",
+                        path: concat!("~/", relay_route_core::backend_landing_rel!()),
                         host: HostScope::Remote,
                         effect: TouchEffect::OwnedFile,
                     },
@@ -141,7 +143,10 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
                 source: ToolSource::EmbeddedBinary {
                     repo_path: "src/frontend/shell/src/local_backend.rs::extract_embedded_to",
                 },
-                destination: ToolDestination::LocalHomeRelative(".cc-monitor/bin/ccm*"),
+                destination: ToolDestination::LocalHomeRelative(concat!(
+                    relay_route_core::backend_landing_rel!(),
+                    "*"
+                )),
                 touches: &[TouchedFile {
                     // ⚠ **末段是 glob 而不是 `ccm`**，而且这不是偷懒：本机那份是要**被起成进程**的，
                     // 在把扩展名当身份的平台上它叫 `ccm.exe`（名字的唯一源头是
@@ -149,7 +154,7 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
                     // 写死 `ccm` 会让这一行在 Windows 上**恒显示「缺失」** —— 那正是本页
                     // 头注禁的「对能用的安装报假警报」。两边由
                     // `the_declared_local_ccm_path_really_matches_the_name_we_install` 对拍。
-                    path: "~/.cc-monitor/bin/ccm*",
+                    path: concat!("~/", relay_route_core::backend_landing_rel!(), "*"),
                     host: HostScope::Client,
                     effect: TouchEffect::OwnedFile,
                 }],
@@ -181,9 +186,11 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
                     repo_path: "embedded-backends",
                 },
                 // 可填的 `backendPath` 删了：落点恒是那台的 `~/.cc-monitor/bin/ccm`（它就是 `ccm`）。
-                destination: ToolDestination::RemoteHomeRelative(".cc-monitor/bin/ccm"),
+                destination: ToolDestination::RemoteHomeRelative(
+                    relay_route_core::BACKEND_LANDING_REL,
+                ),
                 touches: &[TouchedFile {
-                    path: "~/.cc-monitor/bin/ccm",
+                    path: concat!("~/", relay_route_core::backend_landing_rel!()),
                     host: HostScope::Remote,
                     effect: TouchEffect::OwnedFile,
                 }],
@@ -237,6 +244,25 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
             touches: &[TouchedFile {
                 path: "$PROFILE",
                 host: HostScope::Client,
+                effect: TouchEffect::FencedBlock,
+            }],
+        }],
+    },
+    // 用户级 `PATH`（Windows 那一台注册表里的那一份）：机器设置「配置」栏那个开关经 `ccm-user-path` 把 `ccm` 所在目录加进去 · 撤出来
+    //   （`control/ccm/user_path.rs`）；cmd · Git Bash 也敲得到 `ccm` 靠它。改的是用户的东西 ⇒ 进「改过的用户文件」，撤回指到那个开关。
+    //   别的平台那台问不出（不说 PowerShell）⇒ 这一行恒「未确定」，不进「改过的用户文件」。
+    //   `Either`：问的就是答这张表的那台后端自己的用户级 `PATH`（本机远端同一条命令）。
+    ToolSpec {
+        id: "ccm-user-path",
+        display_name: Text(|| copy_text("machineAliases.userPath.title", &[])),
+        installable: true,
+        uninstallable: true,
+        carriers: &[Carrier {
+            source: ToolSource::Generated,
+            destination: ToolDestination::UserPath,
+            touches: &[TouchedFile {
+                path: USER_PATH_TOKEN,
+                host: HostScope::Either,
                 effect: TouchEffect::FencedBlock,
             }],
         }],

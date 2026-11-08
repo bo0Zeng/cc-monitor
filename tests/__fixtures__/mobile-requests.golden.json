@@ -5,7 +5,6 @@
   "authorized-keys-add": [{"key":"ssh-ed25519 AAAA k"}],
   "bookmarks-edit": [{"op":"toggle","dirs":["/w"]},{"op":"remove","dirs":["/w"]},{"op":"add","dirs":["/w","/v"]}],
   "bookmarks-read": [{}],
-  "files-commit-upload": [{"root":"/w","rel":"up.bin","key":"k","expect":{"sha256":"abababababababababababababababababababababababababababababababab"},"chunks":3,"bytes":9,"single":true},{"root":"/w","rel":"up.bin","key":"k","on_exists":"overwrite","expect":{"sha256":"abababababababababababababababababababababababababababababababab"},"chunks":3,"bytes":9,"single":true},{"root":"/w","rel":"up.bin","key":"k","on_exists":"keep_both","expect":{"sha256":"abababababababababababababababababababababababababababababababab"},"chunks":3,"bytes":9,"single":true}],
   "files-create": [{"root":"/w","rel":"a.txt","single":true}],
   "files-delete-session": [{"sid":"s"}],
   "files-find": [{"query":"main","under":"/w","scope":"under"}],

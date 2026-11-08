@@ -1,30 +1,19 @@
-//! 帧命令 `quota-probe`：用某个号查一次额度 —— 起那一家的官方客户端报用量（不发模型请求、不花额度）、读成窗口、
-//! 记进**同一本**额度账（来源 `usage`，按窗口合并）。同一种事实的第二个来源，不是第二套额度。
-//!
-//! - 怎么起（程序 · 参数 · 配置目录交给哪一格 · 摘 / 设哪几格环境）与怎么读都住适配层（[`crate::agents::usage_of`]）；
-//!   这里只认「这一家能不能查、查回什么窗口」。
-//! - 工作目录是这台家里不出会话的那一个（[`crate::common::own_dir::HIDDEN_WORK_DIR`]，没有就建）：起的这一次不进历史页与会话列表。
+//! 帧命令 `quota-probe`：用某个号查一次额度 —— 命令登记 · 入参闸 · 回包形状住这里；
+//! 起官方客户端、读成窗口、记进额度账那一段是 [`crate::accounts::quota::probe`]。
 //! - 读不懂 ⇒ 照实回 `unreadable` ＋ 哪一处读不懂，不猜、不写账。
 //! - 动作、不定时：界面「刷新」· skill · AI 按需调。
 
-use crate::accounts::quota::ledger;
-use crate::accounts::upstream_select::rotate::account_ok;
+use crate::accounts::quota::probe::{probe, Ask, Probe};
 use crate::faces::rotation_face::Ctx;
-use crate::platform::child::{Child, Deadline};
+use crate::platform::child::Deadline;
 use crate::platform::fs::Own;
-use copy_core::copy_text;
+use relay_route_core::account_ok;
 
 /// 失败带码 ＋ 那一句 ＋ 原话（落账写不进那一形的原话进复制详情，[`Said`]）。
 type Answer = Result<Probed, crate::common::said::Said>;
 
-/// 起官方客户端报一次用量的期限（它要起进程、读登录、问一次上游）。
-const PROBE_WITHIN: Deadline = Deadline::secs(30);
-
-/// 这条命令的总期限（分派那一层装；略长于那一次子进程）。
+/// 这条命令的总期限（分派那一层装；略长于查额度那一次子进程的 30 秒）。
 pub const PROBE_CAP: Deadline = Deadline::secs(32);
-
-/// 报错原话里带官方客户端的输出至多这么多个字（截了接「…」）。
-const SAID_CHARS: usize = 200;
 
 fn bad(detail: &str) -> crate::common::said::Said {
     crate::wire::spec::fail("bad_args", crate::common::contract::malformed(detail))
@@ -89,7 +78,7 @@ pub(crate) fn answer_probe(req: &QuotaProbeReq, own: &Own) -> Answer {
     )
 }
 
-/// 本体。`path` ＝ 起会话那个 shell 的 `PATH`（判据交一个放着假客户端的目录；生产 `None` ＝ 现问，见 `platform::shell::agent_launch`）。
+/// 入参闸 ＋ 本体（[`probe`]）＋ 回包。`path` 原样交给本体（判据交一个放着假客户端的目录；生产 `None` ＝ 现问）。
 pub(crate) fn answer_probe_with(
     ctx: &Ctx,
     own: &Own,
@@ -101,104 +90,22 @@ pub(crate) fn answer_probe_with(
         .filter(|a| !a.as_str().trim().is_empty())
         .and_then(|a| crate::agents::pick_route(Some(a)).ok())
         .ok_or_else(|| bad("`agent` must be an agent kind such as \"claude\""))?;
-    let agent = route.id();
     let account = Some(req.account.as_str())
         .filter(|a| account_ok(a))
         .ok_or_else(|| bad("`account` must be an account id"))?;
-    let face = crate::agents::usage_of(route).ok_or_else(|| {
-        crate::common::said::Said::new(
-            "unsupported",
-            copy_text(
-                "beQuotaProbe.agent.unsupported",
-                &[("agent", req.agent.as_str())],
-            ),
-        )
-    })?;
-    let lib = ctx.hop.library();
-    let found = lib.by_route(account).ok_or_else(|| {
-        crate::common::said::Said::new(
-            "not_found",
-            copy_text("beQuotaProbe.account.notFound", &[("account", account)]),
-        )
-    })?;
-    if found.is_api_key() {
-        return Err(crate::common::said::Said::new(
-            "unsupported",
-            copy_text("beQuotaProbe.account.apiKey", &[("account", account)]),
-        ));
-    }
-    let book = ctx.hop.quota.path();
-    // 家里那个不出会话的工作目录（数据目录底下一层，没有就建）：经写句柄建。
-    let no_home =
-        || crate::common::said::Said::new("io_failed", copy_text("beQuotaLedger.read.noHome", &[]));
-    if book.is_none() {
-        return Err(no_home());
-    }
-    let cwd = own
-        .path(crate::common::own_dir::HIDDEN_WORK_DIR)
-        .map_err(|_| no_home())?;
-    own.ensure_dir(&cwd).map_err(|e| {
-        crate::wire::spec::fail(
-            "io_failed",
-            copy_text(
-                "beQuotaProbe.workDir.failed",
-                &[("why", &copy_core::io_reason(e.kind()))],
-            ),
-        )
-        .and_raw(Some(&e.to_string()))
-    })?;
-    let failed = |why: &str| {
-        copy_text(
-            "beQuotaProbe.run.failed",
-            &[("program", face.program), ("why", why)],
-        )
+    let ask = Ask {
+        route,
+        kind: req.agent.as_str(),
+        account,
+        now,
+        path,
     };
-    let at = crate::platform::shell::agent_launch(face.program, path)
-        .map_err(|why| crate::wire::spec::fail("failed", failed(&why)))?;
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "起那一家官方客户端报一次某个号的用量（适配层登记的那一形，argv 不过 shell、期限 30 秒）：它照自己的样子用自己的配置目录，后端不写；不许加第二种用途"
-    )]
-    let mut child = Child::new(at.program)
-        .args(at.lead)
-        .args(face.args)
-        .current_dir(cwd.as_path());
-    child = match &found.config_dir {
-        Some(d) => child.env(face.dir_env, d),
-        None => child.env_remove(face.dir_env),
+    let got = probe(&ctx.hop.book(), &ctx.hop.quota, own, &ask)?;
+    let (state, reason, windows) = match got {
+        Probe::Read(windows) => (ProbeState::Read, None, windows),
+        Probe::Unreadable(why) => (ProbeState::Unreadable, Some(why), Vec::new()),
     };
-    for k in face.env_remove {
-        child = child.env_remove(k);
-    }
-    for (k, v) in face.env_set {
-        child = child.env(k, v);
-    }
-    let out = child.run(PROBE_WITHIN).map_err(|e| {
-        let (code, said) = e.into_cmd_said("failed", failed);
-        crate::wire::spec::fail(code, said)
-    })?;
-    let text = String::from_utf8_lossy(&out.stdout);
-    if !out.status.success() {
-        let err = String::from_utf8_lossy(&out.stderr);
-        let stderr = copy_core::clip(
-            copy_core::first_line(&err)
-                .or_else(|| copy_core::first_line(&text))
-                .unwrap_or(""),
-            SAID_CHARS,
-        );
-        let code = out
-            .status
-            .code()
-            .map_or_else(|| "-".to_string(), |c| c.to_string());
-        // 退出码与它说的那一行是原话：进复制详情，不上句子。
-        return Err(crate::wire::spec::fail(
-            "failed",
-            copy_text("beQuotaProbe.run.exit", &[("program", face.program)]),
-        )
-        .and_raw(Some(&format!("exit {code}: {stderr}"))));
-    }
-    let shown = book.map(|p| p.display().to_string());
-    let probed = |state, reason, windows| Probed {
+    Ok(Probed {
         agent: req.agent.clone(),
         account: account.to_string(),
         from: ProbeFrom::Usage,
@@ -206,16 +113,8 @@ pub(crate) fn answer_probe_with(
         state,
         reason,
         windows,
-        path: shown.clone(),
-    };
-    match (face.read)(&text, now) {
-        Err(why) => Ok(probed(ProbeState::Unreadable, Some(why), Vec::new())),
-        Ok(windows) => {
-            ledger::record_probe(&ctx.hop.quota, own, agent, account, windows.clone(), now)
-                .map_err(|e| crate::wire::spec::fail("io_failed", e))?;
-            Ok(probed(ProbeState::Read, None, windows))
-        }
-    }
+        path: ctx.hop.quota.path().map(|p| p.display().to_string()),
+    })
 }
 
 /// `quota-probe` 的回包。

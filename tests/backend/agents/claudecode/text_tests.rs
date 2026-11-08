@@ -4,7 +4,7 @@
 
 use super::*;
 use crate::agents::UserTextExt as _;
-use crate::agents::{Pasted, Speaker, UserText};
+use crate::agents::{SaidPart, Speaker, UserText};
 use cmd_wire::record::TaskEnd;
 use serde_json::{json, Value};
 
@@ -67,7 +67,7 @@ fn human(text: &str) -> UserText {
     UserText {
         speaker: Speaker::Human,
         text: text.to_string(),
-        pasted: Vec::new(),
+        parts: Vec::new(),
     }
 }
 
@@ -159,7 +159,7 @@ fn record_fields_decide_first() {
         UserText {
             speaker: Speaker::compact("甲乙摘要"),
             text: "甲乙摘要".into(),
-            pasted: vec![]
+            parts: vec![]
         }
     );
     // isMeta 没有别的字段 ⇒ 系统注入（技能展开 · 提醒 · 定时触发 · 续跑样板）。
@@ -209,7 +209,7 @@ fn the_sub_agent_side() {
         UserText {
             speaker: Speaker::AgentTask,
             text: "去查甲乙丙".into(),
-            pasted: vec![]
+            parts: vec![]
         }
     );
     // 主会话后来发来的话。
@@ -379,7 +379,9 @@ fn named_frames_without_record_fields() {
         .speaker,
         Speaker::BashOutput {
             stdout: "甲\n乙".into(),
-            stderr: "<丙>".into()
+            stderr: "<丙>".into(),
+            stdout_fold: None,
+            stderr_fold: None,
         }
     );
     assert_eq!(
@@ -463,42 +465,18 @@ fn mixed_records_keep_the_human_part() {
 }
 
 #[test]
-fn pasted_blocks_are_human_with_their_bounds() {
-    // 下标是 UTF-16 的：「😀」占两格。
+fn pasted_blocks_are_human_and_come_cut_without_their_marks() {
     let t = "😀看这段：<pasted_content id=\"p1\">甲\n乙</pasted_content id=\"p1\">\n再看<pasted_content>丙</pasted_content>";
     let u = said(&rec(t, json!({"origin": {"kind": "human"}})));
     assert_eq!(u.speaker, Speaker::Human);
-    assert_eq!(u.text, t);
-    let at = |s: &str| t[..t.find(s).unwrap()].encode_utf16().count() as u32;
-    let first_end = at("\n再看");
+    assert_eq!(u.text, t, "正文原样（改这一句照它）");
     assert_eq!(
-        u.pasted,
-        vec![
-            Pasted {
-                start: at("<pasted_content id"),
-                end: first_end,
-                body_start: at("甲"),
-                body_end: at("</pasted_content id"),
-                fold: false,
-                fold_text: None,
-            },
-            Pasted {
-                start: at("<pasted_content>"),
-                end: t.encode_utf16().count() as u32,
-                body_start: at("丙"),
-                body_end: at("</pasted_content>"),
-                fold: false,
-                fold_text: None,
-            },
-        ]
-    );
-    let back: String = String::from_utf16(
-        &t.encode_utf16().collect::<Vec<_>>()[u.pasted[0].start as usize..u.pasted[0].end as usize],
-    )
-    .unwrap();
-    assert_eq!(
-        back,
-        "<pasted_content id=\"p1\">甲\n乙</pasted_content id=\"p1\">"
+        u.parts,
+        vec![SaidPart {
+            text: "😀看这段：甲\n乙\n再看丙".into(),
+            fold: None,
+        }],
+        "标记不露、照排的几段并成一段"
     );
     // 只粘贴、没打字 ⇒ 仍是人。
     assert_eq!(
@@ -510,26 +488,66 @@ fn pasted_blocks_are_human_with_their_bounds() {
     );
 }
 
-/// 折不折由后端定：超过 12 行（两头的空行不算）⇒ `fold`，并写好折起那一行（「粘贴的内容 · N 行」）；12 行以内照排、没有那一行。
+fn lines_of(n: usize) -> String {
+    (0..n)
+        .map(|i| format!("行{i}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// 带一个 13 行粘贴块的人话 ⇒ 前面那段照排、那一块折成一段（折法照 `face_core::record::said_parts`）。
 #[test]
-fn a_paste_over_twelve_lines_folds() {
-    let paste = |n: usize| {
-        let body = (0..n)
-            .map(|i| format!("行{i}"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let t = format!("看：<pasted_content id=\"p\">\n{body}\n\n</pasted_content id=\"p\">");
-        let u = said(&rec(&t, json!({"origin": {"kind": "human"}})));
-        let p = &u.pasted[0];
-        (p.fold, p.fold_text.as_ref().map(|w| w.0.clone()))
-    };
-    assert_eq!(paste(12), (false, None));
+fn a_long_paste_comes_as_its_own_folded_part() {
+    let t = format!(
+        "看：<pasted_content id=\"p\">\n{}\n\n</pasted_content id=\"p\">",
+        lines_of(13)
+    );
+    let u = said(&rec(&t, json!({"origin": {"kind": "human"}})));
+    let shape: Vec<(&str, Option<(u32, u32)>)> = u
+        .parts
+        .iter()
+        .map(|p| (p.text.as_str(), p.fold.as_ref().map(|f| (f.shown, f.total))))
+        .collect();
     assert_eq!(
-        paste(13),
-        (
-            true,
-            Some(copy_core::copy_text("speaker.paste.fold", &[("n", "13")]))
-        )
+        shape,
+        vec![("看：", None), (lines_of(13).as_str(), Some((0, 13)))]
+    );
+}
+
+/// `!` 命令 35 行输出 ⇒ stdout 带折法（露 20 · 共 35）；stderr 短 ⇒ 不折。
+#[test]
+fn a_long_bash_output_carries_its_fold() {
+    let u = said(&rec(
+        &format!(
+            "<bash-stdout>{}</bash-stdout><bash-stderr>坏了</bash-stderr>",
+            lines_of(35)
+        ),
+        json!({}),
+    ));
+    let Speaker::BashOutput {
+        stdout_fold,
+        stderr_fold,
+        ..
+    } = u.speaker
+    else {
+        panic!("不是 ! 命令输出：{:?}", u.speaker);
+    };
+    let f = stdout_fold.expect("35 行要折");
+    assert_eq!((f.shown, f.total), (20, 35));
+    assert_eq!(stderr_fold, None);
+}
+
+/// 派的活太长 ⇒ 一段带折法。
+#[test]
+fn a_long_brief_carries_its_fold() {
+    let mut task = rec(&lines_of(9), json!({"isSidechain": true, "agentId": "a1"}));
+    task["parentUuid"] = Value::Null;
+    let u = said(&task);
+    assert_eq!(u.speaker, Speaker::AgentTask);
+    assert_eq!(u.parts.len(), 1);
+    assert_eq!(
+        u.parts[0].fold.as_ref().map(|f| (f.shown, f.total)),
+        Some((4, 9))
     );
 }
 
@@ -556,7 +574,7 @@ fn an_old_mid_turn_line_is_told_by_its_words() {
     assert_eq!(old("Your claude.ai usage limit has reset. 甲"), None);
     assert_eq!(old("  往后排，先做乙  "), Some(human("往后排，先做乙")));
     let p = old("<pasted_content id=\"h8\">甲</pasted_content id=\"h8\">").unwrap();
-    assert_eq!((p.speaker.kind(), p.pasted.len()), ("human", 1));
+    assert_eq!((p.speaker.kind(), p.parts.len()), ("human", 1));
 }
 
 /// 一轮中途人插的那一句（`attachment queued_command`，`origin.kind: human`）在「谁说的」那一问里就是人说的 ⇒ 一拍里带着它，
@@ -622,7 +640,7 @@ fn speech_is_what_the_human_said() {
             UserText {
                 speaker: s.clone(),
                 text: "甲".into(),
-                pasted: vec![]
+                parts: vec![]
             }
             .speech(),
             None,
@@ -674,6 +692,8 @@ fn slash_and_bash_forms() {
     let bo = |o: &str, e: &str| Speaker::BashOutput {
         stdout: o.into(),
         stderr: e.into(),
+        stdout_fold: None,
+        stderr_fold: None,
     };
     assert_eq!(k("<bash-stdout>甲\n\n乙</bash-stdout>"), bo("甲\n\n乙", ""));
     assert_eq!(
@@ -717,6 +737,8 @@ fn the_index_kind_is_the_wire_kind() {
         Speaker::BashOutput {
             stdout: String::new(),
             stderr: String::new(),
+            stdout_fold: None,
+            stderr_fold: None,
         },
         Speaker::CommandOutput,
         Speaker::TaskNotification {

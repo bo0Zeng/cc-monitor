@@ -13,7 +13,7 @@
 //! | 顶层 `token_usage_record` 的 `usage` ＋ `response_id` | 代理那侧，只带 `usage`：新输入 ＝ `input_tokens − cached_input_tokens`（输入含读缓存：`total ＝ input ＋ output`），读缓存 ＝ `cached_input_tokens`；写缓存是否含在输入里看不出 ⇒ 不答 |
 //! | 别的（元记录 · 事件） | 簿记 |
 //!
-//! 型号（`turn_context.model`）不在带用量的那一条上 ⇒ 不答；花费 · 许可档 · 分叉今天不答。
+//! 型号（`turn_context.model`）不在带用量的那一条上 ⇒ 不答；许可档 · 分叉今天不答。
 
 use std::borrow::Cow;
 
@@ -124,7 +124,6 @@ pub(crate) fn beat_of(v: &Value) -> Option<Beat<'_>> {
         acts,
         usage,
         model: None,
-        cost: None,
         mode: None,
         forked_from: None,
     })

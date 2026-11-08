@@ -79,6 +79,7 @@ pub fn is_subcommand(word: &str) -> bool {
 /// 只收这一种理由。「答得了，只是除了界面没人用」是另一种，住 [`UI_ONLY`] —— 两种混在一张表里时，
 /// 后一种被读成前一种，第二个前端（只有一次性 CLI 与流两条路进后端）就够不着。
 pub(crate) const STREAM_ONLY: &[&str] = &[
+    "quota-warm",
     "resync",
     "accounts-list",
     "forward-start",

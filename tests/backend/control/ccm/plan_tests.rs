@@ -6,13 +6,13 @@
 //! 默认 cwd 是恒等对；登记不成要出声对 `D4`；账号库解析不动不说成没有对 `D7`；
 //! 容器收尾先自检对「确认放在 ccm 收尾最前面」。账号四条路 / quote / `set -f` / BOM 那几条是普通单测，没有逐字原文。〔JA1 点址 2026-09-24〕
 
+use crate::accounts::manage::library::AccountRow;
 use crate::ccm_line::argv::{flag, Die, Parsed};
 use crate::ccm_line::{tmux_steps_aside, TmuxNaming};
 use crate::common::session_snapshot::TakenNames;
 use crate::control::ccm::plan::test_support::no_library;
 use crate::control::ccm::plan::SELF_CHECK_IN_PANE;
 use crate::control::ccm::plan::*;
-use crate::observe::accounts_query::AccountRow;
 use crate::wire::TerminalHost;
 use cmd_wire::accounts::AccountsList;
 use shell_quote_core::posix_quote as sq;
@@ -782,7 +782,7 @@ fn tempdir() -> String {
 
 /// 一个号在成品里的样子（夹具一律当已登录的订阅号）：号目录在盘上 ⇒ 选得了；没写号目录 ＝ 账号 0（`bare`，恒不经选号）。
 pub(crate) fn product_row(name: &str, dir: Option<&str>, default: bool) -> AccountRow {
-    crate::observe::accounts_query::test_support::row_with(name, |a| {
+    crate::accounts::manage::library::test_support::row_with(name, |a| {
         let there = dir.is_some_and(|d| std::path::Path::new(d).is_dir());
         a.config_dir = dir.map(str::to_string);
         a.is_default = default;
@@ -794,7 +794,7 @@ pub(crate) fn product_row(name: &str, dir: Option<&str>, default: bool) -> Accou
 
 /// 现成的一摞号 ⇒ 一份账号清单成品（默认号照成品的规则补，`test_support::list`）；生产侧由入口交（`AccountsScan`）。
 pub(crate) fn library_of(rows: Vec<AccountRow>) -> impl Fn() -> AccountsList {
-    let l = crate::observe::accounts_query::test_support::list(rows);
+    let l = crate::accounts::manage::library::test_support::list(rows);
     move || l.clone()
 }
 
@@ -806,14 +806,14 @@ fn table(rows: &[(&str, Option<&str>, bool)]) -> impl Fn() -> AccountsList {
     )
 }
 
-/// 照盘上 `<accts>/accounts.json` 现扫一份成品（与生产同一个扫描：`accounts_query::list_product_with`）。
+/// 照盘上 `<accts>/accounts.json` 现扫一份成品（与生产同一个扫描：`accounts::manage::library::list_product_with`）。
 fn product_at(accts: &str) -> impl Fn() -> AccountsList + '_ {
     move || {
-        crate::observe::accounts_query::list_product_with(
+        crate::accounts::manage::library::list_product_with(
             std::path::Path::new(accts),
             None,
             &[],
-            &[],
+            &|_| None,
             "claude-code",
             "claude-code",
             false,
@@ -1510,20 +1510,34 @@ fn fix_a_resume_of_a_session_already_running_in_tmux_rejoins_it() {
 }
 
 // 在跑但不在 ccm 认得的 tmux 会话里 ⇒ 不另起，明说。
-thread_local! {
-    static SCANNED: std::cell::RefCell<Vec<Option<String>>> = const { std::cell::RefCell::new(Vec::new()) };
-}
-fn fake_scan(dir: Option<&std::path::Path>) -> Vec<(String, u32)> {
-    SCANNED.with(|s| s.borrow_mut().push(dir.map(|d| d.display().to_string())));
-    vec![("sid-1".into(), 4242)]
+
+/// 一个临时账号目录：里面照测试进程自己与 `kids` 各写一份持着 `sid` 的 pidfile（记它们真的启动时刻 ⇒ 活会话表认它们在写）。
+#[cfg(target_os = "linux")]
+fn config_dir_with_writers(sid: &str, kids: &[u32]) -> String {
+    let d = tempdir();
+    let sessions = crate::agents::pidfile_dir(std::path::Path::new(&d));
+    std::fs::create_dir_all(&sessions).expect("建 pidfile 目录");
+    for pid in std::iter::once(std::process::id()).chain(kids.iter().copied()) {
+        let ticks = crate::platform::proc::proc_starttime(pid).expect("读得到启动时刻");
+        std::fs::write(
+            sessions.join(format!("{pid}.json")),
+            format!(r#"{{"sessionId":"{sid}","procStart":"{ticks}"}}"#),
+        )
+        .expect("写 pidfile");
+    }
+    d
 }
 
-/// ★ 注入的扫描说 `sid-1` 在跑（pid 4242）、快照里没它 ⇒ 拒并说出 pid；tmux 里认得出 ⇒ 仍是接上；扫描问的是这一趟那个账号的目录。
+/// ★ 这一趟那个账号目录的活会话表说 `sid-1` 在跑（测试进程自己）、快照里没它 ⇒ 拒并说出 pid；tmux 里认得出 ⇒ 仍是接上；
+/// 问的是这一趟那个账号的目录（`--base` ⇒ 默认家目录，那里没有它 ⇒ 照旧起）；不问（预览 · 判据）⇒ 照旧起。
+#[cfg(target_os = "linux")]
 #[test]
 fn fix_a_resume_of_a_session_running_outside_tmux_is_refused_and_says_where() {
     let t = no_library;
     let mut e = env();
-    e.running_sessions = Some(fake_scan);
+    e.asks_live = true;
+    e.inherited_config_dir = Some(config_dir_with_writers("sid-1", &[]));
+    let me = std::process::id().to_string();
     let a: Vec<String> = ["--resume", "sid-1"]
         .iter()
         .map(|s| s.to_string())
@@ -1533,7 +1547,7 @@ fn fix_a_resume_of_a_session_running_outside_tmux_is_refused_and_says_where() {
     };
     let Die(said) =
         build(&o, &e, &t, Some(&snapshot_rows(&[("other", "")]))).expect_err("在跑还另起了");
-    assert!(said.contains("4242") && said.contains("sid-1"), "{said}");
+    assert!(said.contains(&me) && said.contains("sid-1"), "{said}");
     // 快照里认得出 ⇒ 接上（tmux 那一格在前）。
     assert!(matches!(
         build(&o, &e, &t, Some(&snapshot_rows(&[("work", "sid-1")]))),
@@ -1548,10 +1562,7 @@ fn fix_a_resume_of_a_session_running_outside_tmux_is_refused_and_says_where() {
         panic!()
     };
     assert!(build(&o2, &e, &t, None).is_ok());
-    // 问的目录：继承来的账号目录；`--base` ⇒ 默认家目录（None）。
-    SCANNED.with(|s| s.borrow_mut().clear());
-    e.inherited_config_dir = Some("/h/.claude-alt/b".into());
-    let _ = build(&o, &e, &t, None);
+    // `--base` ⇒ 问默认家目录（沙箱里，没有它）⇒ 照旧起。
     let c: Vec<String> = ["--resume", "sid-1", "--base"]
         .iter()
         .map(|s| s.to_string())
@@ -1559,27 +1570,27 @@ fn fix_a_resume_of_a_session_running_outside_tmux_is_refused_and_says_where() {
     let Parsed::Opts(o3) = parse(&c).expect("解析") else {
         panic!()
     };
-    let _ = build(&o3, &e, &t, None);
-    assert_eq!(
-        SCANNED.with(|s| s.borrow().clone()),
-        vec![Some("/h/.claude-alt/b".to_string()), None]
+    assert!(
+        build(&o3, &e, &t, None).is_ok(),
+        "--base 问的不是默认家目录"
     );
+    // 不问 ⇒ 照旧起。
+    e.asks_live = false;
+    assert!(build(&o, &e, &t, None).is_ok(), "预览也去问活会话表了");
 }
 
-fn two_writers_scan(_: Option<&std::path::Path>) -> Vec<(String, u32)> {
-    vec![
-        ("sid-1".into(), 5252),
-        ("sid-2".into(), 1),
-        ("sid-1".into(), 4242),
-    ]
-}
-
-/// 注入的扫描说 `sid-1` 有两个活进程在写 ⇒ 拒并说出两个 pid（升序）：tmux 里认得出也不接（接哪一个都不对），更不另起。
+/// 活会话表说 `sid-1` 有两个活进程在写 ⇒ 拒并说出两个 pid（升序）：tmux 里认得出也不接（接哪一个都不对），更不另起。
+#[cfg(target_os = "linux")]
 #[test]
 fn a_resume_of_a_session_two_processes_are_writing_is_refused() {
     let t = no_library;
+    let mut kid = crate::platform::proc::test_support::spawn_settled_sleep(|_| {});
     let mut e = env();
-    e.running_sessions = Some(two_writers_scan);
+    e.asks_live = true;
+    e.inherited_config_dir = Some(config_dir_with_writers("sid-1", &[kid.id()]));
+    let mut pids = [std::process::id(), kid.id()];
+    pids.sort_unstable();
+    let want = format!("{}, {}", pids[0], pids[1]);
     let a: Vec<String> = ["--resume", "sid-1"]
         .iter()
         .map(|s| s.to_string())
@@ -1587,13 +1598,17 @@ fn a_resume_of_a_session_two_processes_are_writing_is_refused() {
     let Parsed::Opts(o) = parse(&a).expect("解析") else {
         panic!()
     };
-    for rows in [&[("other", "")][..], &[("work", "sid-1")][..]] {
-        let Die(said) =
-            build(&o, &e, &t, Some(&snapshot_rows(rows))).expect_err("两个在写还接上 / 另起了");
-        assert!(
-            said.contains("4242, 5252") && said.contains("sid-1"),
-            "{said}"
-        );
+    let said: Vec<String> = [&[("other", "")][..], &[("work", "sid-1")][..]]
+        .into_iter()
+        .map(|rows| match build(&o, &e, &t, Some(&snapshot_rows(rows))) {
+            Err(Die(said)) => said,
+            other => format!("两个在写还接上 / 另起了（ok={}）", other.is_ok()),
+        })
+        .collect();
+    let _ = kid.kill();
+    let _ = kid.wait();
+    for said in said {
+        assert!(said.contains(&want) && said.contains("sid-1"), "{said}");
     }
 }
 
@@ -1810,6 +1825,7 @@ fn the_relay_address_is_decided_at_the_final_exec_and_only_there() {
 
 /// 就地 resume 键进去的正是那个 agent 已退、只剩 shell 的 tmux 会话：标记（`@ccm_sid`）还在，进程已经没了 ⇒
 /// 不是「在跑」，照常起；进程真在 ⇒ 接上它（不另起第二份）；问不了进程 ⇒ 照旧按标记接上。
+#[cfg(target_os = "linux")]
 #[test]
 fn a_stale_session_mark_alone_does_not_make_a_resume_rejoin() {
     let tagged = crate::common::session_snapshot::SessionSnapshot::with_prober(|| {
@@ -1820,13 +1836,7 @@ fn a_stale_session_mark_alone_does_not_make_a_resume_rejoin() {
     })
     .taken_names()
     .unwrap();
-    fn dead(_: Option<&std::path::Path>) -> Vec<(String, u32)> {
-        vec![]
-    }
-    fn live(_: Option<&std::path::Path>) -> Vec<(String, u32)> {
-        vec![("s1".into(), 4242)]
-    }
-    let a: Vec<String> = ["--resume", "s1", "--", "--base"]
+    let a: Vec<String> = ["--resume", "s1", "--"]
         .iter()
         .map(|s| s.to_string())
         .collect();
@@ -1834,17 +1844,19 @@ fn a_stale_session_mark_alone_does_not_make_a_resume_rejoin() {
         panic!()
     };
     let mut e = env();
-    e.running_sessions = Some(dead);
+    e.asks_live = true;
+    // 账号目录里没有持着它的进程 ⇒ 标记是旧的 ⇒ 照常起。
+    e.inherited_config_dir = Some(tempdir());
     assert!(matches!(
         build(&o, &e, &no_library, Some(&tagged)).unwrap(),
         Plan::Direct(_)
     ));
-    e.running_sessions = Some(live);
+    e.inherited_config_dir = Some(config_dir_with_writers("s1", &[]));
     assert!(matches!(
         build(&o, &e, &no_library, Some(&tagged)).unwrap(),
         Plan::Rejoin { .. }
     ));
-    e.running_sessions = None;
+    e.asks_live = false;
     assert!(matches!(
         build(&o, &e, &no_library, Some(&tagged)).unwrap(),
         Plan::Rejoin { .. }
@@ -2267,7 +2279,7 @@ fn a_bare_launch_lands_on_the_same_default_as_the_listing() {
                     .as_bool()
                     .unwrap()
                     .then(|| format!("{root}/{name}"));
-                crate::observe::accounts_query::test_support::row_with(&name, |r| {
+                crate::accounts::manage::library::test_support::row_with(&name, |r| {
                     r.config_dir = dir.clone();
                     r.is_default = a["isDefault"].as_bool().unwrap();
                     r.mode = a["mode"].as_str().unwrap().to_string();

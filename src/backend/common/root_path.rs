@@ -18,10 +18,10 @@ use std::path::{Path, PathBuf};
 ///   但留着它就等于承认「这里做路径规范化」，而规范化与安全判定混在一起正是
 ///   本仓反复踩的那种坑 ⇒ **一律拒，让调用方送干净的段进来。**
 ///
-/// 段判定按字节（与远端写围栏 · 解压条目同一道 `ssh_dial::plain_path`；本机 Windows 上 `\` 也是分隔符）⇒
+/// 段判定按字节（与远端写围栏 · 解压条目同一道 `plain_path_core`；本机 Windows 上 `\` 也是分隔符）⇒
 /// 非 UTF-8 的名字照样逐段判。
 pub fn lexical_in_root(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, String> {
-    use ssh_dial::plain_path::{plain_segments, Dots, Fault};
+    use plain_path_core::{plain_segments, Dots, Fault};
     let rel = rel.as_ref();
     if rel.to_string_lossy().trim().is_empty() {
         return Err(copy_text("beFilesWrite.path.empty", &[]));

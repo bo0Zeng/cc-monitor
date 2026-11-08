@@ -12,9 +12,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
-/// 单份进程状态文件（`sessions/<PID>.json`）读取上限（正常几百字节）：超了跳过那一份、读那一层 `warn!` 点名。
-/// 盯这些文件的那一路（`observe::watcher`）读它们也用这一个。
-pub const SESSION_FILE_CAP: Cap = Cap {
+/// 单份进程状态文件（`sessions/<PID>.json`）读取上限（正常几百字节）：超了跳过那一份、[`read_pidfile`] 里 `warn!` 点名。
+const SESSION_FILE_CAP: Cap = Cap {
     bytes: 1024 * 1024,
     over: Over::SkipAndSay,
 };
@@ -27,7 +26,7 @@ pub struct LiveRow {
     pub pid: u32,
     /// 那份 pidfile 说的（哪一家 · 会话 id · 工作目录 · 在干什么 · 在等什么 · 何时起）。
     pub fact: ProcFact,
-    /// 进程此刻还是写它的那一个（`platform::proc::session_alive`：存在性 ＋ 有启动时刻时对拍）。
+    /// 进程此刻活着、且是写它的那一条会话（[`author_check`]：bg-spare 不算 · 身份核上 · 否则看时刻与 cmdline）。
     pub alive: bool,
     /// 启动时刻核过：pidfile 记了 `procStart`、与此刻那个 pid 的启动时刻逐值相等（[`start_matches`]）。
     /// 账号归属只认这一格（错标签比缺标签危害大：缺 `procStart` 的老 pidfile 不认）。
@@ -85,13 +84,103 @@ pub fn doing_of(
     heard.into_iter().max_by_key(|a| rank(*a)).flatten()
 }
 
-/// pidfile 记的启动时刻与此刻那个 pid 的逐值相等（启动时刻的唯一读法；watcher 加会话那一道闸也问它）。
-/// 没记 · 读不到（进程已死）⇒ 假。
-pub fn start_matches(pid: u32, recorded: Option<u64>) -> bool {
-    match (recorded, crate::platform::proc::proc_starttime(pid)) {
-        (Some(r), Some(c)) => r == c,
-        _ => false,
+/// pidfile 记的启动时刻与此刻那个 pid 的逐值相等（启动时刻的唯一读法）。没记 · 读不到（进程已死）⇒ 假。
+fn start_matches(recorded: Option<u64>, current: Option<u64>) -> bool {
+    matches!((recorded, current), (Some(r), Some(c)) if r == c)
+}
+
+/// 这个 pid 此刻的占用者是不是写那份 pidfile 的那一条会话（[`add_time_verdict`] 的判决）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AddTimeVerdict {
+    Alive,
+    Imposter(&'static str),
+}
+
+/// 进程起得比 pidfile 最后一次写晚出这么多秒 ⇒ 不可能是它写的。60 秒吸收钟的毛刺（mtime 粒度 · btime 取整 · NTP 微调）；
+/// 真的 PID 复用隔的是几小时到几周，这个余量是安全的。
+const ADD_TIME_TOLERANCE_SECS: u64 = 60;
+
+/// **判活的唯一判法**（纯函数，各平台都测）：这个 pid 此刻的占用者是不是写那份 pidfile 的那一条会话。
+///
+/// - **cmdline 说它不是一条会话**（那一家的进程、可不是会话：守护池停泊的备用进程，适配层 [`crate::agents::CmdlineSays::NotSession`]）⇒
+///   不活 —— 在身份证据之前判：它是真进程、写合规 pidfile、启动时刻自洽，身份一核就会判它活。
+/// - **身份证据（主）**：`start_checked` —— pidfile 的 `procStart` 与此刻占用者的启动时刻逐值相等 ⇒ 就是它写的，不再看别的。
+///   **对不上不当场判死**：要么是 PID 复用，要么是那一家换了 `procStart` 的记法（Windows 上 pidfile 记 .NET 本地 ticks、
+///   这台读的是 FILETIME，恒不等）—— 往下走，下面的启发式两种情形都接得住。
+/// - **时刻证据**：进程起得比 pidfile 最后一次写晚出余量 ⇒ 冒名（那一家每次换态都重写 pidfile，mtime 是「真进程此刻还活着」的下界；
+///   重启之后也是这一形）。两边都是同一台钟的墙上秒，不涉时区。
+/// - **cmdline 证据**：读得出、明显不像那一家（[`crate::agents::CmdlineSays::Unlike`]）⇒ 冒名。
+/// - 缺数据（没记 `procStart` · 读不到启动时刻 / mtime / cmdline）⇒ 那一条跳过、放行。
+pub(crate) fn add_time_verdict(
+    start_checked: bool,
+    proc_start_epoch: Option<u64>,
+    file_mtime_epoch: Option<u64>,
+    cmdline: Option<&str>,
+) -> AddTimeVerdict {
+    use crate::agents::CmdlineSays;
+    let says = cmdline.and_then(|cmd| {
+        let lower = cmd.to_lowercase();
+        crate::agents::tree_local_face().map(|f| (f.cmdline_may_be_agent)(&lower))
+    });
+    if says == Some(CmdlineSays::NotSession) {
+        return AddTimeVerdict::Imposter("not-a-session");
     }
+    if start_checked {
+        return AddTimeVerdict::Alive;
+    }
+    if let (Some(start), Some(mtime)) = (proc_start_epoch, file_mtime_epoch) {
+        if start > mtime + ADD_TIME_TOLERANCE_SECS {
+            return AddTimeVerdict::Imposter("started-after-pidfile");
+        }
+    }
+    if says == Some(CmdlineSays::Unlike) {
+        return AddTimeVerdict::Imposter("cmdline");
+    }
+    AddTimeVerdict::Alive
+}
+
+/// 判活那一趟 /proc 读：（启动时刻核上没有, 活着且是写它的那一条 ⇒ `Ok(此刻的启动时刻)`，否则 `Err(原因)`）。
+/// 进程不在 ⇒ `Err`。`recorded` ＝ 那份 pidfile 说的启动时刻（[`ProcFact::proc_start`]）。
+fn author_of(
+    pid: u32,
+    recorded: Option<u64>,
+    path: &Path,
+) -> (bool, Result<Option<u64>, &'static str>) {
+    use crate::platform::proc::{pid_alive, proc_cmdline, proc_starttime, start_epoch_from_ticks};
+    if !pid_alive(pid) {
+        return (false, Err("gone"));
+    }
+    let ticks = proc_starttime(pid);
+    let checked = start_matches(recorded, ticks);
+    let verdict = match add_time_verdict(
+        checked,
+        start_epoch_from_ticks(ticks),
+        file_mtime_epoch(path),
+        proc_cmdline(pid).as_deref(),
+    ) {
+        AddTimeVerdict::Imposter(reason) => Err(reason),
+        AddTimeVerdict::Alive => Ok(ticks),
+    };
+    (checked, verdict)
+}
+
+/// **判活的入口**（活会话表每一行 · watcher 加会话那一道闸都经它）：`path` 那份 pidfile 说的 `pid` 此刻活着、
+/// 且是写它的那一条会话 ⇒ `Ok(此刻的启动时刻)`（watcher 拿它当 pid 看守的基线），否则 `Err(原因)`。
+pub fn author_check(
+    pid: u32,
+    recorded: Option<u64>,
+    path: &Path,
+) -> Result<Option<u64>, &'static str> {
+    author_of(pid, recorded, path).1
+}
+
+/// pidfile 的修改时刻（epoch 秒；读不到 ⇒ `None`，那一条证据跳过）。
+fn file_mtime_epoch(path: &Path) -> Option<u64> {
+    let mtime = Ro::metadata(path).ok()?.modified().ok()?;
+    mtime
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .map(|d| d.as_secs())
 }
 
 /// 那台 pidfile 说「在等」的那一格（[`LiveTable::wait_of`]）。
@@ -130,12 +219,15 @@ impl LiveTable {
     pub(crate) fn scan_dir(dir: &Path) -> Self {
         let rows = pidfiles(dir)
             .into_iter()
-            .map(|(pid, fact)| LiveRow {
-                pid,
-                alive: crate::platform::proc::session_alive(pid, fact.proc_start),
-                start_checked: start_matches(pid, fact.proc_start),
-                frozen: false,
-                fact,
+            .map(|(path, pid, fact)| {
+                let (start_checked, verdict) = author_of(pid, fact.proc_start, &path);
+                LiveRow {
+                    pid,
+                    alive: verdict.is_ok(),
+                    start_checked,
+                    frozen: false,
+                    fact,
+                }
             })
             .collect();
         LiveTable {
@@ -403,8 +495,8 @@ pub fn set_reconnectable(now: &BTreeSet<String>) {
     }
 }
 
-/// pidfile 目录里每一份读得出来的 `(pid, 它说的事实)`（上限、跳过要说清）：目录与读法问注册表（`agents::pidfile_dir` · `agents::proc_fact`）。
-fn pidfiles(dir: &Path) -> Vec<(u32, ProcFact)> {
+/// pidfile 目录里每一份读得出来的 `(路径, pid, 它说的事实)`（上限、跳过要说清）：目录问注册表（`agents::pidfile_dir`），每份照 [`read_pidfile`]。
+fn pidfiles(dir: &Path) -> Vec<(PathBuf, u32, ProcFact)> {
     let mut out = Vec::new();
     let Ok(rd) = Ro::read_dir(dir) else {
         return Vec::new(); // 没有 pidfile 目录 → 零行
@@ -416,34 +508,43 @@ fn pidfiles(dir: &Path) -> Vec<(u32, ProcFact)> {
             break;
         }
         let path = ent.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+        if pid_of(&path).is_none() {
             continue;
         }
-        let Some(pid) = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .and_then(|s| s.parse::<u32>().ok())
-        else {
-            continue;
-        };
         seen += 1;
-        let bytes = match Ro::read_capped(&path, SESSION_FILE_CAP) {
-            Ok(b) => b,
-            Err(e) => {
-                // 跳过要说清是谁：一个超过上限的 pidfile 被静默丢掉，那个会话就永远不归属到任何账号、也没人说得出是哪一个。
-                tracing::warn!(
-                    "会话文件 {} 读不了，跳过（不归属该会话）：{e}",
-                    path.display()
-                );
-                continue;
-            }
-        };
-        let Some(fact) = crate::agents::proc_fact(&bytes) else {
-            continue;
-        };
-        out.push((pid, fact));
+        if let Some((pid, fact)) = read_pidfile(&path) {
+            out.push((path, pid, fact));
+        }
     }
     out
+}
+
+/// `sessions/<PID>.json` 那个文件名说的 pid（不是这一形 ⇒ `None`）。
+fn pid_of(path: &Path) -> Option<u32> {
+    if path.extension().and_then(|e| e.to_str()) != Some("json") {
+        return None;
+    }
+    path.file_stem()
+        .and_then(|s| s.to_str())
+        .and_then(|s| s.parse::<u32>().ok())
+}
+
+/// **pidfile 的唯一读法**：一份 `sessions/<PID>.json` ⇒ `(pid, 它说的事实)`（有上限；读不了要点名；翻法问注册表 `agents::proc_fact`）。
+/// 活会话表每一份 · watcher 看见一份变了都经它。文件名不是 `<PID>.json` · 读不了 · 翻不出 ⇒ `None`。
+pub fn read_pidfile(path: &Path) -> Option<(u32, ProcFact)> {
+    let pid = pid_of(path)?;
+    let bytes = match Ro::read_capped(path, SESSION_FILE_CAP) {
+        Ok(b) => b,
+        Err(e) => {
+            // 跳过要说清是谁：一个超过上限的 pidfile 被静默丢掉，那个会话就永远不归属到任何账号、也没人说得出是哪一个。
+            tracing::warn!(
+                "会话文件 {} 读不了，跳过（不归属该会话）：{e}",
+                path.display()
+            );
+            return None;
+        }
+    };
+    crate::agents::proc_fact(&bytes).map(|fact| (pid, fact))
 }
 
 #[cfg(test)]

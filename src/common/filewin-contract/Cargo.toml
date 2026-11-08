@@ -11,7 +11,6 @@ description = "monitor 与文件窗口进程之间的契约：开窗种子（走
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 copy-core = { path = "../copy-core" }
-host-core = { path = "../host-core" }
 
 [dev-dependencies]
 # 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。

@@ -1,14 +1,7 @@
 //! 窗口夹进工作区〔原 `src/frontend/shell/src/lib.rs`，逐字搬来〕：Tauri 那几扇窗（monitor）与文件窗口进程同一个判定、同一个类型
-//! （文件窗口拿到的工作区随开窗种子交过去）。
+//! （文件窗口拿到的工作区随开窗种子交过去；那个形状 `WorkArea` 住开窗契约）。
 
-/// 一台显示器的**工作区**（去掉任务栏 / 程序坞那一块，物理像素）。文件窗口进程拿它夹自己（随种子交过去）。
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct WorkArea {
-    pub x: i32,
-    pub y: i32,
-    pub w: u32,
-    pub h: u32,
-}
+use crate::WorkArea;
 
 /// 外框不会比内框小：报出来比内框小 ⇒ 是窗口还没映射时问到的占位尺寸（Linux GTK 上开窗那一刻实测外框 149×35、内框 1100×800），
 /// 当外框 ＝ 内框（边框未知按 0）。不这么收，主窗会被「夹」成那个占位尺寸。

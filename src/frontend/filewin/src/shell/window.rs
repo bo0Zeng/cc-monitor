@@ -137,7 +137,7 @@ pub fn open_detached_seeded(
     // 「复制到另一台」下拉里的机器（开窗种子带来的）。
     machines: Vec<String>,
     // 开出来第一拍夹进这块工作区（`None` ＝ 不夹）；之后改缩放再夹按的是那一刻所在那块屏（[`fit_step`]）。
-    work_area: Option<host_core::WorkArea>,
+    work_area: Option<filewin_contract::WorkArea>,
     // 窗口的样子（开窗种子带来的那一套；`None` ＝ 判据那一形，照 egui 当下的样子画）。
     theme: Option<filewin_contract::Theme>,
 ) -> std::thread::JoinHandle<Result<(), Said>> {
@@ -204,7 +204,7 @@ pub fn open_detached_seeded(
 /// 之后系统缩放一变（改了显示缩放 / 拖到另一块缩放不同的屏）再夹一次，按那一刻窗口所在那块屏的工作区（[`fit_step`]）。
 pub(super) struct FitOnce<A> {
     inner: A,
-    work: Option<host_core::WorkArea>,
+    work: Option<filewin_contract::WorkArea>,
     /// 上次夹的时候系统缩放是多少（`None` ＝ 还没夹过）。
     fitted_at: Option<f32>,
 }
@@ -247,8 +247,8 @@ pub(crate) fn fit_step(
     ppp: f32,
     outer: egui::Rect,
     inner: egui::Rect,
-    seed: Option<host_core::WorkArea>,
-    now: impl FnOnce((i32, i32)) -> Option<host_core::WorkArea>,
+    seed: Option<filewin_contract::WorkArea>,
+    now: impl FnOnce((i32, i32)) -> Option<filewin_contract::WorkArea>,
 ) -> Vec<egui::ViewportCommand> {
     let work = match *fitted_at {
         None => seed,
@@ -269,7 +269,7 @@ pub(crate) fn fit_commands(
     outer: egui::Rect,
     inner: egui::Rect,
     ppp: f32,
-    work: host_core::WorkArea,
+    work: filewin_contract::WorkArea,
 ) -> Vec<egui::ViewportCommand> {
     let px = |v: f32| (v * ppp).round();
     let Some(((w, h), (x, y))) = host_core::fit_into_work_area(

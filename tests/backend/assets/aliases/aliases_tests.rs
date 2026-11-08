@@ -53,7 +53,7 @@ fn inst(h: &TmpHome, list: &[Alias], shell: Shell) -> Result<bool, String> {
         .book
         .profiles
         .iter()
-        .filter(|p| !list.iter().any(|a| a.name == p.name))
+        .filter(|p| !p.builtin && !list.iter().any(|a| a.name == p.name))
         .map(|p| profile::Change::Remove(p.name.clone()))
         .collect();
     for a in list {
@@ -67,7 +67,12 @@ fn inst(h: &TmpHome, list: &[Alias], shell: Shell) -> Result<bool, String> {
     }
     let wrote = write_profiles(&d, &store.home, store.text.as_deref(), &text)
         .map_err(|e| format!("{e:?}"))?;
-    let out = sync_outputs(&d, &store.home, &profile::parse_book(&text), Some(shell));
+    let out = sync_outputs(
+        &d,
+        &store.home,
+        &book_in(&store.home, Some(&text)),
+        Some(shell),
+    );
     Ok(wrote || out.links_changed || !out.rewrote.is_empty())
 }
 
@@ -260,7 +265,7 @@ fn the_alias_block_is_the_one_place_that_sources_the_alias_file_in_both_dialects
 }
 
 /// 🔴 别名块只管接入：POSIX 那一块一个函数都不定义（`ccm` 进 PATH ＋ 接上别名文件）；PowerShell 那一块只定义拉前握手
-/// `__ccm_bind` 与带窗口标签的那层 `ssh`（＋ 接上别名文件）。`cc` / `cct` / `cca` 住清单（[`first_aliases`]）。
+/// `__ccm_bind` 与带窗口标签的那层 `ssh`（＋ 接上别名文件）。`cc` / `cct` / `cch` 是内置的（`accounts::with_builtins`）。
 /// 名字被我们的块占着 ⇒ 撞名提示照出声（`__ccm_bind`）；块不再占 `cc`。
 #[test]
 fn the_alias_blocks_only_wire_up_ccm() {
@@ -317,7 +322,34 @@ fn al(name: &str, args: &[&str]) -> Alias {
         left.push("--".into());
         left.extend(right);
     }
-    Alias::new(name, left)
+    Alias {
+        name: name.to_string(),
+        args: left,
+    }
+}
+
+/// 判据的夹具形：一条别名 ＝ 名字 ＋ `<交给 agent 的…> -- <ccm 自己的…>`（[`al`] 排好的），存进配置文件时折成一段（[`edit_of_alias`]）。
+struct Alias {
+    name: String,
+    args: Vec<String>,
+}
+
+/// 一条夹具别名 ⇒ 配置文件里那一段（`from` 由调用方给）；打头的 `new` 是缺省、不进配置。
+fn edit_of_alias(a: &Alias, from: Option<String>) -> profile::ProfileEdit {
+    let (left, right) = match crate::ccm_line::argv::last_end(&a.args) {
+        Some(k) => (&a.args[..k], &a.args[k + 1..]),
+        None => (&a.args[..], &a.args[..0]),
+    };
+    let right = match right.first() {
+        Some(w) if w == flag::NEW => &right[1..],
+        _ => right,
+    };
+    profile::ProfileEdit {
+        name: a.name.clone(),
+        from,
+        agent: left.to_vec(),
+        ccm: right.to_vec(),
+    }
 }
 
 /// 🔴 **异源判据**：真 bash 执行别名文件里那一行 —— 调用时跟的词（空格 / 单引号 / 中文 / `--` 之后的 ccm 选项）原样接在 `@名字` 后面。
@@ -342,7 +374,8 @@ fn a_rendered_alias_really_appends_the_callers_args_in_bash() {
     );
 }
 
-/// 旧形状的别名文件（一条一组参数）在、配置文件不在 ⇒ 读的那一下与后端起来那一下都不转：配置文件不建、旧文件一个字节不动、不留迁移说明。
+/// 旧形状的别名文件（一条一组参数）在、配置文件不在 ⇒ 读的那一下与后端起来那一下都不转：配置文件不建、不留迁移说明；
+/// 别名文件照合并后的清单（只有内置那几条）重写。
 #[test]
 fn an_old_alias_file_is_not_turned_into_a_profiles_file() {
     let h = tmp_home("old-left");
@@ -355,14 +388,84 @@ fn an_old_alias_file_is_not_turned_into_a_profiles_file() {
         !profiles_path(&h.0).exists(),
         "旧别名文件又被转成了配置文件"
     );
+    let builtin: Vec<String> = load(&door(&h))
+        .unwrap()
+        .book
+        .profiles
+        .iter()
+        .filter(|p| wants_function(&p.name, P))
+        .map(|p| render_line(&p.name, P))
+        .collect();
     assert_eq!(
         std::fs::read_to_string(&p).unwrap(),
-        old,
-        "旧别名文件被动了"
+        render_file(P, &builtin),
+        "别名文件没照只有内置的清单重写"
     );
     assert!(
         !h.0.join(".cc-monitor/profiles-migrated.json").exists(),
         "留了迁移说明"
+    );
+}
+
+/// 这台的账号表（判据夹具：账号库清单 `accounts.json`，各号只要名字与目录）。
+fn with_accounts(h: &TmpHome, names: &[&str]) {
+    let accts = h.0.join(".cc-monitor/accounts");
+    std::fs::create_dir_all(&accts).unwrap();
+    let list: Vec<Value> = names
+        .iter()
+        .enumerate()
+        .map(|(i, n)| {
+            json!({"configDir": accts.join(n).display().to_string(), "email": "", "isDefault": i == 0, "name": n})
+        })
+        .collect();
+    std::fs::write(
+        accts.join("accounts.json"),
+        json!({"accounts": list, "version": 1}).to_string(),
+    )
+    .unwrap();
+}
+
+/// 一条起得来没有：`bin` 下有它的链接，或别名文件里有它那个函数（撞名的那几条，如 `cc`）。
+fn launchable(h: &TmpHome, name: &str) -> bool {
+    link_of(h, name).is_some()
+        || std::fs::read_to_string(alias_path(&h.0, P))
+            .is_ok_and(|t| t.contains(&render_line(name, P)))
+}
+
+/// ★★ 老装的机器（配置文件不在 · 一个号 lab）升级后起来那一次 ⇒ 三个入口与 lab 的三条都起得来，配置文件不建。
+#[test]
+fn with_no_profiles_file_the_backend_start_brings_the_builtin_entries_and_each_accounts_three() {
+    let h = tmp_home("builtin-start");
+    with_accounts(&h, &["lab"]);
+    align_here(&door(&h));
+    for n in ["cc", "cct", "cch", "labcc", "labcct", "labcch"] {
+        assert!(launchable(&h, n), "{n} 起不来");
+    }
+    assert!(!profiles_path(&h.0).exists(), "配置文件被建出来了");
+}
+
+/// ★★ 建号 / 删号那一下只重生成：用户的配置文件逐字节不变；新号的三条有了、删掉的号那几条没了；用户写的同名段照用户那段（盖过内置）。
+#[test]
+fn regenerating_on_an_account_change_leaves_the_profiles_file_byte_for_byte() {
+    let h = tmp_home("builtin-regen");
+    let mine = "# 我的\n[labcc]\naccount = \"lab\"\ncwd = \"/w\"\n";
+    std::fs::write(profiles_path(&h.0), mine).unwrap();
+    with_accounts(&h, &["lab"]);
+    let r = regenerate_via(&door(&h)).unwrap();
+    assert!(!r.book.find("labcc").unwrap().builtin, "labcc 该照用户那段");
+    assert!(r.book.find("labcct").unwrap().builtin);
+    with_accounts(&h, &["lab", "work"]);
+    let r = regenerate_via(&door(&h)).unwrap();
+    assert!(r.changed);
+    assert!(launchable(&h, "workcc") && launchable(&h, "workcch"));
+    with_accounts(&h, &["work"]);
+    regenerate_via(&door(&h)).unwrap();
+    assert!(!launchable(&h, "labcct"), "删掉的号那几条还在");
+    assert!(launchable(&h, "labcc"), "用户那段 labcc 不随号删");
+    assert_eq!(
+        std::fs::read_to_string(profiles_path(&h.0)).unwrap(),
+        mine,
+        "用户的配置文件被动了"
     );
 }
 
@@ -521,7 +624,15 @@ fn the_powershell_arm_writes_and_reads_back_the_same_list() {
         "PowerShell 的别名文件落盘没有 BOM"
     );
     let text = String::from_utf8(bytes).unwrap();
-    let lines: Vec<String> = list.iter().map(|a| render_line(&a.name, PS)).collect();
+    // 合并后的清单：内置那几条在前，写进去的照写的先后。
+    let lines: Vec<String> = load(&door(&h))
+        .unwrap()
+        .book
+        .profiles
+        .iter()
+        .map(|p| render_line(&p.name, PS))
+        .collect();
+    assert!(lines.len() > list.len(), "内置那几条没进别名文件");
     assert_eq!(
         text,
         format!("\u{feff}{}", render_file(PS, &lines)),
@@ -843,11 +954,23 @@ fn a_dialect_this_machine_does_not_speak_is_refused_out_loud() {
             e.contains("PowerShell") && e.contains(&crate::assets::asset_catalog::machine_label()),
             "{e}"
         );
-        let h = tmp_home("ps-refuse");
-        let e = answer_read(&door(&h), &json!({ "shell": "powershell", "rcPath": null }))
-            .expect_err("线上那一口也该拒");
-        assert_eq!(e.code.as_deref(), Some("refused"));
     }
+}
+
+/// 🔴 **W39**：`aliases-read` 不收 shell，那台后端照自己的平台挑候选、回包说是哪一种（`here_shell`）；
+/// 还带 `shell` 那一格 ⇒ 坏入参（界面不再替那台猜）。
+#[test]
+fn aliases_read_answers_which_shell_this_machine_speaks() {
+    let h = tmp_home("read-shell");
+    let got = answer_read(&door(&h), &json!({ "rcPath": null })).expect("不带 shell 也读得回");
+    assert_eq!(
+        got["shell"],
+        serde_json::to_value(here_shell()).unwrap(),
+        "{got}"
+    );
+    let e = answer_read(&door(&h), &json!({ "shell": "posix", "rcPath": null }))
+        .expect_err("带 shell 那一格该拒");
+    assert_eq!(e.code.as_deref(), Some("bad_args"));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -871,7 +994,7 @@ fn the_alias_wire_matches_the_cross_language_golden() {
     std::fs::write(h.0.join(".bashrc"), g["rc"].as_str().unwrap()).unwrap();
     let d = door(&h);
     let home = hs(&h);
-    let read = answer_read(&d, &json!({ "shell": "posix", "rcPath": null })).expect("读回");
+    let read = answer_read(&d, &json!({ "rcPath": null })).expect("读回");
     let norm = serde_json::from_str::<Value>(&read.to_string().replace(&home, "<HOME>")).unwrap();
     assert_eq!(
         sub_home(&g["readReply"], &home),

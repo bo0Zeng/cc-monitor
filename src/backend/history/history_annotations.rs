@@ -381,7 +381,7 @@ fn need_path(own: &Own) -> Result<(OwnPath, OwnPath), crate::common::said::Said>
 // ───────────────────────── 帧命令（typed，`wire/typed.rs`）─────────────────────────
 
 codes! {
-    /// `history-annotate` · `history-forget` 的码。
+    /// `history-annotate` 的码；删会话连带删注解（[`forget_at`]）也回这几样，那一侧只记日志、不上线。
     pub enum AnnotationErr {
         /// 这份文件此刻读不懂（坏 JSON · 类型不对 · 同一格驼峰与蛇形都在）⇒ 拒写，原文件一个字节不动。
         Unreadable = "annotations_unreadable",
@@ -419,16 +419,6 @@ pub struct AnnotateReq {
     pub(crate) patch: Patch,
 }
 
-/// `history-forget` 的入参。
-#[derive(Debug, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-#[serde(deny_unknown_fields)]
-pub struct ForgetReq {
-    /// 会话 id。
-    pub(crate) sid: String,
-}
-
 /// `history-annotate`：改一条历史注解（星标 / 改名 / 隐藏），回改完的那一条。
 pub struct HistoryAnnotateCmd;
 
@@ -450,31 +440,6 @@ impl crate::wire::typed::Handle for HistoryAnnotateCmd {
             let own = &needs;
 
             annotate_at(own, req, crate::common::time::now_ms() as i64)
-        }
-    }
-}
-
-/// `history-forget`：删一条历史注解（删会话时连带）。不在 ⇒ 不写。
-pub struct HistoryForgetCmd;
-
-impl Command for HistoryForgetCmd {
-    const NAME: &'static str = "history-forget";
-    type Req = ForgetReq;
-    type Reply = Forgotten;
-    type Err = AnnotationErr;
-}
-
-impl crate::wire::typed::Handle for HistoryForgetCmd {
-    type Needs = crate::wire::typed::needs::Own;
-    fn run(
-        req: ForgetReq,
-        cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<Forgotten, AnnotationErr>> + Send + 'static {
-        let (_cx, needs) = cx.split();
-        async move {
-            let own = &needs;
-
-            forget_at(own, req)
         }
     }
 }
@@ -660,27 +625,18 @@ pub struct Annotated {
     pub(crate) prev_title: Option<String>,
 }
 
-/// `history-forget` 的回包。
-#[derive(Debug, Serialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct Forgotten {
-    /// 真删了一条没有（`false` = 本来就没有这一条，文件没动）。
-    pub(crate) removed: bool,
-}
-
-/// [`HistoryForgetCmd`] 的本体。
-pub(crate) fn forget_at(own: &Own, req: ForgetReq) -> Result<Forgotten, AnnotationErr> {
-    let sid = checked_sid(&req.sid)?;
+/// 删一条历史注解：删会话那一条（`files-delete-session`）删成之后连带调。不在 ⇒ 不写；回真删了一条没有。
+pub fn forget_at(own: &Own, sid: &str) -> Result<bool, AnnotationErr> {
+    let sid = checked_sid(sid)?;
     let (dir, file) = need_path(own).map_err(err)?;
     let held = lock_for_write(own, &dir).map_err(err)?;
     let (doc, mut raw) = read_for_write(file.as_path()).map_err(err)?;
     if !doc.entries.contains_key(sid) {
-        return Ok(Forgotten { removed: false });
+        return Ok(false);
     }
     put_entry(&mut raw, sid, None);
     write_at(own, &dir, &held, &raw).map_err(|e| err(crate::wire::spec::fail("io_failed", e)))?;
-    Ok(Forgotten { removed: true })
+    Ok(true)
 }
 
 #[cfg(test)]

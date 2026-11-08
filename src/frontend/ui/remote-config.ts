@@ -1,9 +1,8 @@
-// 机器表数据层（纯数据，无 DOM）：表住本机后端（`~/.cc-monitor/machines.json`，后端 `control/machines.rs`），
+// 机器表数据层（纯数据，无 DOM）：表住本机后端（`~/.cc-monitor/machines.json`，后端读法 `dial/machines.rs` · 写口 `control/machines.rs`），
 // 这里只经 `machines-read` / `machines-try` / `machines-set` 读写 ＋ 反查 / 筛选纯函数。
 // 一台在界面里是后端读回的那一行（`MachineRow`：后端算好的名字 ＋ 那一台原样）；名字只认后端那一格，界面不再自己算。
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
-import { isLocalOrigin, LOCAL } from "./ipc/origin";
-import { commands } from "./ipc/commands";
+import { LOCAL } from "./ipc/origin";
 import type { Host } from "./generated/Host";
 import type { MachineEdit } from "./generated/MachineEdit";
 import type { MachineFault } from "./generated/MachineFault";
@@ -169,12 +168,4 @@ export function hostCellEdits(key: string, was: Host, now: Host): MachineEdit[] 
   for (const f of HOST_CELLS) if (moved(f)) out.push(cell(k, f));
   if (moved("host")) out.push(cell(k, "host"));
   return out;
-}
-
-/**
- * 此刻要连的那几台远端的名字（不含本机）：壳的注册表说了算（`backend_machines`，照本机后端机器表对齐过，本机恒第一）。
- * 历史 · 搜索 · cc-bus 这几页列「哪几台远端」都问它，壳里列机器只此一处。
- */
-export async function remoteNames(): Promise<string[]> {
-  return (await commands.backend_machines()).filter((o) => !isLocalOrigin(o));
 }

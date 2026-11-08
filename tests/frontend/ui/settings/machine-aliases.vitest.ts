@@ -6,14 +6,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { ExecPolicy } from "../../../../src/frontend/ui/alias-reads";
 import type { AliasNameClash as NameClash } from "../../../../src/frontend/ui/generated/AliasNameClash";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
-import { factsOn } from "../../../test-support/host-facts";
 import type { UserPath } from "../../../../src/frontend/ui/generated/UserPath";
 
 const flush = async (): Promise<void> => {
   for (let i = 0; i < 12; i += 1) await Promise.resolve();
 };
 
-// 一份组件、平台是入参 ⇒ 同一套断言对两个平台各跑一遍，平台那几格（tmux 能力 · 首开发哪几发 · PowerShell 那几格）各有各的期望。
+// 一份组件、平台由那台读回里答 ⇒ 同一套断言对回包的两种 shell 各跑一遍，平台那几格（tmux 能力 · 首开发哪几发 · PowerShell 那几格）各有各的期望。
 type Plat = "posix" | "powershell";
 
 describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat) => {
@@ -26,6 +25,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
   let policyA: ExecPolicy | null;
   let policyAfter: ExecPolicy | null;
   let onPathSaid: string;
+  let readFails: boolean;
 
   // 显示形是那台写好的（`/h` 底下 ⇒ `~/…`）；界面照抄，不拿家目录自己缩。
   const cand = (path: string, over: { exists?: boolean; policy?: ExecPolicy | null } = {}) => ({
@@ -54,6 +54,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     policyA = null;
     policyAfter = null;
     onPathSaid = "";
+    readFails = false;
     vi.resetModules();
     toasted.length = 0;
     vi.doMock("../../../../src/frontend/ui/kit/toast", () => ({
@@ -95,11 +96,13 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     });
     vi.doMock("../../../../src/frontend/ui/alias-reads", () => {
       return {
-        readAliases: (origin: string, shell: Plat, rcPath: string | null) => {
-          seen.push({ cmd: "aliases_read", args: { origin, shell, rcPath } });
+        readAliases: (origin: string, rcPath: string | null) => {
+          seen.push({ cmd: "aliases_read", args: { origin, rcPath } });
+          if (readFails) return Promise.reject(new Error("那台没答"));
           if (rcPath === "/etc/x") return Promise.reject(Object.assign(new Error("拒绝写这个配置文件：只能落在 home 之内"), { detail: "d-fence" }));
           const other = rcPath ? `/h/${rcPath.replace(/^~\//, "")}` : null;
           return Promise.resolve({
+            shell: plat,
             rcCandidates: [cand("/h/rc-a", { policy: policyA }), cand("/h/rc-b", { exists: false }), ...(other ? [cand(other)] : [])],
             otherRc: other,
           });
@@ -153,7 +156,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
 
   async function mount(confirm?: (spec: { body?: string }) => boolean): Promise<HTMLElement> {
     const m = await import("../../../../src/frontend/ui/settings/machine-aliases");
-    const mgr = m.buildAliasManager({ platform: plat, origin: () => "<local>", confirm });
+    const mgr = m.buildAliasManager({ origin: () => "<local>", confirm });
     built.set(mgr.element, mgr);
     document.body.appendChild(mgr.element);
     await flush();
@@ -182,16 +185,39 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     powershell: ["aliases_read", "cc_get_auto_launch", "ccm_probe", "ccm_user_path", "profiles_read"],
   };
 
-  it("★ 构造零 I/O；第一次展开**恰好**那几发，再展开一发都不多；别名那几发都带这个平台的 shell", async () => {
+  it("★ 构造零 I/O；第一次展开**恰好**那几发，再展开一发都不多；平台照那台读回里答的 shell", async () => {
     const el = await mount();
     expect(seen, "还没展开就发了 IPC").toEqual([]);
+    expect(el.querySelector<HTMLElement>(".machine-aliases")!.dataset.shell, "没读回之前不定平台").toBeUndefined();
     await open(el);
     expect(seen.map((c) => c.cmd).sort()).toEqual([...FIRST_OPEN[plat]].sort());
+    expect(el.querySelector<HTMLElement>(".machine-aliases")!.dataset.shell).toBe(plat);
+    expect(el.querySelectorAll('[data-role="win-row"]').length, "本机 PowerShell 才有「Windows 终端」那一行").toBe(plat === "powershell" ? 1 : 0);
     seen = [];
     await open(el);
     expect(seen.map((c) => c.cmd).sort(), "再露出来 ⇒ 重读一遍（不多问别的）").toEqual(REREAD[plat]);
-    const shells = seen.filter((c) => c.cmd === "aliases_read").map((c) => (c.args as { shell: string }).shell);
-    expect(new Set(shells)).toEqual(new Set([plat]));
+    expect(el.querySelectorAll('[data-role="win-row"]').length, "重读不再多建一行").toBe(plat === "powershell" ? 1 : 0);
+  });
+
+  it("★ 那台读不回 ⇒ 平台那几格一格不画（没有 data-shell · 没有「Windows 终端」· 没有接上那一行），只说读不了", async () => {
+    readFails = true;
+    const el = await mount();
+    await open(el);
+    expect(el.querySelector<HTMLElement>(".machine-aliases")!.dataset.shell).toBeUndefined();
+    expect(el.querySelector('[data-role="win-row"]')).toBeNull();
+    expect(el.querySelectorAll('[data-role="access-line"]').length).toBe(0);
+    expect(el.querySelector('[data-role="access-warn"]')!.textContent).toContain(copyText("machineAliases.readBack.failed"));
+  });
+
+  it("答过一次之后再读不回 ⇒ 平台那几格照上次的留着，只添一句读不了", async () => {
+    const el = await mount();
+    await open(el);
+    const lines = el.querySelectorAll('[data-role="access-line"]').length;
+    readFails = true;
+    await open(el);
+    expect(el.querySelector<HTMLElement>(".machine-aliases")!.dataset.shell).toBe(plat);
+    expect(el.querySelectorAll('[data-role="access-line"]').length).toBe(lines);
+    expect(el.querySelector('[data-role="access-warn"]')!.textContent).toContain(copyText("machineAliases.readBack.failed"));
   });
 
   it("★ 回到这一页 / 别处改了这台的别名清单：展开过的按机器重读一遍；没展开过的、别台的都不读", async () => {
@@ -504,7 +530,6 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
   it("远端卡是同一个组件：每一发都带那台的 origin，只本机的那几格不挂", async () => {
     const m = await import("../../../../src/frontend/ui/settings/machine-aliases");
     const mgr = m.buildAliasManager({
-      platform: "posix",
       origin: () => "devbox",
     });
     const el = mgr.element;
@@ -529,25 +554,5 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     expect(seen.filter((c) => !sent.includes(c)), "远端卡问了只有本机才答得了的事").toEqual([]);
     expect(el.querySelector(".ccm-user-path-block")).toBeNull();
     expect([...el.querySelectorAll("button")].map((b) => b.textContent)).not.toContain(copyText("machineAliases.rc.open"));
-  });
-});
-
-describe("localShell：本机用哪种方言", () => {
-  afterEach(async () => {
-    const { __setHostFactsForTests } = await import("../../../../src/frontend/ui/settings/host-os");
-    __setHostFactsForTests(null);
-  });
-  it("Windows ⇒ powershell；Linux / macOS ⇒ posix；认不出 ⇒ 不猜（null），那一格明说、接入入口置灰", async () => {
-    vi.resetModules();
-    const { __setHostFactsForTests } = await import("../../../../src/frontend/ui/settings/host-os");
-    const { localShell, buildUnknownOsAliasBlock } = await import("../../../../src/frontend/ui/settings/machine-aliases");
-    const want = { windows: "powershell", linux: "posix", macos: "posix", unknown: null } as const;
-    for (const [os, sh] of Object.entries(want)) {
-      __setHostFactsForTests(factsOn(os as "windows" | "linux" | "macos" | "unknown"));
-      expect(localShell(), os).toBe(sh);
-    }
-    const block = buildUnknownOsAliasBlock();
-    expect(block.textContent).toContain(copyText("machineAliases.unknownOs.said"));
-    expect([...block.querySelectorAll("button")].map((b) => [b.textContent, b.disabled])).toEqual([[copyText("machineAliases.access.connect"), true]]);
   });
 });

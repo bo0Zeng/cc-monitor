@@ -38,33 +38,6 @@ fn the_union_keeps_everything_both_sides_already_had() {
 
 // ---- 鉴权方式这一维 ----
 
-/// ★ **金样与规则互钉。** 改了 [`auth_ready`] 而没改金样、或反过来，这条红。
-///
-/// 金样里的 `expect_auth_ready` 是**手写字面量**（不是算出来的），所以本条不是恒真：
-/// 把 `auth_ready` 的 api-key 那支改成 `credentials_present`，本条当场红两格。
-#[test]
-fn the_golden_matches_the_rule() {
-    assert_eq!(
-        AUTH_KIND_PARITY_CASES.len(),
-        6,
-        "金样格数变了 —— 先确认新格是不是也纳进了两侧的对拍"
-    );
-    for c in &AUTH_KIND_PARITY_CASES {
-        assert_eq!(
-            auth_kind_from_manifest(c.manifest_auth_kind),
-            c.expect_auth_kind,
-            "{}：分类规则与金样不一致",
-            c.name
-        );
-        assert_eq!(
-            auth_ready(c.expect_auth_kind, c.credentials_present),
-            c.expect_auth_ready,
-            "{}：就绪规则与金样不一致",
-            c.name
-        );
-    }
-}
-
 /// 闭集里每一个字面量都要能被分类函数认出来 —— 否则「闭集」是装饰。
 #[test]
 fn every_declared_auth_kind_round_trips() {
@@ -118,27 +91,6 @@ fn subscription_readiness_is_still_exactly_the_credential_file() {
     // api-key 那一支不看那个文件 —— 两种取值都真。
     assert!(auth_ready(AUTH_KIND_API_KEY, false));
     assert!(auth_ready(AUTH_KIND_API_KEY, true));
-}
-
-/// 夹具渲染器：路径真的被替换进去了，且 `manifest_auth_kind: None` 那格**没有**这个键
-/// （不是写成 `"authKind":null` —— 缺席与 null 在 serde 上是两件事）。
-#[test]
-fn the_parity_manifest_renders_absent_keys_as_absent() {
-    let m = auth_kind_parity_manifest("/tmp/fixture-root");
-    assert!(m.starts_with("{\"version\":1,"), "schema 版本得是 1：{m}");
-    assert!(
-        m.contains("\"configDir\":\"/tmp/fixture-root/sub-cred\""),
-        "{m}"
-    );
-    assert!(
-        m.contains("\"sharedStore\":\"/tmp/fixture-root/shared\""),
-        "{m}"
-    );
-    assert!(!m.contains("null"), "缺席的键不许渲染成 null：{m}");
-    // 六格里有五格带 authKind（`legacy-nokind` 那格不带）。
-    assert_eq!(m.matches("\"authKind\"").count(), 5, "{m}");
-    // 认不出的那格照原样写进去 —— 分类规则由读侧负责，夹具不许提前替它决定。
-    assert!(m.contains("\"authKind\":\"oauth-device\""), "{m}");
 }
 
 /// 正常字符不许被误杀 —— 否则合法账号名会被拒。
@@ -223,35 +175,6 @@ fn a_config_dir_passes_the_full_table_only_when_it_is_plainly_absolute() {
         config_dir_char_unsafe('\0')
             && config_dir_char_unsafe('!')
             && !config_dir_char_unsafe('中')
-    );
-}
-
-/// （`acct-core` 测试夹具没有 `cfg(test)` 门 ⇒ 编进发布二进制）· 「契约 crate 不带测试夹具」。
-/// 三项夹具（类型 · 表 · 渲染函数）各自紧跟在 `#[cfg(any(test, feature = "fixtures"))]` 后面：摘掉一处 ⇒ 那一项又进发布二进制，本条红。
-/// 正控：同一把尺子在本 crate 的一个契约项（`AUTH_KINDS`）上认得出「没有门」。
-#[test]
-fn the_parity_fixtures_stay_behind_the_fixtures_gate() {
-    let src = include_str!("../../../src/common/acct-core/src/lib.rs");
-    let gate = "#[cfg(any(test, feature = \"fixtures\"))]";
-    let gated = |decl: &str| -> bool {
-        let at = src
-            .find(decl)
-            .unwrap_or_else(|| panic!("lib.rs 里找不到 `{decl}` —— 夹具改名了，先改本条"));
-        src[..at].trim_end().ends_with(gate)
-    };
-    for decl in [
-        "pub struct AuthKindParityCase",
-        "pub const AUTH_KIND_PARITY_CASES",
-        "pub fn auth_kind_parity_manifest",
-    ] {
-        assert!(
-            gated(decl),
-            "`{decl}` 没在 `{gate}` 后面 —— 测试夹具又进发布二进制了"
-        );
-    }
-    assert!(
-        !gated("pub const AUTH_KINDS:"),
-        "正控：契约项 `AUTH_KINDS` 也被认成有门 —— 尺子恒真"
     );
 }
 

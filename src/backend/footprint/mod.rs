@@ -25,16 +25,15 @@
     )
 )]
 
-// 包里照旧写 `crate::footprint::…` · `crate::control::…` · `crate::observe::…` · `crate::assets::…` · `crate::accounts::…` ·
+// 包里照旧写 `crate::footprint::…` · `crate::host::…` · `crate::assets::…` · `crate::accounts::…` ·
 // `crate::agents::…` · `crate::history::…` · `crate::wire::…` · `crate::common::…` · `crate::platform::…`。
 extern crate self as footprint;
 use backend_accounts as accounts;
 use backend_agents as agents;
 use backend_assets as assets;
 use backend_common as common;
-use backend_control as control;
 use backend_history as history;
-use backend_observe as observe;
+use backend_host as host;
 use backend_platform as platform;
 use backend_wire as wire;
 
@@ -91,8 +90,16 @@ fn answer(req: &FootprintReq) -> Result<ConfigSurfaceReport, Said> {
         &get,
         &crate::platform::shell::session_shell_path,
         &crate::history::listing::agent_home(),
+        &user_path_here,
         req,
     )
+}
+
+/// `ccm` 所在目录（后端落点的上一级）在不在这台的用户级 `PATH` 上：只 Windows 那一台问得出（起 PowerShell ⇒ 阻塞档，
+/// 只在闭集里有那一格时才问）；问不出 ⇒ `None`。
+fn user_path_here() -> Option<bool> {
+    let dir = crate::platform::paths::installed_ccm_dir()?;
+    crate::platform::shell::powershell::user_path_holds(&dir)?.ok()
 }
 
 /// 解过的 `client`：家目录是绝对路径。
@@ -109,7 +116,7 @@ pub fn data_answer(
 ) -> Result<data::DataReport, Said> {
     let report = answer(req)?;
     let todo = chores::chores(&chores::gather::facts(door, data::needs_install(&report)));
-    let tmux = crate::control::terminals::tmux_here();
+    let tmux = crate::host::tmux::tmux_here();
     let own = crate::platform::paths::home_dir()
         .map(|h| data::own_rows(&h))
         .unwrap_or_default();
@@ -122,6 +129,7 @@ pub(crate) fn answer_with(
     get: &dyn Fn(&str) -> Option<String>,
     session_path: &dyn Fn() -> Option<String>,
     agent_home: &Path,
+    user_path: &dyn Fn() -> Option<bool>,
     req: &FootprintReq,
 ) -> Result<ConfigSurfaceReport, Said> {
     let client = req.client.as_ref().map(client_of).transpose()?;
@@ -135,6 +143,7 @@ pub(crate) fn answer_with(
     let own_fs = FsProbe {
         meta: &own_meta,
         list: &own_list,
+        user_path,
     };
     let own = SurfaceEnv {
         home: &home,

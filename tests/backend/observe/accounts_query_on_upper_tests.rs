@@ -1,7 +1,7 @@
 //! 账号清单判据里引到上层的那两条：起会话跟随读清单成品（控制面 `launch_account::pick`）· 换模型那一句（帧面 `session_model_face`）。
-//! 观测面是独立的包（`backend-observe`）、够不到上层 ⇒ 挂在主 crate（经 `cross/observe.rs`）；账号库经 `accounts_query::test_support` 造。
+//! 账号域是独立的包（`backend-accounts`）、够不到上层 ⇒ 挂在主 crate（经 `cross/observe.rs`）；账号库经 `accounts::manage::library::test_support` 造。
 
-use crate::observe::accounts_query::test_support::{
+use crate::accounts::manage::library::test_support::{
     account_default_golden, fresh_dir, golden_library, write_manifest,
 };
 use std::fs;
@@ -18,11 +18,11 @@ fn following_with_no_last_account_lands_on_the_default_when_it_is_selectable() {
     for (i, case) in cases.iter().enumerate() {
         let what = case["what"].as_str().unwrap();
         let (root, accts) = golden_library(&format!("pick{i}"), case);
-        let typed = crate::observe::accounts_query::list_product_with(
+        let typed = crate::accounts::manage::library::list_product_with(
             &accts,
             None,
             &[],
-            &[],
+            &|_| None,
             "claude-code",
             "claude-code",
             false,
@@ -76,7 +76,7 @@ fn whether_the_settings_are_shared_is_judged_for_the_session_s_own_account() {
                 name: "Sonnet 5.5".into(),
                 kept: false,
             }),
-            crate::observe::accounts_query::shared_with_other_accounts_in(
+            crate::accounts::manage::library::shared_with_other_accounts_in(
                 accts,
                 home,
                 "settings.json",

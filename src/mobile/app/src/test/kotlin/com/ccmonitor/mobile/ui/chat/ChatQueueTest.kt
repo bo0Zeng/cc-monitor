@@ -102,6 +102,19 @@ class ChatQueueTest {
         }
 
     @Test
+    fun `★ 待发里那一句名单里已有（回执还没到、那台已排进队）⇒ 只照名单画一行（同桌面 queue-row）`() {
+        val listed = listOf(QueueLine("o1", "排着", "那一句", undelivered = false))
+        val pending =
+            listOf(
+                OutboxLine("o1", "那一句", "等确认", failed = false, held = false),
+                OutboxLine("o2", "另一句", "等确认", failed = false, held = false),
+            )
+        val rows = queueRows(listed, pending).rows
+        assertEquals(listOf("o1" to true, "o2" to false), rows.map { it.id to it.listed })
+        assertEquals("排着", rows.first().state)
+    }
+
+    @Test
     fun `★ 那台离线 ⇒ 那一排排头单独一行「名单为上次所知」、不拼离线那句；连着 · 一行都没有 ⇒ 不说（同桌面 queue-row）`() {
         val one = listOf(QueueLine("a", "等确认", "那一句", undelivered = false))
         val stale = queueRows(one, emptyList(), offline = true)

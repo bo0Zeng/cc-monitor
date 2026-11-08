@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.core.data.db
 
+import com.ccmonitor.mobile.core.rs.TermKeys
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -8,7 +9,8 @@ import java.io.File
 
 /**
  * 手机这一侧对拍 xterm 键码的金样（`tests/__fixtures__/xterm-keys.tsv`，cmd-wire 的判据读同一份）：
- * 编码经 [keyBytes] 走 JNI 进核心那一张表（解码那一向由 cmd-wire 的判据读同一份守）。
+ * 金样里的记号原样交 [TermKeys.bytes]（JNI 进核心那一张表），字节对得上（解码那一向由 cmd-wire 的判据读同一份守）。
+ * 手机写记号那一向（[token]）由 `KeyDispatchTest` 照字节钉。
  */
 class KeyTokensTest {
     private data class Row(
@@ -31,17 +33,12 @@ class KeyTokensTest {
     }
 
     @Test
-    fun everyGoldenPressEncodesToItsBytes() {
+    fun everyGoldenTokenEncodesToItsBytes() {
         val enc = rows.filter { it.dir != "<" }
         assertTrue("金样里编码那几行太少", enc.size > 40)
         for (r in enc) {
-            val p = checkNotNull(keyPressOf(r.token)) { "第 ${r.line} 行记号读不出：${r.token}" }
-            assertArrayEquals("第 ${r.line} 行 ${r.token}", r.bytes, keyBytes(listOf(p)))
+            val got = checkNotNull(TermKeys.bytes(arrayOf(r.token))) { "第 ${r.line} 行记号核心读不出：${r.token}" }
+            assertArrayEquals("第 ${r.line} 行 ${r.token}", r.bytes, got)
         }
-    }
-
-    @Test
-    fun tokensRoundTripThroughKeyPress() {
-        for (r in rows) assertEquals(r.token, checkNotNull(keyPressOf(r.token)).token())
     }
 }

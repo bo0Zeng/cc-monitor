@@ -217,6 +217,8 @@ describe("粘贴 · 提交 · 结果照 again", () => {
       return cmd === "chan_call" ? chanReply(answer[a.op](chanArgsJson(a))) : null;
     };
     answer["accounts-login-cmd"] = () => ({ cmd: "claude-login t1" });
+    // 本机那一行也由本机后端 `terminal-ssh` 答（这里原样回交进来的那串）。
+    answer["terminal-ssh"] = (a) => ({ window: (a as { command: string }).command, line: (a as { command: string }).command });
     answer["login-start"] = () => {
       throw refusedReply("failed", "核心·起不来", { again: "restart", terminal: false });
     };

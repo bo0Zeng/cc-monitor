@@ -28,19 +28,19 @@ fn env_of<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String
 fn the_resident_switch_is_empty_one_or_refused() {
     assert_eq!(mode_from(&env_of(&[])).unwrap(), Mode::Stdio);
     assert_eq!(
-        mode_from(&env_of(&[(ENV_RESIDENT, "  ")])).unwrap(),
+        mode_from(&env_of(&[(RESIDENT, "  ")])).unwrap(),
         Mode::Stdio
     );
     assert_eq!(
-        mode_from(&env_of(&[(ENV_RESIDENT, "1")])).unwrap(),
+        mode_from(&env_of(&[(RESIDENT, "1")])).unwrap(),
         Mode::Listen
     );
     for bad in ["0", "yes", "true", "2"] {
         let (e, diag) = crate::common::contract::tests::diag(|| {
-            mode_from(&env_of(&[(ENV_RESIDENT, bad)])).unwrap_err()
+            mode_from(&env_of(&[(RESIDENT, bad)])).unwrap_err()
         });
         assert!(
-            diag.contains(ENV_RESIDENT),
+            diag.contains(RESIDENT),
             "拒绝的诊断没点名开关：{e} / {diag}"
         );
     }

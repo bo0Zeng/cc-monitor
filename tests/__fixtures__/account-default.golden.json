@@ -1,7 +1,7 @@
 {
   "说明": [
     "「这个号能不能选 · 这台的默认号是谁」三处同读的金样：规则住 acct-core（account_selectable · effective_default）。",
-    "读它的三处：后端清单成品（tests/backend/observe/accounts_query_tests.rs：逐号 selectable · meta.effectiveDefault）·",
+    "读它的三处：后端清单成品（tests/backend/accounts/manage/library_tests.rs：逐号 selectable · meta.effectiveDefault）·",
     "命令行不带 --account（tests/backend/control/ccm/plan_tests.rs：落哪个号）· 起会话跟随（tests/backend/control/launch_account_tests.rs）·",
     "界面只照抄成品那两格（tests/frontend/ui/accounts.vitest.ts）。",
     "accounts[]：hasDir = 清单里写了号目录（false = 账号 0）· exists = 号目录在盘上 · authReady = 凭据文件在（订阅号）。",

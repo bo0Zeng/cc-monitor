@@ -52,8 +52,6 @@ pub async fn run() {
     if egress::install(egress::Egress::from_env(&|k| std::env::var(k).ok())).is_err() {
         tracing::error!("egress: 出网口那一份已经被别人装过了 —— 本后端起来那一刻的出网设置不在用");
     }
-    // 拨号层要的「这一端的机器表怎么读」：起来那一下装一次（之后各台的常驻流 · 问那台 · 传输 · 部署都按名字查它）。
-    faces::install_machines();
     // ★★ **当 `ccm` 用的那一趟，在这里就整条分出去。**
     //
     // 〔用户定〕「后端**只有一个**，**不要有什么 bash 脚本**，**不要有什么单独的 ccm**。」
@@ -92,15 +90,11 @@ pub async fn run() {
             &rest,
             is_backend_word,
         ) {
-            // resume 判「在别处跑着」用观测层那一份扫描、选号判「能不能用」用账号清单成品（control 不引用 observe ⇒ 都由入口注入）。
+            // 选号判「能不能用」用账号清单成品（它在观测层算，control 不引用 observe ⇒ 由入口注入）。
             control::ccm::Entry::Ccm(ccm_args) => std::process::exit(control::ccm::run(
                 &ccm_args,
                 &process_argv,
                 &own,
-                |dir| {
-                    let home = agent_home(dir, false);
-                    observe::watcher::running_sessions(&home)
-                },
                 faces::launch_account_face::list_at,
             )),
             control::ccm::Entry::Backend(a) => a,
@@ -298,6 +292,7 @@ fn build_hello() -> Frame {
             .collect(),
         // ★★〔NET2 真填〕握手帧第四条面「我做得到什么」：这台机器上接得下却做不到的命令（tmux · unix 权限位两维，
         // 表从 `inbound::REGISTRY` 的 `codes` 派生）。是**提示不是闸门**（读数是握手那一刻的，`wire.rs` 那个字段头注口径③）。
+        // 每项带置灰那一句，按本机的名字写好（`inbound::gap_here`）；本机后端转别台的 hello 时换成那台的名字（`control/feeds.rs`）。
         // 手机端不读这个字段（`src/mobile/core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/transport/DaemonTransport.kt::parseHello`，未知字段忽略）；有 tmux 的 unix 机器上恒空 ⇒ 字节不变。
         // 钉它的：`main_fourth_face_tests::production_hello_fills_unavailable_from_this_machine`。
         unavailable: unavailable_here(),
@@ -750,15 +745,9 @@ fn init_tracing(oneshot: bool) {
 /// 要的是**恒定**答得出的那个 home（流式 watcher 与所有一次性子命令都拿它当根），
 /// 不是 `agents::visible_homes()`（那只报目录已存在的几家；新机器上 home 还没建出来时后端照样起、等第一个会话）。
 fn resolve_agent_home() -> PathBuf {
-    agent_home(None, true)
-}
-
-/// 本机 agent 家目录：给了账号配置目录就是它；没给 ⇒ `from_env` 时照进程环境，否则默认家目录
-/// （`ccm --base` resume 时问的那一处）。问注册表只此一处。
-fn agent_home(config_dir: Option<&std::path::Path>, from_env: bool) -> PathBuf {
-    agents::home_at(config_dir, from_env)
+    agents::home_at(None, true)
 }
 
 #[cfg(test)]
 #[path = "../../../tests/backend/main_startup_tests.rs"]
-mod startup_tests; // 起来那一下：机器表在分流之前装上 · 常驻起来那一段不调换形
+mod startup_tests; // 起来那一下：机器表不用装就读得到 · 常驻起来那一段不调换形

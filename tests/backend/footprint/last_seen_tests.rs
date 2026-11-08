@@ -1,6 +1,7 @@
 //! 离线那台的上次值：本机后端替界面记下每台最近一次读成的那几份，跨重启还在。
 
 use super::*;
+use crate::common::last_seen_store::MAX_ORIGINS;
 use serde_json::json;
 
 /// 判据仍用 JSON 写入参：经 `typed::take` 解成入参类型（同帧面那一跳），回包序列化回 JSON 比。
@@ -135,12 +136,13 @@ fn 记下再读回_带记下的时刻_没记过的那一样是空() {
     assert_eq!(other, json!({"accounts": null, "data": null}));
 }
 
-/// 账号清单读回的是缓存 ⇒ 每号那一格余量写成「… · 上次所知」（那台写，界面照摆）；没有那一格的号照旧没有。
+/// 账号清单读回的是缓存 ⇒ 每号每一格额度写成「… · 上次所知」（那台写，界面照摆）；没有格的号照旧没有。
 #[test]
-fn 读回的账号清单_余量那一格标上次所知() {
+fn 读回的账号清单_额度格标上次所知() {
     let d = Dir::new("stale");
     let mut v = accounts_list();
-    v["accounts"][0]["quota"] = json!("5h 62% ↻18:30");
+    v["accounts"][0]["slots"] = json!([{"slot": "5h", "text": "5h 62% ↻18:30", "tone": "plain"}]);
+    v["accounts"][1]["slots"] = json!([]);
     write_at(
         &d.own(),
         &json!({"origin": "devbox", "kind": "accounts", "value": v}),
@@ -150,13 +152,13 @@ fn 读回的账号清单_余量那一格标上次所知() {
     let got = read_at(&d.file(), &json!({"origin": "devbox"})).unwrap();
     let rows = &got["accounts"]["value"]["accounts"];
     assert_eq!(
-        rows[0]["quota"],
+        rows[0]["slots"][0]["text"],
         json!(copy_core::copy_text(
             "beQuota.cell.stale",
             &[("cell", "5h 62% ↻18:30")]
         ))
     );
-    assert_eq!(rows[1]["quota"], json!(null));
+    assert_eq!(rows[1]["slots"], json!([]));
 }
 
 #[test]

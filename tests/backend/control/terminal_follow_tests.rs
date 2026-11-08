@@ -70,7 +70,7 @@ impl Iso {
         );
     }
     fn handle_of(&self, name: &str) -> String {
-        let on = crate::control::terminals::On {
+        let on = crate::host::tmux::On {
             socket: self.sock.to_str(),
         };
         let l = serde_json::to_value(
@@ -304,7 +304,7 @@ fn the_follower_is_not_counted_as_a_terminal_window() {
         eventually(|| iso.control_clients() == 1),
         "订阅那个控制模式客户端没连上（正控）"
     );
-    let on = crate::control::terminals::On {
+    let on = crate::host::tmux::On {
         socket: iso.sock.to_str(),
     };
     let l =
@@ -740,7 +740,7 @@ fn refusals_say_which_way_live_went() {
 fn a_one_shot_watch_wakes_on_output_and_gives_up_on_silence() {
     let iso = Iso::new("watch");
     iso.session("w-cc");
-    let on = crate::control::terminals::On {
+    let on = crate::host::tmux::On {
         socket: iso.sock.to_str(),
     };
     let h = iso.handle_of("w-cc");

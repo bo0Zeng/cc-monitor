@@ -192,44 +192,32 @@ impl Pictures {
         true
     }
 
-    /// 逐块读回；读到一半被扔了 ⇒ `Ok(None)`（不再读下一块）。
+    /// 经 [`chunk_core::pull_capped`] 逐块读回；读到一半被扔了 ⇒ `Ok(None)`（不再读下一块）。
     async fn read(&self, key: &PicKey, l: &Load) -> Result<Option<Vec<u8>>, String> {
-        let mut bytes: Vec<u8> = Vec::new();
-        loop {
-            let d = super::source::ask_typed(
-                &l.line,
-                &l.origin,
-                &cmd_wire::files::ReadChunkReq {
-                    path: l.wire.clone(),
-                    offset: bytes.len() as u64,
-                    len: chunk_core::CHUNK as u64,
-                },
-                super::chunk_upload::CHUNK_BUDGET,
-            )
-            .await
-            .map_err(|f| f.said)?;
-            let body = d.content.0;
-            bytes.extend_from_slice(&body);
-            if bytes.len() as u64 > l.cap {
-                return Err(copy_text(
+        let ask = Asking(super::chunk_upload::Over {
+            line: &l.line,
+            origin: &l.origin,
+        });
+        let mut watch = Reading { pics: self, key, l };
+        let bytes = chunk_core::pull_capped(
+            &ask,
+            l.wire.clone(),
+            l.cap,
+            &mut watch,
+            || None,
+            |t| {
+                Some(copy_text(
                     "rsFilewinPicture.read.grew",
-                    &[("limit", &copy_core::size_text(l.cap))],
-                ));
-            }
-            let total = d.size;
-            match self.slots.lock().unwrap().get_mut(key) {
-                Some(Slot::Reading { got, total: t }) => {
-                    *got = bytes.len() as u64;
-                    *t = total;
-                }
-                _ => return Ok(None),
-            }
-            if let Some(c) = &l.ctx {
-                c.request_repaint();
-            }
-            if d.eof || body.is_empty() {
-                return Ok(Some(bytes));
-            }
+                    &[("limit", &copy_core::size_text(t.cap))],
+                ))
+            },
+        )
+        .await;
+        match bytes {
+            Ok(_) if chunk_core::Watch::stopped(&watch) => Ok(None),
+            Ok(b) => Ok(Some(b)),
+            Err(None) => Ok(None),
+            Err(Some(why)) => Err(why),
         }
     }
 
@@ -241,6 +229,47 @@ impl Pictures {
     /// 只留这几张（窗口每帧报一次此刻还摆着的）。
     pub fn keep_only(&self, keep: &HashSet<PicKey>) {
         self.slots.lock().unwrap().retain(|k, _| keep.contains(k));
+    }
+}
+
+/// 读一张图问那台的那一口（就是分块那一圈的 [`super::chunk_upload::Over`]）：没成 ⇒ `Some(那一句)`；`None` ＝ 那一张被扔了。
+struct Asking<'a>(super::chunk_upload::Over<'a>);
+
+impl chunk_core::Ask for Asking<'_> {
+    type Err = Option<String>;
+    async fn ask<C: cmd_wire::Call + Sync>(&self, req: &C) -> Result<C::Reply, Self::Err> {
+        chunk_core::Ask::ask(&self.0, req)
+            .await
+            .map_err(|f| Some(f.said))
+    }
+}
+
+/// 读那一趟的进度记进那一格（读了多少 · 一共多少）；那一格不在读了（被扔了）⇒ 撤。
+struct Reading<'a> {
+    pics: &'a Pictures,
+    key: &'a PicKey,
+    l: &'a Load,
+}
+
+impl chunk_core::Watch for Reading<'_> {
+    fn stopped(&self) -> bool {
+        !matches!(
+            self.pics.slots.lock().unwrap().get(self.key),
+            Some(Slot::Reading { .. })
+        )
+    }
+    fn moved(&mut self, done: u64, total: Option<u64>) {
+        if let Some(Slot::Reading { got, total: t }) =
+            self.pics.slots.lock().unwrap().get_mut(self.key)
+        {
+            *got = done;
+            if let Some(n) = total {
+                *t = n;
+            }
+            if let Some(c) = &self.l.ctx {
+                c.request_repaint();
+            }
+        }
     }
 }
 

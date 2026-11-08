@@ -514,7 +514,8 @@ fn a_real_backend_feeds_local_lines_through_the_production_read_loop() {
 // 收到 `changed` 就交 `changed/<主题>` 订阅；本机这条不许在吸收点丢掉额度 · 账号清单 · 配置文件（丢了界面只能等别的事件顺带重读）。
 
 /// 手写线上帧走生产那一串：`decode` → 分派第一层 → 本机内容通道 → `consume` → 第二层 → 重放缓冲；
-/// 订了 `<local>` 上 `changed/quota` · `changed/rotation` · `changed/accounts` 的订阅各逐格收到自己那一格（期望手写）。
+/// 订了 `<local>` 上 `changed/quota` · `changed/rotation` · `changed/accounts` · `changed/machines` 的订阅各逐格收到自己那一格（期望手写；
+/// 机器表那一格也原样转：壳不记机器表、不替后端另说一声）。
 #[tokio::test]
 async fn local_changed_pushes_reach_the_ui_subscription() {
     use crate::chan::wire::Item as WItem;
@@ -536,7 +537,12 @@ async fn local_changed_pushes_reach_the_ui_subscription() {
     let replay = std::sync::Arc::new(EventReplay::new());
     let rec = std::sync::Arc::new(Rec::default());
     replay.attach_sink(rec.clone());
-    for (id, topic) in [(1, "quota"), (2, "rotation"), (3, "accounts")] {
+    for (id, topic) in [
+        (1, "quota"),
+        (2, "rotation"),
+        (3, "accounts"),
+        (4, "machines"),
+    ] {
         replay.subscribe(
             "w",
             id,
@@ -552,6 +558,7 @@ async fn local_changed_pushes_reach_the_ui_subscription() {
         r#"{"kind":"changed","topic":"quota"}"#,
         r#"{"kind":"changed","topic":"rotation","key":"s1"}"#,
         r#"{"kind":"changed","topic":"accounts"}"#,
+        r#"{"kind":"changed","topic":"machines"}"#,
     ] {
         let f = crate::stream_source::decode(line).expect("手写帧解不出来");
         if let Some(f) = crate::stream_source::route(&crate::origin::Origin::local(), None, f) {
@@ -569,19 +576,17 @@ async fn local_changed_pushes_reach_the_ui_subscription() {
             (1, serde_json::json!({})),
             (2, serde_json::json!({"key": "s1"})),
             (3, serde_json::json!({})),
+            (4, serde_json::json!({})),
         ],
         "本机后端推来的 `changed`，界面那几条 `changed/<主题>` 订阅没收到（远端那条路收得到）"
     );
 }
 
 /// 两条路交界面的是同一个口：后端推来的 `changed` 那一格在 monitor 生产段里恰好由分派第二层调一处（本机远端同一处）。
-/// 另一处是壳自己说的那一声：照机器表对齐完远端流（`machine_table::tell_followed`；本机后端那一帧 `changed {machines}` 分派那里不转）。
+/// 壳自己不另说哪一格（机器表那一格也是本机后端推来的）。
 #[test]
 fn both_paths_hand_changed_pushes_to_the_same_replay_entry() {
-    let want = set(&[
-        ("stream_source/dispatch.rs", "apply"),
-        ("machine_table.rs", "tell_followed"),
-    ]);
+    let want = set(&[("stream_source/dispatch.rs", "apply")]);
     for needle in ["replay.changed("] {
         assert_eq!(callers_of(needle), want, "`{needle}` 的生产调用方对不上");
     }

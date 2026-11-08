@@ -90,7 +90,7 @@ fn the_list_puts_builtins_first_and_writes_every_word() {
 /// ★ 号：这条会话上次用的号 → 这台默认号 → 账号 0（那一家自己的家）；号在库里却没有配置目录 ⇒ 往下一级退。
 #[test]
 fn the_account_follows_last_then_default_then_account_zero() {
-    use crate::observe::accounts_query::test_support::{list, row_with};
+    use crate::accounts::manage::library::test_support::{list, row_with};
     let lib = |default: Option<&str>| {
         let mut l = list(vec![
             row_with("work", |a| a.config_dir = Some("/h/work".into())),

@@ -5,17 +5,13 @@
  * 「运行于」（在 tmux 里 / 不用 tmux）；最底下「在此目录新建会话」。点单选只挪勾、菜单不关、什么都不起；
  * 起由宿主按勾着的那一组做（历史页旁边的主按钮；标签页没有主按钮 ⇒ 最上面多一行「恢复」）。
  *
- * 只排版：有哪几个号、能不能选号（那一家有没有账号这一维）由那台的事实给；`5h N%` 读额度账的显示态（`quota-read`），
- * 这里不判；选了之后怎么起（问那台判号、起会话）由宿主做。
+ * 只排版：有哪几个号、能不能选号（那一家有没有账号这一维）由那台的事实给；号名与 `5h N%` 是那台 `accounts-list` 那一行写好的
+ * （`label` · `slots` 第一格），这里不判；选了之后怎么起（问那台判号、起会话）由宿主做。
  */
 import { copyText } from "./copy-table";
-import { quotaOf, quotaReadOf } from "./app-store";
-import { refreshQuota } from "./acct-center";
 import { fetchAccounts } from "./account-reads";
 import { selectableAccounts } from "./accounts";
 import { accountAvatarEl } from "./account-color";
-import { fiveHourCell, accountLabel } from "./acct-words";
-import { lookupAgentProfile } from "./agent-profile";
 import type { Machine } from "./ipc/origin";
 import type { Launch } from "./generated/Launch";
 import type { AccountAsk } from "./generated/AccountAsk";
@@ -36,7 +32,7 @@ export interface ResumePick {
 export interface ResumeAccount {
   name: string | null;
   label: string;
-  /** `5h 41%`；账上没数 ⇒ `null`。 */
+  /** 那一行的第一格（`5h 41% ↻18:30`）；没有 · 基座 ⇒ `null`。 */
   quota: string | null;
   last: boolean;
 }
@@ -99,30 +95,27 @@ export function resumeHint(accounts: ResumeAccounts, p: ResumePick, machineRun?:
 
 /**
  * 那台的号 ⇒ 账号组（`agentHasAccounts` 是那一行的事实：这一家有没有账号这一维）。
- * 可选的号一个也没有 / 那台没开多账号 ⇒ `off`；`5h N%` 读额度账（那台还没读过 ⇒ 先读一次）。
+ * 可选的号一个也没有 / 那台没开多账号 ⇒ `off`；号名与 `5h N%` 都照那台 `accounts-list` 那一行。
+ * `_agent` 没有读者了（那一行已按那一家对好额度账），调用方那三处去掉它之前先留着。
  */
 export async function resumeAccounts(
   origin: Machine,
-  agent: string,
+  _agent: string,
   facts: { hasAccounts: boolean; agentName: string; last?: string },
 ): Promise<ResumeAccounts> {
   if (!facts.hasAccounts) return { kind: "none", agentName: facts.agentName };
-  let names: string[];
+  let rows: ReturnType<typeof selectableAccounts>;
   try {
     const state = await fetchAccounts(origin);
     if (!state.available) return { kind: "off" };
-    names = selectableAccounts(state).map((a) => a.name);
+    rows = selectableAccounts(state);
   } catch {
     return { kind: "off" };
   }
-  if (names.length === 0) return { kind: "off" };
-  if (quotaOf(origin).state === "pending") await refreshQuota(origin);
-  const q = quotaReadOf(origin);
-  // 额度账按路由第 1 段（那一家的适配器 id）记号，会话行上是那一家的名字 ⇒ 经那一家的事实表换过去。
-  const prof = lookupAgentProfile(agent);
-  const five = (account: string): string | null => (prof.known ? fiveHourCell(q, prof.facts.agent, account) : null);
-  const items: ResumeAccount[] = names.map((name) => ({ name, label: accountLabel(name), quota: five(name), last: name === facts.last }));
-  items.push({ name: null, label: copyText("resumeMenu.account.base"), quota: five("_"), last: false });
+  if (rows.length === 0) return { kind: "off" };
+  // 号名与号旁那一格都是那台那一行写好的（`label` · `slots` 第一格）；基座落在哪份登录说不准，不带格。
+  const items: ResumeAccount[] = rows.map((a) => ({ name: a.name, label: a.label ?? a.name, quota: a.slots?.[0]?.text ?? null, last: a.name === facts.last }));
+  items.push({ name: null, label: copyText("resumeMenu.account.base"), quota: null, last: false });
   return { kind: "list", items, origin };
 }
 

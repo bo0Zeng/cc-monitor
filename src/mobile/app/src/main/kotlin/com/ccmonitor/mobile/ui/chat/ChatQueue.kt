@@ -109,15 +109,21 @@ data class QueueRows(
     val stale: String?,
 )
 
-/** 名单在前（先后照那台），待发接在后面；[offline] ＝ 那台此刻离线（排头说名单是上次所知；是哪台、为什么看机器条），同桌面 `queue-row.ts`。 */
+/**
+ * 名单在前（先后照那台），待发接在后面；待发里那一句名单里已有（那台已排进队、回执还没到）⇒ 只照名单画一行。
+ * [offline] ＝ 那台此刻离线（排头说名单是上次所知；是哪台、为什么看机器条），同桌面 `queue-row.ts`。
+ */
 fun queueRows(
     queue: List<QueueLine>,
     outbox: List<OutboxLine>,
     offline: Boolean = false,
 ): QueueRows {
+    val listed = queue.map { it.id }.toSet()
     val rows =
         queue.map { QueueRowFace(it.id, it.said, headOf(it.text), error = it.undelivered, held = false, listed = true) } +
-            outbox.map { QueueRowFace(it.id, it.said, headOf(it.text), error = it.failed, held = it.held, listed = false) }
+            outbox
+                .filter { it.id !in listed }
+                .map { QueueRowFace(it.id, it.said, headOf(it.text), error = it.failed, held = it.held, listed = false) }
     val stale = copyText("terminal.queue.stale").takeIf { offline && rows.isNotEmpty() }
     return QueueRows(rows, stale)
 }

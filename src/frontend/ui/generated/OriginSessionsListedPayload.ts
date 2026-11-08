@@ -8,8 +8,4 @@ export type OriginSessionsListedPayload = {
 /**
  * 用 `Origin`，不用裸字符串（`origin_tests::no_new_raw_string_origin_parameters` 那条棘轮）；线上逐字同一个字符串。
  */
-origin: Machine, 
-/**
- * 这一刻机器表里的每一台都报完了（「各台都报完」那一刻；F5 重放同一份）。
- */
-all: boolean, };
+origin: Machine, };

@@ -2,6 +2,7 @@
 //! 住拨号那一端的本机后端（`~/.cc-monitor/machines.json`，[`relay_route_core::MACHINES_REL`]）：钥匙路径是这台上的文件，
 //! 手机有自己的一张（同一形、不共用一份）。
 //!
+//! - 读法只一份，住拨号层（`dial/machines.rs`：[`DOC`] · [`read_at`] · `dial::machines_now`）；本模块是写的那一半与三条帧命令。
 //! - 谁写：只有本模块的 [`answer_set_in`]（帧面 `machines-set` ＋ 派生的 CLI 面）。
 //!   补丁全按键认元素（[`MachineEdit`]），锁内现读现判 ⇒ 设置页改一格、另一扇窗口同写都不会互相盖掉。
 //! - 一台的那一形（[`Host`]）、名字、判准、组拨号请求都住拨号核心（`ssh_dial::machine`），手机核心链同一份；
@@ -14,86 +15,27 @@ use crate::common::said::Said;
 use crate::platform::Own;
 use copy_core::{copy_text, Discard, Why};
 use serde_json::{Map, Value};
-use std::path::{Path, PathBuf};
+use std::path::Path;
+// 判据那一份（`use super::*`）的临时家目录。
+#[cfg(test)]
+use std::path::PathBuf;
 
-/// 机器表：状态（读不懂 · 比这一版新 ⇒ 不覆盖；落点 · 上限 · 版本照声明表）。
-pub(crate) const DOC: crate::common::own_state::Doc<OnDisk> =
-    crate::common::own_state::Doc::of(&relay_route_core::MACHINES_FILE);
-
-/// 一张表至多几台。
-pub(crate) const HOSTS_MAX: usize = 256;
+/// 某个家目录底下那份文件（判据也照它找）。
+pub use crate::dial::machines::path_in;
+/// 读法（盘上那一形 · 现读一次的三态 · 上限）住拨号层。
+pub(crate) use crate::dial::machines::{read_at, Loaded, OnDisk, DOC, HOSTS_MAX};
 
 /// 一台（盘上那一形，也是线上那一形）：住拨号核心。
 pub(crate) use ssh_dial::machine::{
     fault, refused_said, table_fault, Host, MachineFault, MachineFaultCode, MachineRow,
 };
 
-/// 盘上整份（顶层 `version` 归读写口）。
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct OnDisk {
-    hosts: Vec<Host>,
-}
-
-/// 现读一次的结果。
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum Loaded {
-    Absent,
-    Present(Vec<Host>),
-    /// 文件在、读不懂（那一句 ＋ 原话）。
-    Unreadable(Said),
-}
-
-impl Loaded {
-    /// 照用的那一张：读不懂 / 没有 ⇒ 空表。
-    pub(crate) fn hosts(&self) -> Vec<Host> {
-        match self {
-            Loaded::Present(h) => h.clone(),
-            Loaded::Absent | Loaded::Unreadable(_) => Vec::new(),
-        }
-    }
-    fn state(&self) -> cmd_wire::FileState {
-        match self {
-            Loaded::Absent => cmd_wire::FileState::Absent,
-            Loaded::Present(_) => cmd_wire::FileState::Ok,
-            Loaded::Unreadable(_) => cmd_wire::FileState::Unreadable,
-        }
-    }
-}
-
-/// 某个家目录底下那份文件。
-pub fn path_in(home: &Path) -> PathBuf {
-    home.join(DOC.rel)
-}
-
-/// 这一端此刻照用的那一张（现读；家目录说不出 · 没有 · 读不懂 ⇒ 空表）。拨号层经它按名字组请求（`dial::install_machines`）。
-pub fn here() -> Vec<Host> {
-    crate::platform::paths::home_dir()
-        .map(|h| read_at(&path_in(&h)).hosts())
-        .unwrap_or_default()
-}
-
-fn not_ours(path: &Path, why: String) -> Said {
-    Said::with_raw(
-        copy_text(
-            "beOwnState.read.notJson",
-            &[("path", &path.display().to_string())],
-        ),
-        why,
-    )
-}
-
-/// 读一次 `path`。每次都真去读盘。
-pub(crate) fn read_at(path: &Path) -> Loaded {
-    use crate::common::own_state::Read;
-    match DOC.read(path) {
-        Read::Absent => Loaded::Absent,
-        Read::Unreadable(why) => Loaded::Unreadable(why),
-        Read::Present(d) if d.hosts.len() > HOSTS_MAX => Loaded::Unreadable(not_ours(
-            path,
-            format!("{} hosts (at most {HOSTS_MAX})", d.hosts.len()),
-        )),
-        Read::Present(d) => Loaded::Present(d.hosts),
+/// 现读一次的三态在线上那一格。
+fn state_of(l: &Loaded) -> cmd_wire::FileState {
+    match l {
+        Loaded::Absent => cmd_wire::FileState::Absent,
+        Loaded::Present(_) => cmd_wire::FileState::Ok,
+        Loaded::Unreadable(_) => cmd_wire::FileState::Unreadable,
     }
 }
 
@@ -387,7 +329,7 @@ fn reply(l: &Loaded, path: Option<&Path>, home: Option<&Path>) -> MachinesReply 
     };
     let (reason, detail) = crate::wire::detail::unreadable("machines-read", why);
     MachinesReply {
-        state: l.state(),
+        state: state_of(l),
         reason,
         detail,
         path: path.map(|p| p.display().to_string()),

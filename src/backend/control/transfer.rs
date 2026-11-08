@@ -10,25 +10,25 @@
 //! | `transfer-upload` | `TransferUploadReq {dial, items: [{local_path}], remote_dir, home?, on_exists?, decide?}` | `TransferOpened {items}` | 一组开单（不起跑）：先在远端落点探同名；每项的 `staged` = 暂存件的键，提交时交给远端后端 `files-commit-upload` |
 //! | `transfer-download` | `TransferDownloadReq {dial, items: [{remote_path, name?}], local_dir, on_exists?, decide?}` | `TransferOpened {items}` | 一组开单：本机落点先探同名、当场过路径解析（出声早），起跑时再过一次 |
 //! | `transfer-start` | `{id}` | — | 起跑；进度走出方向 `transfer` 帧（`wire.rs`） |
-//! | `transfer-stop` | `{id}` | — | 撤（幂等）。上传删暂存件；下载留 `.part` |
+//! | `transfer-stop` | `{id}` | — | 撤（幂等）。上传删暂存件；下载留本机暂存区里的半成品 |
 //!
 //! 起跑挂在 `transfer-start` 上、不挂在开单上：monitor 先登记好看的人、再起跑，终局就不会没人收。
 //!
 //! # 归原生那一块（两台之间搬字节是拨号那一半的活）
 //!
 //! 它引 `dial::sftp` 拿会话、搬字节；文件管理那一块（`files/`，独立的包）只管本机的读和写，它不引这里
-//! （引不到上层由 Cargo 管）。两块共用的路径解析 · 暂存件命名 · 流式摘要 · 路径字节还原都住 `common/`。
-//! 下载要写本机用户选的落点（`.part` ＋ 改名上位）：写经票表手里那一份 `Face`（帧面分派那一层造台时交来），
-//! 用到的只有 `O_EXCL` 新建 · 接着写 · 改名 · 删文件；每一处改动的路径都是 `common::root_path::walk_in_root` 交回的 `Resolved`。
+//! （引不到上层由 Cargo 管）。两块共用的路径解析 · 暂存区与落进用户目录那一下（`common::staging`）· 流式摘要 · 路径字节还原都住 `common/`。
+//! 下载先写进本机暂存区（`~/.cc-monitor/staging/<键>.part`），传完经 `common::staging::land` 落到用户选的落点（与上传提交同一处）：写经票表手里那一份 `Face`（帧面分派那一层造台时交来），
+//! 暂存区里用到的只有 `O_EXCL` 新建 · 接着写 · 改名 · 删文件；每一处改动的路径都是 `common::root_path::walk_in_root` 交回的 `Resolved`。
 //! 远端那一半（暂存区的写）全经 `ssh-dial/sftp.rs` 的写原语（只许两处、先过 `fenced_remote`）。
 //!
 //! # 存亡规矩
 //!
-//! | 事件 | 上传的暂存件 | 下载的 `.part` |
+//! | 事件 | 上传的暂存件 | 下载的半成品（本机暂存区） |
 //! |---|---|---|
 //! | 撤（`transfer-stop` / 本机流断了） | 删（用户说了不要） | 留（续传的本钱） |
-//! | 失败 | 留（续传最值钱的正是这一档） | 留（同一条理由；一个字节都没落的空 `.part` 才清） |
-//! | 成功 | 远端后端那次提交把它变成目标 | 改名上位 |
+//! | 失败 | 留（续传最值钱的正是这一档） | 留（同一条理由；一个字节都没落的空半成品才清） |
+//! | 成功 | 远端后端那次提交把它变成目标 | `common::staging::land` 上位 |
 //!
 //! 判的是撤的旗，不是错误文案。续传：两侧都先把尾块逐字节对一遍，对得上才接（半成品只记了「写到哪」，
 //! 没记「那是谁的字节」，只看长度会缝出一个坏文件）。
@@ -50,9 +50,9 @@ use tokio::sync::{mpsc, watch, Notify};
 
 use crate::common::root_path::{walk_in_root, Last};
 use crate::common::said::Said;
-use crate::common::staging::{KEY_LEN, PART_SUFFIX};
+use crate::common::staging::{self, Content, Was, KEY_LEN, PART_SUFFIX};
 use crate::dial::sftp::{self, Dial, Session};
-use crate::platform::fs::{Face, FaceFile, Ro};
+use crate::platform::fs::{Face, FaceFile, Resolved, Ro};
 use crate::wire::typed::{self, codes};
 use crate::wire::{Frame, TransferEnd};
 use cmd_wire::batch::{Conflict, Conflicts, Decide};
@@ -145,14 +145,14 @@ pub(crate) const MAX_TICKETS_PER_CONNECTION: usize = 64;
 
 // ═══ 暂存件的键 ════════════════════════════════════════════════════════════════════════
 
-/// 由（本机路径 · 大小 · 修改时间）派生暂存件的键：同一份文件重拖一次落到同一个暂存件上 ⇒ 续传的尾块对拍照旧生效。
+/// 由（那一份是谁 · 大小 · 修改时间）派生暂存件的键（上传：本机路径 ＋ 大小 ＋ 修改时间；下载：远端路径 ＋ 本机落点，后两格交 0）：同一份重拖一次落到同一个暂存件上 ⇒ 续传的尾块对拍照旧生效。
 /// 暂存区、键长、键派生与提交那一侧（`files::commit`）一致，提交那一侧住文件管理那一块。标准库默认散列跨 Rust 版本不保证稳定 ——
 /// 只意味着升级之后第一次重拖从 0 来；尾块对拍另有一道兜底，不会接错。
-pub(crate) fn staging_key(local_path: &str, size: u64, mtime_ns: u128) -> String {
+pub(crate) fn staging_key(what: impl std::hash::Hash, size: u64, mtime_ns: u128) -> String {
     use std::hash::{DefaultHasher, Hash, Hasher};
     let half = |salt: &str| {
         let mut h = DefaultHasher::new();
-        (salt, local_path, size, mtime_ns).hash(&mut h);
+        (salt, &what, size, mtime_ns).hash(&mut h);
         h.finish()
     };
     let w = KEY_LEN / 2;
@@ -169,10 +169,13 @@ pub(crate) fn staging_part(key: &str) -> String {
 }
 
 // ═══ 本机落点（每一处改动先过路径解析）══════════════════════════════════════════════
+//
+// 下载的半成品写进本机暂存区（`~/.cc-monitor/staging/<键>.part`，键由「远端路径 ＋ 本机落点」派生 ⇒ 重拖同一份落到同一个半成品上），
+// 传完经 `common::staging::land` 上位：用户目录里不出现半成品，落进去的那一下与上传提交同一处。
 
-/// 本机落点拆成 `(父目录 = 路径解析的根, 文件名, 半成品名)`。必须是绝对路径、有文件名。
+/// 本机落点拆成 `(父目录 = 路径解析的根, 文件名)`。必须是绝对路径、有文件名。
 /// 名字按 `OsString` 拿（Linux 上落点可以是非 UTF-8 的原始字节：有损名下载「字节原样当文件名」）。
-fn land_parts(local_path: &Path) -> Result<(PathBuf, OsString, OsString), Said> {
+fn local_target(local_path: &Path) -> Result<(PathBuf, OsString), Said> {
     let p = local_path;
     let shown = p.display().to_string();
     if !p.is_absolute() {
@@ -186,28 +189,48 @@ fn land_parts(local_path: &Path) -> Result<(PathBuf, OsString, OsString), Said> 
         .parent()
         .ok_or_else(|| copy_text("beTransfer.land.noParent", &[("path", &shown)]))?
         .to_path_buf();
-    let mut part = name.clone();
-    part.push(".part");
-    Ok((root, name, part))
+    Ok((root, name))
 }
 
-/// 开单时的那一判（不动盘）：落点与它的半成品都过得了路径解析。
-pub(crate) fn land_check(local_path: impl AsRef<Path>) -> Result<(), String> {
+/// 开单时的那一判（不动盘）：落点过得了路径解析。
+pub(crate) fn target_check(local_path: impl AsRef<Path>) -> Result<(), String> {
     // 只拆路径、只过路径解析：没有下层原话。
-    let (root, name, part) = land_parts(local_path.as_ref()).map_err(|s| s.said)?;
+    let (root, name) = local_target(local_path.as_ref()).map_err(|s| s.said)?;
     walk_in_root(Last::Link, &root, &name)?;
-    walk_in_root(Last::Link, &root, &part)?;
     Ok(())
 }
 
-/// 从 0 开一份半成品：旧的在就先删（它的尾块已经对不上了），再 `O_EXCL` 新建。
-fn land_open_fresh(face: &Face, root: &Path, part: &OsStr) -> Result<FaceFile, Said> {
-    let at = walk_in_root(Last::Link, root, part)?;
-    if Ro::symlink_metadata(&at).is_ok() {
-        face.delete_file(&at).map_err(|e| {
+/// 一趟下载的半成品在本机暂存区里的名字（`<键>.part`）。
+pub(crate) fn download_part_name(remote_path: &str, local_path: &Path) -> String {
+    let key = staging_key(
+        (
+            "download",
+            remote_path,
+            local_path.as_os_str().as_encoded_bytes(),
+        ),
+        0,
+        0,
+    );
+    format!("{key}{PART_SUFFIX}")
+}
+
+/// 开一份半成品，回来的句柄游标停在 `keep`。
+///
+/// - `keep == 0`：旧的在就先删（它的尾块已经对不上了），再 `O_EXCL` 新建。
+/// - 续传：**不原地接着写**（`Face` 没有「续写」那种开法：每一个写句柄都是 `O_EXCL` 新建）⇒
+///   旧半成品改名成 `<名>.old` → `O_EXCL` 新建 `<名>` → 把前 `keep` 字节从旧的抄过来 → 删旧的。
+///   代价如实记：前缀在本机盘上多抄一遍（本机盘速，不走网）。
+fn open_part(face: &Face, dir: &Path, part: &str, keep: u64) -> Result<FaceFile, Said> {
+    let at = walk_in_root(Last::Link, dir, part)?;
+    let drop_it = |p: &Resolved, said: fn(&str, &str) -> String| {
+        face.delete_file(p)
+            .map_err(|e| Said::with_raw(said(&win_path_core::shown(p), &io_reason(e.kind())), &e))
+    };
+    let create = || {
+        face.create_new(&at).map_err(|e| {
             Said::with_raw(
                 copy_text(
-                    "beTransfer.land.dropPartFailed",
+                    "beTransfer.land.createFailed",
                     &[
                         ("path", &win_path_core::shown(&at)),
                         ("why", &io_reason(e.kind())),
@@ -215,41 +238,25 @@ fn land_open_fresh(face: &Face, root: &Path, part: &OsStr) -> Result<FaceFile, S
                 ),
                 &e,
             )
-        })?;
-    }
-    face.create_new(&at).map_err(|e| {
-        Said::with_raw(
-            copy_text(
-                "beTransfer.land.createFailed",
-                &[
-                    ("path", &win_path_core::shown(&at)),
-                    ("why", &io_reason(e.kind())),
-                ],
-            ),
-            &e,
-        )
-    })
-}
-
-/// 续传：**不原地接着写**（`Face` 没有「续写」那种开法：每一个写句柄都是 `O_EXCL` 新建）⇒
-/// 旧半成品改名成 `<名>.old` → `O_EXCL` 新建 `<名>` → 把前 `keep` 字节从旧的抄过来 → 删旧的。
-/// 回来的句柄游标停在 `keep`。代价如实记：前缀在本机盘上多抄一遍（本机盘速，不走网）。
-fn land_carry_over(face: &Face, root: &Path, part: &OsStr, keep: u64) -> Result<FaceFile, Said> {
-    let at = walk_in_root(Last::Link, root, part)?;
-    let mut old_name = part.to_os_string();
-    old_name.push(".old");
-    let old = walk_in_root(Last::Link, root, &old_name)?;
-    if Ro::symlink_metadata(&old).is_ok() {
-        face.delete_file(&old).map_err(|e| {
-            Said::with_raw(
+        })
+    };
+    if keep == 0 {
+        if Ro::symlink_metadata(&at).is_ok() {
+            drop_it(&at, |path, why| {
                 copy_text(
-                    "beTransfer.land.dropLeftoverFailed",
-                    &[
-                        ("path", &win_path_core::shown(&old)),
-                        ("why", &io_reason(e.kind())),
-                    ],
-                ),
-                &e,
+                    "beTransfer.land.dropPartFailed",
+                    &[("path", path), ("why", why)],
+                )
+            })?;
+        }
+        return create();
+    }
+    let old = walk_in_root(Last::Link, dir, format!("{part}.old"))?;
+    if Ro::symlink_metadata(&old).is_ok() {
+        drop_it(&old, |path, why| {
+            copy_text(
+                "beTransfer.land.dropLeftoverFailed",
+                &[("path", path), ("why", why)],
             )
         })?;
     }
@@ -265,18 +272,7 @@ fn land_carry_over(face: &Face, root: &Path, part: &OsStr, keep: u64) -> Result<
             &e,
         )
     })?;
-    let mut fresh = face.create_new(&at).map_err(|e| {
-        Said::with_raw(
-            copy_text(
-                "beTransfer.land.createFailed",
-                &[
-                    ("path", &win_path_core::shown(&at)),
-                    ("why", &io_reason(e.kind())),
-                ],
-            ),
-            &e,
-        )
-    })?;
+    let mut fresh = create()?;
     let copied = {
         let src = Ro::open_nofollow(&old).map_err(|e| {
             Said::with_raw(
@@ -300,16 +296,10 @@ fn land_carry_over(face: &Face, root: &Path, part: &OsStr, keep: u64) -> Result<
             )
         })?
     };
-    face.delete_file(&old).map_err(|e| {
-        Said::with_raw(
-            copy_text(
-                "beTransfer.land.dropPartFailed",
-                &[
-                    ("path", &win_path_core::shown(&old)),
-                    ("why", &io_reason(e.kind())),
-                ],
-            ),
-            &e,
+    drop_it(&old, |path, why| {
+        copy_text(
+            "beTransfer.land.dropPartFailed",
+            &[("path", path), ("why", why)],
         )
     })?;
     if copied != keep {
@@ -320,31 +310,6 @@ fn land_carry_over(face: &Face, root: &Path, part: &OsStr, keep: u64) -> Result<
         .into());
     }
     Ok(fresh)
-}
-
-/// 传完：半成品改名上位。
-fn land_commit(face: &Face, root: &Path, part: &OsStr, name: &OsStr) -> Result<(), Said> {
-    let from = walk_in_root(Last::Link, root, part)?;
-    let to = walk_in_root(Last::Link, root, name)?;
-    face.move_file(&from, &to).map_err(|e| {
-        Said::with_raw(
-            copy_text(
-                "beTransfer.land.commitFailed",
-                &[
-                    ("path", &win_path_core::shown(&to)),
-                    ("why", &io_reason(e.kind())),
-                ],
-            ),
-            &e,
-        )
-    })
-}
-
-/// 失败（不是撤）：删掉半成品。
-fn land_discard(face: &Face, root: &Path, part: &OsStr) {
-    if let Ok(at) = walk_in_root(Last::Link, root, part) {
-        face.delete_file(&at).discard(Why::CleanupAfterFailure); // 只清空的 `.part`；清不掉只剩一个 0 字节文件，主错误已在回
-    }
 }
 
 // ═══ 撤 ════════════════════════════════════════════════════════════════════════════════
@@ -614,7 +579,8 @@ pub(crate) async fn upload_to_staging(
     }
 }
 
-/// 下载：远端只读；本机落点 `<落点>.part` ＋ 改名上位（每一处改动先过路径解析）。回落地的字节数。
+/// 下载：远端只读；半成品写进本机暂存区（[`download_part_name`]），传完经 `common::staging::land` 上位（每一处改动先过路径解析）。
+/// 回落地的字节数。
 pub(crate) async fn download_to_local(
     face: &Face,
     s: &Session,
@@ -623,13 +589,16 @@ pub(crate) async fn download_to_local(
     cancel: &Cancel,
     on_progress: &Sink<'_>,
 ) -> Result<u64, Said> {
-    let (root, name, part) = land_parts(local_path.as_ref())?;
+    let (root, name) = local_target(local_path.as_ref())?;
+    let home = staging::home()?;
+    let dir = staging::ensure(face, &home)?;
+    let part = download_part_name(remote_path, local_path.as_ref());
     let total = sftp::metadata_size(s, remote_path)
         .await
         .flatten()
         .unwrap_or(0);
     let mut rf = sftp::open_for_read(s, remote_path).await?;
-    let part_path = root.join(&part);
+    let part_path = dir.join(&part);
     let have = Ro::metadata_async(&part_path)
         .await
         .map(|m| m.len())
@@ -647,11 +616,7 @@ pub(crate) async fn download_to_local(
     } else {
         (0, Some(0))
     };
-    let std_file = if resume_from > 0 {
-        land_carry_over(face, &root, &part, resume_from)?
-    } else {
-        land_open_fresh(face, &root, &part)?
-    };
+    let std_file = open_part(face, &dir, &part, resume_from)?;
     // 两种开法回来的游标都停在 `resume_from`（新建 ⇒ 0；抄完前缀 ⇒ 前缀末尾）。
     let mut lf = std_file.into_async();
     // 句柄已经停在 `resume_from` 就不 seek：russh-sftp 的第一读按服务端肯给的最大包请求（约 255 KiB，远大于探针那 32 KiB），
@@ -726,18 +691,28 @@ pub(crate) async fn download_to_local(
     let done = match core {
         Ok(d) => d,
         Err(e) => {
-            // 撤 ⇒ 留着 `.part`（下次续传的本钱）。失败 ⇒ 也留着：弱网上「连接没了」就是失败，删了重下就从 0 起。
-            // 不按错误文案分「断线 / 别的失败」。唯一还清的一形：一个字节都没落（空 `.part` 没有续传的本钱）。
-            let landed = Ro::metadata_async(root.join(&part))
-                .await
-                .map_or(0, |m| m.len());
+            // 撤 ⇒ 留着半成品（下次续传的本钱）。失败 ⇒ 也留着：弱网上「连接没了」就是失败，删了重下就从 0 起。
+            // 不按错误文案分「断线 / 别的失败」。唯一还清的一形：一个字节都没落（空半成品没有续传的本钱）。
+            let landed = Ro::metadata_async(&part_path).await.map_or(0, |m| m.len());
             if !cancel.is_set() && landed == 0 {
-                land_discard(face, &root, &part);
+                if let Ok(at) = walk_in_root(Last::Link, &dir, &part) {
+                    face.delete_file(&at).discard(Why::CleanupAfterFailure); // 只清空的半成品；清不掉只剩暂存区里一个 0 字节文件
+                }
             }
             return Err(e);
         }
     };
-    land_commit(face, &root, &part, &name)?;
+    let part_at = walk_in_root(Last::Link, &dir, &part)?;
+    // 落点在下载开单时已经答过同名怎么办（覆盖 · 跳过 · 两份都留另起名）⇒ 这里照「在不在都行」上位，盖掉的沿用原权限位。
+    staging::land(
+        face,
+        &root,
+        Path::new(&name),
+        Content::Staged(&part_at),
+        None,
+        Was::Either,
+        &mut || {},
+    )?;
     on_progress(done, total);
     Ok(done)
 }
@@ -778,7 +753,7 @@ pub struct Desk {
     replies: mpsc::Sender<Frame>,
     /// 下载落点那一下写用的文件管理写句柄（帧面分派那一层造好交来的；起跑时带一份进那趟任务）。
     face: Face,
-    /// 这一端的机器表怎么读（生产 = [`super::machines::here`]；判据给一张固定的）：入参只交那台的名字。
+    /// 这一端的机器表怎么读（生产 = [`crate::dial::machines_now`]；判据给一张固定的）：入参只交那台的名字。
     machines: Machines,
 }
 
@@ -815,7 +790,7 @@ fn next_id() -> String {
 
 impl Desk {
     pub fn new(replies: mpsc::Sender<Frame>, face: Face) -> Self {
-        Self::with_machines(replies, face, Arc::new(super::machines::here))
+        Self::with_machines(replies, face, Arc::new(crate::dial::machines_now))
     }
 
     /// 同 [`Self::new`]，机器表由调用方给（判据用）。
@@ -950,7 +925,7 @@ impl Desk {
                 let Some((local, new_name)) = landed else {
                     return opened(key, OpenState::Skipped);
                 };
-                if let Err(m) = land_check(&local) {
+                if let Err(m) = target_check(&local) {
                     return not_opened(key, "refused", m, None);
                 }
                 let t = Ticket {

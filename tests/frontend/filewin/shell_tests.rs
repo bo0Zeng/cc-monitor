@@ -2943,13 +2943,13 @@ async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_
 #[test]
 fn a_rescaled_file_window_is_fitted_again_into_the_work_area_it_is_on_now() {
     use egui::{pos2, vec2, Rect, ViewportCommand};
-    let seed = host_core::WorkArea {
+    let seed = filewin_contract::WorkArea {
         x: 0,
         y: 0,
         w: 1280,
         h: 712,
     };
-    let now = host_core::WorkArea {
+    let now = filewin_contract::WorkArea {
         x: 0,
         y: 0,
         w: 1280,
@@ -3002,7 +3002,7 @@ fn a_rescaled_file_window_is_fitted_again_into_the_work_area_it_is_on_now() {
 #[test]
 fn the_file_window_is_fitted_into_the_work_area_it_was_handed() {
     use egui::{pos2, vec2, Rect, ViewportCommand};
-    let work = host_core::WorkArea {
+    let work = filewin_contract::WorkArea {
         x: 0,
         y: 0,
         w: 1280,

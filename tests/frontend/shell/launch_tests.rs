@@ -3,7 +3,7 @@ use super::*;
 #[allow(unused_imports)]
 use crate::platform::terminal::*;
 
-/// 开终端这一族今天住两份：`launch.rs`（跑什么 · 两条 Tauri 命令）＋ `platform/terminal.rs`（开窗的两个平台臂）。
+/// 开终端这一族今天住两份：`launch.rs`（跑什么 · 开窗 · 设置页那两条 Tauri 命令）＋ `platform/terminal.rs`（开窗的两个平台臂）。
 /// 按源码判的那几条读两份的合订本（`launch.rs` 与 `platform/terminal.rs`）。
 const LAUNCH_SRC: &str = concat!(
     include_str!("../../../src/frontend/shell/src/launch.rs"),

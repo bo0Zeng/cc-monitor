@@ -3,12 +3,13 @@
  * 只订 `appStore.quota` / `sessionRotation` / `sessionAccount`，不自己问。
  *
  * - 问的时机全是事件：tab 来了（新 sid ⇒ 它那台的 `rotation-view` 与 `session-account`）· 那台推 `changed {quota | rotation | rotation_strategies}`
- *   （额度账 ⇒ 重读 `quota-read`，那台有 tab 的会话的号重问（用量在那一份里）；某个 sid ⇒ 重问那一个的 `rotation-view` 与 `session-account`；
+ *   （额度账 ⇒ 重读 `quota-read`，那台有 tab 的会话的号重问（用量在那一份里），那台的账号清单读过就重读（每号的额度格在那一行里）；某个 sid ⇒ 重问那一个的 `rotation-view` 与 `session-account`；
  *   策略目录 · 哪个会话用哪份变了 ⇒ 那台有 tab 的会话 `rotation-view` 全部重问）· 那台账号清单变了 ⇒ 那台有 tab 的会话的号重问（与默认号比在那一份里）·
  *   又接上了 / 丢了格 ⇒ 那台全部重问。零定时器。
  * - 判定全在后端；这里不判「能不能换 / 该不该换 / 是哪个号 / 跟默认号一不一样」。
  */
 import { appStore, putIn } from "./app-store";
+import { fetchAccounts } from "./account-reads";
 import type { Machine } from "./ipc/origin";
 import { detailOf, saidOf } from "./kit/detail";
 import { readQuota, tookQuota } from "./quota-reads";
@@ -106,6 +107,8 @@ export function onQuotaChanged(origin: Machine, topic: "quota" | "rotation" | "r
     }
     if (p.all || (q === undefined && p.ask.length > 0)) void refreshQuota(origin);
     reaskAccounts(origin);
+    // 每号的额度格在那台账号清单那一行里（`slots`）⇒ 那台的清单读过就重读一次，画号的那几处跟着新。
+    if (appStore.accounts.get().has(origin)) void fetchAccounts(origin);
     return;
   }
   const keys = change.cells.map((c) => c.key);

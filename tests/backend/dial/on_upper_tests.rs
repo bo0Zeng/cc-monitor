@@ -33,12 +33,13 @@ fn the_staging_root_is_the_one_the_commit_side_reads() {
 
 /// 线上那一形的一台。
 fn machine(host: &str, user: &str, port: u16, key: Option<&str>) -> Value {
-    json!({ "host": host, "user": user, "port": port, "keyPath": key, "label": host })
+    json!({ "host": host, "user": user, "port": port, "keyPath": key.unwrap_or_default(), "label": host })
 }
 
 /// 那一台进这一端的机器表、线上只交它的名字，按 PowerShell 那一形渲（Windows 上开终端的那一行）⇒ `line` 那一格。
 fn run(m: Value, cmd: &str) -> Result<String, Said> {
-    let h = crate::dial::machine::loose(&m)?;
+    let h = <crate::dial::Host as serde::Deserialize>::deserialize(&m)
+        .map_err(|e| Said::new("bad_args", e.to_string()))?;
     let req = crate::wire::typed::take(&json!({ "machine": h.name(), "command": cmd }))
         .map_err(|f| Said::new("bad_args", f.said))?;
     let ssh =

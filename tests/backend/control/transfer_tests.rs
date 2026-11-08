@@ -43,6 +43,19 @@ impl Drop for Tmp {
     }
 }
 
+/// 一趟下载（远端路径 · 本机落点）的半成品在本机暂存区里的那一格（测试档的家是沙箱）。
+fn dl_part(remote: &str, local: impl AsRef<Path>) -> PathBuf {
+    let home = crate::platform::paths::home_dir().expect("测试档的家");
+    home.join(crate::common::staging::DIR)
+        .join(download_part_name(remote, local.as_ref()))
+}
+
+/// 在暂存区里铺一份半成品（续传那几条的起点）。
+fn seed_part(at: &Path, bytes: &[u8]) {
+    std::fs::create_dir_all(at.parent().expect("暂存区")).expect("建暂存区");
+    std::fs::write(at, bytes).expect("铺半成品");
+}
+
 /// 改动表里**不在暂存区底下**的那几条。
 fn outside_staging(fs: &Arc<Mutex<rig::Fs>>) -> Vec<(String, String)> {
     let root = sftp::STAGING_ROOT;
@@ -281,7 +294,7 @@ fn remote_file(fs: &Arc<Mutex<rig::Fs>>, path: &str, bytes: Vec<u8>) {
 }
 
 /// `### FILES2` Q4「落到 Linux 本机 ⇒ 字节原样当文件名」。
-/// 本机落点是非 UTF-8 的原始字节（线上 `local_path: {"b16": …}`）⇒ 落出来的那份文件名逐字节就是它，`.part` 不留。
+/// 本机落点是非 UTF-8 的原始字节（线上 `local_path: {"b16": …}`）⇒ 落出来的那份文件名逐字节就是它，半成品不留。
 #[cfg(unix)]
 #[tokio::test]
 async fn a_download_lands_under_a_non_utf8_local_name_byte_for_byte() {
@@ -309,15 +322,13 @@ async fn a_download_lands_under_a_non_utf8_local_name_byte_for_byte() {
     .await
     .unwrap();
     assert_eq!(std::fs::read(&local).unwrap(), b"BYTES");
-    let mut part = name.to_os_string();
-    part.push(".part");
-    assert!(
-        std::fs::symlink_metadata(tmp.path("").join(part)).is_err(),
-        "`.part` 没收掉"
-    );
+    // 落下的那一份拿走之后目录是空的（`remove_dir` 只删得掉空目录）⇒ 目标目录里没别的。
+    std::fs::remove_file(&local).unwrap();
+    std::fs::remove_dir(tmp.path("")).expect("目标目录里多了别的");
+    assert!(!dl_part("srv/x.bin", &local).exists(), "半成品没收掉");
 }
 
-/// 下载：字节原样落地、`.part` 改名上位后不留。
+/// 下载：字节原样落地、半成品上位后不留。
 #[tokio::test]
 async fn a_download_lands_verbatim_and_leaves_no_part() {
     let fs = rig::home(false, false);
@@ -338,14 +349,14 @@ async fn a_download_lands_verbatim_and_leaves_no_part() {
     .unwrap();
     assert_eq!(n, body.len() as u64);
     assert_eq!(std::fs::read(&local).unwrap(), body);
-    assert!(!tmp.path("a.bin.part").exists(), "`.part` 没收掉");
+    assert!(!dl_part("srv/a.bin", &local).exists(), "半成品没收掉");
     assert!(
         fs.lock().unwrap().mutated.is_empty(),
         "下载在远端留下了改动"
     );
 }
 
-/// `.part` 的尾块与远端对得上 ⇒ 从那里接着读（落地仍逐字节相同）。
+/// 暂存区里半成品的尾块与远端对得上 ⇒ 从那里接着读（落地仍逐字节相同）。
 #[tokio::test]
 async fn a_download_with_a_matching_part_resumes_from_the_verified_tail() {
     let fs = rig::home(false, false);
@@ -353,8 +364,8 @@ async fn a_download_with_a_matching_part_resumes_from_the_verified_tail() {
     remote_file(&fs, "srv/b.bin", body.clone());
     let s = rig::session_on(fs.clone()).await;
     let tmp = Tmp::dir("dl-resume");
-    tmp.file("b.bin.part", &body[..70_000]);
     let local = tmp.path("b.bin").to_string_lossy().into_owned();
+    seed_part(&dl_part("srv/b.bin", &local), &body[..70_000]);
     let seen = std::sync::Mutex::new(Vec::<u64>::new());
     let sink = |a: u64, _b: u64| seen.lock().unwrap().push(a);
     download_to_local(
@@ -371,7 +382,7 @@ async fn a_download_with_a_matching_part_resumes_from_the_verified_tail() {
     assert_eq!(
         seen.into_inner().unwrap().first(),
         Some(&70_000),
-        "续传没从 `.part` 的尾巴接上"
+        "续传没从半成品的尾巴接上"
     );
 }
 
@@ -383,8 +394,8 @@ async fn a_download_with_a_mismatched_part_starts_over_instead_of_stitching() {
     remote_file(&fs, "srv/c.bin", body.clone());
     let s = rig::session_on(fs.clone()).await;
     let tmp = Tmp::dir("dl-mismatch");
-    tmp.file("c.bin.part", &vec![0x5A; 50_000]);
     let local = tmp.path("c.bin").to_string_lossy().into_owned();
+    seed_part(&dl_part("srv/c.bin", &local), &vec![0x5A; 50_000]);
     let seen = std::sync::Mutex::new(Vec::<u64>::new());
     let sink = |a: u64, _b: u64| seen.lock().unwrap().push(a);
     download_to_local(
@@ -401,7 +412,7 @@ async fn a_download_with_a_mismatched_part_starts_over_instead_of_stitching() {
     assert_eq!(seen.into_inner().unwrap().first(), Some(&0));
 }
 
-/// 撤 ⇒ **留** `.part`（续传的本钱）。失败（读到半路那台答坏 / 连接没了）⇒ **也留**；只有一个字节都没落的空 `.part` 才清。
+/// 撤 ⇒ **留**半成品（续传的本钱）。失败（读到半路那台答坏 / 连接没了）⇒ **也留**；只有一个字节都没落的空半成品 才清。
 #[tokio::test]
 async fn a_cancelled_or_failed_download_keeps_its_part_unless_nothing_landed() {
     let fs = rig::home(false, false);
@@ -414,9 +425,9 @@ async fn a_cancelled_or_failed_download_keeps_its_part_unless_nothing_landed() {
     download_to_local(&Face::issue(), &s, "srv/d.bin", &local, &c, &no_progress)
         .await
         .expect_err("撤了");
-    assert!(tmp.path("d.bin.part").exists(), "撤了 `.part` 却没了");
+    assert!(dl_part("srv/d.bin", &local).exists(), "撤了半成品却没了");
     assert!(!tmp.path("d.bin").exists());
-    // 失败，一个字节都没落（第一读就坏）⇒ 空 `.part` 清掉。
+    // 失败，一个字节都没落（第一读就坏）⇒ 空半成品 清掉。
     remote_file(&fs, "srv/e.bin", rig::corpus(200_000));
     fs.lock().unwrap().fail_read_after = Some(0);
     let local2 = tmp.path("e.bin").to_string_lossy().into_owned();
@@ -431,15 +442,15 @@ async fn a_cancelled_or_failed_download_keeps_its_part_unless_nothing_landed() {
     .await;
     assert!(r.is_err(), "读坏了竟然成了");
     assert!(
-        !tmp.path("e.bin.part").exists(),
-        "一个字节都没落，空 `.part` 却留着"
+        !dl_part("srv/e.bin", &local2).exists(),
+        "一个字节都没落，空半成品 却留着"
     );
     assert!(!tmp.path("e.bin").exists());
 }
 
-/// **T1：下载读到半路断了 ⇒ `.part` 留着，重拖同一份从它的尾巴接上**（「失败留」· NT1 报备 2）。
+/// **T1：下载读到半路断了 ⇒ 半成品留着，重拖同一份从它的尾巴接上**（「失败留」· NT1 报备 2）。
 ///
-/// 判据全用字节数的相等：① 留下的 `.part` 恰是那一份的前缀（长度 L > 0，逐字节 == 源的前 L 字节）；
+/// 判据全用字节数的相等：① 留下的半成品 恰是那一份的前缀（长度 L > 0，逐字节 == 源的前 L 字节）；
 /// ② 重拖那一趟，服务端（台架自己记，异源）收到的偏移 < L 的读 **恰好**是尾块对拍那一格（`L − min(L, 块)`）——
 /// 前缀没有被重新读一遍；③ 落地逐字节 == 源。
 #[tokio::test]
@@ -462,7 +473,7 @@ async fn a_download_cut_off_midway_keeps_its_part_and_the_retry_resumes_from_its
     )
     .await
     .expect_err("读到半路坏了");
-    let part = std::fs::read(tmp.path("f.bin.part")).expect("断了之后 `.part` 该留着");
+    let part = std::fs::read(dl_part("srv/f.bin", &local)).expect("断了之后半成品该留着");
     let l = part.len();
     assert!(l > 0 && l < body.len(), "`.part` 长度 {l} 不是半截");
     assert_eq!(part, body[..l], "`.part` 不是源的前缀");
@@ -497,7 +508,53 @@ async fn a_download_cut_off_midway_keeps_its_part_and_the_retry_resumes_from_its
         "前缀被重新读了（或尾块没对）"
     );
     assert_eq!(std::fs::read(&local).unwrap(), body, "落地不是源的字节");
-    assert!(!tmp.path("f.bin.part").exists(), "上位之后 `.part` 还在");
+    assert!(!dl_part("srv/f.bin", &local).exists(), "上位之后半成品还在");
+}
+
+/// 🔴 **落进用户目录只有上位那一下**：下载读到半路断了 ⇒ 目标目录里一份新文件都没有（半成品在暂存区）；
+/// 重拖同一份接着传完 ⇒ 目标目录里恰好多出那一份。
+#[tokio::test]
+async fn a_failed_download_leaves_nothing_new_in_the_target_dir() {
+    let fs = rig::home(false, false);
+    let body = rig::corpus(4_000_000);
+    remote_file(&fs, "srv/h.bin", body.clone());
+    let s = rig::session_on(fs.clone()).await;
+    let tmp = Tmp::dir("dl-clean");
+    let local = tmp.path("h.bin").to_string_lossy().into_owned();
+    // 目录空不空：`remove_dir` 只删得掉空目录（删掉了就照原样再建回来）。
+    let empty = || {
+        let ok = std::fs::remove_dir(tmp.path("")).is_ok();
+        if ok {
+            std::fs::create_dir(tmp.path("")).expect("建回目标目录");
+        }
+        ok
+    };
+    fs.lock().unwrap().fail_read_after = Some(2);
+    download_to_local(
+        &Face::issue(),
+        &s,
+        "srv/h.bin",
+        &local,
+        &Cancel::default(),
+        &no_progress,
+    )
+    .await
+    .expect_err("读到半路坏了");
+    assert!(empty(), "半路失败在目标目录里留了东西");
+    fs.lock().unwrap().fail_read_after = None;
+    download_to_local(
+        &Face::issue(),
+        &s,
+        "srv/h.bin",
+        &local,
+        &Cancel::default(),
+        &no_progress,
+    )
+    .await
+    .expect("重拖该成");
+    assert_eq!(std::fs::read(&local).unwrap(), body);
+    std::fs::remove_file(&local).unwrap();
+    assert!(empty(), "目标目录里除了那一份还多了别的");
 }
 
 /// **续传不多读一个预读窗**（「一次续传多读一个预读窗口」· DP1 报备 9）。
@@ -514,8 +571,8 @@ async fn a_resumed_download_asks_for_every_byte_from_the_probe_on_exactly_once()
     let s = rig::session_on(fs.clone()).await;
     let tmp = Tmp::dir("dl-no-reseek");
     let have = 700_000usize;
-    tmp.file("g.bin.part", &body[..have]);
     let local = tmp.path("g.bin").to_string_lossy().into_owned();
+    seed_part(&dl_part("srv/g.bin", &local), &body[..have]);
     fs.lock().unwrap().served_bytes = 0;
     download_to_local(
         &Face::issue(),
@@ -549,11 +606,11 @@ fn a_download_onto_a_session_file_is_let_through() {
         crate::agents::claudecode::paths::is_session_record_path(&session),
         "夹具那条路径不是会话记录的形状 —— 本条此刻在量别的东西"
     );
-    land_check(session.to_string_lossy().as_ref()).expect("🔴 往会话文件那个位置上落地被拒了");
+    target_check(session.to_string_lossy().as_ref()).expect("🔴 往会话文件那个位置上落地被拒了");
     // 阴性对照：父目录不在盘上 ⇒ 拒（路径解析那一关）。
-    assert!(land_check(tmp.path("nope/x.txt").to_string_lossy().as_ref()).is_err());
+    assert!(target_check(tmp.path("nope/x.txt").to_string_lossy().as_ref()).is_err());
     // 相对路径不认。
-    assert!(land_check("rel/x.txt").is_err());
+    assert!(target_check("rel/x.txt").is_err());
 }
 
 // ═══ 票表与帧 ══════════════════════════════════════════════════════════════════════════
@@ -565,7 +622,7 @@ fn hosts() -> Vec<crate::dial::Host> {
         serde_json::json!({"label": "dead", "host": "127.0.0.1", "port": 1, "user": "u", "keyPath": "/nonexistent"}),
     ]
     .iter()
-    .map(|v| crate::dial::machine::loose(v).unwrap())
+    .map(|v| <crate::dial::Host as serde::Deserialize>::deserialize(v).unwrap())
     .collect()
 }
 

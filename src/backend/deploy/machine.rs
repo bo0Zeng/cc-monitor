@@ -138,13 +138,17 @@ impl Entry {
 }
 
 /// **各台合一次写好的那几句**（[`FleetLines`]）：各台的成品 ＋ 报完了没有，合首屏那一句与机器列表计数那一句
-/// （传进来的就是全部那几台：机器表 ＋ 本机）。
+/// （传进来的就是全部那几台：机器表 ＋ 本机）· 各台都报完了没有（停用的不算）。
 pub fn fleet(rows: &[(&MachineState, bool)]) -> FleetLines {
     let (line, hint) = first_screen(rows);
     FleetLines {
         line,
         hint,
         count: count(rows),
+        all_listed: rows
+            .iter()
+            .filter(|(m, _)| m.state != K::Disabled)
+            .all(|(_, done)| *done),
     }
 }
 

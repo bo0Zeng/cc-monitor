@@ -181,7 +181,6 @@ describe("〔STC〕第五问：会话事实", () => {
   it("★★ 金样：后端真出的会话事实就是生成的那个类型（逐字段）", () => {
     const f = factsOf(wire);
     expect(f).toEqual({
-      forkedFrom: "src-0",
       forkedLine: "分叉自「src-0」",
       touchedFiles: ["/w/a.ts"],
       usage: {
@@ -219,7 +218,6 @@ describe("〔STC〕第五问：会话事实", () => {
         output: 0,
         text: copyText("beSpend.tokens.line", { input: "1", output: "0", read: "3", write: "2" }),
       },
-      cost: { partial: false, text: copyText("beSpend.cost.exact", { usd: "0.42" }) },
       background: null,
       mcp: [
         { name: "m-f", status: "failed", detail: "e-f", at: null },
@@ -237,7 +235,6 @@ describe("〔STC〕第五问：会话事实", () => {
       children: [],
       startedByText: null,
       childrenText: null,
-      line: null,
     });
   });
 

@@ -3,6 +3,48 @@
     "bases": [
       {
         "from": null,
+        "name": "cc",
+        "said": "当前终端",
+        "selectable": true
+      },
+      {
+        "from": "cc",
+        "name": "cct",
+        "said": "+ tmux · 自动取名",
+        "selectable": true
+      },
+      {
+        "from": "cc",
+        "name": "cch",
+        "said": "+ 托管终端",
+        "selectable": true
+      },
+      {
+        "from": "cc",
+        "name": "workcc",
+        "said": "账号 work",
+        "selectable": true
+      },
+      {
+        "from": "cch",
+        "name": "workcch",
+        "said": "账号 work",
+        "selectable": true
+      },
+      {
+        "from": "cc",
+        "name": "teamcc",
+        "said": "账号 team",
+        "selectable": true
+      },
+      {
+        "from": "cch",
+        "name": "teamcch",
+        "said": "账号 team",
+        "selectable": true
+      },
+      {
+        "from": null,
         "name": "mycc",
         "said": "当前终端 · 在 ~ 敲进 ~/projects/notes",
         "selectable": true
@@ -24,10 +66,6 @@
   "book": "# 我的配置\n[mycc]\ncwd-if = [[\"~\", \"~/projects/notes\"]]\n\n[mycct]\nfrom = \"mycc\"   # tmux 版\nccm-tmux = true\n\n[teamcct]\nfrom = \"mycct\"\naccount = \"team\"\n\n[workcct]\nfrom = \"mycct\"\ntmux-sise = \"200x50\"\n\n[pcc]\nbase = true\ncwd = \"/srv/p\"\nargs = [\"--model\", \"opus\"]\n",
   "codes": {
     "profiles-bases": [
-      "bad_args",
-      "refused"
-    ],
-    "profiles-from-line": [
       "bad_args",
       "refused"
     ],
@@ -105,7 +143,6 @@
     ],
     "binDir": "<HOME>/.cc-monitor/bin",
     "editedAt": null,
-    "exists": true,
     "fileProblem": null,
     "path": "<HOME>/.cc-monitor/profiles.toml",
     "pathShown": "~/.cc-monitor/profiles.toml",
@@ -113,6 +150,409 @@
       {
         "accountShape": null,
         "agent": [],
+        "badge": "内置",
+        "drop": null,
+        "form": {
+          "account": null,
+          "agent": null,
+          "args": null,
+          "cwd": null,
+          "cwdIf": null,
+          "detach": false,
+          "from": null,
+          "launcher": null,
+          "name": "cc",
+          "say": null,
+          "tab": null,
+          "tabGroup": null,
+          "tmux": null,
+          "tmuxSize": null
+        },
+        "from": null,
+        "functionLine": "写在 <HOME>/.cc-monitor/aliases.sh：cc() { ccm @cc \"$@\"; }",
+        "functionWhy": "cc 与 PATH 上的 /usr/bin/cc 同名 · 装上后在终端敲 cc 用此别名",
+        "kind": "function",
+        "name": "cc",
+        "own": [],
+        "problem": null,
+        "said": "当前终端",
+        "start": "'<HOME>/.cc-monitor/bin/ccm' @cc",
+        "usable": true
+      },
+      {
+        "accountShape": null,
+        "agent": [],
+        "badge": "内置",
+        "drop": null,
+        "form": {
+          "account": null,
+          "agent": null,
+          "args": null,
+          "cwd": null,
+          "cwdIf": null,
+          "detach": false,
+          "from": "cc",
+          "launcher": null,
+          "name": "cct",
+          "say": null,
+          "tab": null,
+          "tabGroup": null,
+          "tmux": {
+            "mode": "auto",
+            "name": ""
+          },
+          "tmuxSize": null
+        },
+        "from": "cc",
+        "functionLine": null,
+        "functionWhy": null,
+        "kind": "link",
+        "name": "cct",
+        "own": [
+          {
+            "key": "ccm-tmux",
+            "line": 0,
+            "slot": "tmux",
+            "vals": []
+          }
+        ],
+        "problem": null,
+        "said": "+ tmux · 自动取名",
+        "start": "'<HOME>/.cc-monitor/bin/ccm' @cct",
+        "usable": true
+      },
+      {
+        "accountShape": null,
+        "agent": [],
+        "badge": "内置",
+        "drop": null,
+        "form": {
+          "account": null,
+          "agent": null,
+          "args": null,
+          "cwd": null,
+          "cwdIf": null,
+          "detach": false,
+          "from": "cc",
+          "launcher": null,
+          "name": "cch",
+          "say": null,
+          "tab": null,
+          "tabGroup": null,
+          "tmux": {
+            "mode": "hosted",
+            "name": ""
+          },
+          "tmuxSize": null
+        },
+        "from": "cc",
+        "functionLine": null,
+        "functionWhy": null,
+        "kind": "link",
+        "name": "cch",
+        "own": [
+          {
+            "key": "hosted",
+            "line": 0,
+            "slot": "tmux",
+            "vals": []
+          }
+        ],
+        "problem": null,
+        "said": "+ 托管终端",
+        "start": "'<HOME>/.cc-monitor/bin/ccm' @cch",
+        "usable": true
+      },
+      {
+        "accountShape": {
+          "account": "work",
+          "form": "plain"
+        },
+        "agent": [],
+        "badge": "内置",
+        "drop": null,
+        "form": {
+          "account": {
+            "kind": "account",
+            "name": "work"
+          },
+          "agent": null,
+          "args": null,
+          "cwd": null,
+          "cwdIf": null,
+          "detach": false,
+          "from": "cc",
+          "launcher": null,
+          "name": "workcc",
+          "say": null,
+          "tab": null,
+          "tabGroup": null,
+          "tmux": null,
+          "tmuxSize": null
+        },
+        "from": "cc",
+        "functionLine": null,
+        "functionWhy": null,
+        "kind": "link",
+        "name": "workcc",
+        "own": [
+          {
+            "key": "account",
+            "line": 0,
+            "slot": "account",
+            "vals": [
+              "work"
+            ]
+          }
+        ],
+        "problem": null,
+        "said": "账号 work",
+        "start": "'<HOME>/.cc-monitor/bin/ccm' @workcc",
+        "usable": true
+      },
+      {
+        "accountShape": null,
+        "agent": [],
+        "badge": null,
+        "drop": {
+          "kids": [],
+          "label": "还原成内置",
+          "restores": true
+        },
+        "form": {
+          "account": null,
+          "agent": null,
+          "args": null,
+          "cwd": null,
+          "cwdIf": null,
+          "detach": false,
+          "from": "mycct",
+          "launcher": null,
+          "name": "workcct",
+          "say": null,
+          "tab": null,
+          "tabGroup": null,
+          "tmux": null,
+          "tmuxSize": null
+        },
+        "from": "mycct",
+        "functionLine": null,
+        "functionWhy": null,
+        "kind": "link",
+        "name": "workcct",
+        "own": [],
+        "problem": {
+          "detail": null,
+          "line": 15,
+          "message": "workcct 写错 · 当前不可用 · 行 15 · 未知选项 tmux-sise"
+        },
+        "said": "",
+        "start": "'<HOME>/.cc-monitor/bin/ccm' @workcct",
+        "usable": false
+      },
+      {
+        "accountShape": {
+          "account": "work",
+          "form": "hosted"
+        },
+        "agent": [],
+        "badge": "内置",
+        "drop": null,
+        "form": {
+          "account": {
+            "kind": "account",
+            "name": "work"
+          },
+          "agent": null,
+          "args": null,
+          "cwd": null,
+          "cwdIf": null,
+          "detach": false,
+          "from": "cch",
+          "launcher": null,
+          "name": "workcch",
+          "say": null,
+          "tab": null,
+          "tabGroup": null,
+          "tmux": null,
+          "tmuxSize": null
+        },
+        "from": "cch",
+        "functionLine": null,
+        "functionWhy": null,
+        "kind": "link",
+        "name": "workcch",
+        "own": [
+          {
+            "key": "account",
+            "line": 0,
+            "slot": "account",
+            "vals": [
+              "work"
+            ]
+          }
+        ],
+        "problem": null,
+        "said": "账号 work",
+        "start": "'<HOME>/.cc-monitor/bin/ccm' @workcch",
+        "usable": true
+      },
+      {
+        "accountShape": {
+          "account": "team",
+          "form": "plain"
+        },
+        "agent": [],
+        "badge": "内置",
+        "drop": null,
+        "form": {
+          "account": {
+            "kind": "account",
+            "name": "team"
+          },
+          "agent": null,
+          "args": null,
+          "cwd": null,
+          "cwdIf": null,
+          "detach": false,
+          "from": "cc",
+          "launcher": null,
+          "name": "teamcc",
+          "say": null,
+          "tab": null,
+          "tabGroup": null,
+          "tmux": null,
+          "tmuxSize": null
+        },
+        "from": "cc",
+        "functionLine": null,
+        "functionWhy": null,
+        "kind": "link",
+        "name": "teamcc",
+        "own": [
+          {
+            "key": "account",
+            "line": 0,
+            "slot": "account",
+            "vals": [
+              "team"
+            ]
+          }
+        ],
+        "problem": null,
+        "said": "账号 team",
+        "start": "'<HOME>/.cc-monitor/bin/ccm' @teamcc",
+        "usable": true
+      },
+      {
+        "accountShape": {
+          "account": "team",
+          "form": "tmux"
+        },
+        "agent": [],
+        "badge": null,
+        "drop": {
+          "kids": [],
+          "label": "还原成内置",
+          "restores": true
+        },
+        "form": {
+          "account": {
+            "kind": "account",
+            "name": "team"
+          },
+          "agent": null,
+          "args": null,
+          "cwd": null,
+          "cwdIf": null,
+          "detach": false,
+          "from": "mycct",
+          "launcher": null,
+          "name": "teamcct",
+          "say": null,
+          "tab": null,
+          "tabGroup": null,
+          "tmux": null,
+          "tmuxSize": null
+        },
+        "from": "mycct",
+        "functionLine": null,
+        "functionWhy": null,
+        "kind": "link",
+        "name": "teamcct",
+        "own": [
+          {
+            "key": "account",
+            "line": 11,
+            "slot": "account",
+            "vals": [
+              "team"
+            ]
+          }
+        ],
+        "problem": null,
+        "said": "账号 team",
+        "start": "'<HOME>/.cc-monitor/bin/ccm' @teamcct",
+        "usable": true
+      },
+      {
+        "accountShape": {
+          "account": "team",
+          "form": "hosted"
+        },
+        "agent": [],
+        "badge": "内置",
+        "drop": null,
+        "form": {
+          "account": {
+            "kind": "account",
+            "name": "team"
+          },
+          "agent": null,
+          "args": null,
+          "cwd": null,
+          "cwdIf": null,
+          "detach": false,
+          "from": "cch",
+          "launcher": null,
+          "name": "teamcch",
+          "say": null,
+          "tab": null,
+          "tabGroup": null,
+          "tmux": null,
+          "tmuxSize": null
+        },
+        "from": "cch",
+        "functionLine": null,
+        "functionWhy": null,
+        "kind": "link",
+        "name": "teamcch",
+        "own": [
+          {
+            "key": "account",
+            "line": 0,
+            "slot": "account",
+            "vals": [
+              "team"
+            ]
+          }
+        ],
+        "problem": null,
+        "said": "账号 team",
+        "start": "'<HOME>/.cc-monitor/bin/ccm' @teamcch",
+        "usable": true
+      },
+      {
+        "accountShape": null,
+        "agent": [],
+        "badge": null,
+        "drop": {
+          "kids": [
+            "mycct"
+          ],
+          "label": "删",
+          "restores": false
+        },
         "form": {
           "account": null,
           "agent": null,
@@ -158,6 +598,15 @@
       {
         "accountShape": null,
         "agent": [],
+        "badge": null,
+        "drop": {
+          "kids": [
+            "workcct",
+            "teamcct"
+          ],
+          "label": "删",
+          "restores": false
+        },
         "form": {
           "account": null,
           "agent": null,
@@ -196,90 +645,17 @@
         "usable": true
       },
       {
-        "accountShape": {
-          "account": "team",
-          "form": "tmux"
-        },
-        "agent": [],
-        "form": {
-          "account": {
-            "kind": "account",
-            "name": "team"
-          },
-          "agent": null,
-          "args": null,
-          "cwd": null,
-          "cwdIf": null,
-          "detach": false,
-          "from": "mycct",
-          "launcher": null,
-          "name": "teamcct",
-          "say": null,
-          "tab": null,
-          "tabGroup": null,
-          "tmux": null,
-          "tmuxSize": null
-        },
-        "from": "mycct",
-        "functionLine": null,
-        "functionWhy": null,
-        "kind": "link",
-        "name": "teamcct",
-        "own": [
-          {
-            "key": "account",
-            "line": 11,
-            "slot": "account",
-            "vals": [
-              "team"
-            ]
-          }
-        ],
-        "problem": null,
-        "said": "账号 team",
-        "start": "'<HOME>/.cc-monitor/bin/ccm' @teamcct",
-        "usable": true
-      },
-      {
-        "accountShape": null,
-        "agent": [],
-        "form": {
-          "account": null,
-          "agent": null,
-          "args": null,
-          "cwd": null,
-          "cwdIf": null,
-          "detach": false,
-          "from": "mycct",
-          "launcher": null,
-          "name": "workcct",
-          "say": null,
-          "tab": null,
-          "tabGroup": null,
-          "tmux": null,
-          "tmuxSize": null
-        },
-        "from": "mycct",
-        "functionLine": null,
-        "functionWhy": null,
-        "kind": "link",
-        "name": "workcct",
-        "own": [],
-        "problem": {
-          "detail": null,
-          "line": 15,
-          "message": "workcct 写错 · 当前不可用 · 行 15 · 未知选项 tmux-sise"
-        },
-        "said": "",
-        "start": "'<HOME>/.cc-monitor/bin/ccm' @workcct",
-        "usable": false
-      },
-      {
         "accountShape": null,
         "agent": [
           "--model",
           "opus"
         ],
+        "badge": null,
+        "drop": {
+          "kids": [],
+          "label": "删",
+          "restores": false
+        },
         "form": {
           "account": {
             "kind": "base"
@@ -335,9 +711,6 @@
       }
     ],
     "rev": "262-7fa1ba83a62d7966",
-    "seed": [],
-    "seedCreate": "",
-    "seedHint": "",
     "sets": [],
     "slots": [
       {

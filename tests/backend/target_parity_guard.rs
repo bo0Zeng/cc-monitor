@@ -1288,7 +1288,7 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
     ),
     (
         "profiles-read",
-        "配置文件整份：`tmux` 那一格问这台有没有 tmux（`faces/profiles_face.rs` 交 `control::terminals::tmux_here`），没 tmux ⇒ `tmux: false`、别的几格照答",
+        "配置文件整份：`tmux` 那一格问这台有没有 tmux（`faces/profiles_face.rs` 交 `host::tmux::tmux_here`），没 tmux ⇒ `tmux: false`、别的几格照答",
     ),
     (
         "ccm-print",

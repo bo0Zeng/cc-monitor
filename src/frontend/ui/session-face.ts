@@ -2,26 +2,18 @@
  * **一个会话在主窗口上读成什么**：状态点 · 状态一句 · 需手动 · 悬停卡那一句 · 标题拆成几段。
  * 标签页行、悬停卡、会话头、「需手动」那几处都从这里取，不各拼一份。
  *
- * 只排版：点 · 短名 · 状态一句是那台后端判好的整份脸（`Tab.face`；还没收到 ⇒ 不画点）；会走的那一句与需手动的种类在
- * 会话事实里（`Tab.line` · `Tab.needs`），只在它写的那一态（`line.for`）与脸上那一态相同时用 —— 两份是同一刻的；对不上就用脸上那一句。
+ * 只排版：点 · 短名 · 状态一句 · 悬停句都是那台后端判好的整份脸（`Tab.face`；还没收到 ⇒ 不画点）；状态一句会走的那一截
+ * （`face.clock`）按此刻填。需手动的详情在会话事实里（`Tab.needs`），脸上那颗点说在等才认。
  */
 import type { DotState } from "./kit/status-dot";
 import type { BackgroundWork, Needs } from "./session-reads";
-import type { FactsLine } from "./generated/FactsLine";
 import type { Tab } from "./tab-model";
 import { projectNameFromCwd } from "./tab-model";
 import { clockNow } from "./duration-format";
-import { activityOf, isLive } from "./face-can";
 
-/** 会话事实里那一句此刻作数：写它时那一态与脸上那一态相同。不作数 ⇒ `null`。 */
-function lineOf(tab: Tab): FactsLine | null {
-  const f = tab.face;
-  return isLive(f) && tab.line !== null && tab.line.for === activityOf(f) ? tab.line : null;
-}
-
-/** 此刻在等人 ⇒ 等的是什么（会话事实那一份，与脸同一刻才认）；不在等 ⇒ `null`。 */
+/** 此刻在等人 ⇒ 等的是什么（会话事实那一份；脸上那颗点说在等才认）；不在等 ⇒ `null`。 */
 export function needsOf(tab: Tab): Needs | null {
-  return lineOf(tab)?.for === "needs_you" ? tab.needs : null;
+  return tab.face?.dot === "needs-you" ? tab.needs : null;
 }
 
 /** 状态点的名字（读屏名 / 悬停名）：脸上的短名；还没收到脸 ⇒ `null`（不画点，也没有名字）。 */
@@ -41,18 +33,17 @@ export function backgroundLine(b: BackgroundWork, now: number): string {
 
 
 /**
- * 状态一句（会话头 · 悬停卡第三行）：会话事实那一句（会走的那一截按此刻填）与脸同一刻 ⇒ 用它；否则脸上那一句。
+ * 状态一句（会话头 · 悬停卡第三行）：脸上那一句；带会走的那一截 ⇒ 时长按此刻填。还没收到脸 ⇒ 空。
  * `needs` ＝ 这一句是不是「需手动」（琥珀）。
  */
 export function stateLine(tab: Tab, now: number): { text: string; needs: boolean } {
   const f = tab.face;
-  const l = lineOf(tab);
-  return { text: l ? (l.clock ? clockNow(l.clock, now) : l.text) : (f?.line ?? ""), needs: f?.dot === "needs-you" };
+  return { text: f?.clock ? clockNow(f.clock, now) : (f?.line ?? ""), needs: f?.dot === "needs-you" };
 }
 
-/** 悬停卡里那一句 peek（会话事实写的：在等 ⇒ 等的那一句 · 在跑 ⇒ 那一步 · 空闲 / 后台 ⇒ 最后一句）；不作数 / 没有 ⇒ `null`（不出这一行）。 */
+/** 悬停卡里那一句 peek（脸上那一格：在等 ⇒ 等的那一步 · 在跑 ⇒ 那一步 · 空闲 / 后台 ⇒ 最后一句）；没有 ⇒ `null`（不出这一行）。 */
 export function peekLine(tab: Tab): string | null {
-  return lineOf(tab)?.peek ?? null;
+  return tab.face?.peek ?? null;
 }
 
 /** 窄窗那一格的两个字母：项目目录名里的头两个字母（小写）；没有字母 ⇒ 头两个字。 */

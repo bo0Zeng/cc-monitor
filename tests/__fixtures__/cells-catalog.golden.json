@@ -388,6 +388,12 @@
         },
         {
           "frozen": true,
+          "kind": "text",
+          "path": "{t=said}.blocks[type=tool_result].sizeText",
+          "type": "string"
+        },
+        {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.cwd",
           "type": "string"
@@ -415,6 +421,12 @@
           "kind": "value",
           "path": "{t=said}.results.*.chars",
           "type": "number"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "{t=said}.results.*.error",
+          "type": "string"
         },
         {
           "frozen": true,
@@ -532,39 +544,27 @@
         },
         {
           "frozen": true,
-          "kind": "value",
-          "path": "{t=said}.who.pasted[].bodyEnd",
-          "type": "number"
-        },
-        {
-          "frozen": true,
-          "kind": "value",
-          "path": "{t=said}.who.pasted[].bodyStart",
-          "type": "number"
-        },
-        {
-          "frozen": true,
-          "kind": "value",
-          "path": "{t=said}.who.pasted[].end",
-          "type": "number"
-        },
-        {
-          "frozen": true,
-          "kind": "value",
-          "path": "{t=said}.who.pasted[].fold",
-          "type": "bool"
-        },
-        {
-          "frozen": true,
           "kind": "text",
-          "path": "{t=said}.who.pasted[].foldText",
+          "path": "{t=said}.who.parts[].fold.more",
           "type": "string"
         },
         {
           "frozen": true,
           "kind": "value",
-          "path": "{t=said}.who.pasted[].start",
+          "path": "{t=said}.who.parts[].fold.shown",
           "type": "number"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=said}.who.parts[].fold.total",
+          "type": "number"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=said}.who.parts[].text",
+          "type": "string"
         },
         {
           "frozen": true,
@@ -610,9 +610,45 @@
         },
         {
           "frozen": true,
+          "kind": "text",
+          "path": "{t=said}.who.speaker{kind=bashOutput}.stderrFold.more",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=bashOutput}.stderrFold.shown",
+          "type": "number"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=bashOutput}.stderrFold.total",
+          "type": "number"
+        },
+        {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.who.speaker{kind=bashOutput}.stdout",
           "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "{t=said}.who.speaker{kind=bashOutput}.stdoutFold.more",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=bashOutput}.stdoutFold.shown",
+          "type": "number"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=bashOutput}.stdoutFold.total",
+          "type": "number"
         },
         {
           "frozen": true,
@@ -1029,26 +1065,8 @@
         },
         {
           "frozen": false,
-          "kind": "value",
-          "path": "cost.partial",
-          "type": "bool"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "cost.text",
-          "type": "string"
-        },
-        {
-          "frozen": false,
           "kind": "text",
           "path": "cwdShown",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "forkedFrom",
           "type": "string"
         },
         {
@@ -1073,36 +1091,6 @@
           "frozen": false,
           "kind": "value",
           "path": "lastSay.text",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "line.clock.from",
-          "type": "number"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "line.clock.text",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "line.for",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "line.peek",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "line.text",
           "type": "string"
         },
         {
@@ -1150,8 +1138,20 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "needs.ask.choices[].look",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "needs.ask.choices[].note",
           "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.choices[].picks",
+          "type": "bool"
         },
         {
           "frozen": false,
@@ -1164,12 +1164,6 @@
           "kind": "text",
           "path": "needs.ask.choices[].text",
           "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "tone",
-          "path": "needs.ask.choices[].tone",
-          "type": "enum"
         },
         {
           "frozen": false,
@@ -1192,7 +1186,7 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "needs.ask.questions[].header",
+          "path": "needs.ask.questions[].head",
           "type": "string"
         },
         {
@@ -1947,8 +1941,20 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "needs.ask.choices[].look",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "needs.ask.choices[].note",
           "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.ask.choices[].picks",
+          "type": "bool"
         },
         {
           "frozen": false,
@@ -1961,12 +1967,6 @@
           "kind": "text",
           "path": "needs.ask.choices[].text",
           "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "tone",
-          "path": "needs.ask.choices[].tone",
-          "type": "enum"
         },
         {
           "frozen": false,
@@ -1989,7 +1989,7 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "needs.ask.questions[].header",
+          "path": "needs.ask.questions[].head",
           "type": "string"
         },
         {
@@ -2673,6 +2673,18 @@
           "type": "string"
         },
         {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.clock.from",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.clock.text",
+          "type": "string"
+        },
+        {
           "frozen": true,
           "kind": "value",
           "path": "face.dot",
@@ -2707,6 +2719,12 @@
           "kind": "value",
           "path": "face.order",
           "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.peek",
+          "type": "string"
         },
         {
           "frozen": true,
@@ -3007,12 +3025,6 @@
           "type": "string"
         },
         {
-          "frozen": true,
-          "kind": "text",
-          "path": "accounts[].fiveHour",
-          "type": "string"
-        },
-        {
           "frozen": false,
           "kind": "value",
           "path": "accounts[].kind",
@@ -3241,18 +3253,6 @@
           "type": "string"
         },
         {
-          "frozen": false,
-          "kind": "text",
-          "path": "fiveHour",
-          "type": "string"
-        },
-        {
-          "frozen": true,
-          "kind": "text",
-          "path": "names.accounts.*",
-          "type": "string"
-        },
-        {
           "frozen": true,
           "kind": "text",
           "path": "names.slots.*",
@@ -3298,12 +3298,6 @@
           "frozen": false,
           "kind": "value",
           "path": "unseen[].agent",
-          "type": "string"
-        },
-        {
-          "frozen": true,
-          "kind": "text",
-          "path": "unseen[].fiveHour",
           "type": "string"
         },
         {
@@ -3789,12 +3783,6 @@
           "frozen": false,
           "kind": "value",
           "path": "up.*.firstUserExcerpt",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "up.*.forkedFrom.label",
           "type": "string"
         },
         {

@@ -3,10 +3,9 @@
 //! （同一份里还记着组的上次所知，`history/groups.rs` 记、读，这两条命令不碰它，删机器时整台一起清）。
 //! 界面那两样唯一的写者是 [`answer_write`]（记下一份 · 删机器时清掉那台）；同一份再交照记（时刻换成这一次）；读不懂 ⇒ 照没记过算，写的那一下整份重来（它只是缓存）。
 //! 每一样按它那条命令的回包类型核：写时核过才收、连同形状指纹存，读时不是这一版 ⇒ 说读不懂（[`Seen`]）。
-//! 种类闭集 [`SeenKind`]；每份封顶 [`MAX_VALUE_BYTES`]、台数封顶 [`MAX_ORIGINS`]（超了先丢最久没更新的那台）。
+//! 种类闭集 [`SeenKind`]；每份封顶 [`MAX_VALUE_BYTES`]、台数封顶 [`store::MAX_ORIGINS`]（超了先丢最久没更新的那台）。
 
-use crate::common::last_seen_store::{self as store, strict};
-pub(crate) use crate::common::last_seen_store::{MAX_ORIGINS, MAX_VALUE_BYTES};
+use crate::common::last_seen_store::{self as store, strict, MAX_VALUE_BYTES};
 use crate::common::said::Said;
 use crate::platform::fs::Own;
 use cmd_wire::cells::SeenAt;
@@ -85,18 +84,6 @@ pub struct LastSeenWriteReq {
     pub(crate) forget: Option<bool>,
 }
 
-/// 上次读数那一格（[`SeenAt`]）：`at_ms` 那一刻按这把钟写成「采样于 12:03」（`beLastSeen.said.sampled`，时刻经 [`crate::common::time::fmt_at`]）。
-pub fn seen_at(at_ms: u64, clock: &crate::common::time::TextClock) -> SeenAt {
-    let time = clock.text(at_ms / 1000);
-    SeenAt {
-        at_ms,
-        said: crate::common::cells::Words(copy_text(
-            "beLastSeen.said.sampled",
-            &[("time", &time.0)],
-        )),
-    }
-}
-
 /// 记下的一份，按那条命令的回包类型核过：对得上 ⇒ 原样（已是类型）；
 /// 存档不是此刻这一版（形状指纹不同 · 旧版存的没带指纹 · 解不回回包类型）⇒ 照实说读不懂，原样不交出去。两样都带上次读数那一格。
 #[derive(Debug, Clone, Serialize)]
@@ -163,19 +150,17 @@ pub(crate) fn read_at(
     })
 }
 
-/// 读回的账号清单是缓存 ⇒ 每号那一格余量写成「… · 上次所知」（`beQuota.cell.stale`），出口照摆。
+/// 读回的账号清单是缓存 ⇒ 每号每一格额度写成「… · 上次所知」（`beQuota.cell.stale`），出口照摆。
 fn stale_quota(
     s: Seen<cmd_wire::accounts::AccountsList>,
 ) -> Seen<cmd_wire::accounts::AccountsList> {
     match s {
         Seen::Kept { seen, mut value } => {
-            for r in &mut value.accounts {
-                if let Some(q) = r.quota.take() {
-                    r.quota = Some(crate::common::cells::Words(copy_text(
-                        "beQuota.cell.stale",
-                        &[("cell", &q.0)],
-                    )));
-                }
+            for s in value.accounts.iter_mut().flat_map(|r| r.slots.iter_mut()) {
+                s.text = crate::common::cells::Words(copy_text(
+                    "beQuota.cell.stale",
+                    &[("cell", &s.text.0)],
+                ));
             }
             Seen::Kept { seen, value }
         }
@@ -190,7 +175,7 @@ fn seen_of<T: DeserializeOwned + Serialize>(
     clock: &crate::common::time::TextClock,
 ) -> Option<Seen<T>> {
     let e = store::entry(mine, kind.key())?;
-    let seen = seen_at(e.at_ms, clock);
+    let seen = store::seen_at(e.at_ms, clock);
     Some(
         match store::this_version::<T>(&e, cmd_wire::shapes::shape_of(kind.cmd())) {
             Some(value) => Seen::Kept { seen, value },

@@ -98,7 +98,7 @@ describe("按段折叠", () => {
     const g2 = card("card-steps", "a3");
     const end = card("card-assistant", "a4");
     const { content, fold: f } = rig([u1, g1, mid, g2, end], [
-      { available: true, from: 0, end: 900, turns: [turn("u1", 0, { shown: ["a2", "a4"], folds: [seg("u1"), seg("a2", { parts: [{ text: "头", tone: "plain" }, { text: "工具 ×1", tone: "plain" }] })] })] },
+      { available: true, from: 0, end: 900, turns: [turn("u1", 0, { shown: ["a2", "a4"], folds: [seg("u1", { until: "a2" }), seg("a2", { until: "a4", parts: [{ text: "头", tone: "plain" }, { text: "工具 ×1", tone: "plain" }] })] })] },
     ]);
     await f.refresh();
     expect(lines(content)).toHaveLength(2);
@@ -127,7 +127,7 @@ describe("按段折叠", () => {
       { text: "失败 ×1", tone: "fail" as const },
     ];
     const { content, fold } = rig([u1, a1, g1, bar, notice, compact, c1, u2], [
-      { available: true, from: 0, end: 900, turns: [turn("u1", 0, { shown: ["a3"], folds: [seg("u1", { parts })] }), turn("u2", 500, { folds: [] })] },
+      { available: true, from: 0, end: 900, turns: [turn("u1", 0, { shown: ["a3"], folds: [seg("u1", { parts, until: "a3" })] }), turn("u2", 500, { folds: [] })] },
     ]);
     await fold.refresh();
     expect(lines(content)).toHaveLength(1);
@@ -159,6 +159,23 @@ describe("按段折叠", () => {
     expect(lines(content)[0].querySelector(".proc-need")?.textContent).toBe("等你批准：Bash x");
     expect(fillDur({ text: "02:16 起 · {dur}", from: 1000, to: null }, 43_000)).toBe("02:16 起 · 42s");
     expect(fillDur({ text: "02:16", from: null, to: null }, 43_000)).toBe("02:16");
+  });
+
+  it("★ 段只照后端给的 after → until 收：轮首与露着的那几条不另算边界（夹具里 until 之前那几张即便记成露着 / 轮首，也照 until 收进去）；until 没有 ⇒ 到尾", async () => {
+    const u1 = card("card-user", "u1");
+    const a1 = card("card-steps", "a1");
+    const x = card("card-assistant", "x1");
+    const u9 = card("card-user", "u9");
+    const e1 = card("card-assistant", "e1");
+    const g = card("card-steps", "g1");
+    const { content, fold } = rig([u1, a1, x, u9, e1, g], [
+      { available: true, from: 0, end: 10, turns: [turn("u1", 0, { shown: ["x1", "e1"], folds: [seg("u1", { until: "e1" }), seg("e1")] }), turn("u9", 5, { folds: [] })] },
+    ]);
+    await fold.refresh();
+    expect([a1, x, u9].map(hidden), "段管到 until 为止").toEqual([true, true, true]);
+    expect(hidden(e1)).toBe(false);
+    expect(hidden(g), "until 没有 ⇒ 到尾").toBe(true);
+    expect(lines(content)).toHaveLength(2);
   });
 
   it("后端不给段（folds 空：过程是空的 / 只有一条压缩摘要）⇒ 不出过程行、一张不折", async () => {
@@ -236,7 +253,7 @@ describe("按段折叠", () => {
     const a = card("card-assistant", "a1");
     const b = card("card-assistant", "b1");
     const { content, fold } = rig([card("card-user", "u1"), a, card("card-user", "u2"), b], [
-      { available: true, from: 0, end: 10, turns: [turn("u1", 0), turn("u2", 5)] },
+      { available: true, from: 0, end: 10, turns: [turn("u1", 0, { folds: [seg("u1", { until: "u2" })] }), turn("u2", 5)] },
     ]);
     await fold.refresh();
     lines(content)[0].click();
@@ -257,7 +274,7 @@ describe("按段折叠", () => {
     const after2 = card("card-assistant", "x2");
     const p3 = card("card-assistant", "x3");
     const { fold } = rig([card("card-user", "u1"), gap, after, wrap, after2, card("card-user", "u3"), p3], [
-      { available: true, from: 0, end: 10, turns: [turn("u1", 0), turn("u3", 8)] },
+      { available: true, from: 0, end: 10, turns: [turn("u1", 0, { folds: [seg("u1", { until: "u3" })] }), turn("u3", 8)] },
     ]);
     await fold.refresh();
     expect([after, after2].map(hidden)).toEqual([false, false]);
@@ -346,7 +363,7 @@ describe("按段折叠", () => {
     try {
       const { content, fold } = rig(
         [card("card-user", "u1"), card("card-assistant", "a1"), card("card-steps", "g1"), card("card-user", "u2"), card("card-assistant", "a2")],
-        [{ available: true, from: 0, end: 10, turns: [turn("u1", 0), turn("u2", 5)] }],
+        [{ available: true, from: 0, end: 10, turns: [turn("u1", 0, { folds: [seg("u1", { until: "u2" })] }), turn("u2", 5)] }],
       );
       await fold.refresh();
       const written: string[] = [];
@@ -369,7 +386,7 @@ describe("按段折叠", () => {
     const turns: TurnRow[] = [];
     for (let k = 0; k < 4; k++) {
       cards.push(card("card-user", `u${k}`), card("card-assistant", `a${k}`), card("card-assistant", `b${k}`));
-      turns.push(turn(`u${k}`, k));
+      turns.push(turn(`u${k}`, k, { folds: [seg(`u${k}`, { until: k < 3 ? `u${k + 1}` : null })] }));
     }
     const { content, fold } = rig(cards, [{ available: true, from: 0, end: 10, turns }]);
     const log: string[] = [];
@@ -414,7 +431,7 @@ describe("按段折叠", () => {
     document.body.replaceChildren(content);
     const setFolds = vi.fn();
     const seqs = new Map([["u1", 1], ["e1", 10], ["u2", 12]]);
-    const read = vi.fn(async (): Promise<TurnsResult> => ({ available: true, from: 0, end: 10, turns: lined(seqs, [turn("u1", 0, { shown: ["e1"] }), turn("u2", 5)]) }));
+    const read = vi.fn(async (): Promise<TurnsResult> => ({ available: true, from: 0, end: 10, turns: lined(seqs, [turn("u1", 0, { shown: ["e1"], folds: [seg("u1", { until: "e1" })] }), turn("u2", 5)]) }));
     const sk = { ledger: { base: 0, endSeq: 40 }, fillVisible: vi.fn(() => 0), setFolds };
     const fold = new TurnFold(content, content, () => ({ origin: "local" as never, jsonlPath: "/p/s.jsonl" }), read, () => sk);
     let reads = 0;
@@ -578,8 +595,8 @@ describe("系统注入的旁注细条", () => {
 describe("续取只碰变了的那几轮（read8b，瓶颈 #5）", () => {
   it("几千轮之后又来一批新行：续取回来一轮 ⇒ 只摘、只记那一轮，不按全部轮重建；排版照新的那份", async () => {
     const n = 3000;
-    const all = Array.from({ length: n }, (_, i) => turn(`t${i}`, i * 10, { done: i < n - 1 }));
-    const last = turn(`t${n - 1}`, (n - 1) * 10, { done: false, folds: [seg(`t${n - 1}`), seg("tail-a", { until: null })] });
+    const all = Array.from({ length: n }, (_, i) => turn(`t${i}`, i * 10, { done: i < n - 1, folds: [seg(`t${i}`, { until: i < n - 1 ? `t${i + 1}` : null })] }));
+    const last = turn(`t${n - 1}`, (n - 1) * 10, { done: false, folds: [seg(`t${n - 1}`, { until: "tail-a" }), seg("tail-a", { until: null })] });
     const { content, fold } = rig([card("said", `t${n - 1}`), card("tool"), card("reply", "tail-a"), card("tool")], [
       { available: true, from: 0, end: n * 10, turns: all },
       { available: true, from: (n - 1) * 10, end: n * 10 + 5, turns: [last] },

@@ -1,27 +1,8 @@
-//! 窗口的样子来自开窗种子里那一套主题：名单两边对上、缺省值解得出来、映射真的落到 egui 的样子上、窗口里没有自己的色值。
+//! 窗口的样子来自开窗种子里那一套主题：缺省值解得出来、映射真的落到 egui 的样子上、窗口里没有自己的色值。
 
 use super::*;
 use crate::theme::testing::{default_theme, default_tokens};
-use filewin_contract::{Theme, THEME_TOKENS};
-
-/// 主界面那一侧读的名单（`file-window.ts::FILE_WINDOW_THEME_TOKENS`）与契约那一份两向相等。
-#[test]
-fn the_token_list_is_the_same_on_both_sides() {
-    let ts = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../ui/file-window.ts"))
-        .unwrap();
-    let start = ts
-        .find("FILE_WINDOW_THEME_TOKENS = [")
-        .expect("file-window.ts 里那张名单不见了");
-    let body = &ts[start..start + ts[start..].find("] as const").expect("名单没收尾")];
-    let theirs: Vec<&str> = body.split('"').filter(|s| s.starts_with("--")).collect();
-    let mut a = theirs.clone();
-    a.sort_unstable();
-    a.dedup();
-    assert_eq!(a.len(), theirs.len(), "主界面那份名单里有重复：{theirs:?}");
-    let mut b: Vec<&str> = THEME_TOKENS.to_vec();
-    b.sort_unstable();
-    assert_eq!(a, b, "两边的令牌名单不等");
-}
+use filewin_contract::Theme;
 
 /// 缺省主题解得出来；缺一格 · 多一格 · 一格写成认不得的样子都拒（三句各不相同，读不懂那句带原值），不补默认。
 #[test]

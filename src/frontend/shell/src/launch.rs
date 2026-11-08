@@ -3,10 +3,10 @@
 //! 两块：
 //! 1. [`open_local`](crate::platform::terminal::open_local) —— 通用「新终端窗口跑一条命令」：Windows 是 PowerShell 窗口
 //!    （wt.exe Plan A → CREATE_NEW_CONSOLE Plan B，`-NoExit -EncodedCommand`），POSIX 是挑到的终端里 `bash -lic`。本地与远端共用此单一入口。
-//! 2. [`open_terminal_window`] —— 开窗那一条 Tauri 命令：**只开窗**。交来的是本机后端的成品 —— 远端那一行
-//!    （`& ssh -t[ -J …] … -- '<bash -lic ''…''>'`）由帧命令 `terminal-ssh` 渲、本机那一串由本机后端起会话那一问交回。
+//! 2. [`open_terminal_window`] —— 开窗那一条 Tauri 命令：**只开窗**。交来的是本机后端 `terminal-ssh` 的成品 ——
+//!    远端是 `& ssh -t[ -J …] … -- '<bash -lic ''…''>'`，本机是那一串本身；本机远端同一问。
 //!
-//! 远端那一问只交那台的名字（界面直接问本机后端 `terminal-ssh`），monitor 不交机器事实。
+//! 那一问只交那台的名字（界面直接问本机后端 `terminal-ssh`），monitor 不交机器事实。
 //!
 //! ## 引号与注入
 //! - **远端命令**：渲染侧（后端载荷渲染器 / `terminal-ssh`）判 —— 控制字符 · 长度 · 双引号（PowerShell 5.1 向 native 程序传参对内嵌
@@ -76,9 +76,9 @@ pub fn build_local_posix_argv(cmd: &str) -> Result<Vec<String>, Said> {
 }
 
 // 开窗的两个平台臂（POSIX 规范化终端出口 · Windows `wt.exe` / `powershell.exe`）搬进 `platform/terminal.rs`，
-//   头注逐字随之；本文件只剩「跑什么」的校验与两条 Tauri 命令。
+//   头注逐字随之；本文件只剩「跑什么」的校验与开窗 · 设置页那两条 Tauri 命令。
 
-/// 两条开窗命令交出去的结局：开了 · 这台开不了终端窗口（壳写好的那几句，界面照摆）。调用方按 `outcome` 判，不按哪句话里的字判。
+/// 开窗命令交出去的结局：开了 · 这台开不了终端窗口（壳写好的那几句，界面照摆）。调用方按 `outcome` 判，不按哪句话里的字判。
 /// 远端窗口那一问（`chan/host.rs`）开不了窗时回的也是这里的 `said`。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -116,23 +116,23 @@ pub(crate) fn opened_of(o: crate::platform::terminal::TerminalOpen) -> TerminalO
     }
 }
 
-/// 〔「待迁」最后一行〕**开一个终端窗口跑 `command`** —— monitor 在「开终端」这件事上只剩这一下。
+/// 〔「待迁」最后一行〕**开一个终端窗口跑 `command`**（起始目录 `cwd`，缺 ⇒ 不设）—— monitor 在「开终端」这件事上只剩这一下。
 ///
-/// `command` 是**成品**：远端那一行由本机后端 `terminal-ssh` 按本机终端方言渲好（`ssh -t …` 外壳），本机那一串由本机后端交回 ——
-/// 这次拉起带启动期令牌时，两条都已在前面接好令牌握手前奏（本地半，后端渲）。这里不判、不拼。
-/// 本机有没有 ssh 客户端由本机后端渲那一行时查（`terminal-ssh`，用找到的全路径；没有 / 判不了 ⇒ 不出那一行）。
+/// `command` 是**成品**：本机远端一样由本机后端 `terminal-ssh` 按本机终端方言渲好（远端是 `ssh -t …` 外壳，本机是那一串本身），
+/// 这里不判、不拼。`cwd` 是这台上的起始目录（本机起会话的直路那一行不带 `--cwd`，目录由开窗时给），远端不给。
 ///
-/// 能不能开、用哪个只问 [`open_local`](crate::platform::terminal::open_local)（与本机起会话同一处）：开了回 `opened`；
+/// 能不能开、用哪个只问 [`open_local`](crate::platform::terminal::open_local)：开了回 `opened`；
 /// 这台开不了终端窗口回 `noWindow` 带写好的那几句（[`TerminalOpened`]），前端照摆并给设置入口
 /// （账号登录另给「在 tmux 里登录」）。真失败回 `Err`（一句人话）。
 #[tauri::command]
 pub async fn open_terminal_window(
     command: String,
+    cwd: Option<String>,
 ) -> Result<TerminalOpened, cmd_wire::failed::Failed> {
     let r: Result<TerminalOpened, Said> = async move {
         // 进程 spawn 挪到阻塞线程池，不堵 IPC 派发线程。
         Ok(tokio::task::spawn_blocking(move || {
-            let opened = crate::platform::terminal::open_local(&command, None)?;
+            let opened = crate::platform::terminal::open_local(&command, cwd.as_deref())?;
             tracing::info!("launch: terminal window {opened:?}");
             Ok::<_, Said>(opened_of(opened))
         })
@@ -149,25 +149,6 @@ pub async fn terminal_choices() -> crate::platform::terminal::TerminalChoices {
     tokio::task::spawn_blocking(crate::platform::terminal::terminal_choices)
         .await
         .unwrap_or_else(|_| crate::platform::terminal::terminal_choices())
-}
-
-/// **在本机开一个终端窗口跑 `cmd`**（工作目录 `cwd`，不在就不设）—— monitor 在起会话这件事上只剩这一下。
-/// 那一串由本机后端出成品（帧命令 `session-open` 回包里的 `line`），这里不判、不拼。
-/// 开窗同 [`open_terminal_window`]（[`open_local`](crate::platform::terminal::open_local)，结局同形），多一个起始目录。阻塞那一截不占 IPC 线程。
-#[tauri::command]
-pub async fn open_local_terminal(
-    cmd: String,
-    cwd: Option<String>,
-) -> Result<TerminalOpened, cmd_wire::failed::Failed> {
-    let r: Result<TerminalOpened, Said> = async move {
-        Ok(tokio::task::spawn_blocking(move || {
-            crate::platform::terminal::open_local(&cmd, cwd.as_deref()).map(opened_of)
-        })
-        .await
-        .map_err(|e| Said::with_raw(copy_text("rsLaunch.remote.taskFailed", &[]), e))??)
-    }
-    .await;
-    r.map_err(|s| s.named("open_local_terminal"))
 }
 
 #[cfg(test)]

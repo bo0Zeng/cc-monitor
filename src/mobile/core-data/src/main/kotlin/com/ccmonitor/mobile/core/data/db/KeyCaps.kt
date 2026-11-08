@@ -41,7 +41,6 @@ fun appActionName(a: AppAction): String =
         AppAction.TMUX_SESSIONS -> copyText("mobPalette.item.tmux")
         AppAction.SHOW_KEYBOARD -> copyText("mobKeys.action.keyboard")
         AppAction.CAPTURE -> copyText("mobPalette.item.capture")
-        AppAction.PUSH_KEY -> copyText("mobKeys.action.pushKey")
     }
 
 fun modName(m: KeyMod): String =

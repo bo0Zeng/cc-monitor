@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """quota-warm：让各账号的 5h 窗口尽早开始计时。
 
-读 `ccm -- --quota-read` 看每个号的 5h 重置时刻：
-- 窗口在计时（重置时刻在将来）⇒ 不动，等它到点；
+经 `ccm -- --resident-call` 问这台常驻后端的 `quota-read`，照每个号的 `warm` 办：
+- 窗口在计时（重置时刻在将来）⇒ 不动，睡到 `warm.at`；
 - 窗口已过期、或这台中转从没见过这个号的数 ⇒ 用这个号发一句最短的话，让窗口开始计时
   （在计时中的窗口不会因此被推后；没见过的号只有发一句才知道它此刻的状态）；
-- 被拒（5h 或 7d 用满）⇒ 等到它重置；
-- 登录失效 ⇒ 记一行，过一阵再看。
+- 被拒（5h 或 7d 用满）· 登录失效 ⇒ 照 `warm.at` 再看。
 
-发法：调 cc-monitor 后端的 `ccm -- --quota-warm`（发那一句的做法只住后端一处，轮换判完开窗也走它），回包带回来的重置时刻。
+发法：问常驻的 `quota-warm`（发那一句的做法与「同一个号 15 分钟只发一次」那一本只住常驻后端，轮换判完开窗也走它）。
+发完重读 `quota-read`，下一次几点醒照它的 `warm.at`；还说该发 ⇒ 没成，过一阵再试。几点由后端写好（`warm.atText`），这里照抄。
 
 用法：
   quota-warm status             只读：列出各号的重置时刻
   quota-warm once               跑一趟（该发的发）后退出
-  quota-warm run                先跑一趟，之后按最早的重置时刻自己醒来再跑，一直跑
+  quota-warm run                先跑一趟，之后按最早的醒点自己醒来再跑，一直跑
   选项：--accounts work,personal（不给 ⇒ quota-read 的 candidates：出过数的号 ＋ 账号库里没出过数的号）· --dry-run
 """
 
@@ -24,137 +24,146 @@ import os
 import subprocess
 import sys
 import time
-from datetime import datetime
 
 HOME = os.path.expanduser("~")
-CCM_HOME = os.path.join(HOME, ".cc-monitor")
-CCM = os.path.join(CCM_HOME, "bin", "ccm")
-LOG = os.path.join(CCM_HOME, "logs", "quota-warm.log")
-LOCK = os.path.join(CCM_HOME, "quota-warm.lock")
+CCM = os.path.join(HOME, ".cc-monitor", "bin", "ccm")
 
 RETRY_S = 15 * 60      # 发了没成 / 读不到额度账 ⇒ 过这么久再试
-SEND_TIMEOUT_S = 150   # 后端那一发自己的期限是 120 秒
+READ_WITHIN_S = 60     # 读额度账等多久（等多久归发起方）
+SEND_WITHIN_S = 150    # 发那一句等多久：后端那一发自己的期限是 120 秒
 SLEEP_CHUNK_S = 600    # 长睡分段：机器休眠醒来后按真实时刻重算
 
 
-def stamp(t=None):
-    t = time.time() if t is None else t
-    d = datetime.fromtimestamp(t)
-    return d.strftime("%H:%M") if d.date() == datetime.now().date() else d.strftime("%m-%d %H:%M")
-
-
 def log(msg):
-    line = f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} {msg}"
-    print(line, flush=True)
-    try:
-        os.makedirs(os.path.dirname(LOG), exist_ok=True)
-        with open(LOG, "a", encoding="utf-8") as f:
-            f.write(line + "\n")
-    except OSError:
-        pass
+    print(msg, flush=True)
 
 
-def quota_read():
+def call(cmd, args, within_s):
+    """问这台的常驻一条帧命令 ⇒ 回包；失败 ⇒ RuntimeError（码：那一句）。"""
     p = subprocess.run(
         # 不带 `--tz` ⇒ 回包里的「几点」按这台的钟写。
-        [CCM, "--", "--quota-read"],
-        cwd=HOME, capture_output=True, text=True, timeout=60,
+        [CCM, "--", "--resident-call", "--stdin-line", "--within-ms", str(within_s * 1000)],
+        input=json.dumps({"cmd": cmd, "args": args}),
+        cwd=HOME, capture_output=True, text=True, timeout=within_s + 10,
     )
-    if p.returncode != 0:
-        raise RuntimeError(f"quota-read 退出码 {p.returncode}: {p.stderr.strip()[:200]}")
-    d = json.loads(p.stdout)
-    return d.get("data", d)
-
-
-def judge(q, name):
-    """一个号此刻怎么办 ⇒ (动作, 醒点, 说明)。判定在 cc-monitor 核心（quota-read 每号的 `warm`），这里只照抄。"""
-    entry = next(
-        (a for a in q.get("accounts", []) + q.get("unseen", []) if a.get("account") == name), None
-    )
-    if entry is None:
-        return "skip", None, "这台账号库里没有这个号"
-    w = entry.get("warm") or {}
-    at = w.get("at")
-    return w.get("act", "skip"), at, w.get("text", "")
-
-
-def send(name):
-    """后端那一条命令发一句 ⇒ (回来的重置时刻 或 None, 说明)。"""
-    try:
-        p = subprocess.run(
-            [CCM, "--", "--quota-warm"],
-            input=json.dumps({"agent": "claude", "account": name}),
-            cwd=HOME, capture_output=True, text=True, timeout=SEND_TIMEOUT_S,
-        )
-    except subprocess.TimeoutExpired:
-        return None, "超时"
     if p.returncode != 0:
         try:
             e = json.loads(p.stderr.strip().splitlines()[-1])
-            return None, f"{e.get('code')}：{e.get('said')}"
+            raise RuntimeError(f"{e.get('code')}：{e.get('said')}")
         except (ValueError, IndexError, AttributeError):
-            return None, f"退出码 {p.returncode}，回包读不懂"
+            raise RuntimeError(f"退出码 {p.returncode}，回包读不懂") from None
+    return json.loads(p.stdout)
+
+
+def quota_read():
+    return call("quota-read", {}, READ_WITHIN_S)
+
+
+def entries(q):
+    return q.get("accounts", []) + q.get("unseen", [])
+
+
+def judge(q, key):
+    """一个号 (agent, account) 此刻怎么办 ⇒ (动作, 醒点, 醒点的字, 说明)。判定在 cc-monitor 核心（quota-read 每号的 `warm`），这里只照抄。"""
+    agent, name = key
+    entry = next((a for a in entries(q) if a.get("agent") == agent and a.get("account") == name), None)
+    if entry is None:
+        return "skip", None, None, "这台账号库里没有这个号"
+    w = entry.get("warm") or {}
+    return w.get("act", "skip"), w.get("at"), w.get("atText"), w.get("text", "")
+
+
+def send(key):
+    """问常驻的 quota-warm 发一句 ⇒ 说明。"""
+    agent, name = key
     try:
-        d = json.loads(p.stdout)
-    except ValueError:
-        return None, "回包读不懂"
-    at = d.get("resets_at")
-    return at, ("发了" if d.get("sent") else "15 分钟内发过") + (f" ⇒ ↻{stamp(at)}" if at else "")
+        d = call("quota-warm", {"agent": agent, "account": name}, SEND_WITHIN_S)
+    except subprocess.TimeoutExpired:
+        return "超时"
+    except Exception as e:  # noqa: BLE001 —— 发不成就记一句，不让常驻那一形死掉
+        return str(e) or "回包读不懂"
+    return "发了" if d.get("sent") else "15 分钟内发过"
 
 
-def candidates(q):
-    """不给 --accounts 时看哪几个号：照 quota-read 的 `candidates`（出过数的 ＋ 账号库里没出过数的，核心挑好），不另扫账号库。"""
-    seen = []
-    for c in q.get("candidates", []):
-        n = c.get("account")
-        if n and n not in seen:
-            seen.append(n)
-    return seen
+def keys(q, accounts):
+    """看哪几个号，一项一个 (agent, account)：给了 `--accounts` ⇒ 额度账里叫这几个名字的；不给 ⇒ quota-read 的 `candidates`（核心挑好），不另扫账号库。"""
+    rows = entries(q) if accounts else q.get("candidates", [])
+    out = []
+    for c in rows:
+        k = (c.get("agent"), c.get("account"))
+        if k[1] and (not accounts or k[1] in accounts) and k not in out:
+            out.append(k)
+    out += [(None, n) for n in accounts if all(k[1] != n for k in out)]
+    return out
+
+
+def label(key):
+    agent, name = key
+    return f"{agent}/{name}" if agent else name
 
 
 def one_pass(accounts, dry_run):
-    """跑一趟，回下一次该醒的时刻。`accounts` 为空 ⇒ 这一趟照额度账的候选。"""
+    """跑一趟，回 (下一次该醒的时刻, 那一刻的字)；没有要看的号 ⇒ (None, None)。"""
     try:
         q = quota_read()
     except Exception as e:  # noqa: BLE001 —— 读不到就过一阵再试，不让常驻那一形死掉
-        log(f"读额度账失败：{e}")
-        return time.time() + RETRY_S
-    wakes = []
-    for name in accounts or candidates(q):
-        action, at, why = judge(q, name)
-        if action == "send":
-            if dry_run:
-                log(f"{name}: {why} ⇒ 该发（--dry-run，没发）")
-                continue
-            at, info = send(name)
-            if at and at > time.time():
-                log(f"{name}: {why} ⇒ {info}")
-                wakes.append(at + 60)
-            else:
-                log(f"{name}: {why} ⇒ 没成（{info}）⇒ {stamp(time.time() + RETRY_S)} 再试")
-                wakes.append(time.time() + RETRY_S)
-        elif action == "wait":
-            log(f"{name}: {why}")
-            wakes.append(at)
+        log(f"读额度账失败：{e} ⇒ 15 分钟后再试")
+        return time.time() + RETRY_S, None
+    sent = []
+    for key in keys(q, accounts):
+        action, _, _, why = judge(q, key)
+        if action == "send" and not dry_run:
+            log(f"{label(key)}: {why} ⇒ {send(key)}")
+            sent.append(key)
+        elif action == "send":
+            log(f"{label(key)}: {why} ⇒ 该发（--dry-run，没发）")
         else:
-            log(f"{name}: {why}，跳过")
-    return min(wakes) if wakes else None
+            log(f"{label(key)}: {why}" + ("" if action == "wait" else "，跳过"))
+    if sent:
+        try:
+            q = quota_read()
+        except Exception as e:  # noqa: BLE001
+            log(f"发完重读额度账失败：{e} ⇒ 15 分钟后再试")
+            return time.time() + RETRY_S, None
+    wakes = []
+    for key in keys(q, accounts):
+        action, at, at_text, why = judge(q, key)
+        if action == "wait" and at:
+            if key in sent:
+                log(f"{label(key)}: {why}")
+            wakes.append((at, at_text))
+        elif action == "send":
+            # 发过还说该发 ⇒ 没成；--dry-run 只判不发 ⇒ 同样过一阵再看；重读时才变成该发的 ⇒ 马上再跑一趟。
+            if key in sent:
+                log(f"{label(key)}: 还没在计时 ⇒ 没成，15 分钟后再试")
+            wakes.append((time.time() + (RETRY_S if key in sent or dry_run else 0), None))
+    return min(wakes, key=lambda w: w[0]) if wakes else (None, None)
 
 
 def status(accounts):
-    q = quota_read()
-    for name in accounts or candidates(q):
-        action, at, why = judge(q, name)
-        print(f"{name:10} {why}" + ("  ⇒ 该发" if action == "send" else ""))
+    try:
+        q = quota_read()
+    except Exception as e:  # noqa: BLE001 —— 读不到就照那一句说，不吐调用栈
+        sys.exit(f"读额度账失败：{e}")
+    for key in keys(q, accounts):
+        action, _, _, why = judge(q, key)
+        print(f"{label(key):16} {why}" + ("  ⇒ 该发" if action == "send" else ""))
 
 
 def hold_lock():
-    os.makedirs(CCM_HOME, exist_ok=True)
-    f = open(LOCK, "w")
+    """同一时刻只跑一份：锁住 `$XDG_RUNTIME_DIR`（没有 ⇒ /tmp，按 uid 分），不写进 cc-monitor 的家。"""
+    run = os.environ.get("XDG_RUNTIME_DIR")
+    path = os.path.join(run, "quota-warm.lock") if run else f"/tmp/quota-warm-{os.getuid()}.lock"
+    try:
+        # 不跟符号链接（/tmp 那一份的名字猜得到）；拿到锁之后才清空写 pid，别擦掉正在跑的那一份的。
+        f = os.fdopen(os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600), "r+")
+    except OSError as e:
+        sys.exit(f"锁打不开（{path}）：{e}")
     try:
         fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
-        sys.exit("另一个 quota-warm 正在跑（锁：%s）" % LOCK)
+        sys.exit("另一个 quota-warm 正在跑（锁：%s）" % path)
+    f.truncate(0)
     f.write(str(os.getpid()))
     f.flush()
     return f
@@ -173,14 +182,15 @@ def main():
     lock = hold_lock()  # noqa: F841 —— 进程活着就一直持着
     log(f"开始（{a.mode}）：{', '.join(accounts) or '额度账的候选'}")
     while True:
-        wake = one_pass(accounts, a.dry_run)
+        wake, wake_text = one_pass(accounts, a.dry_run)
         if a.mode == "once":
             return
         if wake is None:
             log("没有要看的号，退出")
             return
-        wake = max(wake, time.time() + 30)
-        log(f"下次 {stamp(wake)}")
+        if wake < time.time() + 30:
+            wake, wake_text = time.time() + 30, None
+        log(f"下次 {wake_text}" if wake_text else f"下次 {int((wake - time.time()) // 60)} 分钟后")
         while (left := wake - time.time()) > 0:
             time.sleep(min(left, SLEEP_CHUNK_S))
 

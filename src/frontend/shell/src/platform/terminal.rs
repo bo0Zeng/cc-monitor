@@ -1,7 +1,7 @@
 //! 开终端窗口的平台那一半：壳里平台 cfg 的唯一住址（同 [`super::fs`]）。
 //! POSIX：挑一个终端（设置里指定的 · 系统出口 · 常见终端逐个探）开窗跑 `bash -lic <命令>`；
 //! Windows：`wt.exe` / `powershell.exe` 开窗。「跑什么」的校验与 argv 住 `launch.rs::build_local_posix_argv`；
-//! 两条 Tauri 命令（`open_terminal_window` · `open_local_terminal`）也留在 `launch.rs`，都经本文件的 [`open_local`] 开窗。
+//! 开窗那条 Tauri 命令（`open_terminal_window`）留在 `launch.rs`，经本文件的 [`open_local`] 开窗。
 
 use copy_core::said::Said;
 

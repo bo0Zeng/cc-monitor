@@ -12,7 +12,7 @@ monitor 的 Rust 半：Tauri 2 应用，crate `monitor`（lib 名 `monitor_lib`�
 |---|---|
 | 装配 | `lib.rs`（`run()`：插件 · State · Tauri 命令注册 · 工作线程）· `main.rs` |
 | 本机后端 | `local_backend_host.rs`（起 / 停 / 状态；常驻那一种经本人 Unix 套接字 `<家>/run/backend.sock` 接上）· `local_backend.rs`（stdio 监护那一种）· `backend_control.rs` · `backend_policy.rs` |
-| 远端 | 各台的常驻流归本机后端（`control/feeds.rs`），壳这一侧只剩：`remote_resident.rs`（停一台：请本机后端 `machine-stop`）· `deploy.rs`（装那一趟在本机后端 `deploy-install`，这里交字节路径、收进度）· `transfer_relay.rs`（传输台中继）· `byte_table.rs`（全仓唯一的取字节口）· `machine_table.rs`（本机后端 `machines-read` 最近答的那一份机器表） |
+| 远端 | 各台的常驻流归本机后端（`control/feeds.rs`），壳这一侧只剩：`remote_resident.rs`（停一台：请本机后端 `machine-stop`）· `deploy.rs`（装那一趟在本机后端 `deploy-install`，这里交字节路径、收进度）· `transfer_relay.rs`（传输台中继）· `byte_table.rs`（全仓唯一的取字节口）；机器表只住本机后端，壳不记副本 |
 | 会话流 | `stream_source/`（只读本机后端那一条，各台流上的事由它原样转来 `relayed`，进同一个收口 `batch.rs` 的 `LineIntake`）· `local_lines.rs` · `event_replay.rs`（重放缓冲 · 订阅 · 就绪点）· `stream_watch.rs`（每条长连接报「在看哪几个会话」）· `session_book.rs`（那台说过的会话成品，纯缓存；每台一本，折法是共享核心那一份 `face_core::book`）· `snapshot_resume.rs` · `frame_query.rs` · `frame_tally.rs` · `inbound_client.rs` |
 | 通道 | `chan/`（`webview.rs`：主界面的 `chan_call` / `chan_subscribe`；`host.rs`：文件窗口那对父子管道）；路由器与线上词汇住 `src/comms/inward/` |
 | 终端与窗口 | `launch.rs`（开终端窗口）· `bind.rs`（↗ 认窗口：点那一刻问本机后端 `session-window`，先按窗口标签、再沿进程链问每一级显示在哪个窗口）· `spawn_managed.rs`（起子进程的唯一出口） |

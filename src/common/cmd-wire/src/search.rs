@@ -3,7 +3,7 @@
 //! 最近优先那一种先后住 `face_core::column::sort_by_recency`；这里只留类型。
 
 use crate::cells::Words;
-use crate::listing::{Can, ForkedFrom};
+use crate::listing::Can;
 use crate::Machine;
 use serde::{Deserialize, Serialize};
 
@@ -33,14 +33,6 @@ pub struct SessionHits {
     pub is_bg: bool,
     /// 那台判的：这个会话能做什么（与历史清单的行同一张规则）。
     pub can: Can,
-    /// 分叉来的：父会话的显示标题（同历史清单那一格）；不是分叉来的 · 父会话这一趟没走到 ⇒ 缺。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub forked_from: Option<ForkedFrom>,
-    /// 父会话的会话 id（只给那台扫的那一层填上面那一格，不上线）。
-    #[serde(skip)]
-    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
-    pub parent: Option<String>,
     /// 那台此刻对这个会话的说法（同历史清单那一行的 `face`）。
     pub face: crate::frame::SessionFace,
 }

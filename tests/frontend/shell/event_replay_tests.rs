@@ -1321,7 +1321,6 @@ fn a_single_session_subscription_hears_only_its_own_session() {
     let unclear = F::Left(crate::frame_fixtures::session_left("mine", "unclear", "T"));
     let listed = F::Listed(b::OriginSessionsListedPayload {
         origin: crate::origin::Origin::local(),
-        all: false,
     });
     let other = ended("other");
     assert!(unclear.reaches(Some("mine")) && unclear.reaches(None));
@@ -1695,38 +1694,6 @@ fn the_codex_sample_frames_decode() {
     let (_, path) = &added[0];
     assert!(path.as_deref().is_some_and(|p| p.ends_with(".jsonl")));
     assert_eq!(lines, 6);
-}
-
-/// 壳照机器表对齐完远端流 ⇒ 本机 `changed/machines` 上恰好一格（主窗口据它重问 `backend_machines`、补订 / 退订那几台）；别的主题 · 别台一格不收。
-#[tokio::test]
-async fn aligning_the_remote_streams_tells_the_window_on_the_local_machines_stream() {
-    let (r, rec) = hub();
-    r.origin_seen(&local(), true);
-    r.subscribe("w", 1, &local(), "changed/machines", None, 4);
-    r.subscribe("w", 2, &local(), "changed/accounts", None, 4);
-    r.subscribe(
-        "w",
-        3,
-        &crate::origin::Origin::named("box"),
-        "changed/machines",
-        None,
-        4,
-    );
-    rec.0.lock().unwrap().clear();
-    crate::machine_table::tell_followed(&r);
-    let frames: Vec<u64> = rec
-        .0
-        .lock()
-        .unwrap()
-        .iter()
-        .flat_map(|(_, id, items)| {
-            items
-                .iter()
-                .filter(|i| matches!(i, WItem::Frame { .. }))
-                .map(move |_| *id)
-        })
-        .collect();
-    assert_eq!(frames, vec![1]);
 }
 
 /// 流那一路（文件窗口经 `chan/host.rs` 订的）与界面那一路同一张订阅表：同一格扇给两路；界面那一路的出口不收流那一路的格。

@@ -1,7 +1,6 @@
 use super::super::parse::session_meta_cwd;
 use super::CodexRecordKind as K;
 use super::*;
-use crate::agents::record::RecordExt as _;
 use crate::agents::Speaker;
 use crate::agents::UserText;
 use crate::agents::UserTextExt as _;
@@ -402,7 +401,7 @@ fn maps_tool_call_and_output() {
     assert!(who_of(&r).is_some_and(|w| w.speaker == Speaker::ToolResult));
     assert_eq!(
         blocks_of(&r),
-        json!([{"type": "tool_result", "for": "c1", "content": [{"type": "text", "text": "文件列表", "bytes": 12}], "isError": false, "bytes": 12}])
+        json!([{"type": "tool_result", "for": "c1", "content": [{"type": "text", "text": "文件列表", "bytes": 12}], "isError": false, "bytes": 12, "sizeText": "12 B"}])
     );
 }
 
@@ -536,11 +535,10 @@ fn excerpt_uses_the_same_speaker() {
     );
 }
 
-/// Codex 那一家的成品同样在出口那一下得到 `timeText`（信封上的时刻，按看的那一台的时区写 `HH:MM`）。
+/// Codex 那一家的成品同样带着信封上的时刻 `at`（出口那一下照它写钟面，钉在 `wire/stamp_tests.rs`）；解析那一层不写钟面。
 #[test]
-fn codex_records_carry_the_clock_face_too() {
+fn codex_records_carry_the_envelope_at() {
     let ts = "2026-10-07T20:30:15.123Z";
-    let want = "04:30".to_string();
     let msg = json!({"timestamp": ts, "type": "response_item", "payload": {"type": "message", "role": "assistant", "id": "m1", "content": [{"type": "output_text", "text": "ok"}]}});
     let out = json!({"timestamp": ts, "type": "response_item", "payload": {"type": "function_call_output", "call_id": "c", "output": "x"}});
     for v in [msg, out] {
@@ -550,13 +548,6 @@ fn codex_records_carry_the_clock_face_too() {
             .record
             .unwrap();
         assert!(got.time_text.is_none(), "解析那一层不写钟面");
-        let mut got = got;
-        got.stamp(&crate::common::time::Tz::named("Asia/Shanghai").unwrap());
-        assert_eq!(
-            got.time_text.as_ref().map(|w| w.0.as_str()),
-            Some(want.as_str()),
-            "{v}"
-        );
         assert_eq!(got.at.as_deref(), Some(ts), "{v}");
     }
 }

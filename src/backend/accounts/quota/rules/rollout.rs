@@ -7,6 +7,7 @@
 //! 另有时间轴推演（`simulate`）与它共用的「号的动态」：号每分钟涨几点（[`rate_of`]）。
 
 use super::Acct;
+use cmd_wire::quota::{SLOT_5H, SLOT_7D};
 use rhai::{Array, Dynamic, EvalAltResult, Map};
 use std::collections::BTreeMap;
 
@@ -1126,10 +1127,10 @@ pub(crate) fn rollout_entry(ctx: &Map, plan: &Map) -> Result<Dynamic, Bad> {
         let row =
             fmap(caps.get(id.as_str())).ok_or_else(|| rbad("plan.caps.<account> must be a map"))?;
         let c5 = caps_of(
-            opt(&row, "5h").ok_or_else(|| rbad("plan.caps.<account> needs \"5h\""))?,
+            opt(&row, SLOT_5H).ok_or_else(|| rbad("plan.caps.<account> needs \"5h\""))?,
             dflt,
         )?;
-        let c7 = match opt(&row, "7d") {
+        let c7 = match opt(&row, SLOT_7D) {
             Some(d) => caps_of(d, dflt)?,
             None => c5.clone(),
         };

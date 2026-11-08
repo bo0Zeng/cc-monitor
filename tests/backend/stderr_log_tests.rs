@@ -174,7 +174,7 @@ fn an_unwritable_target_fails_without_touching_the_output() {
 fn nothing_is_installed_without_a_path() {
     for v in [None, Some(""), Some("   ")] {
         let got = install_from_env(DiagLog::issue, &|k| {
-            assert_eq!(k, ENV);
+            assert_eq!(k, STDERR_LOG);
             v.map(str::to_string)
         });
         assert_eq!(got, Installed::NotAsked, "交了 {v:?} 却装了");
@@ -233,12 +233,12 @@ fn run_child(env_path: Option<&Path>) -> (std::process::ExitStatus, String) {
         "--test-threads=1",
     ])
     .env(CHILD_MARK, "1")
-    .env_remove(ENV)
+    .env_remove(STDERR_LOG)
     .stdin(std::process::Stdio::null())
     .stdout(std::process::Stdio::null())
     .stderr(std::process::Stdio::piped());
     if let Some(p) = env_path {
-        cmd.env(ENV, p);
+        cmd.env(STDERR_LOG, p);
     }
     let out = cmd.output().expect("起子进程");
     (
@@ -317,12 +317,12 @@ fn main_hands_tracing_the_rolling_writer_and_installs_it_once() {
     }
 }
 
-/// 一次性模式的诊断落点：宿主交了 `ENV` ⇒ 那一份；没交 ⇒ 家里那一份（常驻后端的 stderr 落的就是它）。
+/// 一次性模式的诊断落点：宿主交了 `STDERR_LOG` ⇒ 那一份；没交 ⇒ 家里那一份（常驻后端的 stderr 落的就是它）。
 #[test]
 fn oneshot_lines_land_in_the_backend_log() {
-    let given = oneshot_log_path(&|k| (k == ENV).then(|| "/x/given.log".to_string()));
+    let given = oneshot_log_path(&|k| (k == STDERR_LOG).then(|| "/x/given.log".to_string()));
     assert_eq!(given, Some(PathBuf::from("/x/given.log")));
-    let blank = oneshot_log_path(&|k| (k == ENV).then(|| "  ".to_string()));
+    let blank = oneshot_log_path(&|k| (k == STDERR_LOG).then(|| "  ".to_string()));
     if let Some(p) = blank {
         assert!(p.ends_with(super::STDERR_LOG_REL), "{}", p.display());
     }

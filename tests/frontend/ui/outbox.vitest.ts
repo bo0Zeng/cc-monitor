@@ -73,11 +73,49 @@ describe("待发：一台接上就把它名下各会话的待发照原编号重�
     expect(put.mock.calls[0]![1]).toMatchObject({ id, text: "kept" });
   });
 
-  it("那台拒了（不是离线）⇒ 不留在待发、回那台那一句", async () => {
+  it("★ 那台拒了（不是离线）⇒ 留在待发、标上那台那一句（同手机）；重开还在", async () => {
     const box = new Outbox(vi.fn(async (): Promise<QueuePut> => Promise.reject(refused("queue_full", "队满了"))));
     const end = await box.say("devbox", "s-1", "x", []);
     expect(end).toEqual({ at: "refused", said: "队满了" });
+    expect(box.of("devbox", "s-1").map((o) => [o.text, o.refused])).toEqual([["x", "队满了"]]);
+    const again = new Outbox(vi.fn(async (): Promise<QueuePut> => queued));
+    expect(again.of("devbox", "s-1").map((o) => o.refused)).toEqual(["队满了"]);
+  });
+
+  it("拒了的那一句：那台接上不重交；同一句再发 ⇒ 照原编号再交、回执到了就离开待发", async () => {
+    let ok = false;
+    const put = vi.fn(async (_o: string, _r: SessionQueuePutReq): Promise<QueuePut> => {
+      if (!ok) throw refused("queue_full", "队满了");
+      return queued;
+    });
+    const box = new Outbox(put);
+    await box.say("devbox", "s-1", "x", []);
+    box.machineUp("devbox");
+    await flush();
+    expect(put).toHaveBeenCalledTimes(1);
+    ok = true;
+    const end = await box.say("devbox", "s-1", "x", []);
+    expect(end.at).toBe("receipt");
+    expect(put.mock.calls[1]![1].id).toBe(put.mock.calls[0]![1].id);
     expect(box.of("devbox", "s-1")).toEqual([]);
+  });
+
+  it("编辑已发的那一句（带 rewind）同普通一句：当场被拒 · 接上重交被拒都留在待发标那台那一句", async () => {
+    const rewind = { to: "u-1", how: "conversation", when: "after_turn" } as const;
+    const now = new Outbox(vi.fn(async (): Promise<QueuePut> => Promise.reject(refused("queue_full", "队满了"))));
+    expect(await now.say("devbox", "s-1", "x", [], rewind)).toEqual({ at: "refused", said: "队满了" });
+    expect(now.of("devbox", "s-1").map((o) => o.refused)).toEqual(["队满了"]);
+    localStorage.clear();
+    let up = false;
+    const put = vi.fn(async (): Promise<QueuePut> => {
+      throw up ? refused("queue_full", "队满了") : offline();
+    });
+    const box = new Outbox(put);
+    await box.say("devbox", "s-1", "x", [], rewind);
+    up = true;
+    box.machineUp("devbox");
+    await flush();
+    expect(box.of("devbox", "s-1").map((o) => o.refused)).toEqual(["队满了"]);
   });
 
   it("在飞的那一句不重交（接上那一下撞上还没回来的那一问）", async () => {

@@ -45,7 +45,6 @@ function tab(sid: string, over: Partial<Tab> = {}): Tab {
     labelProject: null,
     projectDir: `/w/${sid}`,
     face: LIVE_FACE,
-    line: null,
     pinned: false,
     group: null,
     hidden: null,

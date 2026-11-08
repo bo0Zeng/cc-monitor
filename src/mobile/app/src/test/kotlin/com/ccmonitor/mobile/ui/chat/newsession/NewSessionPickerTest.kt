@@ -2,10 +2,17 @@ package com.ccmonitor.mobile.ui.chat.newsession
 
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionOpen
+import com.ccmonitor.mobile.core.claude.link.SessionOpenFacts
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.wire.gen.LinkLine
+import com.ccmonitor.mobile.core.wire.gen.MachineStateKind
 import com.ccmonitor.mobile.ui.Wires
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
+import com.ccmonitor.mobile.ui.chat.linkConnecting
+import com.ccmonitor.mobile.ui.chat.linkDown
+import com.ccmonitor.mobile.ui.chat.machineOf
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -53,7 +60,7 @@ class NewSessionPickerTest {
         "color" to color,
         "plate" to name.take(2),
         "kindLine" to "",
-        "quota" to if (selectable) "5h ${name.length}%" else null,
+        "slots" to if (selectable) listOf(mapOf("slot" to "5h", "text" to "5h ${name.length}%", "tone" to "plain")) else emptyList(),
         "unselectable" to if (selectable) null else "需登录",
         "badge" to mapOf("text" to if (selectable) "已登录" else "需登录", "warn" to !selectable, "title" to ""),
         "login" to !selectable,
@@ -184,7 +191,7 @@ class NewSessionPickerTest {
             assertEquals(before + 1, l.calls("accounts-list").size)
             assertEquals(0, l.calls("quota-read").size)
             val s = p.state.value
-            assertEquals(listOf("5h 4%", "5h 8%", null), s.accounts.map { it.quota })
+            assertEquals(listOf("5h 4%", "5h 8%", null), s.accounts.map { it.slots.firstOrNull()?.text })
             assertEquals(listOf("night", "spread"), s.strategies?.map { it.id })
             assertEquals("spread", s.rotation)
             assertEquals("spread", s.forNew)
@@ -257,15 +264,52 @@ class NewSessionPickerTest {
             val p = picker(l)
             assertTrue(p.state.value.factsFailed != null)
             l.answer = good
-            l.epoch.value = 1
+            l.connected(1)
             runCurrent()
             assertNull(p.state.value.factsFailed)
             assertEquals("/h/work/orders", p.state.value.cwd)
             assertEquals("work", p.state.value.account)
             l.answer = { _, _ -> Reply.LinkDown }
-            l.epoch.value = 2
+            l.connected(2)
             runCurrent()
             assertNull("问到了就不再问（换流不把填好的冲掉）", p.state.value.factsFailed)
             assertEquals("work", p.state.value.account)
         }
+
+    @Test
+    fun `打开时还在连：接上一次 ⇒ 那一问只发一次（照核心那一格 seen，不另加开屏那一问）`() =
+        runTest {
+            val l = link()
+            val good = l.answer
+            l.state.value = linkConnecting()
+            l.answer = { _, _ -> Reply.LinkDown }
+            val p = picker(l)
+            l.answer = good
+            l.connected(1)
+            runCurrent()
+            assertEquals(1, l.calls(SessionOpenFacts.COMMAND).size)
+            assertNull(p.state.value.factsFailed)
+            assertEquals("work", p.state.value.account)
+        }
+
+    @Test
+    fun `那台断着（核心那一行是 Down）⇒ 不问，但 settled 不挂着：起会话照此刻的选项交、由那台那一问说没送到`() =
+        runTest {
+            val l = link()
+            l.state.value = linkDown("x")
+            val p = picker(l)
+            val done = backgroundScope.async { p.settled() }
+            runCurrent()
+            assertTrue("断着时等选项那一下挂住了（第一句会一直「发送中」）", done.isCompleted)
+            assertEquals(0, l.calls(SessionOpenFacts.COMMAND).size)
+            l.connected(1)
+            runCurrent()
+            assertEquals("接上了照常问一次", 1, l.calls(SessionOpenFacts.COMMAND).size)
+        }
+
+    /** 核心交一行新的 Up（换了一条流，`epoch` 跟着换：真的那一份两样同一刻变）。 */
+    private fun FakeCoreLink.connected(epoch: Long) {
+        state.value = LinkLine.Up(epoch, machineOf(MachineStateKind.UP))
+        this.epoch.value = epoch
+    }
 }

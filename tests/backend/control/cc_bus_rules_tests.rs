@@ -40,13 +40,16 @@ fn the_same_letter_twice_within_the_window_is_a_duplicate() {
         "那一句说的是跟哪一封重了：{}",
         e.said
     );
-    // 拒掉的不进账：窗口过了照常收。
+    // 去重窗 10 秒：差 1 毫秒仍重复；拒掉的不进账，满 10 秒照常收。
     assert_eq!(
-        code(admit(
-            &mut l,
-            &env(A, B, 2, "t", "m3"),
-            t0 + DEDUP_WINDOW_MS
-        )),
+        admit(&mut l, &env(A, B, 2, "t", "m3"), t0 + 9_999)
+            .unwrap_err()
+            .code
+            .as_deref(),
+        Some("duplicate")
+    );
+    assert_eq!(
+        code(admit(&mut l, &env(A, B, 2, "t", "m4"), t0 + 10_000)),
         "ok"
     );
 }
@@ -75,7 +78,8 @@ fn any_differing_field_makes_it_another_letter() {
 fn a_pair_over_its_limit_is_throttled_and_others_still_pass() {
     let mut l = Ledger::default();
     let t0 = 5_000_000;
-    for i in 0..RATE_PAIR {
+    // 一对一窗 20 封：前 20 封收，第 21 封拒。
+    for i in 0..20_u32 {
         assert_eq!(
             code(admit(
                 &mut l,
@@ -91,13 +95,16 @@ fn a_pair_over_its_limit_is_throttled_and_others_still_pass() {
     assert_eq!(c.as_deref(), Some("throttled"));
     // 另一对不受这一对的限。
     assert_eq!(code(admit(&mut l, &env(A, C, 2, "x", "m"), t0 + 101)), "ok");
-    // 窗口翻过去照常。
+    // 窗 60 秒：差 1 毫秒仍拒，翻过去照常。
     assert_eq!(
-        code(admit(
-            &mut l,
-            &env(A, B, 2, "again", "m"),
-            t0 + RATE_WINDOW_MS
-        )),
+        admit(&mut l, &env(A, B, 2, "still", "m"), t0 + 59_999)
+            .unwrap_err()
+            .code
+            .as_deref(),
+        Some("throttled")
+    );
+    assert_eq!(
+        code(admit(&mut l, &env(A, B, 2, "again", "m"), t0 + 60_000)),
         "ok"
     );
 }
@@ -107,10 +114,11 @@ fn the_whole_machine_has_one_limit_too() {
     let mut l = Ledger::default();
     let t0 = 9_000_000;
     let sid = |i: u32| format!("{i:08x}-1111-2222-3333-444455556666");
-    for i in 0..RATE_GLOBAL {
+    // 全台一窗 120 封：前 120 封收，第 121 封拒。
+    for i in 0..120_u32 {
         assert_eq!(code(admit(&mut l, &env(&sid(i), B, 2, "t", "m"), t0)), "ok");
     }
-    let c = admit(&mut l, &env(&sid(RATE_GLOBAL), B, 2, "t", "m"), t0)
+    let c = admit(&mut l, &env(&sid(120), B, 2, "t", "m"), t0)
         .unwrap_err()
         .code;
     assert_eq!(c.as_deref(), Some("throttled"));
@@ -123,15 +131,12 @@ fn tier_one_knocks_once_per_debounce_and_tier_two_never() {
     assert_eq!(admit(&mut l, &env(A, B, 2, "t2", "m"), t0), Ok(false));
     assert_eq!(admit(&mut l, &env(A, B, 1, "a", "m"), t0), Ok(true));
     assert_eq!(
-        admit(&mut l, &env(C, B, 1, "b", "m"), t0 + KNOCK_DEBOUNCE_MS - 1),
+        admit(&mut l, &env(C, B, 1, "b", "m"), t0 + 1_999),
         Ok(false),
-        "同一条会话去抖窗里只敲一次（不论谁发的）"
+        "同一条会话 2 秒去抖窗里只敲一次（不论谁发的）"
     );
     assert_eq!(admit(&mut l, &env(A, C, 1, "c", "m"), t0 + 1), Ok(true));
-    assert_eq!(
-        admit(&mut l, &env(A, B, 1, "d", "m"), t0 + KNOCK_DEBOUNCE_MS),
-        Ok(true)
-    );
+    assert_eq!(admit(&mut l, &env(A, B, 1, "d", "m"), t0 + 2_000), Ok(true));
 }
 
 #[test]
@@ -140,7 +145,7 @@ fn the_ledger_keeps_only_what_a_window_still_needs() {
     let t0 = 3_000_000;
     admit(&mut l, &env(A, B, 1, "t", "m1"), t0).unwrap();
     admit(&mut l, &env(A, C, 1, "t", "m2"), t0).unwrap();
-    admit(&mut l, &env(C, B, 2, "t", "m3"), t0 + RATE_WINDOW_MS).unwrap();
+    admit(&mut l, &env(C, B, 2, "t", "m3"), t0 + 60_000).unwrap();
     assert_eq!(l.recent.len(), 1, "去重窗外的指纹不留");
     assert_eq!(l.pairs.len(), 1, "过了窗的那几对不留");
     assert_eq!(l.knocked.len(), 0, "去抖窗外的敲门时刻不留");

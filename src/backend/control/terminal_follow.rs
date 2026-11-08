@@ -51,7 +51,8 @@ use std::sync::{mpsc as smpsc, Arc, Mutex};
 use serde_json::Value;
 use tokio::sync::mpsc;
 
-use super::terminals::{self, On};
+use super::terminals;
+use crate::host::tmux::On;
 use crate::wire::{FollowEnd, Frame};
 use cmd_wire::session::TermInput;
 

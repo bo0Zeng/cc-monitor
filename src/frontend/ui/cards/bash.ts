@@ -5,19 +5,19 @@
 
 import { copyText } from "../copy-table";
 import { icon } from "../kit/icon";
+import type { TextFold } from "../generated/TextFold";
 
 export interface BashInput {
   command: string;
 }
 
+/** 输出与各自的折法（后端 `face_core::record::output_fold` 定折不折、露几行、展开那一句；界面不留阈值）。 */
 export interface BashOutput {
   stdout: string;
   stderr: string;
+  stdoutFold?: TextFold;
+  stderrFold?: TextFold;
 }
-
-/** 输出 pre 超过该行数先折叠只展示头部（bash 输出通常短，阈值取小） */
-const OUTPUT_COLLAPSE_LINES = 30;
-export const OUTPUT_HEAD_LINES = 20;
 
 /** 终端风格命令卡：提示符箭头 ＋ npm install && npm run build */
 export function buildBashInputCard(
@@ -72,14 +72,14 @@ export function buildBashOutputCard(
   const stdout = output.stdout.trim();
   const stderr = output.stderr.trim();
   if (stdout) {
-    card.appendChild(buildOutputPre(stdout, "bash-stdout-body"));
+    card.appendChild(buildOutputPre(stdout, "bash-stdout-body", output.stdoutFold));
   }
   if (stderr) {
     const errLabel = document.createElement("div");
     errLabel.className = "bash-stderr-label";
     errLabel.textContent = "✖ stderr";
     card.appendChild(errLabel);
-    card.appendChild(buildOutputPre(stderr, "bash-stderr-body"));
+    card.appendChild(buildOutputPre(stderr, "bash-stderr-body", output.stderrFold));
   }
   if (!stdout && !stderr) {
     const empty = document.createElement("div");
@@ -90,22 +90,22 @@ export function buildBashOutputCard(
   return card;
 }
 
-function buildOutputPre(text: string, cls: string): HTMLElement {
+/** 一份输出：后端给了折法 ⇒ 先露它说的那几行、加展开那一颗（字照后端那一句）；否则整份照排。 */
+function buildOutputPre(text: string, cls: string, fold: TextFold | undefined): HTMLElement {
   const pre = document.createElement("pre");
   pre.className = `bash-output-body ${cls}`;
-  const lines = text.split("\n");
-  if (lines.length <= OUTPUT_COLLAPSE_LINES) {
+  if (!fold) {
     pre.textContent = text;
     return pre;
   }
-  pre.textContent = lines.slice(0, OUTPUT_HEAD_LINES).join("\n");
+  pre.textContent = text.split("\n").slice(0, fold.shown).join("\n");
   const wrap = document.createElement("div");
   wrap.className = "block-body-truncated-wrap";
   wrap.appendChild(pre);
   const expand = document.createElement("button");
   expand.type = "button";
   expand.className = "block-body-show-full";
-  expand.textContent = copyText("bash.output.showAll", { n: lines.length });
+  expand.textContent = fold.more;
   expand.addEventListener(
     "click",
     () => {

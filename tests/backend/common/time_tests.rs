@@ -333,7 +333,7 @@ fn t12_detail_time_slots_are_filled_in_the_viewer_zone_with_the_offset() {
     assert_eq!(fill_at("⟦at:xx⟧ 与 ⟦at:", &sh()), "⟦at:xx⟧ 与 ⟦at:");
 }
 
-/// 钟面 `HH:MM` 与界面那一个钟面读口（`clock-face.ts::clockFace`）对同一份金样。
+/// 钟面 `HH:MM` 照金样 `clock-face.golden.json`（界面不写几点，只有核心这一处）。
 #[test]
 fn t13_clock_face_follows_the_shared_golden() {
     let g: serde_json::Value =

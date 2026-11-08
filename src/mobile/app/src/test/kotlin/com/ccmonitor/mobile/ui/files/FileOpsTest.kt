@@ -3,13 +3,8 @@ package com.ccmonitor.mobile.ui.files
 import com.ccmonitor.mobile.core.claude.link.FilesLs
 import com.ccmonitor.mobile.core.claude.link.RemotePath
 import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.claude.link.Transfer
 import com.ccmonitor.mobile.core.copy.copyText
-import com.ccmonitor.mobile.core.wire.gen.ClashChoice
-import com.ccmonitor.mobile.core.wire.gen.ClashRow
-import com.ccmonitor.mobile.core.wire.gen.Decide
 import com.ccmonitor.mobile.core.wire.gen.Failed
-import com.ccmonitor.mobile.core.wire.gen.Raw
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -18,74 +13,35 @@ import org.junit.Test
 
 /**
  * 文件屏的读写全问那台后端（`files-*`）：手机不判能不能做、不写出错那句，失败原样带回那台写好的那一句与复制详情。
- * 上传 · 下载的分块那一圈在核心里（交描述符），上传提交同名时那台问、答了同一份暂存件再交；删一项（目录连同里面）是一组里的一项、一问做完；打开一个路径先问那台它是什么。
+ * 上传 · 下载是一组、全过程在核心里（上传交现开的描述符）；删一项（目录连同里面）是一组里的一项、一问做完；打开一个路径先问那台它是什么。
  */
 class FileOpsTest {
     private val dir = RemotePath.of("/w")
 
-    private val staged = mapOf("key" to "k1", "chunks" to 3.0, "bytes" to 9.0, "sha256" to "ab")
-
+    /** 上传是一组：交核心的只有「要上传什么」（目录 · 落到哪在屏上那一串 · 名字 · 现开的描述符），送块 · 提交 · 同名全在核心。 */
     @Test
-    fun uploadHandsTheFileToTheCoreThenCommitsWhatItStagedWithoutSayingWhatToDoOnAClash() =
+    fun uploadHandsTheCoreOneGroupAndAsksNothingItself() =
         runTest {
-            val link =
-                FakeCoreLink().apply {
-                    moves = listOf(4L to 9L, 9L to 9L)
-                    transferred = { Reply.Ok(staged) }
-                    answer = { _, _ -> Reply.Ok(mapOf("path" to "/w/up.bin", "bytes" to 9.0)) }
-                }
-            val seen = mutableListOf<Long>()
-            val r = FileOps(link) { "box" }.upload(dir, "up.bin", { 17 }) { got, _ -> seen += got }.getOrThrow()
-            assertEquals(FileOps.Upload.Done, r)
-            assertEquals(listOf(Transfer.Stage("up.bin") to 17), link.transfers)
-            assertEquals(listOf(4L, 9L), seen)
-            assertEquals("Kotlin 不再一块一块问", listOf("files-commit-upload"), link.calls.map { it.first })
-            val commit = link.calls("files-commit-upload").single()!!
-            assertEquals("同名怎么办不带（＝ 那台问：回 exists）", false, "on_exists" in commit)
-            assertEquals(listOf("k1", 3L, 9L, mapOf("sha256" to "ab")), listOf(commit["key"], commit["chunks"], commit["bytes"], commit["expect"]))
+            val link = FakeCoreLink()
+            val at = RemotePath.of("/w/sub")
+            assertEquals(1L, FileOps(link) { "box" }.upload(at, "up.bin", { 17 }).getOrThrow())
+            assertEquals(
+                listOf(mapOf("upload" to mapOf("root" to "/w/sub", "shown" to "/w/sub", "items" to listOf(mapOf("name" to "up.bin", "fd" to 17))))),
+                link.wants,
+            )
+            assertTrue("Kotlin 一问都不发", link.calls.isEmpty())
+            assertTrue("Kotlin 不起分块传", link.transfers.isEmpty())
         }
 
+    /** 本机那一份开不了 ⇒ 手机那一句（系统原话进详情），不起组。 */
     @Test
-    fun aClashComesBackAsTheBackendsListAndAnsweringResendsTheSameStagedCopy() =
+    fun aLocalFileThatWontOpenSaysSoAndStartsNothing() =
         runTest {
-            val conflict = """{"key":"0","name":"up.bin","kind":"file","size":9,"there":"file","there_size":3,"there_size_text":"3 字节","there_mtime_text":"14:02","answers":["overwrite","keep_both"]}"""
-            val link =
-                FakeCoreLink().apply {
-                    transferred = { Reply.Ok(staged) }
-                    answer = { _, a ->
-                        if (a!!["on_exists"] == null) {
-                            Reply.Failed(Failed("exists", "同名 1 项", "d", Raw("""{"conflicts":[$conflict]}""")))
-                        } else {
-                            Reply.Ok(mapOf("path" to "/w/up (2).bin", "bytes" to 9.0))
-                        }
-                    }
-                }
-            val ops = FileOps(link) { "box" }
-            val c = ops.upload(dir, "up.bin", { 17 }) { _, _ -> }.getOrThrow() as FileOps.Upload.Clash
-            assertEquals("同名 1 项", c.said)
-            val choices = listOf(ClashChoice(Decide.OVERWRITE, "overwrite", "overwrite"), ClashChoice(Decide.KEEP_BOTH, "keep_both", "keep_both"))
-            assertEquals(listOf(ClashRow("0", "up.bin", "3 字节", choices, null)), c.rows)
-            assertEquals(FileOps.Upload.Done, ops.commit(dir, c.name, c.staged, "keep_both").getOrThrow())
-            assertEquals("块不重送", 1, link.transfers.size)
-            val again = link.calls("files-commit-upload").last()!!
-            assertEquals(listOf("keep_both", "k1"), listOf(again["on_exists"], again["key"]))
-        }
-
-    @Test
-    fun aRefusedCommitOrStageCarriesTheBackendsSentenceAndALocalFileThatWontOpenSaysSo() =
-        runTest {
-            val link =
-                FakeCoreLink().apply {
-                    transferred = { Reply.Ok(staged) }
-                    answer = { _, _ -> Reply.Failed(Failed("io_failed", "那台写的那一句", "详情")) }
-                }
-            val e = FileOps(link) { "box" }.upload(dir, "up.bin", { 17 }) { _, _ -> }.exceptionOrNull() as FileOps.Failed
-            assertEquals(listOf("那台写的那一句", "详情"), listOf(e.problem.text, e.problem.detail))
-            val no = FakeCoreLink().apply { transferred = { Reply.Failed(Failed("refused", "暂存区满了", "")) } }
-            assertEquals("暂存区满了", (FileOps(no) { "box" }.upload(dir, "up.bin", { 17 }) { _, _ -> }.exceptionOrNull() as FileOps.Failed).problem.text)
-            assertEquals("送不成就不提交", emptyList<Any>(), no.calls)
-            val gone = FileOps(FakeCoreLink()) { "box" }.upload(dir, "up.bin", { throw java.io.IOException("ENOENT") }) { _, _ -> }.exceptionOrNull() as FileOps.Failed
+            val link = FakeCoreLink()
+            val gone = FileOps(link) { "box" }.upload(dir, "up.bin", { throw java.io.IOException("ENOENT") }).exceptionOrNull() as FileOps.Failed
             assertEquals(copyText("mobFiles.local.readFailed", "name" to "up.bin"), gone.problem.text)
+            assertTrue(gone.problem.detail.contains("ENOENT"))
+            assertTrue(link.wants.isEmpty())
         }
 
     @Test

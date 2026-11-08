@@ -59,7 +59,7 @@ const NO_SWITCHING = { active: () => null, facts: () => new Promise<never>(() =>
 const NOW = Date.parse("2026-10-14T12:00:00Z");
 const BG: SessionHidden = { by: "bg", said: "后端那一句·分身" };
 const SELF: SessionHidden = { by: "self", said: "后端那一句·单个" };
-const waiting = { face: liveFace("needs_you"), line: { for: "needs_you" as const, text: "", clock: null, peek: null } };
+const waiting = { face: liveFace("needs_you") };
 const approve = (): Needs => ({ kind: "approve", tool: "Bash", call: "toolu_b", what: "占位命令", text: copyText("beSession.needs.approve"), head: "核心·等批准", headCode: null, tone: "need", rank: 1, waitedMs: 60_000, ask: null, manualText: null, receivedAt: NOW });
 
 function tab(sid: string, over: Partial<Tab> = {}): Tab {
@@ -70,7 +70,7 @@ function tab(sid: string, over: Partial<Tab> = {}): Tab {
     bgName: null,
     label: `名-${sid}`,
     projectDir: `/w/${sid}`,
-    face: liveFace("working"), line: null,
+    face: liveFace("working"),
     pinned: false,
     group: null,
     hidden: null,
@@ -188,7 +188,7 @@ describe("标签栏：栏底「已隐藏 N」那一行照 hidden 格画", () => 
     const needs = fakeNeedsBook({ [LOCAL]: listOf([sessionItem("b", approve())]) });
     r.view.needs = { book: needs.book, login: vi.fn() };
     needs.book.subscribe(() => r.view.planNeedsChanged());
-    await needs.book.refresh(LOCAL);
+    await needs.book.again();
     const strip = r.el.querySelector<HTMLElement>(".tab-needs")!;
     expect(strip.style.display).toBe("");
     expect(strip.querySelector(".tab-needs-count")?.textContent).toBe("1");

@@ -196,9 +196,12 @@ fn reply_text(rows: &[(&str, i64)]) -> String {
     json!({"sessions": sessions, "unreadable": 1, "skipped": ["Codex"]}).to_string()
 }
 
-fn search_req(machines: &[&str]) -> HistorySearchMergeReq {
+fn names(machines: &[&str]) -> Vec<Machine> {
+    machines.iter().map(|m| Machine::named(*m)).collect()
+}
+
+fn search_req() -> HistorySearchMergeReq {
     HistorySearchMergeReq {
-        machines: machines.iter().map(|m| Machine::named(*m)).collect(),
         search: HistorySearchReq {
             query: "docker".into(),
             include_tools: None,
@@ -225,7 +228,8 @@ async fn the_local_backend_asks_each_machine_itself_and_merges() {
     let peers = Peers::new(&[("devbox", reply_text(&[("rem-new", 300), ("rem-old", 50)]))]);
     let t = Peers::table(&["devbox", "pi"]);
     let got = merge_with(
-        search_req(&[cmd_wire::LOCAL, "devbox", "pi", "gone"]),
+        &names(&[cmd_wire::LOCAL, "devbox", "pi", "gone"]),
+        search_req(),
         here(&[("loc", 100)]),
         &Default::default(),
         until(9_000),
@@ -306,7 +310,8 @@ async fn asking_other_machines_needs_the_askers_deadline_and_the_local_one_must_
     let peers = Peers::new(&[]);
     let t = Peers::table(&["devbox"]);
     let no = merge_with(
-        search_req(&[cmd_wire::LOCAL, "devbox"]),
+        &names(&[cmd_wire::LOCAL, "devbox"]),
+        search_req(),
         here(&[]),
         &Default::default(),
         None,
@@ -320,7 +325,8 @@ async fn asking_other_machines_needs_the_askers_deadline_and_the_local_one_must_
     );
     assert!(peers.asked().is_empty());
     let only_here = merge_with(
-        search_req(&[cmd_wire::LOCAL]),
+        &names(&[cmd_wire::LOCAL]),
+        search_req(),
         here(&[("loc", 1)]),
         &Default::default(),
         None,
@@ -330,7 +336,8 @@ async fn asking_other_machines_needs_the_askers_deadline_and_the_local_one_must_
     .await;
     assert_eq!(only_here.expect("只问本机").sessions.len(), 1);
     let broke = merge_with(
-        search_req(&[cmd_wire::LOCAL]),
+        &names(&[cmd_wire::LOCAL]),
+        search_req(),
         std::future::ready(Err(HistorySearchErr::Failed("读不了".into()))),
         &Default::default(),
         None,
@@ -383,10 +390,9 @@ fn an_oversized_search_answer_is_refused_not_truncated() {
     assert_eq!(full.expect("生产上限下该照常答").sessions.len(), 4);
 }
 
-/// ★ 每条命中带它那一行在记录文件里的起点（`history-read` 从它读起就是那一条，不必从头读）；分叉来的会话带父会话的显示标题
-/// （父会话没命中也认得出），父会话这一趟没走到 ⇒ 缺。
+/// ★ 每条命中带它那一行在记录文件里的起点（`history-read` 从它读起就是那一条，不必从头读；分叉来的会话那几行同样）。
 #[test]
-fn hits_carry_their_offset_and_forks_name_their_parent() {
+fn hits_carry_their_offset_in_the_record() {
     let home = std::env::temp_dir().join(format!("b8-search-fork-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&home);
     let dir = home.join("projects").join("-w-x");
@@ -443,11 +449,7 @@ fn hits_carry_their_offset_and_forks_name_their_parent() {
             .unwrap_or_else(|| panic!("{sid} 没命中"))
     };
     let c = by(C);
-    assert_eq!(
-        c.forked_from.as_ref().map(|f| f.label.0.as_str()),
-        Some("父标题")
-    );
-    assert_eq!(by(O).forked_from, None, "父会话不在 ⇒ 缺");
+    assert!(by(O).hits.first().is_some(), "父会话不在的那一份照样命中");
     let off = c.hits[0].offset;
     assert_eq!(off, (first.len() + 2) as u64);
     let bytes = std::fs::read(dir.join(format!("{C}.jsonl"))).unwrap();

@@ -67,7 +67,7 @@ vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), undoTo
 vi.mock("../../../../src/frontend/ui/behavior", () => ({
   getBehavior: () => Promise.resolve({ resumeCommand: "" }),
 }));
-vi.mock("../../../../src/frontend/ui/remote-config", () => ({ resumeCommandFor: () => Promise.resolve(""), remoteNames: () => Promise.resolve(["dev"]) }));
+vi.mock("../../../../src/frontend/ui/remote-config", () => ({ resumeCommandFor: () => Promise.resolve("") }));
 
 import { invoke } from "@tauri-apps/api/core";
 import { HistoryView } from "../../../../src/frontend/ui/views/history";
@@ -243,15 +243,17 @@ beforeEach(() => {
   };
   invokeMock.mockReset();
   invokeMock.mockImplementation(async (cmd: string, a: unknown) => {
-    if (cmd === "backend_machines") return ["<local>", "dev"];
     if (cmd !== "chan_call") return undefined;
     const c = a as ChanCallArgs;
     const args = chanArgsJson(c) as Record<string, unknown>;
+    // 本机后端那张机器表：本机 ＋ dev（历史页列哪几台、全文搜索问哪几台都照它）。
+    if (c.op === "machine-read") return chanReply({ machines: { "<local>": { state: "up" }, dev: { state: "up" } } });
     if (c.op === "history-browse") return chanReply(browse(args));
     if (c.op === "history-search-merge") {
       // 替真后端：它自己问到各台（`world.searchAt`）、合一份（远端的行添那台的名字、本机不添；行尾 · 时间段两格那台写好）。本机没答上 ⇒ 整次失败。
       if (world.search === "fail") return Promise.reject(new Error("搜不动"));
-      const per = (args.machines as string[]).map((o) => [o, world.searchAt(o)] as const);
+      if ("machines" in args) return Promise.reject(new Error("名单不是入参"));
+      const per = ["<local>", "dev"].map((o) => [o, world.searchAt(o)] as const);
       const got = per.filter((p): p is readonly [string, Exclude<Searched, "down">] => p[1] !== "down");
       const ss: Record<string, unknown>[] = got.flatMap(([o, r]) =>
         r.sessions.map((x) => ({ ...x, origin: o, atText: "12:00", spanText: "12:00–12:00", reveal: o === LOCAL, deleteAsk: `核心·删除正文 ${o}` })),
@@ -273,7 +275,6 @@ beforeEach(() => {
     if (c.op === "sessions-where") return chanReply({ results: (args.sids as string[]).map((sid) => ({ sid, standing: "none", names: [], terminals: [], run: "direct" })) });
     if (c.op === "history-annotate") return chanReply({ entry: { starred: false, customTitle: null, hide: "on", updatedAt: 1 }, prev: null });
     if (c.op === "files-delete-session") return chanReply({ path: "/x" });
-    if (c.op === "history-forget") return chanReply({ removed: true, sid: "a" });
     return undefined;
   });
 });
@@ -1063,8 +1064,8 @@ describe("筛选浮层的其余几格 · 按项目收起与新建", () => {
     await flush();
     expect(
       calls("history-search-merge").map((a) => [a.machines, (a.search as Record<string, unknown>).include_tools]),
-      "勾上工具 ⇒ 再问本机后端一次（两台都在里头）、带上工具",
-    ).toEqual([[[LOCAL, "dev"], true]]);
+      "勾上工具 ⇒ 再问本机后端一次（不交名单：它照自己的机器表问）、带上工具",
+    ).toEqual([[undefined, true]]);
     expect(byText("button", copyText("history.page.filter"))!.textContent).toContain("2");
     v.close();
   });

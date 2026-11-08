@@ -5,6 +5,7 @@
   ],
   "rc": "# mine\nzcc() { claude; }\n",
   "readReply": {
+    "shell": "posix",
     "otherRc": null,
     "rcCandidates": [
       {

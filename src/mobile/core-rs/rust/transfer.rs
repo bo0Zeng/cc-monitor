@@ -2,7 +2,8 @@
 //! 问那台（常驻流那一条，每块一个期限）· 本机那一份（Kotlin 交来的文件描述符，这里用完就关）·
 //! 往 Kotlin 交的事：进度 `moved {call, done, total}`，结局走一问一答那一种 `reply`（同 [`resident::reply_json`] 那一行，编号同一族）。
 //!
-//! 上传这里只把块送进那台的暂存区、交回 `{key, chunks, bytes, sha256}`；提交（同名照 `on_exists`）由 Kotlin 一问（同桌面）。
+//! 上传那一半（[`stage_with`]）只把块送进那台的暂存区、交回 `{key, chunks, bytes, sha256}`：文件屏的上传那一组（`batch.rs`）
+//! 照它送、再自己提交；送块口 [`stage`] 此刻只剩聊天附件在用（提交那一问由附件那一侧发）。
 //! 下载那一半（[`pull_with`]）只由下到本机那一组调（`batch.rs`：本机那一份由它向 Kotlin 要）；
 //! 拉进内存那一形（[`read_with`]，文件屏预览一张图）同一个循环，按门给的上限停。
 
@@ -190,7 +191,7 @@ impl Watch for Moves {
 }
 
 /// 普通文件 ⇒ 多大；管道之类 ⇒ 不知道。
-fn size_of(file: &File) -> Option<u64> {
+pub(crate) fn size_of(file: &File) -> Option<u64> {
     file.metadata()
         .ok()
         .filter(|m| m.is_file())
@@ -271,32 +272,19 @@ pub async fn pull_with<A: Ask<Err = String>>(
     }
 }
 
-/// 读回来的一块攒进内存；攒过 `cap`（门给的上限）⇒ 停，不读下一块。
-struct ToMemory {
-    bytes: Vec<u8>,
-    cap: u64,
-    id: i64,
+/// 攒过了门给的上限那一行（同桌面文件窗口读图那一句）。
+fn too_large(id: i64, t: chunk_core::TooLarge) -> String {
+    let limit = copy_core::size_text(t.cap);
+    line(&CallEnd::Failed {
+        call: id,
+        code: "too_large".into(),
+        said: copy_core::copy_text("rsFilewinPicture.read.grew", &[("limit", &limit)]),
+        detail: format!("read {} > cap {}", t.read, t.cap),
+        data: None,
+    })
 }
 
-impl Sink for ToMemory {
-    type Err = String;
-    async fn put(&mut self, bytes: Vec<u8>) -> Result<(), String> {
-        self.bytes.extend_from_slice(&bytes);
-        if self.bytes.len() as u64 > self.cap {
-            let limit = copy_core::size_text(self.cap);
-            return Err(line(&CallEnd::Failed {
-                call: self.id,
-                code: "too_large".into(),
-                said: copy_core::copy_text("rsFilewinPicture.read.grew", &[("limit", &limit)]),
-                detail: format!("read {} > cap {}", self.bytes.len(), self.cap),
-                data: None,
-            }));
-        }
-        Ok(())
-    }
-}
-
-/// 拉进内存那一半（文件屏预览一张图）：`path` 逐块读回（循环同 [`pull_with`]），过 `cap` 就停 ⇒
+/// 拉进内存那一半（文件屏预览一张图）：`path` 经 [`chunk_core::pull_capped`] 逐块读回，过 `cap` 就停 ⇒
 /// `{call, ok, data: {bytes, content, undecodable}}`（`content` 是线上 `HexBytes` 那一形；`undecodable` 是本机解不开时屏上那一句，
 /// 同桌面读图那一句）或没成那一行。
 pub async fn read_with<A: Ask<Err = String>>(
@@ -306,17 +294,20 @@ pub async fn read_with<A: Ask<Err = String>>(
     cap: u64,
     watch: &mut impl Watch,
 ) -> String {
-    let mut sink = ToMemory {
-        bytes: Vec::new(),
+    let pulled = chunk_core::pull_capped(
+        ask,
+        path,
         cap,
-        id,
-    };
-    match chunk_core::pull(ask, path, &mut sink, watch, || cancelled(id)).await {
-        Ok(n) => line(&CallEnd::Ok {
+        watch,
+        || cancelled(id),
+        |t| too_large(id, t),
+    );
+    match pulled.await {
+        Ok(bytes) => line(&CallEnd::Ok {
             call: id,
             data: serde_json::json!({
-                "bytes": n,
-                "content": HexBytes(sink.bytes),
+                "bytes": bytes.len() as u64,
+                "content": HexBytes(bytes),
                 "undecodable": copy_core::copy_text("rsFilewinPicture.decode.undecodable", &[]),
             }),
         }),

@@ -420,9 +420,11 @@ fn a_hit_carries_this_machines_face_and_can() {
     let sessions = crate::agents::claudecode::paths::sessions_root(&home);
     std::fs::create_dir_all(&sessions).unwrap();
     let pid = std::process::id();
+    // 记下真的启动时刻：身份核上就是活的（不靠测试二进制的路径像不像那一家）。
+    let ticks = crate::platform::proc::proc_starttime(pid).expect("读得到自己的启动时刻");
     std::fs::write(
         sessions.join(format!("{pid}.json")),
-        format!("{{\"pid\":{pid},\"sessionId\":\"live1\"}}"),
+        format!("{{\"pid\":{pid},\"sessionId\":\"live1\",\"procStart\":\"{ticks}\"}}"),
     )
     .unwrap();
     let rows = run_search(&home, "docker", 50);

@@ -2,6 +2,6 @@
 import type { Words } from "./Words";
 
 /**
- * 一个号那一枚徽章（账号菜单每一项右边那一格）：写好的字 · 要不要标警示 · 悬停那一句（没有 ⇒ 空串）。
+ * 一个号那一枚徽章（账号菜单每一项右边那一格）：写好的字 · 要不要标警示。
  */
-export type Badge = { text: Words, warn: boolean, title: Words, };
+export type Badge = { text: Words, warn: boolean, };

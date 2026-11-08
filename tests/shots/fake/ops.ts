@@ -45,6 +45,8 @@ export function defaultOps(): Record<string, OpHandler> {
     // 起新会话框的另两问：那个目录在不在 · 起会话那一下的结局（那份事实交真后端答）。
     "session-open-dir": (_o, req) => ({ exists: !String(req.cwd).includes("nope"), tmuxName: `${String(req.cwd).split("/").filter(Boolean).pop() ?? "session"}-cc` }),
     // 起新的 · 恢复 · 接回：那台照意图答落在哪 ＋ 那一行（新起 ⇒ tmux 里起好 / 开窗起；恢复 ⇒ 开窗起；接回 ⇒ 接上在跑的那个）。
+    // 开终端那一行（本机远端都先问它）：截图里原样回交进来的那串（ssh 外壳的字节归 Rust 判据）。
+    "terminal-ssh": (_o, req) => ({ window: String(req.command ?? ""), line: String(req.command ?? "") }),
     "session-open": (_o, req): Opened => {
       const what = req.what as { kind: string; sid?: string; session?: string; agent?: string; cwd?: string };
       if (what.kind === "look") return { landed: "running", session: what.session ?? "cc-proj", line: `ccm --attach ${what.session ?? "cc-proj"}`, sid: what.sid ?? null, agent: null, cwd: null, account: null, note: null, prompt: null, arrival: null };

@@ -1,7 +1,7 @@
 //! 首次运行「开始用」那一份（帧面 `first-run`）：两步各自由这台的事实打勾，每步的名字 · 那一句 · 按钮的字与去处都在这里写好，判定只在这里。
 //!
 //! - `terminal`（终端认得 cc 那几条别名）：这台某一份启动文件里有别名块（与「别名与配置文件」那一行同一份候选）。
-//! - `remote`（加一台远端机器，可选）：机器表里至少有一台。机器表住 monitor 那一侧，台数由问的那一方带上（`remotes`），这里只判。
+//! - `remote`（加一台远端机器，可选）：机器表里至少有一台（连不连都算）。台数是帧面入口照本机后端的机器表数好交进来的，这里只判。
 //!
 //! `skipped` ＝ 「开始用」那一块点过「跳过」（记在 `chores.json`，经 `chores-mark` 的 `skipStart` 写）。只读。
 
@@ -11,16 +11,12 @@ use crate::platform::shell::dialect::Shell;
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
 
-/// `first-run` 的入参。
+/// `first-run` 的入参：空的（台数照本机后端自己的机器表）。
 #[derive(Debug, Clone, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub struct FirstRunReq {
-    /// 机器表里有几台远端（机器表住 monitor 那一侧，问的那一方带上）。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-    pub(crate) remotes: u64,
-}
+pub struct FirstRunReq {}
 
 /// 哪一步。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -139,9 +135,8 @@ fn terminal_here(door: &dyn Door) -> bool {
         .unwrap_or(false)
 }
 
-/// `first-run {remotes}`：帧面入口（只读）。
-pub fn answer(door: &dyn Door, req: &FirstRunReq) -> FirstRun {
-    let remotes = req.remotes;
+/// `first-run {}`：帧面入口（只读）；`remotes` 是机器表里的台数（连不连都算）。
+pub fn answer(door: &dyn Door, remotes: u64) -> FirstRun {
     let skipped =
         super::chores::marks::current(super::chores::marks::marks_path().as_deref()).start_skipped;
     product(terminal_here(door), remotes, skipped)

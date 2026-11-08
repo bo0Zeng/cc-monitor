@@ -52,7 +52,6 @@ pub mod connect;
 pub mod env;
 pub mod known_hosts;
 pub mod machine;
-pub mod plain_path;
 pub mod pool;
 pub mod sftp;
 pub mod tcp_rtt;
@@ -79,40 +78,11 @@ mod features_tests;
 #[path = "../../../tests/backend/ssh_dial_stage_tests.rs"]
 mod stage_tests;
 
-/// 契约错的那一句（`detail`：英文诊断，不进表、不上句子，记一行日志）。后端 `common/contract.rs` 转用这一份（全仓只此一处）。
-/// 诊断跟着这一串走（隔一个 [`DIAG_SEP`]），由失败信封那一处（[`parts`]）拆开：句子照旧只有「请求格式不对」，
-/// 诊断进复制详情的「原话」那一行。
+/// 契约错的那一句（`detail`：英文诊断，不进表、不上句子，记一行日志）：拨号核心自己与手机核心用。
+/// 那一串怎么拼、怎么拆住 `copy_core::said`（[`copy_core::said::malformed_said`] · `parts`）；后端那一层有自己记日志的那一口（`common/contract.rs`）。
 pub fn malformed(detail: &str) -> String {
     tracing::warn!("contract: malformed request: {detail}");
-    format!(
-        "{}{DIAG_SEP}{detail}",
-        copy_core::copy_text("beContract.malformed.say", &[])
-    )
-}
-
-/// 句子与跟在它后面的契约诊断之间那一个字符（[`malformed`]）。
-const DIAG_SEP: char = '\u{1f}';
-
-/// 一条失败的那一句 ⇒ (给人看的那一句, 下层原话)：句子后面跟着契约诊断 ⇒ 拆出来、放在原话最前面；没有诊断 ⇒ 原样。
-pub fn parts(message: &str, raw: Option<&str>) -> (String, Option<String>) {
-    match message.split_once(DIAG_SEP) {
-        Some((said, diag)) => (
-            said.to_string(),
-            Some(match raw {
-                Some(r) => format!("{diag}\n{r}"),
-                None => diag.to_string(),
-            }),
-        ),
-        None => (message.to_string(), raw.map(str::to_string)),
-    }
-}
-
-/// [`parts`] 的反方向：那一句 ＋ 原话 ⇒ 一串（原话隔一个 [`DIAG_SEP`] 跟在后面；没有原话 ⇒ 那一句原样）。
-pub fn joined(said: String, raw: Option<String>) -> String {
-    match raw {
-        Some(r) => format!("{said}{DIAG_SEP}{r}"),
-        None => said,
-    }
+    copy_core::said::malformed_said(detail)
 }
 
 /// 线上那几样（ack 的协议版本与用法表 · 地址 · 阶段 · ack · 没开成 · 收全的结果）住契约（`cmd_wire::dial`），读它的那一侧同一份。

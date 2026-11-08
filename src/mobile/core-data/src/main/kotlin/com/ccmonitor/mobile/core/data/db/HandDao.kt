@@ -19,7 +19,7 @@ abstract class HandDao {
     ): List<PendingSend>
 
     /** 一台名下该再交的那几句：有会话、还没回执（`pending` · `unsure`），照落库的先后。 */
-    @Query("SELECT * FROM pending WHERE hostId = :hostId AND sid IS NOT NULL AND outcome IN ('pending', 'unsure') ORDER BY mintedAt")
+    @Query("SELECT * FROM pending WHERE hostId = :hostId AND sid IS NOT NULL AND outcome IN ('${PendingOutcome.PENDING}', '${PendingOutcome.UNSURE}') ORDER BY mintedAt")
     abstract suspend fun duePending(hostId: String): List<PendingSend>
 
     /** 落一句待发只走 [promote]（草稿变待发同一个事务）。 */

@@ -8,7 +8,6 @@ import com.ccmonitor.mobile.core.wire.gen.LineDiff
 import com.ccmonitor.mobile.core.wire.gen.LineDiffKind
 import com.ccmonitor.mobile.core.wire.gen.LineDiffRow
 import com.ccmonitor.mobile.core.wire.gen.MathBox
-import com.ccmonitor.mobile.core.wire.gen.MathFont
 import com.ccmonitor.mobile.core.wire.gen.MathItem
 import com.ccmonitor.mobile.core.wire.gen.MdBlock
 import com.ccmonitor.mobile.core.wire.gen.MdItem
@@ -32,11 +31,11 @@ private val emc2 =
         d = 0,
         items =
             listOf(
-                MathItem.G(MathFont.MATH_ITALIC, 69, 0, 814, 1000),
-                MathItem.G(MathFont.MAIN_REGULAR, 61, 1074, 814, 1000),
-                MathItem.G(MathFont.MATH_ITALIC, 109, 2129, 814, 1000),
-                MathItem.G(MathFont.MATH_ITALIC, 99, 3007, 814, 1000),
-                MathItem.G(MathFont.MAIN_REGULAR, 50, 3440, 451, 700),
+                MathItem.G("Math-Italic", 69, 0, 814, 1000),
+                MathItem.G("Main-Regular", 61, 1074, 814, 1000),
+                MathItem.G("Math-Italic", 109, 2129, 814, 1000),
+                MathItem.G("Math-Italic", 99, 3007, 814, 1000),
+                MathItem.G("Main-Regular", 50, 3440, 451, 700),
             ),
     )
 

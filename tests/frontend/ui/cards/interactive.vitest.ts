@@ -103,7 +103,7 @@ describe("交互卡：按核心那一格（`steps[id].ask`）建，不认入参�
   });
 
   // 计划正文是后端解析好的树（`md_core::parse`），卡照树排、与回复正文卡同一套（`md-view`）。
-  const M = { w: 900, h: 700, d: 0, items: [{ t: "g" as const, f: "math_italic" as const, u: 0x61, x: 0, y: 700, s: 1000 }] };
+  const M = { w: 900, h: 700, d: 0, items: [{ t: "g" as const, f: "Math-Italic", u: 0x61, x: 0, y: 700, s: 1000 }] };
   const PLAN_DOC = { blocks: [{ t: "h" as const, level: 2, k: ["甲的步骤"] }, { t: "p" as const, k: ["甲 ", { t: "m" as const, tex: "a", m: M }] }], segs: [] };
   it("★ 计划卡照后端交的树排：标题 · 段落 · 行内公式都在，不再有原文", () => {
     const el = buildInteractiveCard({ kind: "plan", doc: PLAN_DOC, title: { waiting: "w", approved: "a", kept: "k" } }, opts);

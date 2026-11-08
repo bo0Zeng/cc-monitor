@@ -142,20 +142,11 @@ object Core {
         rows: String,
     ): String
 
-    /** 同名清单（码 `exists` 的 `data`）⇒ 抽屉那几行 `[{key, name, meta, answers}]`。 */
-    external fun clashRows(data: String): String
-
     /** 几台搜内容的结果 `[{origin, reply}]` ⇒ 合好的那一份（`Merged`，本机后端扇出完调的同一份合并）；读不动 ⇒ 空串。 */
     external fun searchMerge(data: String): String
 
     /** 聊天输入框上方那一排附件的字（`{cards, offline, local}` JSON）⇒ `{cards: [{line, remove}], note}`；读不动 ⇒ 空串。 */
     external fun attachFace(want: String): String
-
-    /** 手机这一侧问的同名（上传）那一答（`{all}` · `{each}`；`null` ⇒ 取消）⇒ [keys] 那几行每个键一格（JSON）；取消 ⇒ `null`。 */
-    external fun answerOf(
-        keys: String,
-        answer: String?,
-    ): String
 
     /** 开一条链路，回编号；请求读不动 ⇒ 0。 */
     external fun open(request: String): Long

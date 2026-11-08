@@ -24,6 +24,7 @@ const captured = vi.hoisted(() => ({
 }));
 
 vi.mock("../../../../src/frontend/ui/machine-feed", () => ({
+  readMachineNames: () => Promise.resolve(["<local>", "devbox"]),
   onMachineState: (cb: (origin: string, m: unknown) => void) => {
     captured.machine = cb;
     return () => {};
@@ -40,8 +41,6 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
     {
       get: (_t, name: string) => (args: unknown) => {
         switch (name) {
-          case "backend_machines":
-            return Promise.resolve(["<local>", "devbox"]);
           case "backend_status":
             captured.asked.status++;
             return Promise.resolve({ channel: captured.localBackend.state === "up", pid: 7, health: HEALTH_GOLDEN.cases[0].face, local: captured.localBackend });

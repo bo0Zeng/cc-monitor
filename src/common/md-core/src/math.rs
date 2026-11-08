@@ -1,10 +1,10 @@
 //! 公式排版：一条 TeX ⇒ [`MathBox`]（排好的画单），两端只照着画。
 //!
 //! 排版器是 RaTeX（KaTeX 语法、KaTeX 的字体度量）：解析 ⇒ 排版 ⇒ 一串定位好的字形 · 线 · 矩形 · 路径。
-//! 这里只做两件事：把它的浮点 em 换成千分之一 em 的整数，把字体名收成 [`MathFont`]。
+//! 这里只做两件事：把它的浮点 em 换成千分之一 em 的整数，字体名只留 KaTeX 认得的那十九族（[`KATEX_FONTS`]）。
 //! 排不出（语法错 · 超出它的资源上限 · 原文太长 · 排版 panic）⇒ 空，两端照原文等宽排。
 
-use crate::md::{MathBox, MathFont, MathItem, MathPath};
+use crate::md::{MathBox, MathItem, MathPath};
 use ratex_layout::{layout, to_display_list, validate_layout, LayoutOptions};
 use ratex_types::{DisplayItem, MathStyle, PathCommand};
 
@@ -63,7 +63,7 @@ fn item(i: &DisplayItem) -> Option<MathItem> {
             char_code,
             ..
         } => MathItem::G {
-            f: font_of(font),
+            f: font_stem(font),
             u: *char_code,
             x: milli(*x),
             y: milli(*y),
@@ -150,30 +150,32 @@ fn path_cmd(c: &PathCommand) -> MathPath {
     }
 }
 
-/// RaTeX 的字体名（KaTeX 的 `Main-Regular` 那一套）⇒ [`MathFont`]；KaTeX 里没有的（汉字 · 表情的兜底）⇒ `Sys`。
-fn font_of(name: &str) -> MathFont {
-    match name {
-        "AMS-Regular" => MathFont::Ams,
-        "Caligraphic-Regular" => MathFont::CaligraphicRegular,
-        "Fraktur-Regular" => MathFont::FrakturRegular,
-        "Fraktur-Bold" => MathFont::FrakturBold,
-        "Main-Regular" => MathFont::MainRegular,
-        "Main-Bold" => MathFont::MainBold,
-        "Main-Italic" => MathFont::MainItalic,
-        "Main-BoldItalic" => MathFont::MainBoldItalic,
-        "Math-Italic" => MathFont::MathItalic,
-        "Math-BoldItalic" => MathFont::MathBoldItalic,
-        "SansSerif-Regular" => MathFont::SansSerifRegular,
-        "SansSerif-Bold" => MathFont::SansSerifBold,
-        "SansSerif-Italic" => MathFont::SansSerifItalic,
-        "Script-Regular" => MathFont::ScriptRegular,
-        "Size1-Regular" => MathFont::Size1,
-        "Size2-Regular" => MathFont::Size2,
-        "Size3-Regular" => MathFont::Size3,
-        "Size4-Regular" => MathFont::Size4,
-        "Typewriter-Regular" => MathFont::Typewriter,
-        _ => MathFont::Sys,
-    }
+/// KaTeX 那一套字体（两端各带同一份文件，`src/shared/fonts/katex/KaTeX_<名>.ttf`）：RaTeX 的字体名就是文件名主干。
+const KATEX_FONTS: [&str; 19] = [
+    "AMS-Regular",
+    "Caligraphic-Regular",
+    "Fraktur-Regular",
+    "Fraktur-Bold",
+    "Main-Regular",
+    "Main-Bold",
+    "Main-Italic",
+    "Main-BoldItalic",
+    "Math-Italic",
+    "Math-BoldItalic",
+    "SansSerif-Regular",
+    "SansSerif-Bold",
+    "SansSerif-Italic",
+    "Script-Regular",
+    "Size1-Regular",
+    "Size2-Regular",
+    "Size3-Regular",
+    "Size4-Regular",
+    "Typewriter-Regular",
+];
+
+/// RaTeX 的字体名 ⇒ 线上那一格：KaTeX 的一族 ⇒ 原样（文件名主干）；别的（汉字 · 表情的兜底）⇒ 缺格（系统字体）。
+fn font_stem(name: &str) -> Option<String> {
+    KATEX_FONTS.contains(&name).then(|| name.to_owned())
 }
 
 #[cfg(test)]

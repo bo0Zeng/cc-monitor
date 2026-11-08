@@ -1,118 +1,99 @@
-//! 账号的三段配置：名字怎么起 · 建号加三段（基于 `cc` / `cct` / `cch`、只写自己的号；同一形已有就不加、名字被占就跳过）·
-//! 删号删掉合下来用它的全部（基于被删那一段的改指向）· 账号那一形怎么认。
+//! 内置那几段：三个入口（`cc` · `cct` · `cch`）＋ 每个号三条，照账号库现算；用户文件里同名那一段盖过内置；
+//! 号不在了它那三条随之不在；账号那一形怎么认。
 
 use super::super::profile::parse_book;
 use super::*;
 
-fn exact(a: &str, b: &str) -> bool {
-    a == b
+fn names(b: &Book) -> Vec<&str> {
+    b.profiles.iter().map(|p| p.name.as_str()).collect()
 }
 
-fn set(name: &str, from: Option<&str>, ccm: &[&str]) -> Change {
-    Change::Set(ProfileEdit {
-        name: name.to_string(),
-        from: from.map(str::to_string),
-        agent: Vec::new(),
-        ccm: ccm.iter().map(|s| s.to_string()).collect(),
-    })
+fn merged(user: &str, accounts: &[&str], tmux: bool) -> Book {
+    let accounts: Vec<String> = accounts.iter().map(|s| s.to_string()).collect();
+    with_builtins(parse_book(user), &accounts, tmux, &|a, b| a == b)
 }
-
-const BASE: &str = "[cc]\ncwd-if = [\"~\", \"/w\"]\n[cct]\nfrom = \"cc\"\nccm-tmux = true\n[cch]\nfrom = \"cc\"\nhosted = true\n";
 
 #[test]
-fn adding_an_account_bases_its_three_on_cc_cct_cch_and_writes_only_the_account() {
-    let b = parse_book(BASE);
-    let r = plan_add(&b, "team", true, &exact);
+fn with_no_user_profiles_the_book_has_the_three_entries_and_three_per_account() {
+    let b = merged("", &["lab"], true);
+    assert_eq!(names(&b), ["cc", "cct", "cch", "labcc", "labcct", "labcch"]);
+    assert!(b.profiles.iter().all(|p| p.builtin));
+    let form = |n: &str| form_of(&b, b.find(n).unwrap());
+    assert_eq!(form("labcc"), Some(("lab".into(), Form::Plain)));
+    assert_eq!(form("labcct"), Some(("lab".into(), Form::Tmux)));
+    assert_eq!(form("labcch"), Some(("lab".into(), Form::Hosted)));
+    // 号的三条各基于同一形的入口。
+    let from = |n: &str| b.find(n).unwrap().from.clone();
+    assert_eq!(from("labcct").as_deref(), Some("cct"));
+    assert_eq!(from("labcch").as_deref(), Some("cch"));
+    // 没有 tmux 的那台不带 `cct` 与 `<号>cct`。
     assert_eq!(
-        r.changes,
-        vec![
-            set("teamcc", Some("cc"), &["--account", "team"]),
-            set("teamcct", Some("cct"), &["--account", "team"]),
-            set("teamcch", Some("cch"), &["--account", "team"]),
-        ]
-    );
-    assert_eq!(r.added, ["teamcc", "teamcct", "teamcch"]);
-    assert!(r.skipped.is_empty());
-    // 没有 tmux 的目标不加 `<号>cct`。
-    assert_eq!(
-        plan_add(&b, "team", false, &exact).added,
-        ["teamcc", "teamcch"]
-    );
-    // 没有 cct / cch 那一段 ⇒ 基于 cc，自己写上那一形的词；连 cc 都没有 ⇒ 不基于谁。
-    let r = plan_add(&parse_book("[cc]\n"), "team", true, &exact);
-    assert_eq!(
-        r.changes,
-        vec![
-            set("teamcc", Some("cc"), &["--account", "team"]),
-            set("teamcct", Some("cc"), &["--account", "team", "--ccm-tmux"]),
-            set("teamcch", Some("cc"), &["--account", "team", "--hosted"]),
-        ]
-    );
-    let r = plan_add(&parse_book(""), "team", true, &exact);
-    assert_eq!(
-        r.changes,
-        vec![
-            set("teamcc", None, &["--account", "team"]),
-            set("teamcct", None, &["--account", "team", "--ccm-tmux"]),
-            set("teamcch", None, &["--account", "team", "--hosted"]),
-        ]
+        names(&merged("", &["lab"], false)),
+        ["cc", "cch", "labcc", "labcch"]
     );
 }
 
 #[test]
-fn an_existing_profile_of_the_same_shape_counts_whatever_its_name() {
-    let b = parse_book(&format!(
-        "{BASE}[bee]\nfrom = \"cct\"\naccount = \"team\"\n"
-    ));
-    let r = plan_add(&b, "team", true, &exact);
-    assert_eq!(
-        r.added,
-        ["teamcc", "teamcch"],
-        "bee 已经是「team 号 ＋ tmux」"
+fn a_user_profile_of_the_same_name_overrides_the_builtin_one() {
+    let b = merged(
+        "[labcc]\naccount = \"lab\"\ncwd = \"/w\"\n[mine]\nfrom = \"labcc\"\n",
+        &["lab"],
+        true,
     );
-    assert!(r.skipped.is_empty());
+    let labcc = b.find("labcc").unwrap();
+    assert!(!labcc.builtin, "labcc 应是用户那段");
+    assert_eq!(labcc.from, None);
+    assert_eq!(b.profiles.iter().filter(|p| p.name == "labcc").count(), 1);
+    assert!(b.find("cc").unwrap().builtin);
+    assert!(!b.find("mine").unwrap().builtin);
+    // 用户改了 `cc`，基于它的号那几条跟着合下来。
+    let b = merged("[cc]\ncwd = \"/w\"\n", &["lab"], true);
+    assert!(!b.find("cc").unwrap().builtin);
+    match profile::resolve(&b, "labcct", &[]).unwrap().parsed {
+        Parsed::Opts(o) => {
+            assert_eq!(o.account, "lab");
+            assert!(o.use_tmux);
+        }
+        Parsed::Early(_) => panic!("labcct 合不下来"),
+    }
+    // 用户那段写错了也占着这个名字：不拿内置的顶替。
+    let b = merged("[cch]\nbogus = 1\n", &[], true);
+    assert!(b.find("cch").is_none_or(|p| !p.builtin));
+    // 「同名」照那种 shell 的规矩：不分大小写的那种里 `[CC]` 就盖着内置的 `cc`，不另出一条。
+    let b = with_builtins(parse_book("[CC]\ncwd = \"/w\"\n"), &[], true, &|a, b| {
+        a.eq_ignore_ascii_case(b)
+    });
+    assert_eq!(names(&b), ["CC", "cct", "cch"]);
+    // 基于 `cc` 的内置那几条照用户那段的名字基于它，合得下来。
+    assert_eq!(b.find("cct").unwrap().from.as_deref(), Some("CC"));
+    assert!(profile::resolve(&b, "cch", &[]).is_ok());
+    // 整份写坏了 ⇒ 一段都不认，内置的也不出。
+    assert!(merged("[[[ not toml", &["lab"], true).profiles.is_empty());
 }
 
 #[test]
-fn a_name_held_by_another_profile_is_skipped_not_overwritten() {
-    let b = parse_book(&format!("{BASE}[workcct]\ncwd = \"/x\"\n"));
-    let r = plan_add(&b, "work", true, &exact);
-    assert_eq!(r.added, ["workcc", "workcch"]);
-    assert_eq!(r.skipped, ["workcct"]);
-}
-
-#[test]
-fn removing_an_account_drops_every_profile_that_ends_up_using_it_and_repoints_the_rest() {
-    let b = parse_book(&format!(
-        "{BASE}[workcc]\nfrom = \"cc\"\naccount = \"work\"\n[workt]\nfrom = \"workcc\"\nccm-tmux = true\n\
-         [other]\nfrom = \"workcc\"\naccount = \"y\"\n[yy]\naccount = \"y\"\n"
-    ));
-    let r = plan_remove(&b, "work");
+fn an_account_gone_from_the_table_takes_its_three_with_it() {
     assert_eq!(
-        r.removed,
-        ["workcc", "workt"],
-        "workt 基于 workcc，合下来也是 work 号"
+        names(&merged("", &["lab", "work"], true)),
+        ["cc", "cct", "cch", "labcc", "labcct", "labcch", "workcc", "workcct", "workcch"]
     );
-    assert!(r.changes.contains(&Change::Remove("workcc".into())));
-    assert!(
-        r.changes
-            .contains(&set("other", Some("cc"), &["--account", "y"])),
-        "other 换了号、留着，改成基于 workcc 基于的 cc：{:?}",
-        r.changes
+    assert_eq!(
+        names(&merged("", &["work"], true)),
+        ["cc", "cct", "cch", "workcc", "workcct", "workcch"]
     );
-    assert!(!r
-        .changes
-        .iter()
-        .any(|c| matches!(c, Change::Set(e) if e.name == "yy")));
+    // 号名里 shell 放不下的字符去掉；去完什么都不剩 ⇒ 不给它起。
+    assert_eq!(names(&merged("", &["---"], true)), ["cc", "cct", "cch"]);
 }
 
 #[test]
 fn the_account_form_is_own_account_plus_maybe_tmux_or_hosted_judged_on_the_merged_result() {
-    let b = parse_book(&format!(
-        "{BASE}[workcc]\nfrom = \"cc\"\naccount = \"work\"\n[workcct]\nfrom = \"cct\"\naccount = \"work\"\n\
+    let b = merged(
+        "[workcc]\nfrom = \"cc\"\naccount = \"work\"\n[workcct]\nfrom = \"cct\"\naccount = \"work\"\n\
          [workcch]\nfrom = \"cch\"\naccount = \"work\"\n[own]\naccount = \"work\"\nhosted = true\n\
-         [mixed]\naccount = \"work\"\ncwd = \"/x\"\n[talk]\naccount = \"work\"\nargs = [\"--model\", \"x\"]\n"
-    ));
+         [mixed]\naccount = \"work\"\ncwd = \"/x\"\n[talk]\naccount = \"work\"\nargs = [\"--model\", \"x\"]\n",
+        &[],
+        true,
+    );
     let form = |n: &str| form_of(&b, b.find(n).unwrap());
     assert_eq!(form("workcc"), Some(("work".into(), Form::Plain)));
     assert_eq!(form("workcct"), Some(("work".into(), Form::Tmux)));
@@ -122,12 +103,4 @@ fn the_account_form_is_own_account_plus_maybe_tmux_or_hosted_judged_on_the_merge
     assert_eq!(form("talk"), None);
     assert_eq!(form("cct"), None);
     assert_eq!(form("cch"), None);
-}
-
-#[test]
-fn removing_an_account_drops_its_hosted_one_too() {
-    let b = parse_book(&format!(
-        "{BASE}[workcc]\nfrom = \"cc\"\naccount = \"work\"\n[workcch]\nfrom = \"cch\"\naccount = \"work\"\n"
-    ));
-    assert_eq!(plan_remove(&b, "work").removed, ["workcc", "workcch"]);
 }

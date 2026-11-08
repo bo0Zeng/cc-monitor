@@ -2,6 +2,6 @@
 import type { Words } from "./Words";
 
 /**
- * 会走的一句：字里的 `{dur}` 填 现在 − `from`（epoch ms）。
+ * 会走的一句：字里的 `{dur}` 填 现在 − `from`（epoch ms），由出口那一个读口填。
  */
 export type FactsClock = { text: Words, from: number, };

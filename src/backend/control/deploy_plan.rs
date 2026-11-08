@@ -207,7 +207,7 @@ impl crate::wire::typed::Handle for DeployInstall {
 /// 真拨那台的对面（装 · 卸同一个）：拨号核心那一套（钥匙 · known_hosts · 写规矩）先装上；一次性命令走全后端那一处
 /// （`remote_ask::capture_full`，池里那条连接上多开一个 exec）。机器表里没有那台 · 组不成请求 ⇒ 那一句（`bad_args`）。
 fn facing_of(machine: &str) -> Result<DialFacing, String> {
-    let hosts = crate::control::machines::here();
+    let hosts = crate::dial::machines_now();
     let (dial, to) =
         crate::dial::named_both(&hosts, machine.trim(), "capture", serde_json::json!({}))
             .map_err(|f| f.said)?;

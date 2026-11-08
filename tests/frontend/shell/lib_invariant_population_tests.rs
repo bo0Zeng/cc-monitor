@@ -541,7 +541,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
     ),
     // cc-bus 钩子要加的内容：两条钩子指向这台 skills 根下那两个脚本；skills 根不在家目录底下时那条路径整份 quote（是这台后端自己的路径）。
     (
-        "src/backend/observe/cc_bus_hooks.rs",
+        "src/backend/assets/cc_bus_hooks.rs",
         &["snippet"],
         &[],
         "",

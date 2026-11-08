@@ -20,7 +20,7 @@ function acct(name: string, color: number): Account {
     authKind: "subscription",
     authReady: true,
     selectable: true,
-    badge: { text: "", warn: false, title: "" },
+    badge: { text: "", warn: false },
     color,
   };
 }

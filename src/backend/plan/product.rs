@@ -884,7 +884,7 @@ pub fn with_time_texts(v: &mut PlanRead, now_ms: i64, tz: &crate::common::time::
         |ms: i64| crate::common::time::fmt_at(ms.div_euclid(1000), now_ms.div_euclid(1000), tz);
     let ms = |n: u64| i64::try_from(n).unwrap_or(i64::MAX);
     v.read_at_text = Some(text(ms(v.read_at)));
-    v.seen = Some(crate::footprint::last_seen::seen_at(
+    v.seen = Some(crate::common::last_seen_store::seen_at(
         v.read_at,
         &crate::common::time::TextClock::new(
             u64::try_from(now_ms.div_euclid(1000)).unwrap_or(0),

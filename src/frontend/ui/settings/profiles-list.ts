@@ -5,7 +5,7 @@
  *   与这台后端算的「等于」那一行，「假设在这个目录敲」可改。
  * - 新建 / 改：先选「基于」谁（下拉只列不成圈的，后端给），每一格先显示继承值，点「改」才写进这一条；「等于」按未存的表单问后端。
  *   改一条被别人基于的：存之前列出会连带谁（后端算的改前改后）。删一条被别人基于的：三个选择，推荐改成基于它的父。
- * - 手改过 · 写错 · 保存冲突 · 终端函数 · 第一次升级 · 空态：照后端读回的那一份画，原话一律后端给。
+ * - 手改过 · 写错 · 保存冲突 · 终端函数 · 第一次升级 · 内置那几段（删不掉 · 盖着内置的还原）：照后端读回的那一份画，原话一律后端给。
  *
  * 本文件一个 ccm 选项都不认、不合并：五问见 `../profiles-reads`。构造零 I/O：第一次 `load()` 才发第一条。
  */
@@ -266,11 +266,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       return render();
     }
     editedAt = book.editedAt;
-    opts.onHead(
-      book.exists
-        ? copyText("profilesPage.head.line", { n: String(book.profiles.length), path: book.pathShown })
-        : copyText("profilesPage.head.none"),
-    );
+    opts.onHead(copyText("profilesPage.head.line", { n: String(book.profiles.length), path: book.pathShown }));
     if (selected && !find(selected)) selected = null;
     render();
     if (selected) void askResolve();
@@ -393,13 +389,14 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       c.title = p.functionWhy ?? "";
       tn.appendChild(c);
     }
+    if (p.badge) tn.appendChild(el("span", "prof-chip", p.badge));
     if (!p.usable) tn.appendChild(el("span", "prof-chip bad", copyText("profilesPage.chip.unusable")));
     const ts = el("span", p.usable ? "prof-ts" : "prof-ts prof-ts-bad", p.usable ? p.said : (p.problem?.message ?? ""));
     const ta = el("span", "prof-ta");
-    ta.append(
-      link(copyText("history.rename.action"), () => void openForm(p.name)),
-      link(copyText("cfgPage.mcp.remove"), () => void startRemove(p.name), true),
-    );
+    ta.append(link(copyText("history.rename.action"), () => void openForm(p.name)));
+    // 「删」那一格的字与要先处置的那几段都由后端给；内置的那一段没有这一格（删不掉）。
+    const drop = p.drop;
+    if (drop) ta.append(link(drop.label, () => void startRemove(p.name, drop.kids, drop.restores), true));
     r.append(tn, ts, ta);
     r.addEventListener("click", () => select(p.name));
     r.addEventListener("keydown", (ev) => {
@@ -418,7 +415,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       else if (ev.key === "ArrowUp") go(at - 1);
       else if (ev.key === "Enter") select(p.name);
       else if (ev.key === "e") void openForm(p.name);
-      else if (ev.key === "Delete") void startRemove(p.name);
+      else if (ev.key === "Delete" && drop) void startRemove(p.name, drop.kids, drop.restores);
       else if (ev.key === "Escape" && selected) select(selected);
       else return;
       ev.preventDefault();
@@ -438,7 +435,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
   const draw = (l: Node[], r: Node[]): void => {
     renderNotes();
     // 列表头只在有清单时挂上（它是 flex 盒，`hidden` 盖不住）。
-    if (book?.exists && !book.fileProblem) {
+    if (book && !book.fileProblem) {
       if (!head.isConnected) notes.after(head);
     } else head.remove();
     if (!book) return;
@@ -452,10 +449,6 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       card.append(el("div", "prof-card-title", copyText("profilesPage.file.broken")), err);
       if (opts.local) card.appendChild(button({ label: copyText("profilesPage.list.open"), onClick: quiet(() => void onOpenFile()) }));
       l.push(card);
-      return;
-    }
-    if (!book.exists) {
-      l.push(emptyState(book));
       return;
     }
     const tree = el("div", "prof-tree");
@@ -472,31 +465,6 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     l.push(tree);
     split.classList.toggle("prof-split-on", wide && selected !== null && !form);
     if (wide && selected && !form) r.push(panel());
-  };
-
-  const emptyState = (b: ProfilesBook): HTMLElement => {
-    const box = el("div", "prof-empty-state");
-    box.dataset.role = "seed";
-    // 说明与按钮的字由后端给（首建几条随那台有没有 tmux）。
-    box.appendChild(el("div", "cfg-hint", b.seedHint));
-    const tree = el("div", "prof-tree");
-    for (const t of treeOf(b.seed)) {
-      const r = el("div", "prof-trow");
-      const tn = el("span", "prof-tn");
-      if (t.ind) tn.appendChild(el("span", "prof-ind", t.ind));
-      tn.appendChild(document.createTextNode(t.p.name));
-      if (t.p.kind === "function") tn.appendChild(el("span", "prof-chip fn", copyText("profilesPage.chip.function")));
-      r.append(tn, el("span", "prof-ts", t.p.said), el("span", "prof-ta"));
-      tree.appendChild(r);
-    }
-    const acts = el("div", "cfg-acts");
-    acts.append(
-      button({ label: b.seedCreate, kind: "primary", onClick: quiet(() => void init(true)) }),
-      button({ label: copyText("profilesPage.seed.blank"), onClick: quiet(() => void init(false)) }),
-      el("span", "cfg-hint", copyText("profilesPage.seed.where", { path: b.pathShown })),
-    );
-    box.append(tree, acts);
-    return box;
   };
 
   // ── 页首那几句 ──
@@ -601,8 +569,12 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
 
   // ── 删 ──
 
-  const startRemove = async (name: string): Promise<void> => {
-    const kids = kidsOf(name);
+  const startRemove = async (name: string, kids: string[], restores: boolean): Promise<void> => {
+    // 盖着内置的那一段：删了那一条当场回到内置，不藏、不撤销。
+    if (restores) {
+      void send([{ op: "remove", name }]);
+      return;
+    }
     if (!kids.length) {
       // 撤得回 ⇒ 直接删 ＋ 8 秒撤销（撤销 ＝ 不提交）。
       pendingRemove.add(name);
@@ -700,10 +672,6 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     }
     status.textContent = end.said;
     return end;
-  };
-
-  const init = async (seed: boolean): Promise<void> => {
-    await send([{ op: "init", seed }]);
   };
 
   const onOpenFile = async (): Promise<void> => {
@@ -989,7 +957,8 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     const save = button({ label: copyText("rsFilewinShell.editor.save"), kind: "primary", onClick: quiet(() => void onSave()) });
     save.dataset.role = "save";
     save.dataset.key = "save";
-    const kids = st.was ? kidsOf(st.was) : [];
+    // 改名时跟着改「基于」的只有用户自己那几段（内置的那几条照旧基于回到内置的那一条）。
+    const kids = st.was ? kidsOf(st.was).filter((n) => !find(n)?.badge) : [];
     const renamed = st.was !== null && f.name.trim() !== "" && f.name.trim() !== st.was;
     const hint = renamed && kids.length
       ? copyText("profilesPage.form.renameHint", { n: String(kids.length), name: f.name.trim() })

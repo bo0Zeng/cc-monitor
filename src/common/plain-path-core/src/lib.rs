@@ -1,6 +1,6 @@
 //! 一段相对路径拆成普通段：本机写面（`root_path::lexical_in_root`）· 远端写围栏（`sftp::fence_lexical`）· 解压条目（`files::extract::entry_rel`）
 //! 同一道词法判定，都调这里；各自多出来的那一层（远端「只许两个根」、解压「`.` 剥掉」）留在各自那里。
-//! 住拨号核心：后端与手机都链它，本机那两处也在后端里，判定只这一份。
+//! 零依赖、无 IO 的一份：拨号核心（远端写围栏，手机也经它链进来）与后端那两处都引这里，判定只这一份。
 
 /// `.` 段怎么办：写面与远端拒（让调用方送干净的段），解压剥掉（包里常见 `./a`）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -53,5 +53,10 @@ pub fn plain_segments(
 }
 
 #[cfg(test)]
-#[path = "../../../tests/backend/ssh_dial_plain_path_tests.rs"]
+#[path = "../../../../tests/common/plain-path-core/lib_tests.rs"]
 mod tests;
+
+// 测试档的家一开始就是沙箱（`src/common/test-home`）：这一行让链接器把它的启动段带进本 crate 的测试二进制。
+#[cfg(test)]
+#[used]
+static TEST_HOME: fn() = test_home::linked;

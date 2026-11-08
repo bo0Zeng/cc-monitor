@@ -485,6 +485,60 @@ async fn a_typed_call_from_this_backend_goes_through_the_same_stream() {
     assert_eq!(fail.code.as_deref(), Some(UNREACHABLE));
 }
 
+/// 转那台的 hello 之前，做不到的每一项置灰那一句换成称呼那台的名字（那台自己写的是称呼它自己的）；别的格照旧；
+/// 没有做不到的 · 解不开 ⇒ 字节不动。两侧异源：右边照码与那台的名字现取。
+#[test]
+fn a_relayed_hello_has_each_gap_said_naming_that_machine() {
+    let theirs = format!(
+        r#"{{"kind":"hello","build_id":"b","commands":["kill","files-chmod"],"unavailable":[{{"command":"kill","code":"no_tmux","said":"{}"}},{{"command":"files-chmod","code":"no_unix_mode","said":"x"}}]}}"#,
+        copy_core::unavailable("no_tmux", &copy_core::local_machine())
+    );
+    let out: serde_json::Value = serde_json::from_str(&name_gaps(&theirs, "devbox")).unwrap();
+    let saids: Vec<&str> = out["unavailable"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|g| g["said"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        saids,
+        [
+            copy_core::unavailable("no_tmux", "devbox"),
+            copy_core::unavailable("no_unix_mode", "devbox"),
+        ]
+    );
+    assert_eq!(out["commands"], serde_json::json!(["kill", "files-chmod"]));
+    assert_eq!(out["unavailable"][1]["code"], "no_unix_mode");
+    let plain = hello("b");
+    assert_eq!(
+        name_gaps(&plain, "devbox"),
+        plain,
+        "没有做不到的 ⇒ 字节不动"
+    );
+    assert_eq!(name_gaps("不是 JSON", "devbox"), "不是 JSON");
+}
+
+/// 那台 `resync` 的回包转回来之前，同 hello：做不到的每一项置灰那一句按那台的名字重写；别的命令的回包不碰。
+#[test]
+fn a_forwarded_resync_reply_has_each_gap_said_naming_that_machine() {
+    let theirs = || {
+        serde_json::json!({"added": 0, "watchers": 1, "unavailable": [
+            {"command": "kill", "code": "no_tmux", "said": copy_core::unavailable("no_tmux", &copy_core::local_machine())}
+        ]})
+    };
+    let mut reply = Some(theirs());
+    name_reply(resident_client::client::RESYNC_OP, &mut reply, "devbox");
+    let reply = reply.unwrap();
+    assert_eq!(
+        reply["unavailable"][0]["said"],
+        copy_core::unavailable("no_tmux", "devbox")
+    );
+    assert_eq!(reply["watchers"], 1);
+    let mut other = Some(theirs());
+    name_reply("ping", &mut other, "devbox");
+    assert_eq!(other, Some(theirs()), "别的命令的回包不碰");
+}
+
 /// ★ ④a 先红的那一条：那台那条常驻流上的事原样转给连着本机后端的壳 —— 先它的 hello（一行），再流上的帧（一行一帧），
 /// 断了一帧 `ended`；机器页那台的版本号是它 hello 里自报的那一格（不是这一份的）。
 #[tokio::test]
@@ -820,4 +874,26 @@ fn reconnecting_a_machine_answers_with_its_state_and_refuses_unknown_disabled_or
         }
     }
     assert_eq!(*woke.borrow(), ["nas"], "拒了的那几下都没叫醒");
+}
+
+/// ★ 「停」先查表：表里没有 · 本机 ⇒ unknown_machine（同「重新连接」那一句），那条流不 hold；表里有（停用的也算）⇒ 先 hold 再停。
+#[test]
+fn stopping_a_machine_not_in_the_table_is_refused_before_its_stream_is_held() {
+    use cmd_wire::machine::MachineStateKind as K;
+    let held = std::cell::RefCell::new(Vec::<String>::new());
+    let hold = |m: &str| held.borrow_mut().push(m.to_string());
+    let table =
+        std::collections::BTreeMap::from([("nas".to_string(), wake_row(K::Disabled, "停用着"))]);
+    for ghost in ["ghost", cmd_wire::machine::LOCAL] {
+        match stop_in(ghost, &table, hold) {
+            Err(MachineStopErr::UnknownMachine(said)) => assert_eq!(
+                said,
+                copy_core::copy_text("beMachineWake.refuse.unknown", &[("machine", ghost)])
+            ),
+            other => panic!("{ghost}: {other:?}"),
+        }
+    }
+    assert!(held.borrow().is_empty(), "拒了就没 hold");
+    stop_in("nas", &table, hold).expect("表里有就停");
+    assert_eq!(*held.borrow(), ["nas"]);
 }

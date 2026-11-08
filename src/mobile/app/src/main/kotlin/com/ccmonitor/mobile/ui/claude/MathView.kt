@@ -17,7 +17,6 @@ import androidx.compose.ui.platform.LocalContext
 import com.ccmonitor.mobile.core.wire.gen.Inl
 import com.ccmonitor.mobile.core.wire.gen.InlNode
 import com.ccmonitor.mobile.core.wire.gen.MathBox
-import com.ccmonitor.mobile.core.wire.gen.MathFont
 import com.ccmonitor.mobile.core.wire.gen.MathItem
 import com.ccmonitor.mobile.core.wire.gen.MathPath
 import com.ccmonitor.mobile.core.wire.gen.MdBlock
@@ -43,32 +42,8 @@ fun mathSizePx(
     return MathSize(m.w * k, (m.h + m.d) * k, m.d * k)
 }
 
-/** 每一族字体的文件名（去掉 `KaTeX_` 与 `.ttf`）；`SYS` 不在表里（交系统字体）。 */
-private val FONT_FILES =
-    mapOf(
-        MathFont.AMS to "AMS-Regular",
-        MathFont.CALIGRAPHIC_REGULAR to "Caligraphic-Regular",
-        MathFont.FRAKTUR_REGULAR to "Fraktur-Regular",
-        MathFont.FRAKTUR_BOLD to "Fraktur-Bold",
-        MathFont.MAIN_REGULAR to "Main-Regular",
-        MathFont.MAIN_BOLD to "Main-Bold",
-        MathFont.MAIN_ITALIC to "Main-Italic",
-        MathFont.MAIN_BOLD_ITALIC to "Main-BoldItalic",
-        MathFont.MATH_ITALIC to "Math-Italic",
-        MathFont.MATH_BOLD_ITALIC to "Math-BoldItalic",
-        MathFont.SANS_SERIF_REGULAR to "SansSerif-Regular",
-        MathFont.SANS_SERIF_BOLD to "SansSerif-Bold",
-        MathFont.SANS_SERIF_ITALIC to "SansSerif-Italic",
-        MathFont.SCRIPT_REGULAR to "Script-Regular",
-        MathFont.SIZE1 to "Size1-Regular",
-        MathFont.SIZE2 to "Size2-Regular",
-        MathFont.SIZE3 to "Size3-Regular",
-        MathFont.SIZE4 to "Size4-Regular",
-        MathFont.TYPEWRITER to "Typewriter-Regular",
-    )
-
-/** 那一族字体在 assets 里的文件；`SYS` ⇒ 没有（交系统字体）。 */
-fun mathFontAsset(f: MathFont): String? = FONT_FILES[f]?.let { "katex/KaTeX_$it.ttf" }
+/** 字形那一格（KaTeX 字体文件名主干）在 assets 里的文件；缺 ⇒ 没有（交系统字体）。 */
+fun mathFontAsset(stem: String?): String? = stem?.let { "katex/KaTeX_$it.ttf" }
 
 /** 一串块里每条行内公式的画单（按 TeX 原文；同一条 TeX 行内排出来是同一份）；没画单的不收（那一槽照原文排）。 */
 fun inlineMathOf(blocks: List<MdBlock>): Map<String, MathBox> {
@@ -131,14 +106,14 @@ val LocalInlineMath = staticCompositionLocalOf<Map<String, MathBox>> { emptyMap(
 
 /** 载过的字体（进程里一份；载不到的记成系统衬线字体，不反复去载）。 */
 private object MathFonts {
-    private val loaded = ConcurrentHashMap<MathFont, Typeface>()
+    private val loaded = ConcurrentHashMap<String, Typeface>()
 
     fun of(
         ctx: Context,
-        f: MathFont,
+        stem: String?,
     ): Typeface {
-        val asset = mathFontAsset(f) ?: return Typeface.SERIF
-        return loaded.getOrPut(f) { runCatching { Typeface.createFromAsset(ctx.assets, asset) }.getOrDefault(Typeface.SERIF) }
+        val asset = mathFontAsset(stem) ?: return Typeface.SERIF
+        return loaded.getOrPut(asset) { runCatching { Typeface.createFromAsset(ctx.assets, asset) }.getOrDefault(Typeface.SERIF) }
     }
 }
 

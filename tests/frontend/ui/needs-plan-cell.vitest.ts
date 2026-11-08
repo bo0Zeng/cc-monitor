@@ -30,7 +30,7 @@ const merged: NeedsMerged = {
 
 async function book(): Promise<NeedsBook> {
   const b = new NeedsBook(async () => merged);
-  await b.refresh(LOCAL);
+  await b.again();
   return b;
 }
 

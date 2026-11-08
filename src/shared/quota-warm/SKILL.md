@@ -11,7 +11,7 @@ description: 让这台机器上各 Claude 订阅号的 5 小时额度窗口尽�
 
 ## 它怎么判（每个号一行）
 
-读 `ccm -- --quota-read`（这台中转记下的额度账）里每个号的 `warm`：判定在 cc-monitor 核心（`act` 发 `send` / 等 `wait` · `at` 醒点 · `text` 为什么），这里只照它发、照它睡。核心的判法：
+问这台常驻后端的 `quota-read`（这台中转记下的额度账）里每个号的 `warm`：判定在 cc-monitor 核心（`act` 发 `send` / 等 `wait` · `at` 醒点 · `atText` 醒点写给人看的样子 · `text` 为什么），这里只照它发、照它睡。号按「哪一家 ＋ 号名」配（两家同名的号各照各的判、各交各的家）。核心的判法：
 
 | 那个号此刻 | 做什么 |
 |---|---|
@@ -19,19 +19,20 @@ description: 让这台机器上各 Claude 订阅号的 5 小时额度窗口尽�
 | 5h 窗口已过期 · 没有 5h 窗口 · 这台从没见过它的数 | 用这个号发一句，让窗口开始计时 |
 | 被拒（5h 或 7d 用满） · 7d 用到 100% | 等到它重置 ＋ 60 秒 |
 | 要登录（`需登录`）· 按量号缺 key（`需 key`） | 记一行，1 小时后再看 |
+| 按量号（无限额） | 不发，1 小时后再看 |
 | 额度账读不懂（不是 JSON · 读不出） | 一个都不发，15 分钟后再看；那一句照实说哪一份读不懂、为什么 |
 | 账号库里没有这个号 | 跳过 |
 
-发那一句的回包带回额度账里那个号此刻的 5h 重置时刻：在将来 ⇒ 成，醒在它 ＋ 60 秒；没带回 / 报错 / 超时（后端那一发 120 秒）⇒ 记「没成」，15 分钟后再试。读不到额度账 ⇒ 15 分钟后再试。
+发完重读 `quota-read`：那个号的 `warm` 改成等（窗口开始计时）⇒ 成，醒在它的 `at`；还说该发 · 报错 · 超时（后端那一发 120 秒）⇒ 记「没成」，15 分钟后再试。读不到额度账 ⇒ 15 分钟后再试。脚本自己不算几点，醒点与写给人看的几点都照抄 `warm`。
 
 🔴 **没见过数 ＝ 不知道，不等于窗口没在计时。** 额度账只记经过这台中转的回包；别处（别的机器、没走中转的 claude）用过这个号，这台看不到。想知道只能发一句——而**计时中的窗口不会因此被推后**（实测：已在计时时回包给的重置时刻还是原来那个），所以「没见过就发」不亏。
 
-**读重置时刻从来不用发。** 中转经手的每个回包都记进额度账，`--quota-read` 随时读得到。要发的只有一件事：让一个**没在计时**的窗口开始计时。中转从没见过的号，此刻是什么样只有两条路知道——发一句，或者真用它一次。
+**读重置时刻从来不用发。** 中转经手的每个回包都记进额度账，`quota-read` 随时读得到。要发的只有一件事：让一个**没在计时**的窗口开始计时。中转从没见过的号，此刻是什么样只有两条路知道——发一句，或者真用它一次。
 
 ## 发法
 
-发那一句只住 cc-monitor 后端一处（轮换策略交回 `warm` 时后端也从这里发）：`ccm -- --quota-warm`，stdin `{"agent": "claude", "account": "<号>"}`。
-回包 `{agent, account, sent, at, resets_at}`：`sent` 为假 ＝ 同一个进程里 15 分钟内发过，照那一次答；`resets_at` ＝ 额度账里那个号此刻的 5h 重置时刻（没读到 ⇒ `null`）。
+发那一句只住 cc-monitor 后端一处（轮换策略交回 `warm` 时后端也从这里发）：帧命令 `quota-warm`，只在常驻后端里答（「同一个号 15 分钟只发一次」那一本只住常驻）。脚本经 `ccm -- --resident-call --stdin-line --within-ms <毫秒>` 问它，stdin 一行 `{"cmd": "quota-warm", "args": {"agent": "<哪一家>", "account": "<号>"}}`；读额度账也走这一条（`{"cmd": "quota-read", "args": {}}`）。常驻没在跑 ⇒ `resident_absent`，这一趟不发。
+回包 `{agent, account, sent, at, resets_at}`：`sent` 为假 ＝ 常驻里 15 分钟内发过（轮换开窗发的也算），照那一次答；`resets_at` ＝ 额度账里那个号此刻的 5h 重置时刻（没读到 ⇒ `null`）。
 后端照适配层登记的那一形起本二进制当 ccm 跑一发 `claude -p`，走这台的中转（回包头由中转记进额度账）：
 
 - haiku · 不给工具 · 不起 MCP · 只读项目级设置 · 关掉思考（`MAX_THINKING_TOKENS=0`）· 不发非必要的请求 · 不落会话记录 · 系统提示词换成一句。
@@ -51,42 +52,46 @@ scripts/quota-warm run         先跑一趟，之后按最早的醒点自己醒�
 
 | 选项 | 缺省 | 说明 |
 |---|---|---|
-| `--accounts work,personal` | 额度账的候选（`--quota-read` 的 `candidates`：出过数的号 ＋ 账号库里没出过数的号） | 看哪几个号（逗号分隔，账号库里的名字） |
-| `--dry-run` | 关 | 只判、不发（日志写「该发（--dry-run，没发）」） |
+| `--accounts work,personal` | 额度账的候选（`quota-read` 的 `candidates`：出过数的号 ＋ 账号库里没出过数的号） | 看哪几个号（逗号分隔，账号库里的名字） |
+| `--dry-run` | 关 | 只判、不发（那一行写「该发（--dry-run，没发）」） |
 
-- `once` / `run` 持一把锁 `~/.cc-monitor/quota-warm.lock`（里面是 pid）：同一时刻只跑一份，第二份直接退出并说锁在哪。`status` 不拿锁。
+- `once` / `run` 持一把锁 `$XDG_RUNTIME_DIR/quota-warm.lock`（没有这个目录 ⇒ `/tmp/quota-warm-<uid>.lock`；里面是 pid）：同一时刻只跑一份，第二份直接退出并说锁在哪。`status` 不拿锁。不往 `~/.cc-monitor` 写任何东西。
 - `run` 长睡分段（每段至多 10 分钟）醒来按真实时刻重算，机器休眠醒来不会睡过头；下一次至少隔 30 秒。没有要看的号 ⇒ 退出。
-- 想让它一直在：自己挑方式起 `run`（tmux 窗口、用户级服务……）。cc-monitor 不代装。
+- 想让它一直在：自己挑方式起 `run`（tmux 窗口、用户级服务……），要留底就自己把 stdout 接到文件。cc-monitor 不代装。
 
 ## 怎么读
 
-`status` 每行 `<号>  <说明>`，说明是核心写好的那一句（`warm.text`），这里照抄：`5h 40% ↻12:28`（在计时，几点重置）· `被拒（5h）↻…` · `7d 用满 ↻…` · `需登录` · `需 key` · `无采样 · 发一句才知道  ⇒ 该发` · `5h 窗口已过期  ⇒ 该发` · `无 5h 窗口  ⇒ 该发` · `读取 <路径> 失败 · 内容无法解析 · 不发`。时刻按这台的本地钟写，不是今天的带上 `MM-DD`。
+`status` 每行 `<哪一家>/<号>  <说明>`，说明是核心写好的那一句（`warm.text`），这里照抄：`5h 40% ↻12:28`（在计时，几点重置）· `被拒（5h）↻…` · `7d 用满 ↻…` · `需登录` · `需 key` · `无采样 · 发一句才知道  ⇒ 该发` · `5h 窗口已过期  ⇒ 该发` · `无 5h 窗口  ⇒ 该发` · `读取 <路径> 失败 · 内容无法解析 · 不发`。时刻按这台的本地钟写，不是今天的带上 `MM-DD`。
 
-日志 `~/.cc-monitor/logs/quota-warm.log`（同时打到 stdout），一行一件：
+`once` / `run` 只打到 stdout，一行一件：
 
 ```text
-2026-10-05 11:28:17 开始（run）：work, personal, team
-2026-10-05 11:28:17 work: 5h 40% ↻12:28
-2026-10-05 11:28:17 personal: 无采样 · 发一句才知道 ⇒ 发了 ⇒ ↻16:28
-2026-10-05 11:28:17 team: 5h 窗口已过期 ⇒ 没成（failed：…）⇒ 11:43 再试
-2026-10-05 11:28:17 下次 11:43
+开始（run）：额度账的候选
+claude/work: 5h 40% ↻12:28
+claude/personal: 无采样 · 发一句才知道 ⇒ 发了
+claude/team: 5h 窗口已过期 ⇒ failed：…
+claude/personal: 5h 0% ↻16:28
+claude/team: 还没在计时 ⇒ 没成，15 分钟后再试
+下次 12:29
 ```
 
-「没成」常见原因：这台中转没在跑（cc-monitor 后端没起）⇒ 回包没经中转、额度账没新数（`resets_at` 为空）；号要重新登录；ccm 起不了 claude（`failed` 那一句与原话）· 超时。
+「没成」常见原因：这台常驻后端没在跑（`resident_absent`）；回包没经中转、额度账没新数；号要重新登录；ccm 起不了 claude（`failed` 那一句与原话）· 超时。
 
 ## 依赖（cc-monitor 的基本模块）
 
-- 这台的额度账（`--quota-read`，见下面的命令段）：不给 `--accounts` 时号单也从这里来（`candidates`），脚本不另扫账号库。
-- 后端用某个号发那一句（`--quota-warm`，见下面的命令段）：经 ccm `--account <名>` 起一次 `claude -p`，走这台的中转；`--no-rotation` 让这一发不轮换。
+- 问这台常驻后端一条帧命令（`--resident-call`，见下面的命令段）：下面两样都经它问。
+- 这台的额度账（`quota-read`）：不给 `--accounts` 时号单也从这里来（`candidates`），脚本不另扫账号库。
+- 常驻后端用某个号发那一句（`quota-warm`）：经 ccm `--account <名>` 起一次 `claude -p`，走这台的中转；`--no-rotation` 让这一发不轮换。
 - 后端藏掉工作目录是 `~/.cc-monitor/autostart/` 的会话（历史页 · 会话列表 · 流上的会话宣告）。
 
 ## AI 自己管额度：cc-monitor 的后端命令
 
-都经 `~/.cc-monitor/bin/ccm -- --<命令>`：要参数的从 stdin 读一段 JSON（＝ 参数对象），stdout 一行 JSON。轮换（策略文件 · 会话用哪份 · 拖出来的顺序 · 推演）另一份 skill `rotation` 讲全，这里只选最常用的两条。
+都经 `~/.cc-monitor/bin/ccm -- --<命令>`：要参数的从 stdin 读一段 JSON（＝ 参数对象），stdout 一行 JSON。标「只在流上」的那几条经 `ccm -- --resident-call` 问常驻（stdin 一行 `{cmd, args}`）。轮换（策略文件 · 会话用哪份 · 拖出来的顺序 · 推演）另一份 skill `rotation` 讲全，这里只选最常用的两条。
 
-<!-- 命令：quota-read quota-warm rotation-view rotation-use-now（生成物：照 `ccm -- --commands` 现打，勿手改；重打见 `tests/backend/stream/catalog_tests.rs`） -->
+<!-- 命令：resident-call quota-read quota-warm rotation-view rotation-use-now（生成物：照 `ccm -- --commands` 现打，勿手改；重打见 `tests/backend/stream/catalog_tests.rs`） -->
+- `ccm -- --resident-call` `[--stdin-line] --within-ms <毫秒> [--tz <IANA 名>]`：问这台的常驻后端一条帧命令（stdin 一行 `{cmd, args}`）：连套接字、握手（在看名单交空的）、发请求、等那一条应答，stdout 一行回包、退出 0；常驻答了失败 ⇒ stderr 一行它那一份失败信封、退出 2；没人在听 ⇒ `resident_absent`（不起冷进程顶上）；`--within-ms` 必给（等多久归发起方，缺 ⇒ `bad_args`），到期限没回 ⇒ `timed_out`
 - `ccm -- --quota-read`：这台的额度账。不收参数
-- `ccm -- --quota-warm`：给一个号开窗。参数 `QuotaWarmReq`
+- `quota-warm`（只在流上）：给一个号开窗。参数 `QuotaWarmReq`
 - `ccm -- --rotation-view`：一个会话或一份策略此刻的轮换。参数 `RotationViewReq`
 - `ccm -- --rotation-use-now`：现在用这个号。参数 `RotationUseNowReq`
 

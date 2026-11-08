@@ -43,17 +43,17 @@ beforeEach(() => {
 });
 
 describe("现在重启 · 会打断什么", () => {
-  it("★ 只问本机后端一条（带 appExit 与各台名单，它问到各台、加起来答）；本机后端问不到 ⇒ 说数不出", async () => {
+  it("★ 只问本机后端一条（带 appExit 与 fleet，它照自己的机器表问到各台、加起来答）；本机后端问不到 ⇒ 说数不出", async () => {
     answers.set("<local>", { ...machineZero, relayedSessions: 2, liveStreams: 4, forwards: 2 });
-    const got = await askAppExitInterrupts(["devbox", "gpu"]);
-    expect(calls).toEqual([{ origin: "<local>", op: "machine-interrupts", args: { appExit: true, machines: ["devbox", "gpu"] } }]);
+    const got = await askAppExitInterrupts();
+    expect(calls).toEqual([{ origin: "<local>", op: "machine-interrupts", args: { appExit: true, fleet: true } }]);
     expect(got).toEqual({ relayedSessions: 2, relayedMaybe: 0, liveStreams: 4, forwards: 2, unsaved: 1, filewinRunning: 2 });
     answers.delete("<local>");
-    const blind = await askAppExitInterrupts([]);
+    const blind = await askAppExitInterrupts();
     expect(blind.relayedSessions).toBeNull();
     expect(blind.forwards).toBeNull();
     filewin.now = null;
-    const noShell = await askAppExitInterrupts([]);
+    const noShell = await askAppExitInterrupts();
     expect(noShell.unsaved).toBeNull();
     filewin.now = { windows: 1, unsaved: 1, running: 2 };
   });
@@ -61,7 +61,7 @@ describe("现在重启 · 会打断什么", () => {
   it("★ 什么都不断 ⇒ 不弹框，toast 一句、直接重启", async () => {
     const confirm = vi.fn(async () => true);
     const restart = vi.fn(async () => {});
-    expect(await restartNow({ ask: async () => ({ ...zero }), confirm, restart, remotes: async () => [] })).toBe(true);
+    expect(await restartNow({ ask: async () => ({ ...zero }), confirm, restart })).toBe(true);
     expect(confirm).not.toHaveBeenCalled();
     expect(restart).toHaveBeenCalledTimes(1);
     expect(toasts).toEqual([copyText("restartNow.run.toast")]);
@@ -70,7 +70,7 @@ describe("现在重启 · 会打断什么", () => {
   it("★ 有要断的 ⇒ 弹「中断 · 保留」框（不是红色危险键）；取消 ⇒ 不重启", async () => {
     const confirm = vi.fn(async (_spec: unknown) => false);
     const restart = vi.fn(async () => {});
-    const ok = await restartNow({ ask: async () => ({ ...zero, relayedSessions: 1, liveStreams: 1 }), confirm, restart, remotes: async () => ["devbox"] });
+    const ok = await restartNow({ ask: async () => ({ ...zero, relayedSessions: 1, liveStreams: 1 }), confirm, restart });
     expect(ok).toBe(false);
     expect(restart).not.toHaveBeenCalled();
     const spec = confirm.mock.calls[0]![0] as unknown as { title: string; danger: boolean; rows: Array<{ label: string; items: string[] }> };
@@ -83,7 +83,7 @@ describe("现在重启 · 会打断什么", () => {
   it("按钮：点了走同一条，做完前不能连点", async () => {
     let release!: () => void;
     const restart = vi.fn(() => new Promise<void>((r) => (release = r)));
-    const b = restartNowButton({ ask: async () => ({ ...zero }), restart, remotes: async () => [] });
+    const b = restartNowButton({ ask: async () => ({ ...zero }), restart });
     expect(b.textContent).toBe(copyText("restartNow.bar.action"));
     b.click();
     expect(b.disabled).toBe(true);

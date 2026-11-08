@@ -5,7 +5,7 @@
  * | 性质 | 判据 |
  * |---|---|
  * | 远端两步：只交名字给本机后端 `terminal-ssh` 渲（怎么拨照它的机器表）→ monitor 开窗（交的是前奏 ＋ 那一行；开不了窗复制的只有那一行） | 「远端」 |
- * | 本机：交来的已是后端渲好的成品 ⇒ monitor 直接开窗，不问后端 | 「本机」 |
+ * | 本机也是一台：同样只交名字给本机后端 `terminal-ssh`（`<local>`），开窗交它回的那一行；起始目录只在本机交给壳，远端不交 | 「本机」 |
  * | 后端回的形状不认 / 问不到 ⇒ 抛，一个窗口都不开（不拿原串顶上） | 「问不到」 |
  * | 开窗只有一个家：生产段调 `commands.open_terminal_window(` 的文件 == {terminal-open.ts} | 「一个家」 |
  * | 壳回 `noWindow`（POSIX 既定设计）⇒ 抛 `NoTerminalWindow`，那几句是壳写好的、照摆；回 `opened` ⇒ 不抛 | 「不开窗」 |
@@ -26,7 +26,6 @@ vi.mock("../../../src/frontend/ui/kit/toast", () => ({
 import { invoke } from "@tauri-apps/api/core";
 import {
   openTerminal,
-  openLocalTerminal,
   NoTerminalWindow,
   sayNoTerminal,
 } from "../../../src/frontend/ui/terminal-open";
@@ -83,7 +82,7 @@ describe("远端", () => {
       command: "claude --resume s1",
     });
     expect(calls("open_terminal_window")).toEqual([
-      { command: LINE },
+      { command: LINE, cwd: null },
     ]);
   });
 
@@ -96,7 +95,7 @@ describe("远端", () => {
       sid: "s1",
     });
     expect(calls("open_terminal_window")).toEqual([
-      { command: WINDOW },
+      { command: WINDOW, cwd: null },
     ]);
   });
 
@@ -113,12 +112,26 @@ describe("远端", () => {
 });
 
 describe("本机", () => {
-  it("★ 交来的就是成品：直接开窗，不问后端", async () => {
-    serve(() => ({ window: "不该被问到", line: "不该被问到" }));
-    await openTerminal(LOCAL, "claude --resume s1");
-    expect(asked("terminal-ssh")).toEqual([]);
+  it("★ 本机也是一台：同样只交名字给本机后端，开窗交它回的那一行，起始目录照交", async () => {
+    serve(() => ({ window: "后端·本机那一行", line: "后端·本机那一行" }));
+    await openTerminal(LOCAL, "claude --resume s1", "s1", "/p");
+    const ssh = asked("terminal-ssh");
+    expect(ssh).toHaveLength(1);
+    expect(chanArgsJson(ssh[0])).toEqual({
+      machine: LOCAL,
+      command: "claude --resume s1",
+      sid: "s1",
+    });
     expect(calls("open_terminal_window")).toEqual([
-      { command: "claude --resume s1" },
+      { command: "后端·本机那一行", cwd: "/p" },
+    ]);
+  });
+
+  it("★ 起始目录是那台的路径：远端不交给壳（远端的目录在那台的那一行里）", async () => {
+    serve(() => ({ window: LINE, line: LINE }));
+    await openTerminal("devbox", "claude --resume s1", "s1", "/home/u/p");
+    expect(calls("open_terminal_window")).toEqual([
+      { command: LINE, cwd: null },
     ]);
   });
 });
@@ -146,8 +159,11 @@ describe("不开窗", () => {
   });
 
   it("★ 开不了窗那几句是壳写好的：一句当错的原话，标题 · 说明照摆进那一条提示（界面不照结局挑句子）", async () => {
-    invokeMock.mockImplementation((cmd: string) => Promise.resolve(cmd === "open_local_terminal" ? NO_WINDOW : undefined));
-    const err = await openLocalTerminal("claude", null).catch((e: unknown) => e);
+    invokeMock.mockImplementation((cmd: string, args: unknown) => {
+      if (isChanCall(cmd, args, "terminal-ssh")) return Promise.resolve(chanReply({ window: "claude", line: "claude" }));
+      return Promise.resolve(cmd === "open_terminal_window" ? NO_WINDOW : undefined);
+    });
+    const err = await openTerminal(LOCAL, "claude").catch((e: unknown) => e);
     expect(err).toBeInstanceOf(NoTerminalWindow);
     expect([(err as NoTerminalWindow).message, (err as NoTerminalWindow).command]).toEqual(["壳·一句", "claude"]);
     toasted.length = 0;

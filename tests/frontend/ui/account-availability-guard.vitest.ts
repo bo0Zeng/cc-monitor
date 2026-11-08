@@ -9,7 +9,7 @@
  *
  * 买不到：
  * - Rust 侧的同类绕过：由两条同名判据各守自己那份（`src/frontend/shell/src/local_accounts.rs` 与
- *   `src/backend/observe/accounts_query.rs` 的 `the_auth_dimension_has_exactly_one_computation_path`）。
+ *   `tests/backend/accounts/manage/library_tests.rs` 的 `the_auth_dimension_has_exactly_one_computation_path`）。
  * - `accounts.ts` 里头再长一处读鉴权格：家里不数次数。
  * - 测试侧手抄的一份 `isSelectable`（`vi.mock` 替身可以与真身语义相反）：靠「测试侧不许手抄纯函数」那条纪律。
  */

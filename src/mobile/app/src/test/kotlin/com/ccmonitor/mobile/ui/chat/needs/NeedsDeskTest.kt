@@ -8,7 +8,6 @@ import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.Failed
 import com.ccmonitor.mobile.core.wire.gen.NeedsAsk
 import com.ccmonitor.mobile.core.wire.gen.NeedsChoiceRow
-import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.ui.Faces
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
 import com.ccmonitor.mobile.ui.needs.NeedsBoard
@@ -428,37 +427,35 @@ class NeedsDeskTest {
         }
 
     @Test
-    fun `选项分段：允许一族（首颗主按钮）· 拒绝一族另起（拒绝并停下红字）· 改到终端里答排末尾、次要；要附话的字后加省略`() {
+    fun `带不带每题的答只照那台给的 picks，不认 answer 这个 id`() =
+        runTest {
+            @Suppress("UNCHECKED_CAST")
+            val q = golden["question"] as Map<String, Any?>
+
+            @Suppress("UNCHECKED_CAST")
+            val choices = (q["choices"] as List<Map<String, Any?>>).map { it + ("picks" to (it["id"] == "dismiss")) }
+            val r = rig(needs("question") + ("ask" to q + ("choices" to choices)))
+            r.desk.open()
+            r.desk.pick("answer")
+            runCurrent()
+            assertEquals("不带 picks ⇒ 不等每题都答、不交 picks", listOf(mapOf("sid" to "s1", "ask" to "ask-4", "choice" to "answer")), r.link.calls("needs-answer"))
+        }
+
+    @Test
+    fun `选项分段只照那台给的 row：批准三段 · 批计划与有题的提问一段；要附话的字后加省略`() {
         val sub = Wire.bind<NeedsAsk>(golden["subAgent"])!!
         val groups = choiceGroups(sub)
         assertEquals(listOf(listOf("allow", "always-0", "always-1"), listOf("deny", "deny-note", "deny-stop"), listOf("release")), groups.map { g -> g.map { it.choice.id } })
-        assertEquals(listOf(ChoiceLook.PRIMARY, ChoiceLook.OUTLINE, ChoiceLook.OUTLINE), groups[0].map { it.look })
-        assertEquals(listOf(ChoiceLook.OUTLINE, ChoiceLook.OUTLINE, ChoiceLook.DANGER), groups[1].map { it.look })
-        assertEquals(ChoiceLook.QUIET, groups[2].single().look)
         assertEquals(copyText("askBlock.choice.more", "label" to "拒绝并说明"), groups[1][1].label)
 
         val plan = choiceGroups(Wire.bind<NeedsAsk>(golden["plan"])!!)
-        assertEquals(listOf(listOf("plan-auto", "plan-edits", "plan-manual"), listOf("plan-keep")), plan.map { g -> g.map { it.choice.id } })
+        assertEquals(listOf(listOf("plan-auto", "plan-edits", "plan-manual", "plan-keep")), plan.map { g -> g.map { it.choice.id } })
 
         val q = choiceGroups(Wire.bind<NeedsAsk>(golden["question"])!!)
-        assertEquals(listOf(listOf("answer"), listOf("dismiss")), q.map { g -> g.map { it.choice.id } })
-        assertEquals(ChoiceLook.QUIET, q[1].single().look)
+        assertEquals(listOf(listOf("answer", "dismiss")), q.map { g -> g.map { it.choice.id } })
 
         val moved = sub.copy(choices = sub.choices.map { if (it.id == "always-1") it.copy(row = NeedsChoiceRow.RELEASE) else it })
         assertEquals("段只照那台给的 row，不按 id 认", listOf("always-1", "release"), choiceGroups(moved).last().map { it.choice.id })
-
-        val swapped =
-            sub.copy(
-                choices =
-                    sub.choices.map {
-                        when (it.id) {
-                            "deny" -> it.copy(tone = Tone.FAIL)
-                            "deny-stop" -> it.copy(tone = Tone.WARN)
-                            else -> it
-                        }
-                    },
-            )
-        assertEquals("红字只照那台给的 tone，不按 id 认", listOf(ChoiceLook.DANGER, ChoiceLook.OUTLINE, ChoiceLook.OUTLINE), choiceGroups(swapped)[1].map { it.look })
     }
 
     @Test

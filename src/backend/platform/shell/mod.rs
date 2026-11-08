@@ -200,6 +200,43 @@ pub fn find_session_command(
     SessionCommand::Absent
 }
 
+/// 终端里敲 `ccm` 走到哪（[`reach`] 的答案）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Reach {
+    /// 终端的 `PATH` 问不出 —— 判不了，不说成「没有」。
+    Unknown,
+    /// `PATH` 上没有 `ccm`。
+    Absent,
+    /// 走到的就是落点那一份（比解过链接的文件）。
+    Ours,
+    /// 走到别的文件。
+    Other(std::path::PathBuf),
+}
+
+/// `PATH` 上敲 `ccm` 会起来的那个文件（找法只住 [`find_session_command`]）与落点那一份比：解过链接是同一个文件 ⇒ 是它。
+/// 帧 `ccm-probe` 的 `onPath`（`control::ccm::on_path`）与待办「终端里的 ccm 是旧的一份」（足迹）都只经这里判。
+pub fn reach(
+    path_env: Option<&str>,
+    landing: &std::path::Path,
+    windows: bool,
+    is_file: &dyn Fn(&std::path::Path) -> bool,
+) -> Reach {
+    use crate::platform::fs::Ro;
+    match find_session_command("ccm", path_env, windows, is_file) {
+        SessionCommand::Unknown => Reach::Unknown,
+        SessionCommand::Absent => Reach::Absent,
+        SessionCommand::Found { file, .. } => {
+            let canon =
+                |p: &std::path::Path| Ro::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+            if canon(&file) == canon(landing) {
+                Reach::Ours
+            } else {
+                Reach::Other(file)
+            }
+        }
+    }
+}
+
 /// 起一个 agent 程序（`ccm` 最后那一跳 · 登录子命令 · 用量探针）怎么起：找到的那个文件 ＋ 前导参数 ＋ 它是哪一种装法。
 /// 子进程拿哪份 `PATH` 不在这里：归起进程的唯一出口 [`crate::platform::child::Child`]。
 #[derive(Debug, Clone, PartialEq, Eq)]

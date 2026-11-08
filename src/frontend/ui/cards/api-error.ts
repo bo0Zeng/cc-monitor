@@ -2,7 +2,7 @@
  * 报错卡与重试细条。两种记录：
  *
  * 1. `assistant` + `isApiErrorMessage` —— 重试耗尽 / 不可重试的最终失败 ⇒ 报错卡：后端写好的卡头（`error.title`）＋ 下一步（会话事实那一串的整句，没有 ⇒ 空着）＋「原文」折叠。
- * 2. `system` + `subtype:"api_error"` —— 这一次失败、CLI 要重试 ⇒ 重试细条；相邻的几条**合成一条**（排版，`render-stream-record.ts` 按时间线邻居做）。
+ * 2. `system` + `subtype:"api_error"` —— 这一次失败、CLI 要重试 ⇒ 重试细条；一串只画首条（接在后面的那几条后端出 `draw: none`，不建卡）。
  *    细条上的字：建卡时照那一条记录写好的那一行（`retry.text`）；会话事实到了照那一串写好的整句（`retries[].text`，后端按首条的 uuid 给，[`applyRetries`]）。
  *    接上了 · 人打断了 ⇒ 变淡那一句 · 没接上 ⇒ 细条收起、那一串的整句进紧跟着的报错卡。
  *
@@ -68,10 +68,6 @@ export function buildApiRetryCard(args: { text: string; id?: string; run?: Retry
   line.textContent = args.text;
   if (args.run) paintRun(line, args.run);
   return line;
-}
-
-export function isRetryBar(el: Element | null | undefined): el is HTMLElement {
-  return el instanceof HTMLElement && el.classList.contains("card-api-retry");
 }
 
 export function isApiErrorCard(el: Element | null | undefined): el is HTMLElement {

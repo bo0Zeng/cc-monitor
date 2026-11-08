@@ -107,7 +107,13 @@ pub enum ToolDestination {
     /// ⇒ 显式承认「这不是我们的落点」。
     /// 判据 `installable_tools_declare_where_they_land` 钉住：用了这一格就不许 `installable: true`。
     NotInstalledByUs,
+    /// 这台**用户级 `PATH`** 里的一格（Windows 那一台注册表里的那一份，不是文件）：我们往里加 · 撤的是 `ccm` 所在目录那一段。
+    /// 申报路径写 [`USER_PATH_TOKEN`]；在不在只能现问那台（PowerShell），足迹照探针答。
+    UserPath,
 }
+
+/// [`ToolDestination::UserPath`] 那一格的申报路径：用户级 `PATH` 住在注册表里的那个位置（给人看的就是它）。
+pub const USER_PATH_TOKEN: &str = r"HKCU\Environment\Path";
 
 /// [`ToolDestination::UserShellProfile`] 是哪一种 shell profile。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
@@ -191,7 +197,8 @@ pub struct TouchedFile {
 pub enum TouchEffect {
     /// 只读（诊断用）。
     ReadOnly,
-    /// 在文件里插入/更新一个**有围栏的块**，卸载时按围栏精确剥离。
+    /// 在用户的东西里加**我们那一段**、卸载时按标识精确剥离：文件里是一个**有围栏的块**（按围栏剥）；
+    /// 用户级 `PATH`（[`ToolDestination::UserPath`]）里是 `ccm` 所在目录那一格（整格比、只摘那一格）。
     FencedBlock,
     /// 整个文件由我们拥有（部署时整体覆盖）。
     OwnedFile,

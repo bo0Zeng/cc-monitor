@@ -189,12 +189,11 @@ fn mcp_login() -> Vec<super::McpLogin> {
     out
 }
 
-/// 终端里敲 `ccm` 走到的不是 cc-monitor 放的那一份 ⇒ 那一份（判法只住 `control::ccm::on_path::reach`）。
+/// 终端里敲 `ccm` 走到的不是 cc-monitor 放的那一份 ⇒ 那一份（判法只住 `platform::shell::reach`）。
 pub(crate) fn stale_ccm(home: &Path, path: Option<&str>, windows: bool) -> Option<StaleCcm> {
-    let name = if windows { "ccm.exe" } else { "ccm" };
-    let ours = home.join(".cc-monitor").join("bin").join(name);
-    let crate::control::ccm::on_path::Reach::Other(first) =
-        crate::control::ccm::on_path::reach(path, &ours, windows, &|p| p.is_file())
+    let ours = crate::platform::paths::ccm_entry_under(home, windows);
+    let crate::platform::shell::Reach::Other(first) =
+        crate::platform::shell::reach(path, &ours, windows, &|p| p.is_file())
     else {
         return None;
     };
@@ -270,7 +269,7 @@ pub(crate) fn relay_at(
 
 /// cc-bus 自动收信：`hooks-diag` 那一份 ＋ 那份设置文件现在的内容。这台跑不了 cc-bus ⇒ 不出这一件。
 fn hooks() -> Option<Hooks> {
-    let r = crate::observe::cc_bus_hooks::answer();
+    let r = crate::assets::cc_bus_hooks::answer();
     if !r.supported {
         return None;
     }

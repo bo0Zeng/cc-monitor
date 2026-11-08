@@ -7,7 +7,6 @@ import com.ccmonitor.mobile.core.wire.gen.Doc
 import com.ccmonitor.mobile.core.wire.gen.Inl
 import com.ccmonitor.mobile.core.wire.gen.InlNode
 import com.ccmonitor.mobile.core.wire.gen.MathBox
-import com.ccmonitor.mobile.core.wire.gen.MathFont
 import com.ccmonitor.mobile.core.wire.gen.MathItem
 import com.ccmonitor.mobile.core.wire.gen.MdBlock
 import com.squareup.moshi.JsonReader
@@ -86,7 +85,7 @@ class MathViewTest {
 
     @Test
     fun inlineMathIsCollectedFromNestedBlocksAndSkipsMissingBoxes() {
-        val box = MathBox(1000, 700, 0, listOf(MathItem.G(MathFont.MATH_ITALIC, 0x61, 0, 700, 1000)))
+        val box = MathBox(1000, 700, 0, listOf(MathItem.G("Math-Italic", 0x61, 0, 700, 1000)))
         val m = Inl.InlNode(InlNode.M(tex = "a", m = box))
         val none = Inl.InlNode(InlNode.M(tex = "\\bad", m = null))
         val blocks = listOf(MdBlock.Quote(blocks = listOf(MdBlock.P(k = listOf(Inl.InlNode(InlNode.B(k = listOf(m))), none)))))
@@ -109,17 +108,14 @@ class MathViewTest {
     }
 
     @Test
-    fun everyFontHasItsFileInTheSharedFolder() {
+    fun aStemNamesItsFileInTheSharedFolderAndNoneNamesNoFile() {
+        // 认得哪几族只在 md-core 列（那边逐族对过文件）；这里只钉「主干 ⇒ assets 里那一份」这一拼法。
         val dir = File(root, "src/shared/fonts/katex")
-        for (f in MathFont.entries) {
-            val asset = mathFontAsset(f)
-            if (f == MathFont.SYS) {
-                assertNull("系统字体不该有文件", asset)
-                continue
-            }
-            assertNotNull("$f 没有字体文件", asset)
-            assertTrue("$asset 不在 assets 的 katex/ 底下", asset!!.startsWith("katex/"))
-            assertTrue("$f ⇒ $asset 在 $dir 里没有", File(dir, asset.removePrefix("katex/")).isFile)
+        for (stem in listOf("Math-Italic", "Main-Regular", "Size2-Regular")) {
+            val asset = mathFontAsset(stem)
+            assertEquals("katex/KaTeX_$stem.ttf", asset)
+            assertTrue("$stem ⇒ $asset 在 $dir 里没有", File(dir, asset!!.removePrefix("katex/")).isFile)
         }
+        assertNull("系统字体不该有文件", mathFontAsset(null))
     }
 }

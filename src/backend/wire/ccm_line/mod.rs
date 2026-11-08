@@ -1,7 +1,7 @@
 //! `ccm` 这一行的**词与解析**：旗标 · 解析 · 默认值（[`argv`]）· 自己叫什么 · 用配置那一段的记号。
 //!
 //! 起会话（`control::ccm`）· 账号域拼 ccm 那一行（`accounts::manage::wire`）· 别名与配置那一族（`assets::aliases`）都认这一套词，
-//! 所以它住在它们底下（宿主口那个包 `backend-host` 里）：只引 `agents`（认得哪几家）· `common`，不往上引；后端有哪些子命令它不知道（`control::ccm::route` 收入口交下来的那一问）。
+//! 所以它住在它们底下（帧面零件那个包 `backend-wire` 里）：只引 `agents`（认得哪几家）· `common` · 两个零依赖契约包（`acct-core` · `shell-quote-core`），不往上引；后端有哪些子命令它不知道（`control::ccm::route` 收入口交下来的那一问）。
 //! 做事那一半（算计划 · 渲染 · 起会话）住 `control::ccm`。
 
 pub mod argv;

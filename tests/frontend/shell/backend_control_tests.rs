@@ -120,17 +120,6 @@ fn an_empty_origin_is_refused_by_every_port() {
     }
 }
 
-#[test]
-fn an_unknown_remote_origin_says_so_instead_of_pretending() {
-    let e = tauri::async_runtime::block_on(backend_stop("从没注册过的机器".into()))
-        .unwrap_err()
-        .said;
-    assert!(
-        copy_core::copy_matches("rsBackendControl.handle.missing", &e),
-        "对不认识的 origin 应当明说没有把手，而不是返回一句像成功的话：{e}"
-    );
-}
-
 /// 远端那台在不在只有一个源：本机后端推来的那台成品（界面照 `MachineState` 画）。壳的状态口对远端不表态（`channel: null`），
 /// 不拿自己记的那台 hello 另答一份 —— 两个源里只要一个不更新，界面就一处说在线、一处说离线。
 #[test]

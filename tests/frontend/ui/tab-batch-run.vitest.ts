@@ -136,7 +136,7 @@ describe("批量起：交本机后端一条（`sessions-batch`，`start`），�
     expect(openTerminal).not.toHaveBeenCalled();
   });
 
-  it("★ 回包里落在窗口里的那几项各开一次那一行（远端带那条会话）；开不出来那一项另出一条、回包不改", async () => {
+  it("★ 回包里落在窗口里的那几项各开一次那一行（带那条会话与起始目录，交不交给壳由 openTerminal 照那台定）；开不出来那一项另出一条、回包不改", async () => {
     const windows = [
       { machine: "r1", sid: "x", line: "ccm --resume x", cwd: "/w/x" },
       { machine: "r1", sid: "y", line: "ccm --resume y", cwd: null },
@@ -148,8 +148,8 @@ describe("批量起：交本机后端一条（`sessions-batch`，`start`），�
     const out = await startMany([tab("x", "r1"), tab("y", "r1")], "direct");
     expect(calls.map(([, op, b]) => [op, b.op])).toEqual([["sessions-batch", { start: { run: "direct" } }]]);
     expect(vi.mocked(openTerminal).mock.calls).toEqual([
-      ["r1", "ccm --resume x", "x"],
-      ["r1", "ccm --resume y", "y"],
+      ["r1", "ccm --resume x", "x", "/w/x"],
+      ["r1", "ccm --resume y", "y", null],
     ]);
     expect(out).toEqual(reply(windows));
     expect(vi.mocked(failToast).mock.calls.map(([t]) => t)).toEqual([copyText("tabBatch.why.windowFailed")]);

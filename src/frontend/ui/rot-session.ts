@@ -7,7 +7,6 @@
  * - 拖着一行 · 等回包时推送来的重读先记下，静止了再读（手上正在改的不被盖掉）。读不出 ⇒ 红条 ＋［重试］，上次所知的淡掉、不拿起。
  * 判据：`tests/frontend/ui/rot-session.vitest.ts`。
  */
-import { accountLabel } from "./acct-words";
 import { copyText } from "./copy-table";
 import { callTyped, refusalIn } from "./ipc/chan-caller";
 import type { Machine } from "./ipc/origin";
@@ -19,7 +18,7 @@ import { el } from "./kit/el";
 import { morph } from "./kit/morph";
 import { failToast } from "./kit/toast";
 import { openSettingsWindow } from "./open-settings";
-import { firstRow, hints, type TopSpec } from "./rot-board";
+import { firstRow, hints, nameIn, type TopSpec } from "./rot-board";
 import { rotAnchor, sendWrite, topActs } from "./rot-mount";
 import { createOrder, type MoveEnd } from "./rot-order";
 import { readStrategies, readView, rotBudget } from "./rot-reads";
@@ -83,7 +82,7 @@ export function mountSessionRotation(origin: Machine, sid: string): SessionRot {
   /** 换到 `account`（小窗［立即用］）· 拖到第一格：那台说它事实上发不出去（unusable）⇒ 不换，原因写在顺序上方。 */
   const blockedLine = (account: string, said: string): { account: string; text: string } => {
     const why = view?.accounts.find((f) => f.account === account)?.blocked?.text ?? said;
-    return { account, text: copyText("rot.acct.refused", { account: accountLabel(account), why }) };
+    return { account, text: copyText("rot.acct.refused", { account: nameIn(view, account), why }) };
   };
   const temp = (op: RotTempOp): Promise<boolean> => sendWrite(W.failTemp, () => callTyped(origin, "rotation-temp", { sid, op }, rotBudget()), refresh);
 

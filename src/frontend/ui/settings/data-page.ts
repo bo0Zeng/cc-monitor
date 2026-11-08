@@ -19,7 +19,6 @@ import { copyText } from "../copy-table";
 import { writeClipboard } from "../clipboard";
 import { isLocalOrigin, LOCAL, type Machine } from "../ipc/origin";
 import { machineName } from "../ipc/chan-caller";
-import { readRemoteConfig } from "../remote-config";
 import { markChore, readChores, recallDataReport, type Chore, type ChoreCounts, type ChoreState, type DataReport } from "./data-reads";
 import { ownBlock, remoteOpen } from "./own-block";
 import { localOpenButtons } from "./data-section";
@@ -192,16 +191,12 @@ export class DataPage {
 
   private async refresh(): Promise<void> {
     const gen = ++this.generation;
-    try {
-      const hosts = (await readRemoteConfig()).hosts.map((r) => r.name);
-      this.machines = [LOCAL, ...hosts].map(machineOf);
-    } catch {
-      // 读不到机器表 ⇒ 只问本机（远端那几台这一趟不列，不猜）。
-    }
     let got: Awaited<ReturnType<typeof readChores>> | null = null;
     let why = "";
     try {
-      got = await readChores(this.machines.map((m) => m.origin));
+      got = await readChores();
+      // 列哪几台照回包（本机后端照它的机器表问的那几台，照问的先后）；没问到 ⇒ 照上一趟列的。
+      this.machines = got.machines.map((m) => machineOf(m.origin));
     } catch (e) {
       why = e instanceof Error ? e.message : String(e);
     }

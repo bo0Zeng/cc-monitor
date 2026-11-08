@@ -62,7 +62,7 @@ src/frontend/ui/settings/account-new-form.ts	3
 src/frontend/ui/styles.css	8
 src/frontend/ui/styles/layout.css	1
 src/frontend/ui/styles/main.css	8
-src/frontend/ui/styles/settings.css	4
+src/frontend/ui/styles/settings.css	3
 src/frontend/ui/tab-bar-width.ts	1
 src/mobile/app/src/androidTest/kotlin/com/ccmonitor/mobile/ui/chat/needs/NeedsSheetShotTest.kt	1
 src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/chat/ChatInput.kt	1
@@ -108,7 +108,6 @@ tests/backend/host/bin_tests.rs	2
 tests/backend/host/keys_tests.rs	2
 tests/backend/host/life_tests.rs	1
 tests/backend/host/serve_tests.rs	1
-tests/backend/observe/cc_bus_hooks_tests.rs	2
 tests/backend/observe/recognize/facts_tests.rs	3
 tests/backend/observe/record_scan_tests.rs	8
 tests/backend/observe/runs_total_tests.rs	1

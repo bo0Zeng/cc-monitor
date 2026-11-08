@@ -1,34 +1,25 @@
-//! 进程起来那一下（`stream/entry.rs::run`）：拨号层要的「这一端的机器表怎么读」装上了（不装 ⇒ 生产上各台的常驻流 · 问那台 · 传输 · 部署按名字查不到机器）。
-//! 装的那一处在 `run` 打头、分流之前（`ccm` 那一趟 · 一次性子命令 · 常驻都走得到）；常驻起来那一段也钉在这里。
+//! 进程起来那一下（`stream/entry.rs::run`）：拨号层自己读这一端的机器表（`dial::machines_now`，起来时不用谁先装一份读法）；
+//! 常驻起来那一段也钉在这里。
 
 const ENTRY: &str = include_str!("../../src/backend/stream/entry.rs");
 
-/// `run` 的函数体：从 `pub async fn run() {` 到分流那一步（`control::ccm::route`）之前。
-fn run_head() -> &'static str {
-    let at = ENTRY
-        .find("pub async fn run() {")
-        .expect("找不到 `run` —— 本条要跟着改");
-    let body = &ENTRY[at..];
-    let end = body
-        .find("control::ccm::route")
-        .expect("找不到分流那一步 —— 本条要跟着改");
-    &body[..end]
-}
-
+/// 家里放一份机器表、什么都不装 ⇒ 拨号层照它读到那一台（各台的常驻流 · 问那台 · 传输 · 部署都按名字查它）。
 #[test]
-fn the_machine_table_is_installed_before_anything_is_dispatched() {
-    let head = run_head();
-    let calls: Vec<&str> = head
-        .lines()
-        .map(str::trim)
-        .filter(|l| !l.starts_with("//"))
-        .filter(|l| l.contains("install_machines()"))
+fn the_machine_table_is_read_without_anything_installed() {
+    let home = crate::platform::paths::home_dir().expect("测试档的家（沙箱）");
+    let file = home.join(relay_route_core::MACHINES_REL);
+    std::fs::create_dir_all(file.parent().expect("机器表在一个目录里")).unwrap();
+    std::fs::write(
+        &file,
+        r#"{"version": 1, "hosts": [{"label": "startup-probe", "host": "probe.lan", "user": "pi"}]}"#,
+    )
+    .unwrap();
+    let names: Vec<String> = crate::dial::machines_now()
+        .iter()
+        .map(|h| h.name().to_string())
         .collect();
-    assert_eq!(
-        calls,
-        vec!["faces::install_machines();"],
-        "`run` 分流之前恰好装一次机器表（`faces::install_machines`）"
-    );
+    let _ = std::fs::remove_file(&file);
+    assert_eq!(names, vec!["startup-probe".to_string()]);
 }
 
 /// 常驻那一位起来那一段（各台常驻流起来之前那几步）：不调换形（落盘文件的旧版经声明上挂的升级步读，`common/own_state.rs`）。

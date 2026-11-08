@@ -33,3 +33,6 @@ disallowed_methods = "deny"
 # 放行一律 `expect` 带理由（测试段在 `lib.rs` 根上一行放开）。
 allow_attributes = "deny"
 allow_attributes_without_reason = "deny"
+# 丢一个 `Result` 一律照实处理（本包不链文案表，没有 `.discard`）：静默丢在编译这一下就挡住（与通信层另几包同一组）。
+let_underscore_must_use = "deny"
+unused_result_ok = "deny"

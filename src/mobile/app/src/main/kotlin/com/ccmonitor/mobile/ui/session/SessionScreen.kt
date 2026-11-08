@@ -687,7 +687,6 @@ private fun TerminalBottomControls(
             onTmuxSessions = onShowTmux,
             onPaste = onPaste,
             onCapture = onCapture,
-            onPushKey = onPushKey,
             onShowKeyboard = showKeyboard,
             onEditKeys = env.onEditKeys,
             onNextGroup = { nextGroupId(groups, savedGroup)?.let(switchTo) },

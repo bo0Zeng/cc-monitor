@@ -7,8 +7,9 @@
  *
  * # 排版的口径（界面不判谁是过程、不自己划段）
  *
- * - 顺着流的顶层子节点走：一张卡的 `data-id` 是某一轮开头 / 露着的某一条 / 某一段的 `until` ⇒ 它是边界，露着；某一段的 `after` 是它 ⇒ 那一段的行插在它后面、
- *   之后的卡归这一段，直到下一个边界。不是哪一段的 `after` ⇒ 之后的卡不归段（露着）。
+ * - 段只认后端给的两头 `after` → `until`（后端除最后一轮的尾段外每段都给 `until`；没有 ⇒ 到尾）。顺着流的顶层子节点走：
+ *   一张卡的 `data-id` 是眼下这一段的 `until` ⇒ 这一段到此为止、它露着；某一段的 `after` 是它 ⇒ 那一段的行插在它后面、之后的卡归那一段。
+ *   不在哪一段里的卡露着；轮首与露着的那几条不另算边界。
  * - 遇到骨架占位：归哪一段、藏不藏不顺着 DOM 猜，按账本认（`foldSpans`：一段 ＝ 后端给的 `after` 之后到 `until` 之前的那几行）——
  *   整块落在某一段里 ⇒ 折着就藏（高 0、骨架也不物化它，同一个口径交给骨架）；里面夹着边界 ⇒ 露着；之后的卡归占位末尾所在的那一段
  *   （那一段的 `after` 还没建 ⇒ 行等它建出来再画）；骨架没接上 ⇒ 之后不再归段，直到认出下一个边界。
@@ -112,8 +113,6 @@ interface FoldRef {
 
 export class TurnFold {
   private turns: TurnRow[] = [];
-  /** 边界：每一轮的开头 ＋ 露着的那几条 ＋ 每一段的 `until`（uuid，都是后端给的）。 */
-  private bounds = new Set<string>();
   /** 段的 `after` ⇒ 那一段。 */
   private byAfter = new Map<string, FoldRef>();
   private lines = new Map<string, HTMLButtonElement>();
@@ -215,7 +214,6 @@ export class TurnFold {
    */
   adopt(prev: TurnFold): void {
     this.turns = prev.turns;
-    this.bounds = prev.bounds;
     this.byAfter = prev.byAfter;
     this.overrides = new Map(prev.overrides);
     this.expandedDefault = prev.expandedDefault;
@@ -223,7 +221,7 @@ export class TurnFold {
   }
 
   /**
-   * 续取回来的那几轮换进手上那一份：`at ≥ from` 的旧轮连同它们记进两张表的那几格摘掉，新来的记进去 ——
+   * 续取回来的那几轮换进手上那一份：`at ≥ from` 的旧轮连同它们记进段表的那几格摘掉，新来的记进去 ——
    * 只碰变了的那几轮（续取一般就是还没收尾的那一轮），不按全部轮重建（几万轮的会话每批新行一次）。
    */
   private replaceFrom(from: number, fresh: readonly TurnRow[]): void {
@@ -234,23 +232,15 @@ export class TurnFold {
     for (const t of fresh) this.remember(t);
   }
 
-  /** 一轮记进两张表（边界 · 段）。`indexed` 记碰过几轮（判据数它）。 */
+  /** 一轮的段记进段表。`indexed` 记碰过几轮（判据数它）。 */
   private remember(turn: TurnRow): void {
     this.indexed++;
-    this.bounds.add(turn.uuid);
-    for (const u of turn.shown) this.bounds.add(u);
-    for (const fold of turn.folds) {
-      if (fold.until !== null) this.bounds.add(fold.until);
-      this.byAfter.set(fold.after, { key: fold.after, turn, fold });
-    }
+    for (const fold of turn.folds) this.byAfter.set(fold.after, { key: fold.after, turn, fold });
   }
 
   private forget(turn: TurnRow): void {
     this.indexed++;
-    this.bounds.delete(turn.uuid);
-    for (const u of turn.shown) this.bounds.delete(u);
     for (const fold of turn.folds) {
-      if (fold.until !== null) this.bounds.delete(fold.until);
       if (this.byAfter.get(fold.after)?.turn === turn) this.byAfter.delete(fold.after);
     }
   }
@@ -284,12 +274,12 @@ export class TurnFold {
     const seen = new Set<string>();
     /** 每一段过程里的最后一张卡（收起行接在它后面）。 */
     const lastOf = new Map<string, HTMLElement>();
-    let cur: FoldRef | null = null;
+    let cur = null as FoldRef | null;
     const spans = this.foldSpans();
     for (const el of Array.from(this.content.children)) {
       if (!(el instanceof HTMLElement) || isOurs(el)) continue;
       const uuid = el.getAttribute("data-id");
-      if (uuid !== null && (this.bounds.has(uuid) || this.byAfter.has(uuid))) {
+      if (uuid !== null && (uuid === cur?.fold.until || this.byAfter.has(uuid))) {
         cur = this.byAfter.get(uuid) ?? null;
         if (cur) {
           seen.add(cur.key);

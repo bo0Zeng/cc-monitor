@@ -156,11 +156,19 @@ const NOT_LISTED: &[(&str, &str)] = &[(
 /// 落盘声明表（`relay_route_core` 的 `OWN_FILES`，只在那个 crate 的测试档里有）每一行的落点：读那份源码原文，
 /// 照 `OWN_FILES` 列的名字找各自的 `Decl` 声明，取第一个参数（字面量，或 `&str` 常量 ⇒ 再取那个常量的字面量）。
 fn declared_rels(src: &str) -> Vec<String> {
+    // 常量写成字面量，或由布局宏给（`pub const X: &str = x_rel!();` ⇒ 到 `macro_rules! x_rel` 里取那一个字面量）。
+    let first_lit = |s: &str| -> Option<String> {
+        let q = s.find('"')? + 1;
+        Some(s[q..q + s[q..].find('"')?].to_string())
+    };
     let lit_of = |name: &str| -> Option<String> {
-        let at = src.find(&format!("pub const {name}: &str = \""))?;
-        let rest = &src[at..];
-        let q = rest.find('"')? + 1;
-        Some(rest[q..q + rest[q..].find('"')?].to_string())
+        let head = format!("pub const {name}: &str = ");
+        let rhs = &src[src.find(&head)? + head.len()..];
+        if rhs.starts_with('"') {
+            return first_lit(rhs);
+        }
+        let mac = rhs.split("!()").next()?.trim();
+        first_lit(&src[src.find(&format!("macro_rules! {mac} {{"))?..])
     };
     let start = src
         .find("const OWN_FILES: &[Row] = &[")

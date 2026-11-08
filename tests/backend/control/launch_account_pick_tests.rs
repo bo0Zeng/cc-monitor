@@ -1,16 +1,18 @@
-//! `control/launch_account.rs` 起会话挑号的规则表（逐条行为）：夹具的账号清单成品照观测面那一份的规则补
-//! （`observe::accounts_query::test_support`）⇒ 挂主 crate（`tests/backend/cross/control.rs`）：控制面是独立的包、够不到观测面。
+//! `control/launch_account.rs` 起会话挑号的规则表（逐条行为）：夹具的账号清单成品照账号库那一份的规则补
+//! （`accounts::manage::library::test_support`），挂主 crate（`tests/backend/cross/control.rs`）。
 //! 那份记录（便条 · 账本）的判据住 `launch_account_tests.rs`。
 
+use crate::accounts::manage::library::test_support::{
+    list, row as ok, row_with as acct, unreadable,
+};
+use crate::accounts::manage::library::{AccountRow, ScannedAccount};
 use crate::control::launch_account::*;
-use crate::observe::accounts_query::test_support::{list, row as ok, row_with as acct, unreadable};
-use crate::observe::accounts_query::{AccountRow, ScannedAccount};
 use cmd_wire::accounts::AccountsList;
 use cmd_wire::session::LaunchedAccount;
 use std::collections::BTreeMap;
 
 /// 成品那两格（`selectable` · `meta.effectiveDefault`）由夹具照成品的规则补上（成品真写这两格由
-/// `accounts_query_tests::the_list_product_says_who_is_selectable_and_who_is_the_default` 钉）。
+/// `library_tests::the_list_product_says_who_is_selectable_and_who_is_the_default` 钉）。
 fn lib(accounts: Vec<AccountRow>) -> AccountsList {
     list(accounts)
 }

@@ -15,6 +15,7 @@ use crate::accounts::quota::rules::{listed_ids, standing, Acct, Adopted};
 use crate::agents::QuotaReading;
 use crate::platform::fs::Own;
 use acct_core::AccountBook;
+use cmd_wire::quota::{SLOT_5H, SLOT_7D};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -120,9 +121,9 @@ pub(crate) fn listed(settings: &Value, start: &str, mut all: Vec<Acct>) -> Vec<A
 
 fn w_of(w: usize) -> &'static str {
     if w == 0 {
-        "5h"
+        SLOT_5H
     } else {
-        "7d"
+        SLOT_7D
     }
 }
 
@@ -139,7 +140,7 @@ pub(crate) fn sigma_of(s: &Session) -> Sigma {
             .iter()
             .map(|w| WakeWhen {
                 acct: w.acct.clone(),
-                w: usize::from(w.w == "7d"),
+                w: usize::from(w.w == SLOT_7D),
                 used_at_least: w.used_at_least,
             })
             .collect(),
@@ -279,7 +280,7 @@ impl Hop {
         row: &dyn Fn(&str) -> Option<bool>,
         now: u64,
     ) -> Vec<Acct> {
-        let lib = self.library();
+        let lib = self.book();
         let tz = crate::common::time::Tz::default();
         let mut all: Vec<Acct> = self
             .facts(&s.agent, row, now, &tz)
@@ -321,7 +322,7 @@ impl Hop {
         let o = self.quota.entry(agent, &x.id)?;
         let w = crate::accounts::quota::facts::pick(
             &o.reading,
-            "5h",
+            SLOT_5H,
             now,
             &super::rotate::slot_fn(agent),
         )
@@ -512,7 +513,7 @@ impl Hop {
                 Pick::Hold { .. } => None,
             };
             drop(c);
-            let lib = self.library();
+            let lib = self.book();
             let fact = |acct: &str| {
                 Acct::of_fact(&self.fact_one(
                     a.agent,
@@ -584,7 +585,7 @@ impl Hop {
                         .and_then(win)
                         .or_else(|| facts.iter().find_map(win));
                     return Go::Hold {
-                        reply: reply(at, a.now, w.map(|w| if w == 0 { "5h" } else { "7d" })),
+                        reply: reply(at, a.now, w.map(w_of)),
                     };
                 }
                 Pick::Hold { until: None, .. } => {

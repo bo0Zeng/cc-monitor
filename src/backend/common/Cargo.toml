@@ -31,7 +31,8 @@ relay-route-core = { path = "../../common/relay-route-core" }
 cap-core = { path = "../../common/cap-core" }
 shell-quote-core = { path = "../../common/shell-quote-core" }
 win-path-core = { path = "../../common/win-path-core" }
-ssh-dial = { path = "../../comms/ssh-dial" }
+# 本机写面的相对路径拆段（同远端写围栏 · 解压条目那一份）。
+plain-path-core = { path = "../../common/plain-path-core" }
 jiff.workspace = true
 ring.workspace = true
 serde.workspace = true
@@ -49,5 +50,7 @@ guard-core = { path = "../../common/guard-core" }
 ts-rs.workspace = true
 cmd-wire = { path = "../../common/cmd-wire", features = ["ts"] }
 tracing-subscriber.workspace = true
+# 金样只比不写（`views_tests` 的带键集合金样）。
+test-meters = { path = "../test-meters" }
 # 自有状态的判据造一份只认临时目录的 `Own`（平台层的 `test-support`）。
 backend-platform = { path = "../platform", features = ["test-support"] }

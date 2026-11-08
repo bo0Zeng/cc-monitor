@@ -1,6 +1,6 @@
 //! 后端代管的用户资产那一域：别名 · MCP · skill 的计算与判定住这里，写经这台后端自己的文件管理面（[`crate::common::door`]）。
 //!
-//! 独立的包 `backend-assets`：只引 `accounts` · `agents` · `host`（含 `ccm_line`）· `dial` · `history` · `wire` · `common` · `platform`，
+//! 独立的包 `backend-assets`：只引 `accounts` · `agents` · `dial` · `history` · `wire`（含 `ccm_line`）· `common` · `platform`，
 //! 引了上层就编不过。上层只够得到这里的 `pub` 项。
 
 // 测试段可以直接问系统钟（量具、夹具的时刻）；生产段只许纯工具那一层的 `time::now`（`clippy.toml`）。
@@ -25,9 +25,9 @@ use backend_agents as agents;
 use backend_common as common;
 use backend_dial as dial;
 use backend_history as history;
-use backend_host::ccm_line;
 use backend_platform as platform;
 use backend_wire as wire;
+use backend_wire::ccm_line;
 
 // 测试档的家一开始就是沙箱（`src/common/test-home`）：这一行让链接器把它的启动段带进本包的测试二进制。
 #[cfg(test)]
@@ -36,6 +36,8 @@ static TEST_HOME: fn() = test_home::linked;
 
 // 别名 · 配置文件 · 别名块（后端起来时那一次照配置文件对齐别名文件与链接 `aliases::align_here` 由 `stream/inbound/doors.rs` 调）。
 pub mod aliases;
+// cc-bus 钩子诊断（`hooks-diag` 帧命令的本体，只读；帧面宿主在顶层 `feature_face`）：和装 cc-bus 的那一份同住。
+pub mod cc_bus_hooks;
 pub mod cc_bus_install;
 // 设置「扩展」页的后端：跨机器一张表 · 从一台卸（装那一件的枢纽住 `hub`）。
 pub mod ext;

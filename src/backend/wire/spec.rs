@@ -67,7 +67,7 @@ pub struct Hands<'a> {
 /// 取不到（要写句柄、手里没有）⇒ `None`：那条命令在这个入口交不出来。
 pub trait Needs: 'static {
     type Given: Send + 'static;
-    /// 要文件管理写句柄（改用户的文件）：判据拿它对写面登记的命令表，只 [`needs::Face`] 是。
+    /// 要文件管理写句柄（改用户的文件）：判据拿它对写面登记的命令表，只 [`needs::Face`] · [`needs::FaceOwn`] 是。
     #[cfg(any(test, feature = "test-support"))]
     const FACE: bool = false;
     fn give(h: &Hands) -> Option<Self::Given>;
@@ -90,6 +90,8 @@ pub mod needs {
     pub struct Face;
     /// 写自家状态的句柄 ＋ 枢纽问这台自己那一跳。
     pub struct OwnHub;
+    /// 文件管理写句柄 ＋ 写自家状态的句柄（删会话：删用户那份记录，连带删自家那一条注解）。
+    pub struct FaceOwn;
 
     impl Needs for Nothing {
         type Given = ();
@@ -127,6 +129,18 @@ pub mod needs {
             Some(super::issue_face())
         }
     }
+    #[expect(
+        clippy::disallowed_types,
+        reason = "那一种能力的定义本身：分派照它递文件管理写句柄"
+    )]
+    impl Needs for FaceOwn {
+        type Given = (crate::platform::fs::Face, crate::platform::Own);
+        #[cfg(any(test, feature = "test-support"))]
+        const FACE: bool = true;
+        fn give(h: &Hands) -> Option<Self::Given> {
+            Some((super::issue_face(), h.own?.clone()))
+        }
+    }
     impl Needs for OwnHub {
         type Given = (crate::platform::Own, HubFn);
         fn give(h: &Hands) -> Option<Self::Given> {
@@ -135,7 +149,7 @@ pub mod needs {
     }
 }
 
-/// 文件管理写句柄只在这一处造、只活这一问：[`needs::Face`] 那一份（帧面 · CLI 面），
+/// 文件管理写句柄只在这一处造、只活这一问：[`needs::Face`] · [`needs::FaceOwn`] 那一份（帧面 · CLI 面），
 /// 和资产域那扇门（`doors::LocalFiles` 问写的那几样，进程内的那一次分派）都经它。
 #[expect(
     clippy::disallowed_methods,

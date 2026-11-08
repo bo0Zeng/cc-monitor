@@ -58,7 +58,7 @@ class NewSessionReadsTest {
     @Test
     fun `accounts-list：照类型解，列不列只照那台的 newSession；号牌字 · 5h 那一格 · 选不了的那一句照那台写的；这台的默认照 meta；缺格 ⇒ 解不出`() {
         val row = { name: String, listed: Boolean, ok: Boolean, color: Int ->
-            mapOf(
+            mapOf<String, Any?>(
                 "name" to name,
                 "label" to name.uppercase(),
                 "newSession" to listed,
@@ -66,7 +66,7 @@ class NewSessionReadsTest {
                 "color" to color,
                 "plate" to "夹" + name,
                 "kindLine" to "",
-                "quota" to if (ok) "5h 41%" else null,
+                "slots" to if (ok) listOf(mapOf("slot" to "5h", "text" to "5h 41%", "tone" to "plain")) else emptyList(),
                 "unselectable" to if (ok) null else "需登录",
                 "authKind" to "subscription",
                 "badge" to mapOf("text" to if (ok) "已登录" else "需登录", "warn" to !ok, "title" to ""),
@@ -94,7 +94,7 @@ class NewSessionReadsTest {
         assertEquals("那台说不进选号表的不列（有目录、隔离也不列；界面不另判，同桌面新建会话框）", listOf("work", "team"), a.accounts.map { it.name })
         assertEquals(listOf(3, 1), a.accounts.map { it.color })
         assertEquals(listOf("夹work", "夹team"), a.accounts.map { it.plate })
-        assertEquals(listOf("5h 41%", null), a.accounts.map { it.quota })
+        assertEquals(listOf("5h 41%", null), a.accounts.map { it.slots.firstOrNull()?.text })
         assertEquals(listOf(null, "需登录"), a.accounts.map { it.unselectable })
         assertEquals(mapOf("agent" to "claude"), AccountsList.args("claude"))
         assertNull("缺号牌字 ⇒ 契约对不上", AccountsList.of(data + ("accounts" to listOf(row("x", true, true, 0) - "plate"))))

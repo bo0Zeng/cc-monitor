@@ -23,7 +23,8 @@ const toastMock = vi.fn();
 const plainToast = vi.fn();
 vi.mock("../../../src/frontend/ui/kit/toast", () => ({ failToast: (...a: unknown[]) => toastMock(...a), toast: (...a: unknown[]) => plainToast(...a) }));
 
-import { openFileWindow, fileWindowTheme, FILE_WINDOW_THEME_TOKENS } from "../../../src/frontend/ui/file-window";
+import { openFileWindow, fileWindowTheme } from "../../../src/frontend/ui/file-window";
+import { THEME_TOKENS } from "../../../src/frontend/ui/generated/filewin-theme-tokens";
 import { TabSessionActions } from "../../../src/frontend/ui/tab-session-actions";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
 import { productionTsFiles } from "../../test-support/production-sources";
@@ -61,8 +62,16 @@ describe("F7b 开口：三种落点 → open_file_window 的实参", () => {
     await openFileWindow(CFG);
     document.documentElement.style.removeProperty("--accent");
     const theme = (invokeMock.mock.calls[0][1] as { theme: Record<string, string> }).theme;
-    expect(Object.keys(theme).sort()).toEqual([...FILE_WINDOW_THEME_TOKENS].sort());
+    expect(Object.keys(theme).sort()).toEqual([...THEME_TOKENS].sort());
     expect(theme["--accent"]).toBe("#123456");
+  });
+
+  it("名单只住契约那一份：开口 import 生成物，自己不抄一个令牌名", () => {
+    const own = productionTsFiles("src").find((f) => f.file === "src/frontend/ui/file-window.ts");
+    expect(own, "找不到 file-window.ts").toBeDefined();
+    const code = stripComments(own!.text, "ts");
+    expect(code).toContain('from "./generated/filewin-theme-tokens"');
+    expect(code.match(/"--[\w-]+"/g) ?? [], "file-window.ts 里还写着令牌名").toEqual([]);
   });
 
   it("开不起来 ⇒ 交给失败 toast（壳那一句作标题、复制详情、灰字是那台），回 false", async () => {

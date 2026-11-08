@@ -16,6 +16,7 @@ import com.ccmonitor.mobile.core.wire.gen.AttachFaceNote
 import com.ccmonitor.mobile.core.wire.gen.AttachLocal
 import com.ccmonitor.mobile.core.wire.gen.AttachWant
 import com.ccmonitor.mobile.core.wire.gen.AttachWantCard
+import com.ccmonitor.mobile.core.wire.gen.Commands
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.Staged
 import com.ccmonitor.mobile.link.problem
@@ -399,6 +400,6 @@ class AttachTray(
         const val CHUNK_MS: Long = 20_000L
 
         /** 分块那一半出错时详情里点名的命令。 */
-        const val STAGE = "files-stage-chunk"
+        const val STAGE = Commands.FilesStageChunk.NAME
     }
 }

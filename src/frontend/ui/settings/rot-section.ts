@@ -7,7 +7,7 @@
 import { machineName } from "../control-said";
 import { subscribeTopics } from "../events";
 import { LOCAL, type Machine } from "../ipc/origin";
-import { readRemoteConfig } from "../remote-config";
+import { readMachineNames } from "../machine-feed";
 import { mountRotation, parseRotAnchor, type RotMount } from "../rot-mount";
 import { getCurrentMachine, subscribeMachine } from "../machine-context";
 
@@ -68,11 +68,7 @@ export class RotationSection {
   private async subscribe(): Promise<void> {
     if (this.subscribed) return;
     this.subscribed = true;
-    const hosts = await readRemoteConfig().then(
-      (c) => c.hosts.map((r) => r.name),
-      () => [] as string[],
-    );
-    const origins: Machine[] = [LOCAL, ...hosts];
+    const origins: Machine[] = await readMachineNames().catch(() => [LOCAL]);
     try {
       await subscribeTopics(origins, ["rotation_strategies", "rotation"], (origin) => {
         if (origin === this.origin) void this.mount?.refresh();

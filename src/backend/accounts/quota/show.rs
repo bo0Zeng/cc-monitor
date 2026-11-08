@@ -1,4 +1,5 @@
-//! ★ 额度的**显示态**（纯函数）：一个号此刻该画成什么样 —— 界面与手机端只按这里给的词拼，不自己判。
+//! ★ 额度的**显示态**（纯函数）：一个号此刻该画成什么样的那一判 —— 态 · 卡人的那一格 · 每个语义位的数与用满。
+//! 写成什么字、什么语气不在这里（`faces/quota_rows.rs` 照这里判好的写）。
 //!
 //! | 态 | 判 |
 //! |---|---|
@@ -9,10 +10,11 @@
 //! | `near` | 有语义位的窗口用到 [`NEAR_DEFAULT`]、未重置，或回包说越过了预警线（线是策略的设置，后端不解它的意思，说不出「到线」） |
 //! | `ok` | 其余 |
 //!
-//! 每个语义位另带一格 `full`（用满：照 `rules::standing::used_up` 那一处判）：画 `✕` 只看它；被拒而没用满画「{pct}% · 被拒」。
-//! 语义位取哪个窗口照事实那一处的挑法（`facts::pick`）。显示态只管画成什么样，「此刻发不发得出去」不在这里判（`rules::standing`）。
+//! 每个语义位另带一格 `full`（用满：照 `rules::standing::used_up` 那一处判）。
+//! 语义位取哪个窗口照事实那一处的挑法（`facts::pick`）。「此刻发不发得出去」不在这里判（`rules::standing`）。
 //!
-//! 另叠一格 `stale`：最后一次看到距今超过 [`STALE_AFTER`]。各窗口照原名的那几格（[`windows_of`]）由调用方按额度账那一条补上。
+//! 另叠一格 `stale`：最后一次看到距今超过 [`STALE_AFTER`]。各窗口照原名的那几格（[`windows_of`]）由调用方按额度账那一条补上；
+//! 一个窗口的 `tone` 就是它那一判（用满 ⇒ fail · 快满 ⇒ warn），线上类型里没有另一格。
 
 use super::facts::{self, Kind};
 use super::rules::standing;
@@ -27,192 +29,9 @@ pub(crate) const NEAR_DEFAULT: u8 = 80;
 pub(crate) const STALE_AFTER: u64 = 30 * 60;
 
 /// 画出来的语义位，按这个次序出。
-const SLOTS: [&str; 2] = ["5h", "7d"];
+const SLOTS: [&str; 2] = [cmd_wire::quota::SLOT_5H, cmd_wire::quota::SLOT_7D];
 
-/// ★ 一个语义位那一格写成什么字、什么语气（唯一一处：额度每号几行 · 账号面板 · 规则编辑器 · 起会话菜单都读它）。
-/// `here` ＝ 它是卡人的那一格（[`QuotaShow::limiting`]）。
-pub fn slot_words(state: QuotaState, here: bool, pct: Option<u32>, full: bool) -> (Words, Tone) {
-    if here && state == QuotaState::OverageInUse {
-        return (
-            Words(copy_core::copy_text("acct.row.over", &[])),
-            Tone::Warn,
-        );
-    }
-    if here && matches!(state, QuotaState::ResetSinceSeen | QuotaState::Unseen) {
-        return (
-            Words(copy_core::copy_text("acct.val.none", &[])),
-            Tone::Plain,
-        );
-    }
-    if full {
-        return (
-            Words(copy_core::copy_text("acct.val.full", &[])),
-            Tone::Fail,
-        );
-    }
-    if here && state == QuotaState::Refused {
-        return match pct {
-            Some(p) => (
-                Words(copy_core::copy_text(
-                    "acct.val.refusedPct",
-                    &[("pct", &p.to_string())],
-                )),
-                Tone::Fail,
-            ),
-            None => (
-                Words(copy_core::copy_text("reason.code.refused", &[])),
-                Tone::Fail,
-            ),
-        };
-    }
-    match pct {
-        None => (
-            Words(copy_core::copy_text("acct.val.none", &[])),
-            Tone::Plain,
-        ),
-        Some(p) => (
-            Words(copy_core::copy_text(
-                "acct.val.pct",
-                &[("pct", &p.to_string())],
-            )),
-            if here && state == QuotaState::Near {
-                Tone::Warn
-            } else {
-                Tone::Plain
-            },
-        ),
-    }
-}
-
-/// 用量那一格连成一句（窗口 · 值 · 重置）。
-fn joined(u: &mut Usage) {
-    let v = u.value.0.as_str();
-    u.text = Words(match (&u.window, &u.reset) {
-        (None, None) => v.to_string(),
-        (None, Some(r)) => copy_core::copy_text("acct.usage.wv", &[("w", v), ("v", &r.0)]),
-        (Some(w), None) => copy_core::copy_text("acct.usage.wv", &[("w", &w.0), ("v", v)]),
-        (Some(w), Some(r)) => {
-            copy_core::copy_text("acct.usage.wvr", &[("w", &w.0), ("v", v), ("r", &r.0)])
-        }
-    });
-}
-
-/// 出口那一下：按钟写时刻旁边那几格（线上类型住 `cmd-wire`，字在这里写）。
-pub trait Stamp {
-    fn stamp(&mut self, clock: &crate::common::time::TextClock);
-}
-
-impl Stamp for Usage {
-    /// 写重置那一格，再连成一句。
-    fn stamp(&mut self, clock: &crate::common::time::TextClock) {
-        self.reset = self.resets_at.map(|t| {
-            Words(copy_core::copy_text(
-                "acct.reset.at",
-                &[("at", &clock.text(t).0)],
-            ))
-        });
-        joined(self);
-    }
-}
-
-/// 一个号用量那一格（还没按钟写重置那一格）。`reading_reset` ＝ 回包说的几点能再用（卡着的那一格没给时刻时用它）。
-pub fn usage_of(
-    kind: Kind,
-    state: QuotaState,
-    limiting: Option<&str>,
-    slots: &[SlotShow],
-    reading_reset: Option<u64>,
-) -> Usage {
-    let mut u = if kind == Kind::Api {
-        if state == QuotaState::Refused {
-            Usage {
-                value: Words(copy_core::copy_text("reason.code.refused", &[])),
-                tone: Tone::Fail,
-                resets_at: reading_reset,
-                ..Usage::default()
-            }
-        } else {
-            Usage {
-                value: Words(copy_core::copy_text("acct.kind.api", &[])),
-                tone: Tone::Plain,
-                ..Usage::default()
-            }
-        }
-    } else {
-        let w = limiting.unwrap_or(SLOTS[0]);
-        let slot = slots.iter().find(|s| s.slot == w);
-        let value = slot.map_or_else(
-            || {
-                Words(if state == QuotaState::Refused {
-                    copy_core::copy_text("reason.code.refused", &[])
-                } else {
-                    copy_core::copy_text("acct.val.none", &[])
-                })
-            },
-            |s| s.text.clone(),
-        );
-        let (tone, resets_at) = match state {
-            QuotaState::Refused => (Tone::Fail, slot.and_then(|s| s.resets_at).or(reading_reset)),
-            QuotaState::OverageInUse => (Tone::Warn, None),
-            QuotaState::ResetSinceSeen | QuotaState::Unseen => (Tone::Plain, None),
-            _ if slot.is_some_and(|s| s.full) => (Tone::Fail, None),
-            QuotaState::Near if slot.is_some_and(|s| s.pct.is_some()) => (Tone::Warn, None),
-            _ => (Tone::Plain, None),
-        };
-        Usage {
-            slot: Some(w.to_string()),
-            window: Some(Words(crate::accounts::quota::name_words::slot_text(w))),
-            value,
-            tone,
-            resets_at,
-            ..Usage::default()
-        }
-    };
-    joined(&mut u);
-    u
-}
-
-impl Stamp for SlotShow {
-    /// 出口那一下：按钟写 `resets_at` 旁边那两格。
-    fn stamp(&mut self, clock: &crate::common::time::TextClock) {
-        if let Some(t) = self.resets_at {
-            let at = clock.text(t);
-            self.resets_at_rel_text = clock.rel(t);
-            self.reset_text = Some(reset_text(&at, self.resets_at_rel_text.is_none()));
-            self.resets_at_text = Some(at);
-        }
-    }
-}
-
-/// 重置那一格的字（唯一写法）：还没到 ⇒ `↻18:30`；已过 ⇒ `↻13:10 已过`。
-pub fn reset_text(at: &Words, past: bool) -> Words {
-    Words(if past {
-        copy_core::copy_text("acct.reset.past", &[("at", &at.0)])
-    } else {
-        copy_core::copy_text("acct.reset.at", &[("at", &at.0)])
-    })
-}
-
-impl Stamp for WindowShow {
-    /// 出口那一下：按钟写 `resets_at` 旁边那两格。
-    fn stamp(&mut self, clock: &crate::common::time::TextClock) {
-        if let Some(t) = self.resets_at {
-            self.resets_at_text = Some(clock.text(t));
-            self.resets_at_rel_text = clock.rel(t);
-        }
-    }
-}
-
-impl Stamp for QuotaShow {
-    /// 出口那一下：每一格的时刻字按钟写好。
-    fn stamp(&mut self, clock: &crate::common::time::TextClock) {
-        self.slots.iter_mut().for_each(|s| s.stamp(clock));
-        self.windows.iter_mut().for_each(|w| w.stamp(clock));
-        self.usage.stamp(clock);
-    }
-}
-
-/// 额度账上一条的各窗口（照原名、照出现的次序）。
+/// 额度账上一条的各窗口（照原名、照出现的次序）：数 · 重置 · 哪来的 · 1% ≈ 多少 · 用满 / 快满那一判。
 pub fn windows_of(
     o: &super::ledger::Observed,
     key: &dyn Fn(&str) -> Option<String>,
@@ -224,7 +43,6 @@ pub fn windows_of(
         .map(|w| {
             let seen = o.window_seen(&w.name);
             let reset = super::reset_since_seen(w.resets_at, now);
-            let per_pct = o.tokens_per_pct(&w.name, now);
             let pct = pct_now(w, now);
             let tone = if standing::used_up(pct) {
                 Tone::Fail
@@ -242,49 +60,13 @@ pub fn windows_of(
                 resets_at: w.resets_at,
                 seen_at: seen.at,
                 from: seen.from,
-                tokens_per_pct: per_pct,
-                per_pct_text: per_pct.map(per_pct_text),
+                tokens_per_pct: o.tokens_per_pct(&w.name, now),
+                per_pct_text: None,
                 reset_since_seen: reset,
                 tone,
             }
         })
         .collect()
-}
-
-/// 「1% ≈ 多少用量」那一格的字（唯一写法）。
-fn per_pct_text(n: u64) -> Words {
-    Words(copy_core::copy_text(
-        "acct.val.perPct",
-        &[("n", &copy_core::count_short(n))],
-    ))
-}
-
-/// 各语义位那一格照它取的那个窗口带上「1% ≈ 多少用量」（[`windows_of`] 之后调）。
-pub fn per_pct_of_slots(sh: &mut QuotaShow) {
-    for s in &mut sh.slots {
-        s.per_pct_text = sh
-            .windows
-            .iter()
-            .find(|w| w.name == s.window)
-            .and_then(|w| w.per_pct_text.clone());
-    }
-}
-
-/// 一个窗口那一行的名字：窗口键 `5h` · `7d` 照语义位的字；`7d:<档>` ⇒「7d <档>」；不算用量窗口的（超额）⇒「超额」。
-pub fn window_label(key: Option<&str>) -> String {
-    match key {
-        None => copy_core::copy_text("acct.row.over", &[]),
-        Some(k) => match k.split_once(':') {
-            Some((slot, tier)) => copy_core::copy_text(
-                "acct.window.tier",
-                &[
-                    ("slot", &super::name_words::slot_text(slot)),
-                    ("tier", &tier.replace('_', " ")),
-                ],
-            ),
-            None => super::name_words::slot_text(k),
-        },
-    }
 }
 
 /// 一个窗口此刻用到百分之几（已重置 ⇒ 0；同事实那一处 [`facts::used_now`]）。
@@ -327,7 +109,7 @@ fn slots_of(
         .collect()
 }
 
-/// ★ 判一个号的显示态。`seen` ＝ 额度账上那一条（快照 ＋ 看到的时刻）。
+/// ★ 判一个号的显示态。`seen` ＝ 额度账上那一条（快照 ＋ 看到的时刻）。字与语气（每格的 `text` · `tone` · `usage`）留空，由出口写。
 pub fn show(
     seen: Option<(&QuotaReading, u64)>,
     facts: Facts,
@@ -343,7 +125,7 @@ pub fn show(
             slots: Vec::new(),
             login: facts.login,
             windows: Vec::new(),
-            usage: usage_of(facts.kind, QuotaState::Unseen, None, &[], None),
+            usage: Usage::default(),
         };
     };
     let slots = slots_of(r, now, slot);
@@ -384,17 +166,8 @@ pub fn show(
     } else {
         QuotaState::Ok
     };
-    let mut slots = slots;
-    for x in &mut slots {
-        (x.text, x.tone) = slot_words(
-            state,
-            limiting.as_deref() == Some(x.slot.as_str()),
-            x.pct,
-            x.full,
-        );
-    }
     QuotaShow {
-        usage: usage_of(facts.kind, state, limiting.as_deref(), &slots, r.resets_at),
+        usage: Usage::default(),
         kind: facts.kind,
         state,
         stale: now.saturating_sub(seen_at) > STALE_AFTER,

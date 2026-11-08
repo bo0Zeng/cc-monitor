@@ -18,12 +18,14 @@ impl Drop for Tmp {
     }
 }
 
-/// 这台的配置文件读出来的样子（别名清单住这里）。
+/// 这台合并后的别名清单（内置那几段 ＋ 用户配置文件里的）。
 fn book(t: &Tmp) -> crate::assets::aliases::profile::Book {
-    crate::assets::aliases::profile::parse_book(&t.read(".cc-monitor/profiles.toml"))
+    crate::assets::aliases::load(&HomeDoor(t.0.clone()))
+        .expect("读清单")
+        .book
 }
 
-/// 配置文件里有哪几段。
+/// 合并后的清单里有哪几段。
 fn profile_names(t: &Tmp) -> Vec<String> {
     book(t).profiles.iter().map(|p| p.name.clone()).collect()
 }
@@ -493,11 +495,9 @@ fn a_fresh_home_without_transcripts_still_gets_them_shared_and_old_libraries_are
 fn add_imports_credentials_links_shared_items_and_updates_manifest_and_aliases() {
     let t = machine("add");
     ok(&t, "accounts-init", json!({ "name": "lab" }));
-    // 用户自己手写进配置文件的一段：建号不碰它。
-    t.write(
-        ".cc-monitor/profiles.toml",
-        &(t.read(".cc-monitor/profiles.toml") + "\n# 我的\n[mine]\nccm-tmux = true\n"),
-    );
+    // 用户自己手写进配置文件的一段：建号不碰它（整份逐字节不变）。
+    let mine = "# 我的\n[mine]\nccm-tmux = true\n";
+    t.write(".cc-monitor/profiles.toml", mine);
     t.write(".claude/stats-cache.json", "{\"tpl\":1}");
     t.write("snap/cred-x.json", "{\"fake\":\"cred-x\"}");
     t.chmod("snap/cred-x.json", 0o644);
@@ -549,6 +549,11 @@ fn add_imports_credentials_links_shared_items_and_updates_manifest_and_aliases()
         assert!(have.iter().any(|h| h == n), "少了 {n}：{have:?}");
     }
     assert_eq!(got["aliases"][0]["added"], json!(["xcc", "xcct", "xcch"]));
+    assert_eq!(
+        t.read(".cc-monitor/profiles.toml"),
+        mine,
+        "建号动了用户的配置文件"
+    );
     // 新加的几条是链接：已开的终端马上能用，不叫人重读。
     for n in ["xcc", "xcct", "xcch"] {
         assert!(t.p(&format!(".cc-monitor/bin/{n}")).is_symlink(), "{n}");
@@ -1285,13 +1290,13 @@ fn rollback_refuses_traversal_and_skips_out_of_bounds_entries() {
 
 // ───────────────────────────── 别名文件 ─────────────────────────────
 
-/// 配置文件里有写错的地方 ⇒ 不动它（等人先改好），应答里说一句；账号那一趟照样成。
+/// 配置文件整份写坏了 ⇒ 不动它、也不重生成（等人先改好），应答里说一句；账号那一趟照样成。
 #[test]
 fn a_profiles_file_with_a_mistake_is_left_alone() {
     let t = machine("alias-odd");
-    t.write(".cc-monitor/profiles.toml", "[cc]\nbogus = 1\n");
+    t.write(".cc-monitor/profiles.toml", "[[[ not toml\n");
     let got = ok(&t, "accounts-init", json!({ "name": "lab" }));
-    assert_eq!(t.read(".cc-monitor/profiles.toml"), "[cc]\nbogus = 1\n");
+    assert_eq!(t.read(".cc-monitor/profiles.toml"), "[[[ not toml\n");
     assert_eq!(got["aliases"][0]["changed"], false);
     assert!(got["aliases"][0]["note"].is_string());
     assert!(t.p(".cc-monitor/accounts/lab").is_dir());

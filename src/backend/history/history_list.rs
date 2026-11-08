@@ -500,7 +500,6 @@ fn row_of(
     context: bool,
     now_ms: i64,
     tz: &crate::common::time::Tz,
-    labels: &BTreeMap<String, String>,
 ) -> HistoryRow {
     let mut r = f.raw;
     // 记录文件的路径先拿出来（其余各格下面逐格搬过去）。
@@ -508,13 +507,6 @@ fn row_of(
         let RawRow { jsonl_path, .. } = &mut r;
         std::mem::take(jsonl_path)
     };
-    let forked_from = r
-        .forked_from_session_id
-        .as_deref()
-        .and_then(|p| labels.get(p))
-        .map(|l| cmd_wire::listing::ForkedFrom {
-            label: Words(l.clone()),
-        });
     let (at_text, section_text, span_text) =
         crate::common::time::history_times(at, r.started_at, r.updated_at, now_ms, tz);
     let can = can_of(&r.agent, &r.life, r.is_bg);
@@ -548,7 +540,6 @@ fn row_of(
         custom_title: r.custom_title,
         hidden: f.hidden,
         forked_from_session_id: r.forked_from_session_id,
-        forked_from,
         project_dir: r.project_dir,
         group: r.group,
         last_account: r.last_account,
@@ -634,7 +625,7 @@ pub(crate) fn answer_from(
         .zip(context)
         .map(|(f, cx)| {
             let at = key(&f);
-            row_of(f, origin, at, cx, now_ms, tz, &labels)
+            row_of(f, origin, at, cx, now_ms, tz)
         })
         .collect();
     rows.sort_by(|a, b| {
@@ -840,7 +831,6 @@ pub fn specimen() -> Patch<HistoryHead, HistoryRow> {
             ..Default::default()
         }),
         forked_from_session_id: Some(s("f")),
-        forked_from: Some(cmd_wire::listing::ForkedFrom { label: w("f") }),
         project_dir: s("-w"),
         group: s("agent:/w"),
         last_account: Some(s("a")),

@@ -7,28 +7,17 @@ import { copyText } from "../copy-table";
 import { confirmDialog, type ConfirmFn } from "../kit/dialog";
 import { toast, failToast } from "../kit/toast";
 import { button } from "../kit/button";
-import { readRemoteConfig } from "../remote-config";
 import { askAppExitInterrupts, interruptRows, type Interrupts } from "./interrupts";
 
 export interface RestartDeps {
-  ask?: (remotes: readonly string[]) => Promise<Interrupts>;
+  ask?: () => Promise<Interrupts>;
   confirm?: ConfirmFn;
   restart?: () => Promise<void>;
-  remotes?: () => Promise<string[]>;
-}
-
-async function enabledRemotes(): Promise<string[]> {
-  try {
-    return (await readRemoteConfig()).hosts.filter((r) => r.host.connect).map((r) => r.name);
-  } catch {
-    return [];
-  }
 }
 
 /** 点了［现在重启］。回 `false` ＝ 用户在框里取消了。 */
 export async function restartNow(deps: RestartDeps = {}): Promise<boolean> {
-  const remotes = await (deps.remotes ?? enabledRemotes)();
-  const rows = interruptRows(await (deps.ask ?? askAppExitInterrupts)(remotes), copyText("restartNow.dialog.everywhere"), "restart");
+  const rows = interruptRows(await (deps.ask ?? askAppExitInterrupts)(),copyText("restartNow.dialog.everywhere"), "restart");
   if (rows.length > 0) {
     const ok = await (deps.confirm ?? confirmDialog)({
       title: copyText("restartNow.dialog.title"),

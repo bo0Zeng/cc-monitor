@@ -1,4 +1,4 @@
-# 足迹：申报表 · 判定 · 这台的 stat，出整份成品（`data-report` · 最近见到）。只读。只引控制面 · 观测面 · 资产 · 账号域 · agents · 历史清单 · 帧面零件 · 纯工具 · 平台九层。
+# 足迹：申报表 · 判定 · 这台的 stat，出整份成品（`data-report` · 最近见到）。只读。只引宿主口 · 资产 · 账号域 · agents · 历史清单 · 帧面零件 · 纯工具 · 平台九层。
 [package]
 name = "backend-footprint"
 version = "0.0.0"
@@ -13,11 +13,10 @@ workspace = true
 
 [features]
 # 线上类型的 TS 派生（上层测试档开它，生成物落 `src/frontend/ui/generated/`）。
-ts = ["dep:ts-rs", "cmd-wire/ts", "backend-platform/ts", "backend-common/ts", "backend-agents/ts", "backend-wire/ts", "backend-history/ts", "backend-accounts/ts", "backend-assets/ts", "backend-control/ts", "backend-observe/ts"]
+ts = ["dep:ts-rs", "cmd-wire/ts", "backend-platform/ts", "backend-common/ts", "backend-agents/ts", "backend-wire/ts", "backend-history/ts", "backend-accounts/ts", "backend-assets/ts"]
 
 [dependencies]
-backend-control = { path = "../control" }
-backend-observe = { path = "../observe" }
+backend-host = { path = "../host" }
 backend-assets = { path = "../assets" }
 backend-accounts = { path = "../accounts" }
 backend-agents = { path = "../agents" }
@@ -54,5 +53,3 @@ backend-wire = { path = "../wire", features = ["test-support", "ts"] }
 backend-accounts = { path = "../accounts", features = ["test-support", "ts"] }
 backend-history = { path = "../history", features = ["test-support", "ts"] }
 backend-assets = { path = "../assets", features = ["test-support", "ts"] }
-backend-control = { path = "../control", features = ["test-support", "ts"] }
-backend-observe = { path = "../observe", features = ["test-support", "ts"] }
