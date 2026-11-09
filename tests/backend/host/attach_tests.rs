@@ -729,3 +729,43 @@ fn dropping_the_client_turns_the_mouse_off_and_leaves_the_alternate_screen() {
     mouse_left_off(&s);
     assert!(s.raw().ends_with("\x1b[?1049l"), "{:?}", s.raw());
 }
+
+// ── 里面写剪贴板（OSC 52）转给外层（照 tmux `set-clipboard`）──
+
+/// 里面的程序自己选完字、往终端写 OSC 52 ⇒ 外层原样收到那一句（选择器 · base64 不动），不靠屏。
+#[test]
+fn the_inside_writing_the_clipboard_reaches_the_outer_terminal() {
+    let (mut c, s) = bare(24, 80);
+    welcome(&mut c, 24, 80, true);
+    out(&mut c, b"\x1b]52;c;aGVsbG8gd29ybGQ=\x07");
+    assert!(
+        s.raw().contains("\x1b]52;c;aGVsbG8gd29ybGQ=\x07"),
+        "外层收到 OSC 52：{:?}",
+        s.raw()
+    );
+}
+
+/// ST 结尾、切在两帧里的也认；翻看盖着时也转（剪贴板不上屏）。
+#[test]
+fn a_clipboard_write_split_across_frames_and_ended_by_st_still_reaches_the_outer() {
+    let (mut c, s) = bare(24, 80);
+    welcome(&mut c, 24, 80, true);
+    out(&mut c, b"text\x1b]52;c;Zmlyc3");
+    out(&mut c, b"Q=\x1b\\more");
+    assert!(s.raw().contains("\x1b]52;c;Zmlyc3Q=\x07"), "{:?}", s.raw());
+
+    let _ = c.key(b"\x02[", &no_list);
+    out(&mut c, b"\x1b]52;p;c2Vjb25k\x07");
+    assert!(s.raw().contains("\x1b]52;p;c2Vjb25k\x07"), "翻看盖着时也转");
+}
+
+/// 只看的一端也转（tmux 转给看着这个窗格的每一端）；读剪贴板的询问不转。
+#[test]
+fn a_viewer_gets_the_clipboard_write_too_but_a_clipboard_query_is_not_forwarded() {
+    let (mut v, vs) = bare(24, 80);
+    welcome(&mut v, 24, 80, false);
+    out(&mut v, b"\x1b]52;c;dmlld2Vy\x07");
+    assert!(vs.raw().contains("\x1b]52;c;dmlld2Vy\x07"), "只看的也收到");
+    out(&mut v, b"\x1b]52;c;?\x07");
+    assert!(!vs.raw().contains("52;c;?"), "询问不转：{:?}", vs.raw());
+}

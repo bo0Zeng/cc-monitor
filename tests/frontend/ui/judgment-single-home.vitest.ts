@@ -759,9 +759,9 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     ],
   },
   J45: {
-    what: "「终端」那一颗点了做什么（拉它的窗 · 在这里开 · 做不了）",
-    // 唯一的家是后端造脸那一处（`SessionCan.terminal`：那台把在它上面看 · 别处看两份都写好），界面只读 `face-can.ts::terminalWay`。
-    homes: ["src/backend/wire/mod.rs::front_or"],
+    what: "拉前 · 在终端里打开 · 看它的终端三样各自能不能、为什么不能",
+    // 唯一的家是后端造脸那一处（`SessionCan` 的 front · attach · view 三格），界面只读 `face-can.ts` 的 frontBlocked · attachBlocked · viewBlocked。
+    homes: ["src/backend/wire/mod.rs::no", "src/backend/wire/mod.rs::view_attach", "src/backend/wire/mod.rs::view_no"],
     status: "zero",
     defs: [],
     gone: ["isAttachable", "resolveRemoteTmuxItems", "resolveLocalTmuxItems", "terminalFrontAvailable", "canAttach", "frontWhy"],
@@ -919,6 +919,10 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     //   TS 没有同名常量；界面拿 `"5h"` 当键去取后端成品的那几处（`rot-board.ts` · `settings/accounts-section.ts`）随「界面照成品画」那几块收。
     SLOT_5H: NONE,
     SLOT_7D: NONE,
+    // 接常驻后端那一句拒绝的原因词（客户端照它判、后端照它写）只住 `cmd_wire::attach`；TS 不读 ⇒ NONE。
+    REFUSE_ABSENT: NONE,
+    REFUSE_MALFORMED: NONE,
+    REFUSE_UNREACHABLE: NONE,
     LOCAL: "J36",
     KEYS_NOT_NAMES: "J39",
     // 失败信封的唯一一份（`failed.rs`）：`Failed` 的造法 · 取码兜底 · 拒绝那一形；后端 · 壳 · 文件窗口 · 手机核心都用它，界面读生成的 `Failed` 照摆，TS 侧没有孪生。
@@ -1038,8 +1042,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     in_order: NONE,
   },
   "face-core": {
-    // ↗ 浮层那一张（`face-core/src/front.rs`：壳的窗口结局 `FrontOutcome::told` · 会话为什么没有链 `Unplaced::face`）：壳与本机后端写、界面照摆；TS 侧没有孪生（A16-1-8）。
-    told: NONE,
+    // ↗ 浮层那一张（`face-core/src/front.rs`：窗口那一跳每种结局码的那一张 `missed_faces` · 会话为什么没有链 `Unplaced::face`）：只有本机后端写、壳照结局码挑、界面照摆；TS 侧没有孪生（A16-1-8）。
+    missed_faces: NONE,
     face: NONE,
     // 历史那几行按哪台换说法的两格（`face-core/src/history_asks.rs`）：本机后端写行时算、界面照摆；TS 侧没有孪生。
     reveal_of: NONE,
@@ -1193,21 +1197,11 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     spawn_reason: NONE,
   },
   "creds-core": {
-    // monitor 数据目录的规则搬进这里（远端常驻后端按同一份推默认路径）；TS 侧没有孪生。
-    DATA_DIR_ENV: NONE,
-    HISTORY_METADATA_FILE: NONE,
-    monitor_data_dir: NONE,
-    // 哪个环境变量算家（按平台惯例）：两侧 Rust 都调它；TS 侧零处读家目录 ⇒ NONE。
-    home_dir: NONE,
-    home_dir_from: NONE,
-    home_dir_on: NONE,
     ACCOUNTS_FIELD: NONE,
     ALL: NONE,
     AUTH_STYLE_FIELD: NONE,
     BASE_URL_FIELD: NONE,
     create_private: NONE,
-    // 凭据文件住数据目录根上（原先按 claude 家拼的那个函数改名成它）。
-    credentials_path: NONE,
     DEFAULT: NONE,
     expose_for_auth_header: NONE,
     // 登录令牌（订阅号续期）：读 / 写回 / 请求体三个纯函数；TS 侧零处碰凭据。
@@ -1220,7 +1214,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     matches: NONE,
     expose_for_relay_key: NONE,
     field_value: NONE,
-    FILE_NAME: NONE,
     from_field_value: NONE,
     is_configured: NONE,
     is_empty: NONE,
@@ -1307,11 +1300,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     center_in_work_area: NONE,
     // 屏上一点所在那块屏的工作区（文件窗口改缩放之后再夹；只 Windows 问得到）；TS 侧没有孪生。
     work_area_at: NONE,
-    // 本机时区偏移 · 这一份编给的系统与架构（文件窗口画修改时间 · monitor 写「复制详情」的时刻与「本机」那一行）；TS 侧零孪生。
-    local_offset_at: NONE,
-    // 看的这一台的时区名（请求信封与起流的 `tz`，后端按它写「几点」）· 信封里给它留的位子；TS 侧零孪生（界面不碰时区，壳代它交）。
-    viewer_tz: NONE,
-    TZ_ROOM: NONE,
+    // 这一份编给的系统与架构（monitor 写「复制详情」里「本机」那一行）；TS 侧零孪生。
     OS: NONE,
     ARCH: NONE,
   },
@@ -1358,6 +1347,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   // 相对路径拆成普通段的词法判定（本机写面 · 远端写围栏 · 解压条目同一道）：后端 · 拨号核心同一份；TS 侧没有孪生。
   "plain-path-core": {
     plain_segments: NONE,
+    last_segment: NONE,
   },
   // 平台原语（目录锁 · 只给本人的目录 · 自家状态的原子写 · /proc stat · 进程表 · CREATE_NO_WINDOW）：后端 · 壳 · host-core 同一份；TS 侧没有孪生。
   "platform-core": {
@@ -1371,6 +1361,11 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     CREATE_NO_WINDOW: NONE,
     parse_stat: "J43",
     processes: "J43",
+    // 本机时区：那一刻的偏移 · 时区名（去哪儿找归本包，算不算数由调用方给）· 名字长相 · 信封里给它留的位子；后端 · 壳 · 文件窗口都调它，TS 侧零孪生（界面不碰时区）。
+    offset_secs: NONE,
+    iana_name: NONE,
+    looks_iana: NONE,
+    TZ_ROOM: NONE,
   },
   // 测试档的家一开始就是沙箱（各 crate 只在 dev 侧引它）；TS 侧没有孪生。
   "test-home": {
@@ -1396,6 +1391,18 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     as_len: NONE,
   },
   "relay-route-core": {
+    // 家目录 · 数据目录的规则（两侧 Rust 同一份；默认住址、远端常驻后端按同一份推）；TS 侧零处读家目录 ⇒ NONE。
+    home_dir: NONE,
+    home_dir_from: NONE,
+    // 常驻后端那三个子命令词（接 · 确保在 · 停）只住这里；后端 oneshot 表 · 壳 · 客户端都引它，TS 不读 ⇒ NONE。
+    RESIDENT_ATTACH: NONE,
+    RESIDENT_ENSURE: NONE,
+    RESIDENT_STOP: NONE,
+    home_dir_on: NONE,
+    monitor_data_dir: NONE,
+    DATA_DIR_ENV: NONE,
+    HISTORY_ANNOTATIONS_REL: NONE,
+    APIKEY_CREDENTIALS_REL: NONE,
     // 能当一个号的 id（过段闸 ＋ 不是「没说是哪个号」那一段 `_`）：轮换 · quota-probe · quota-warm 同问这一处；界面不判号 id，没有孪生。
     account_ok: NONE,
     UNDECLARED_ACCOUNT_SEGMENT: NONE,
@@ -1519,8 +1526,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     BACKEND_KEPT_DIR_NAME: NONE,
     base_url: NONE,
     base_url_shape_ok: NONE,
-    // 一行里插好钥匙的地址把钥匙段换成 `…`（「待办」摘出的原文行）；界面照画，TS 侧没有孪生。
-    hide_key: NONE,
     KEY_FILE_REL: "J14",
     key_shape_ok: NONE,
     // 把钥匙插进中转地址（`split_keyed_base_url` 的逆，给用户自己贴的那一段用）；TS 侧没有孪生。
@@ -1577,6 +1582,10 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   },
   // 部署那一族的契约（`deploy-core` 拆开：判定那一半进了后端 `deploy` crate，这里只剩两侧对上的形状）。TS 侧零处判部署 ⇒ 全 NONE。
   "deploy-contract": {
+    // 槽目录名与槽名的拼 / 解（壳落槽 · 后端读槽同一份）；TS 侧不碰槽。
+    SLOTS_DIR: NONE,
+    slot_name: NONE,
+    of_slot_name: NONE,
     LINES: NONE,
     UNAME_CMD: NONE,
     STAMP_OPEN: NONE, // 身份戳界标（后端拼戳 · monitor 扫字节两侧同一份；TS 不扫字节）

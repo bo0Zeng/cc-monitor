@@ -5,28 +5,27 @@
  * 头注那条红线（「纯展示，不做删除 / 清空操作 —— 避免误点」）此前**没有判据看着**。
  * 本文件立两条：
  *
- * ① **效应面两向相等**：这一块源码里调到的后端命令 == {`get_data_paths`}；
- *    从外面拿进来的「会动东西」的函数 == {`openPath`, `revealInFolder`}（打开 / 在文件管理器里选中，都不改盘）；
+ * ① **效应面两向相等**：这一块源码里调到的壳命令 == {`get_data_paths`, `os_open`}；
+ *    `os_open` 只是用系统程序打开；从外面拿进来的「会动东西」的函数 == {`revealInFolder`}（打开 / 在文件管理器里选中，都不改盘）；
  *    `localStorage` 上一个写 / 删的调用都没有。量具是 TS 语法树，注释不算。
  * ② **路径真的上屏**：后端给的每一条（持久化 / WebView2 / profile 备份）的 `path`
  *    都以纯文本出现在那一行里；按钮上没有「删 / 清」。
  *
- * 〔射程〕盖不到：`openPath` 打开之后用户在文件管理器里自己删 —— 那是用户的手，不是这一块的按钮。
+ * 〔射程〕盖不到：`os_open` 打开之后用户在文件管理器里自己删 —— 那是用户的手，不是这一块的按钮。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import ts from "typescript";
 import { readFileSync } from "node:fs";
 
 const { paths } = vi.hoisted(() => ({ paths: { value: null as unknown } }));
-vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
-  commands: { get_data_paths: () => Promise.resolve(paths.value) },
-}));
 const { revealed } = vi.hoisted(() => ({ revealed: [] as unknown[] }));
-vi.mock("@tauri-apps/plugin-opener", () => ({
-  openPath: vi.fn(),
-  revealItemInDir: (p: unknown) => {
-    revealed.push(p);
-    return Promise.resolve();
+vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
+  commands: {
+    get_data_paths: () => Promise.resolve(paths.value),
+    os_open: (what: { kind: string; path?: string }) => {
+      if (what.kind === "reveal") revealed.push(what.path);
+      return Promise.resolve();
+    },
   },
 }));
 vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
@@ -84,12 +83,11 @@ describe("数据位置：给路径，不给删 / 清空", () => {
     expect(bad.storageWrites).toEqual(["removeItem"]);
   });
 
-  it("① 效应面两向相等：只读一条命令、只会「打开」，localStorage 零写", () => {
+  it("① 效应面两向相等：只读一条命令、另一条只会「打开」，localStorage 零写", () => {
     const face = effectFace(readFileSync(SRC, "utf8"));
-    expect(face.commands).toEqual(["get_data_paths"]);
+    expect(face.commands).toEqual(["get_data_paths", "os_open"]);
     expect(face.imports).toEqual({
       "../ipc/commands": ["commands"],
-      "@tauri-apps/plugin-opener": ["openPath"],
       "../reveal-in-folder": ["revealInFolder"],
       "../kit/toast": ["failToast"],
       "../kit/detail": ["sayFailure"], // 读失败那一句 ＋ 它的［复制详情］：只取那一句与详情、排版，不是效应

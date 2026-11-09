@@ -8,7 +8,6 @@
 import type { DotState } from "./kit/status-dot";
 import type { BackgroundWork, Needs } from "./session-reads";
 import type { Tab } from "./tab-model";
-import { projectNameFromCwd } from "./tab-model";
 import { clockNow } from "./duration-format";
 
 /** 此刻在等人 ⇒ 等的是什么（会话事实那一份；脸上那颗点说在等才认）；不在等 ⇒ `null`。 */
@@ -46,9 +45,9 @@ export function peekLine(tab: Tab): string | null {
   return tab.face?.peek ?? null;
 }
 
-/** 窄窗那一格的两个字母：项目目录名里的头两个字母（小写）；没有字母 ⇒ 头两个字。 */
+/** 窄窗那一格的两个字母：项目名（后端切好的 `Tab.projectName`）里的头两个字母（小写）；没有字母 ⇒ 头两个字。 */
 export function abbrOf(tab: Tab): string {
-  const name = (tab.projectDir ? projectNameFromCwd(tab.projectDir) : null) ?? tab.label ?? tab.sessionId;
+  const name = tab.projectName || tab.label || tab.sessionId;
   const letters = name.replace(/[^a-z]/gi, "");
   return (letters.length >= 2 ? letters : name).slice(0, 2).toLowerCase();
 }

@@ -65,6 +65,8 @@ vi.mock("../../../../src/frontend/ui/settings/claude-dir-check", () => ({
   claudeDirProblem: () => Promise.resolve(dirCheck.problem),
 }));
 vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
+  // 选文件框经包装层转出：转给下面那份 plugin-dialog 桩（判据照它控成败）。
+  openFileDialog: async (o: unknown) => (await import("@tauri-apps/plugin-dialog")).open(o as never),
   commands: new Proxy(
     {},
     {

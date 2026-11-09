@@ -45,6 +45,16 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
           const u = new TextEncoder().encode(JSON.stringify(answer(a0.origin, req)));
           return Promise.resolve(u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength));
         }
+        // 卸后端（本机后端 `deploy-uninstall`）：摆的是那一句 ⇒ 回包 `{removed, said}`；摆的是 `Error` ⇒ 后端拒、那一句是它的字。
+        if (op === "deploy-uninstall") {
+          const reply = ipcReplies.get(op);
+          if (reply instanceof Error) {
+            const refused = { code: "unreachable", said: reply.message };
+            return Promise.reject({ err: "Refused", body: [...new TextEncoder().encode(JSON.stringify(refused))], said: reply.message, detail: "" });
+          }
+          const u = new TextEncoder().encode(JSON.stringify({ removed: true, said: reply }));
+          return Promise.resolve(u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength));
+        }
         // 机器表那三条（本机后端）：照金样回录好的回包；拒 ⇒ 同 monitor 交回来的那一形（`Refused` ＋ 拒绝体 ＋ 那一句）。
         if (op.startsWith("machines-")) {
           const a0 = args[0] as { payload?: number[] };
@@ -992,6 +1002,17 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(pageA.textContent).not.toContain(copyText("addMachine.err.port"));
   });
 
+  it("地址清空了点［测试连接］⇒ 说的是机器表那一道（machines-try）回的那一句，界面不另判必填", async () => {
+    const p = fakePages();
+    await mount([mkH("a", "1.1.1.1")], p.host);
+    const pageA = pageOf(p, "machine:a");
+    await change(pageA.querySelectorAll<HTMLInputElement>('input[type="text"]')[1]!, "");
+    [...pageA.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("machineCard.build.test"))!.click();
+    for (let i = 0; i < 6; i++) await tick();
+    expect(pageA.querySelector(".remote-test-result")?.textContent).toBe(copyText("addMachine.err.host"));
+    expect(chanOps).not.toContain("remote-probe");
+  });
+
   it("改名之后这一页讲的是新名字；那台的偏好住那台、改名不搬", async () => {
     const p = fakePages();
     vi.mocked(loadConfig).mockResolvedValue({
@@ -1123,6 +1144,37 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       expect(dlg.textContent, "框顶说的是那一句原因（不一律说「别处改过」）").toContain("disk full");
       expect(sec.element.querySelectorAll(".remote-machine-row:not(.remote-machine-local)")).toHaveLength(1);
       ipcReplies.clear();
+    });
+
+    it("★ 自己填、端口框留空 ⇒ 交出去的那一台没有 port 键（缺省只住拨号核心）", async () => {
+      ipcReplies.set("ssh-config-import", { groups: [], partial: false });
+      const sec = await mount([mkH("a", "1.1.1.1")], fakePages().host);
+      const dlg = await openAdd(sec);
+      fakeMachines.sent.mockImplementation(() => ({ code: "io_failed", said: "x" }));
+      const [name, host, user, port] = [...dlg.querySelectorAll<HTMLInputElement>(".add-machine-grid input")];
+      name!.value = "box";
+      host!.value = "7.7.7.7";
+      user!.value = "root";
+      port!.value = "";
+      for (const i of [name, host, user, port]) i!.dispatchEvent(new Event("input"));
+      for (let i = 0; i < 5; i++) await tick();
+      const ins = fakeMachines.sent.mock.calls.at(-1)![1].find((e) => e.op === "insertin") as { value: Record<string, unknown> };
+      expect(ins.value.host).toBe("7.7.7.7");
+      expect("port" in ins.value, "端口框空着还交了端口").toBe(false);
+      ipcReplies.clear();
+    });
+
+    it("★ 已在盘上那台把端口框清空 ⇒ 那一格交 null（回拨号核心的缺省），不是 22", async () => {
+      const p = fakePages();
+      await mount([{ ...mkH("a", "1.1.1.1"), port: 2222 }], p.host);
+      fakeMachines.sent.mockImplementation(() => ({ code: "io_failed", said: "x" }));
+      const port = pageOf(p, "machine:a").querySelector<HTMLInputElement>(".machine-conn-port input")!;
+      expect(port.value).toBe("2222");
+      port.value = "";
+      port.dispatchEvent(new Event("change"));
+      for (let i = 0; i < 6; i++) await tick();
+      const set = fakeMachines.sent.mock.calls.filter(([cmd]) => cmd === "machines-set").at(-1)![1];
+      expect(set).toContainEqual(expect.objectContaining({ op: "setin", field: "port", value: null }));
     });
   });
 
@@ -1263,7 +1315,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       ["done-ok", "remote-test-ok", "done-ok"],
     ] as const) {
       localStorage.clear();
-      ipcReplies.set("uninstall_remote_backend", reply);
+      ipcReplies.set("deploy-uninstall", reply);
       const p = fakePages();
       await mount([mkH("a", "1.1.1.1")], p.host);
       (p.addedParts[1]!.uninstall as HTMLButtonElement).click();

@@ -1072,6 +1072,8 @@ async fn the_hello_facts_decide_what_is_sent_and_what_is_withdrawn() {
     let hello = witness_of(&frame).expect("是 Hello 帧");
     let (mine, theirs) = tokio::io::duplex(64 * 1024);
     let client = park(mine).into_client(hello);
+    // 那台 hello 里那一句是它自称（「本机 …」）；本侧照这条连接登记的名字说。
+    client.name_machine("b8-gap-devbox");
     let mut peer = tokio::io::BufReader::new(theirs);
 
     // ①
@@ -1083,8 +1085,10 @@ async fn the_hello_facts_decide_what_is_sent_and_what_is_withdrawn() {
         err,
         CallError::Unavailable {
             cmd: "terminal-preview".into(),
-            code: "no_tmux".into()
-        }
+            code: "no_tmux".into(),
+            said: copy_core::unavailable("no_tmux", "b8-gap-devbox")
+        },
+        "做不到那一下照那台的码、按这条连接登记的名字说（不是那台自称的「本机」，也不是只说「该机不支持」）"
     );
     let mut stray = String::new();
     let read = tokio::time::timeout(Duration::from_millis(100), peer.read_line(&mut stray)).await;

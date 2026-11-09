@@ -4,24 +4,25 @@
 //! 名字怎么起是账号域的规则（`accounts::manage::aliases::alias_name`）。「账号那一形」（[`form_of`]）也住这里：读回口据它给每条归组。
 
 use super::profile::{self, Book, Profile, Setting};
-use crate::accounts::manage::aliases::{alias_name, Form};
+use crate::accounts::manage::aliases::{alias_name, suffix, IN_ORDER};
 use crate::ccm_line::argv::{flag, Parsed};
+use cmd_wire::session::Launch;
 
 /// 一形在命令行上那个词（直路没有）。
-fn word_of(form: Form) -> Option<&'static str> {
+fn word_of(form: Launch) -> Option<&'static str> {
     match form {
-        Form::Plain => None,
-        Form::Tmux => Some(flag::TMUX),
-        Form::Hosted => Some(flag::HOSTED),
+        Launch::Direct => None,
+        Launch::Tmux => Some(flag::TMUX),
+        Launch::Managed => Some(flag::HOSTED),
     }
 }
 
 /// 这一段是不是「账号那一形」：自己只写了号（可再加 tmux 或托管），没有交给 agent 的词 ⇒ `(号, 哪一形)`，号与形按合并下来的算
 /// （`workcct` 基于 `cct` 只写了号，也是「work 号 ＋ tmux」）。**不看名字**（名字是用户可改的）；合不下来的那一段不算。
-pub(crate) fn form_of(book: &Book, p: &Profile) -> Option<(String, Form)> {
+pub(crate) fn form_of(book: &Book, p: &Profile) -> Option<(String, Launch)> {
     let key = |f: &str| f.trim_start_matches('-').to_string();
     let allowed: Vec<String> = std::iter::once(flag::ACCOUNT)
-        .chain(Form::IN_ORDER.into_iter().filter_map(word_of))
+        .chain(IN_ORDER.into_iter().filter_map(word_of))
         .map(key)
         .collect();
     let own: Vec<&str> = p.items.iter().map(|i| i.key.as_str()).collect();
@@ -35,9 +36,9 @@ pub(crate) fn form_of(book: &Book, p: &Profile) -> Option<(String, Form)> {
         Parsed::Opts(o) => Some((
             o.account.clone(),
             match (o.use_tmux, o.hosted) {
-                (true, _) => Form::Tmux,
-                (_, true) => Form::Hosted,
-                _ => Form::Plain,
+                (true, _) => Launch::Tmux,
+                (_, true) => Launch::Managed,
+                _ => Launch::Direct,
             },
         )),
         Parsed::Early(_) => None,
@@ -45,16 +46,16 @@ pub(crate) fn form_of(book: &Book, p: &Profile) -> Option<(String, Form)> {
 }
 
 /// 这台起得了的几形（没有 tmux 的不带 tmux 那一形）。
-fn forms(tmux: bool) -> impl Iterator<Item = Form> {
-    Form::IN_ORDER
+fn forms(tmux: bool) -> impl Iterator<Item = Launch> {
+    IN_ORDER
         .into_iter()
-        .filter(move |f| tmux || *f != Form::Tmux)
+        .filter(move |f| tmux || *f != Launch::Tmux)
 }
 
 /// 一形的入口叫什么：默认那一家的 wrapper 名（`agents::wrapper_alias`，Claude：`cc`）＋ 那一形的后缀；那一家没有 wrapper ⇒ `None`。
-fn entry(form: Form) -> Option<String> {
+fn entry(form: Launch) -> Option<String> {
     crate::agents::wrapper_alias(crate::agents::default_kind())
-        .map(|w| format!("{w}{}", form.suffix()))
+        .map(|w| format!("{w}{}", suffix(form)))
 }
 
 /// 一段内置的：`words` 是那几项（一项一组命令行词）。
@@ -80,11 +81,13 @@ fn built(name: String, from: Option<String>, words: Vec<Vec<String>>) -> Profile
 /// 内置那几段：三个入口（直路那一个不基于谁，另两形基于它、自己写上那一形的词）；再每个号三条，各基于同一形的入口、只写自己的号
 /// （入口没有 ⇒ 不基于谁、自己写上那一形的词）。
 fn builtins(accounts: &[String], tmux: bool) -> Vec<Profile> {
-    let word = |form: Form| word_of(form).map(|w| vec![w.to_string()]);
+    let word = |form: Launch| word_of(form).map(|w| vec![w.to_string()]);
     let mut out = Vec::new();
     for form in forms(tmux) {
         let Some(name) = entry(form) else { continue };
-        let from = (form != Form::Plain).then(|| entry(Form::Plain)).flatten();
+        let from = (form != Launch::Direct)
+            .then(|| entry(Launch::Direct))
+            .flatten();
         out.push(built(name, from, word(form).into_iter().collect()));
     }
     for account in accounts {

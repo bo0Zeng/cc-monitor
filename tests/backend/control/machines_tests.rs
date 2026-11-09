@@ -191,6 +191,28 @@ fn the_version_is_kept_by_the_declaration() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
+/// 改一格交 `null` ⇒ 那一格拿掉、回拨号核心的缺省（界面端口框清空就交这个；缺省只住 `ssh_dial::machine`）。
+#[test]
+fn a_null_cell_falls_back_to_the_dial_default() {
+    let home = scratch("null-cell");
+    set(&home, json!([insert("gpu", "g.lan")])).unwrap();
+    set(
+        &home,
+        json!([{ "op": "setin", "where": by_name("gpu"), "field": "port", "value": 2222 }]),
+    )
+    .unwrap();
+    let done = set(
+        &home,
+        json!([{ "op": "setin", "where": by_name("gpu"), "field": "port", "value": null }]),
+    )
+    .unwrap();
+    assert_eq!(
+        done.machines.hosts[0].port,
+        ssh_dial::machine::Host::default().port
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
 /// 写完响一下（流连接照它推 `changed {machines}`）；一条都没动 ⇒ 不写。
 #[test]
 fn a_write_rings_the_bell_and_a_no_op_does_not() {

@@ -133,6 +133,13 @@ mod tests {
             (format!("\"cost-{}\"", "state"), "记录类型名"),
             (format!("deferred_tools_{}", "delta"), "附件类型名"),
             (format!("run_in_{}", "background"), "工具入参名"),
+            // 用户级设置文件里钩子那一格的形状（`hooks.<事件>[].hooks[].command`）：读与拼只许住那一家
+            //（`agents/claudecode/settings_hooks.rs`），cc-bus 钩子诊断与「待办」经注册表足迹面那两格问。
+            (format!("\"Sto{}\"", "p"), "钩子事件名"),
+            (format!("\"hoo{}\"", "ks"), "设置文件里装钩子的那一格"),
+            // 一条记录的消息 id 与时刻：通用层只经适配层翻好的那一行（`SessionLine.id` · `at_ms`）拿。
+            (format!("\"uu{}\"", "id"), "记录格名"),
+            (format!("\"times{}\"", "tamp"), "记录格名"),
         ]
     }
 
@@ -152,6 +159,16 @@ mod tests {
             "common/file_class.rs",
             "\"jsonl\"",
             "按名字判一项是哪一种的扩展名表（`.jsonl` 文件算代码）：文件管理画图标 · 「类型」那一列用，不是哪个 agent 的会话格式知识。",
+        ),
+        (
+            "assets/ext.rs",
+            "\"hooks\"",
+            "插件组成那几样的键（`summary.parts`：skills · commands · agents · hooks · mcp）与它们在抽屉里的标签：cc-monitor 自己的资产目录形状，不是设置文件里钩子那一格。",
+        ),
+        (
+            "assets/asset_catalog.rs",
+            "\"hooks\"",
+            "资产目录条目里插件组成那一格的键（`parts.hooks`，几个钩子）：cc-monitor 自己的目录形状，不是设置文件里钩子那一格。",
         ),
         // `control/ccm/argv.rs` 那一条摘了：账号库的门牌号搬进后端的家（契约 crate 的 `ACCOUNTS_DIR_REL`），那里不再有 `.claude` 字样。
         // `observe/search_query.rs` 那一条摘了（第 8 批）：`history-search-merge` 的回包改成 typed 结构体，字面量 `"sessions"` 随之没了。
@@ -782,5 +799,34 @@ mod tests {
         let keyed = "registry.iter().find(|a| a.kind == kind).and_then(|a| a.records)";
         let (bad, _) = first_picks(keyed);
         assert!(bad.is_empty(), "把按 kind 取判成了取第一家：{bad:?}");
+    }
+
+    /// 会话文件 ⇒ sid 是那一家的文件命名（`RecordFace.sid`）：搜索 · 清单 · 历史读那几份通用层零处拿文件名主干推，一律经 `agents::sid_of`。
+    const SID_READERS: &[&str] = &[
+        "observe/search_query.rs",
+        "history/listing_scan.rs",
+        "history/listing.rs",
+        "faces/history_face.rs",
+    ];
+
+    #[test]
+    fn the_general_layer_takes_sids_only_from_the_adapter() {
+        let files = sources();
+        let mut bad = Vec::new();
+        for want in SID_READERS {
+            let (_, src) = files
+                .iter()
+                .find(|(rel, _)| rel == want)
+                .unwrap_or_else(|| panic!("{want} 不在扫描的人群里"));
+            for (i, l) in src.lines().enumerate() {
+                if l.contains("file_stem()") {
+                    bad.push(format!("{want}:{}  {}", i + 1, l.trim()));
+                }
+            }
+        }
+        assert!(
+            bad.is_empty(),
+            "通用层拿文件名主干推 sid（那是那一家的文件命名）：{bad:#?}\n⇒ 改调 `agents::sid_of`。"
+        );
     }
 }

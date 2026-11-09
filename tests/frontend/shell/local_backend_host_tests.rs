@@ -514,10 +514,10 @@ fn the_local_stop_rides_the_same_one_shot_supervisor() {
         );
     }
     let run = body_of("fn run_resident_stop_within(");
-    // 本机落点就是 `ccm` ⇒ `ccm -- --resident-stop`（打头的 `--` 让它当后端用）。
+    // 本机落点就是 `ccm` ⇒ `ccm -- <停常驻那个词>`（词住 `relay_route_core::RESIDENT_STOP`；打头的 `--` 让它当后端用）。
     guard_core::find_pinned(
         &run,
-        "cmd.args([local_backend::BACKEND_SEP, \"--resident-stop\"])",
+        "cmd.args([local_backend::BACKEND_SEP, relay_route_core::RESIDENT_STOP])",
     )
     .unwrap_or_else(|e| panic!("{e}"));
     // 等带期限（与本机探针同一段等法），交的环境与起它时同一份。
@@ -2348,9 +2348,11 @@ fn the_host_never_writes_the_resident_dir_and_carries_no_key() {
         "看的这一台的时区跟在旁边一格（后端按 `cmd_wire::attach::AttachLine` 读 `tz`）"
     );
     // 本机换装只认同一版（`hello_verdict`）⇒ 不带这一版、不问新旧；名单照本机名单台此刻那份带上。
+    guard_core::find_pinned(&host, "let tz = crate::inbound_client::viewer_tz();")
+        .expect("本机常驻那条 attach 行的时区不是请求信封那同一个");
     guard_core::find_pinned(
         &host,
-        "attach_line(host_core::viewer_tz().as_deref(), None, Some(watch.clone()))",
+        "attach_line(tz.as_deref(), None, Some(watch.clone()))",
     )
     .expect("本机常驻那条 attach 行带了这一版 / 没带名单");
     for w in ["token", "LISTEN_TOKEN"] {
@@ -3483,8 +3485,8 @@ fn hx2_the_handed_names_are_exactly_what_the_backend_echoes() {
             "pub const RELAY_PORT: &str = \"",
         ),
         (
-            "creds_core::store::DATA_DIR_ENV",
-            "common/creds-core/src/store.rs",
+            "relay_route_core::DATA_DIR_ENV",
+            "common/relay-route-core/src/lib.rs",
             "pub const DATA_DIR_ENV: &str = \"",
         ),
     ] {
@@ -3908,7 +3910,7 @@ fn the_path_line_points_at_the_directory_we_really_install_ccm_into() {
     }
 }
 
-/// 凭据文件的位置只跟着家走：起本机后端时交的那份环境里没有任何一格另指它的位置（后端按家推 `creds_core::store::credentials_path`）。
+/// 凭据文件的位置只跟着家走：起本机后端时交的那份环境里没有任何一格另指它的位置（后端按家推，文件名照声明表 `relay_route_core::APIKEY_CREDENTIALS_FILE`）。
 #[test]
 fn nobody_hands_the_backend_a_path_for_the_credentials_file() {
     let envs = super::backend_env_from(&|_| None);

@@ -1,7 +1,7 @@
 /**
- * ↗ 浮层那一张由 `face_core::front` 写好交来（壳的回包 · 本机后端 `session-window` 的 `face`，A16-1-8），出口照摆、不各自判：
- * - ↗ 那几处出口（`front-result.ts` · 调它的几处）零出现壳的窗口结局 · 会话在哪的原因的词，与三个结局类型的名字；
- * - 给不给［在终端里打开］不由出口照会话的 tmux 那一格自己判（`session-window` 带 `tmux`，原样交壳）。
+ * ↗ 浮层那一张由本机后端照 `face_core::front` 写好、壳照结局码挑出来交来（A16-1-8），出口照摆、不各自判：
+ * - ↗ 那几处出口（`front-result.ts` · 调它的几处）零出现壳的窗口结局 · 会话在哪的原因的词，与结局类型 · 结局码的名字；
+ * - 界面不问 `session-window`、不让壳替它写字（`front_missed` 没了）：问后端 · 找窗口 · 挑那一张都在壳那一条命令里。
  * 正控：同一把尺在 `face-core/src/front.rs` 量得到那几把键（没量到 ⇒ 本条在空转）。
  * 同 `exit-said-acts.vitest.ts` 的做法；只读一张写死的文件名单，不遍历目录。注释照扫（「零出现」就是零出现）。
  */
@@ -38,6 +38,7 @@ describe("↗ 浮层：出口照摆写好的那一张", () => {
       "FrontOutcome",
       "SeveralWhy",
       "TabMiss",
+      "FrontCode",
     ] as const;
     expect(hits(EXITS, needles)).toEqual([]);
     const be = readFileSync(join(ROOT, "src/common/face-core/src/front.rs"), "utf8");
@@ -47,8 +48,8 @@ describe("↗ 浮层：出口照摆写好的那一张", () => {
     }
   });
 
-  it("★ 给不给［在终端里打开］不由出口照会话的 tmux 那一格判（session-window 带来、原样交壳）", () => {
-    expect(hits(EXITS, ["inTmux("])).toEqual([]);
-    expect(readFileSync(join(ROOT, "src/frontend/ui/tab-session-actions.ts"), "utf8"), "正控：tmux 那一格原样交壳").toContain("tmux: placed.tmux");
+  it("★ 界面不问 session-window、不让壳写字：拉窗只经壳那一条命令", () => {
+    expect(hits(EXITS, ['"session-window"', "front_missed", "inTmux("])).toEqual([]);
+    expect(readFileSync(join(ROOT, "src/frontend/shell/src/lib.rs"), "utf8"), "正控：壳那一条命令自己问本机后端").toContain("SessionWindowReq");
   });
 });

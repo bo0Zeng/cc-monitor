@@ -63,10 +63,6 @@
     display: none;
   }
 
-  .composerNoteOk {
-    color: var(--success);
-  }
-
   .composerNoteError {
     color: var(--error-text);
   }

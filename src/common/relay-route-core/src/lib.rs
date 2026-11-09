@@ -3,6 +3,8 @@
 //!
 //! # 它今天管什么
 //!
+//! - **家在哪**：这台的家目录（[`home_dir`]：哪个环境变量算家）与数据目录（[`monitor_data_dir`] · [`DATA_DIR_ENV`]），
+//!   monitor · 文件窗口 · 各台后端都只经这一份推。
 //! - **门牌**：中转口 [`PORT`] · 常驻后端的套接字 [`listen_socket_for`] · 中转钥匙 [`KEY_FILE_REL`] ·
 //!   路由路径的语法（两个前缀 · 段闸 · 拼 · 拆）。
 //! - **家**（相对家目录，`.cc-monitor/` 开头的每一个常量）：后端落点 [`BACKEND_LANDING_REL`] · 暂存区 ·
@@ -40,6 +42,58 @@
 //!   `accounts/manage`（账号库）；读账号库清单的还有 `control/ccm`。
 
 use cap_core::{Cap, Over};
+
+/// 数据目录的覆盖变量（monitor 与各台后端推数据目录共用这一个名字）。只为把整个进程挪到别处跑（自动化测试、一次性复算）。
+pub const DATA_DIR_ENV: &str = "CCM_DATA_DIR";
+
+/// 数据目录（家）：`CCM_DATA_DIR`（非空且绝对）优先，否则 `<home>/.cc-monitor`（一台机器一个家，monitor 与后端同一个）；
+/// 设了却不是绝对路径 ⇒ `None`（不退回真家）。**这个目录的默认住址只在这里拼**（判据 `paths_tests::the_data_dir_is_spelled_in_one_place`）。
+pub fn monitor_data_dir(
+    env_val: Option<&str>,
+    home: Option<std::path::PathBuf>,
+) -> Option<std::path::PathBuf> {
+    match env_val.map(str::trim).filter(|t| !t.is_empty()) {
+        Some(t) => {
+            let p = std::path::PathBuf::from(t);
+            p.is_absolute().then_some(p)
+        }
+        None => Some(home?.join(".cc-monitor")),
+    }
+}
+
+/// 家目录的两个环境变量名（只在这里写：「哪个变量算家」是两侧必须对上的契约）。
+const HOME_ENV: &str = "HOME";
+const USERPROFILE_ENV: &str = "USERPROFILE";
+
+/// **这台机器的家目录只有这一条规矩**（monitor · 文件窗口 · 后端都调它，[`monitor_data_dir`] 同一家）：
+/// 按平台惯例 —— Windows：`USERPROFILE` → `HOME`；其余：`HOME` → `USERPROFILE`（与 Claude Code / Node `os.homedir()` 一致）。
+/// 空串当没有；都没有 ⇒ `None`（调用方明说，不猜一个路径）。
+pub fn home_dir() -> Option<std::path::PathBuf> {
+    home_dir_from(&|k| std::env::var_os(k))
+}
+
+/// 同上，环境由 `get` 答（注入环境的调用方与判据用）。
+pub fn home_dir_from(
+    get: &dyn Fn(&str) -> Option<std::ffi::OsString>,
+) -> Option<std::path::PathBuf> {
+    home_dir_on(get, cfg!(windows))
+}
+
+/// 规矩本体：`windows` = 按 Windows 那一臂取（判据两臂各喂一次）。
+pub fn home_dir_on(
+    get: &dyn Fn(&str) -> Option<std::ffi::OsString>,
+    windows: bool,
+) -> Option<std::path::PathBuf> {
+    let order = if windows {
+        [USERPROFILE_ENV, HOME_ENV]
+    } else {
+        [HOME_ENV, USERPROFILE_ENV]
+    };
+    order
+        .iter()
+        .find_map(|k| get(k).filter(|v| !v.is_empty()))
+        .map(std::path::PathBuf::from)
+}
 
 /// 常驻后端听的那个 Unix 套接字所在的目录（相对家目录）：只给本人（`0700`）。常驻后端活着时攥着这个目录的独占锁
 /// （抢不到 = 已有一个在听），套接字住这里。门由内核给：目录权限 ＋ 对端 uid，没有钥匙。
@@ -83,6 +137,14 @@ pub const BACKEND_KEPT_DIR_NAME: &str = "kept";
 
 /// 同一个落点在远端 POSIX shell 里的写法（远端今天只承诺 POSIX）：`$HOME` 在那台上展开，其余字节都是安全字符。
 pub const BACKEND_LANDING_SHELL: &str = "\"$HOME\"/.cc-monitor/bin/ccm";
+
+/// 常驻后端那三条子命令的词（落点 `ccm -- <词>`）：后端照它们分流（`stream/oneshot.rs`），连常驻那一层（`resident-client`）与本机宿主照它们叫，同一份。
+/// 接常驻流（小中继）。
+pub const RESIDENT_ATTACH: &str = "--resident-attach";
+/// 确保常驻在听（没在就起）。
+pub const RESIDENT_ENSURE: &str = "--resident-ensure";
+/// 停常驻。
+pub const RESIDENT_STOP: &str = "--resident-stop";
 
 /// 家目录底下一条只含安全字符的相对路径在远端 POSIX shell 里的写法（同 [`BACKEND_LANDING_SHELL`]）：部署放进暂存区的那一份用它叫。
 pub fn home_shell(rel: &str) -> String {
@@ -138,6 +200,12 @@ pub const LAST_SEEN_REL: &str = ".cc-monitor/cache/last-seen.json";
 
 /// 〔同上〕这台的书签：文件窗口与手机收藏的这台上的目录（后端 `control/bookmarks.rs` 写；`bookmarks-read` / `-edit` 读写，本机与远端同形）。
 pub const BOOKMARKS_REL: &str = ".cc-monitor/bookmarks.json";
+
+/// 〔同上〕历史注解（后端 `history/history_annotations.rs` 写；星标 · 改名 · 隐藏 · 组）。
+pub const HISTORY_ANNOTATIONS_REL: &str = ".cc-monitor/history-metadata.json";
+
+/// 〔同上〕API key 表（后端账号域 `accounts/upstream_select/file_face.rs` 写，人手改也认）。
+pub const APIKEY_CREDENTIALS_REL: &str = ".cc-monitor/apikey-credentials.json";
 
 /// [`SKILL_LEDGER_REL`] 那一段字面量只写在这里（宏：足迹申报要 `concat!` 出带 `~/` 的那一形，`concat!` 只认字面量）。
 #[macro_export]
@@ -323,38 +391,6 @@ pub fn keyed_base_url(url: &str, key: &str) -> Option<String> {
     let head_len = "http://127.0.0.1:".len() + after_scheme.find('/')? + 1;
     let (head, tail) = url.split_at(head_len);
     Some(format!("{head}{key}/{tail}"))
-}
-
-/// 一行里每一条插好钥匙的我们那一形地址（[`split_keyed_base_url`] 认得的），钥匙段换成 `…`；其余逐字不变。
-/// 读者：「待办」里从用户文件原样摘出的行（贴过的老地址里那把钥匙不出后端）。
-pub fn hide_key(line: &str) -> String {
-    const HEAD: &str = "http://127.0.0.1:";
-    let url_byte =
-        |b: u8| b.is_ascii_alphanumeric() || matches!(b, b':' | b'/' | b'-' | b'_' | b'~');
-    let mut out = String::with_capacity(line.len());
-    let mut rest = line;
-    while let Some(at) = rest.find(HEAD) {
-        let (before, from) = rest.split_at(at);
-        out.push_str(before);
-        let len = HEAD.len()
-            + from
-                .bytes()
-                .skip(HEAD.len())
-                .position(|b| !url_byte(b))
-                .unwrap_or(from.len() - HEAD.len());
-        let (url, after) = from.split_at(len);
-        match split_keyed_base_url(url) {
-            Some((head, tail)) => {
-                out.push_str(head);
-                out.push('…');
-                out.push_str(tail);
-            }
-            None => out.push_str(url),
-        }
-        rest = after;
-    }
-    out.push_str(rest);
-    out
 }
 
 /// 路由路径第一段的两个前缀 = 两种模式（「为什么用两个前缀而不是一个哨兵段」）。
@@ -963,10 +999,10 @@ const HISTORY_ANNOTATIONS_MAX_BYTES: Cap = Cap {
     bytes: 64 * 1024 * 1024,
     over: Over::Reject,
 };
-/// 历史注解（星标 · 改名 · 隐藏 · 组 …；住这台的数据目录，名字同 `creds_core::store::HISTORY_METADATA_FILE`）。
+/// 历史注解（星标 · 改名 · 隐藏 · 组 …；住这台的数据目录根上）。
 /// 主人类记 ①：一条会话的那几格；组那一节是 ③ 在这台的那一片，同住会话那一台（判据里 ①③ 同一条：只住后端）。
 pub const HISTORY_ANNOTATIONS_FILE: Decl<State> = Decl::<State>::json(
-    ".cc-monitor/history-metadata.json",
+    HISTORY_ANNOTATIONS_REL,
     Owner::Session,
     1,
     1,
@@ -1074,7 +1110,7 @@ const REMOTE_LISTING_MAX_BYTES: Cap = Cap {
 };
 /// API key 表（住数据目录根上；人手改的那一份，未知键原样留）。
 pub const APIKEY_CREDENTIALS_FILE: Decl<State> = Decl::<State>::json(
-    ".cc-monitor/apikey-credentials.json",
+    APIKEY_CREDENTIALS_REL,
     Owner::Machine,
     1,
     1,
@@ -1246,7 +1282,7 @@ const fn declared<K: Class>(
 }
 
 /// 〔「家里的都进这一份」〕后端在这台自己家里放的每一样：`(名字, 相对家目录, 是目录, 删了会丢)`。名字是闭集（界面按它取说法）；
-/// 后端落点由它所在的 `bin` 那一行代表；只住 monitor 那一侧的（API key 表 · 后端错误输出）不在这里。
+/// 后端落点由它所在的 `bin` 那一行代表；只住 monitor 那一侧的（设置 · 后端错误输出）不在这里。
 /// 有声明（[`OWN_FILES`]）的那几份经 `declared` 照声明取，「删了会丢」不另写。
 /// 后端「文件与数据」那一份成品逐样 stat 它（`footprint/data.rs::own_rows`）。
 pub const OWN_HOME_ENTRIES: &[(&str, &str, bool, bool)] = &[
@@ -1271,6 +1307,8 @@ pub const OWN_HOME_ENTRIES: &[(&str, &str, bool, bool)] = &[
     declared("rotation", &ROTATION_FILE),
     declared("lineage", &LINEAGE_FILE),
     declared("launchAccounts", &LAUNCH_ACCOUNTS_FILE),
+    declared("historyMetadata", &HISTORY_ANNOTATIONS_FILE),
+    declared("apikey", &APIKEY_CREDENTIALS_FILE),
     ("sessionQueue", SESSION_QUEUE_DIR_REL, true, true),
     ("ccBus", CC_BUS_DIR_REL, true, true),
     ("launchNotes", LAUNCH_NOTES_DIR_REL, true, false),

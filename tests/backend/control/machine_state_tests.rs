@@ -6,13 +6,10 @@ use cmd_wire::attach::Relation;
 use cmd_wire::machine::{Blocker, MachineFix, MachineStateKind, RoundProblem, Why};
 
 /// 订那条通道、等到名字是 `machine` 的那一件（别的判据也在往同一条里推）。
-fn next_of(
-    rx: &mut tokio::sync::broadcast::Receiver<(String, MachineState)>,
-    machine: &str,
-) -> MachineState {
+fn next_of(rx: &mut tokio::sync::broadcast::Receiver<Moved>, machine: &str) -> MachineState {
     loop {
         match rx.try_recv() {
-            Ok((n, p)) if n == machine => return p,
+            Ok(m) if m.machine == machine => return m.state,
             Ok(_) | Err(tokio::sync::broadcast::error::TryRecvError::Lagged(_)) => {}
             Err(e) => panic!("{machine} 那一份没推出来：{e:?}"),
         }
@@ -253,6 +250,39 @@ fn the_empty_line_is_over_the_table_and_the_local_row() {
     let done = fleet_over(&t, &hosts, &Links::new());
     assert_eq!(done.line, copy_core::copy_text("beEmpty.line.none", &[]));
     assert!(done.all_listed, "本机 ＋ 表里那台都报完了");
+}
+
+/// ★ 各台那几句变没变只在推的这一侧判一次：头一推带上；同一张表再推 ⇒ 不带；表变了、句子跟着变 ⇒ 再带新的那几句。
+#[test]
+fn the_fleet_lines_ride_a_push_only_when_they_changed() {
+    let hosts = [("ms-fleet".to_string(), true)];
+    let was = Mutex::new(None);
+    let mut t = BTreeMap::new();
+    fold(
+        t.entry("ms-fleet".to_string()).or_default(),
+        Fact::Round {
+            round: Round::Up {
+                relation: Relation::Same,
+                differs: vec![],
+            },
+            version: Some("9.9.9".into()),
+        },
+    );
+    let first = fleet_moved(&was, &t, &hosts, &Links::new());
+    assert_eq!(
+        first,
+        Some(fleet_over(&t, &hosts, &Links::new())),
+        "头一推带上"
+    );
+    assert_eq!(
+        fleet_moved(&was, &t, &hosts, &Links::new()),
+        None,
+        "没变 ⇒ 不带"
+    );
+    fold(t.entry("ms-fleet".to_string()).or_default(), Fact::Listed);
+    let after = fleet_moved(&was, &t, &hosts, &Links::new()).expect("报完了 ⇒ 句子变了、带新的");
+    assert!(after.all_listed);
+    assert_eq!(fleet_moved(&was, &t, &hosts, &Links::new()), None);
 }
 
 /// 这棵树要发的那一版：仓根 `package.json` 的 `version`（发版改的就是它）。

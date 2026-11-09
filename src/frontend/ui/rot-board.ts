@@ -8,7 +8,7 @@
  * - 设置那几格照回包的 `board` 画（此刻的值 · 从哪来 · 字都是后端解好的；跟总体的画虚线）；改一格 ⇒ 交一个意图（`acts.edit`），后端改完、校验、重读。
  * 判据：`tests/frontend/ui/rot-board.vitest.ts`。
  */
-import { accountAvatarEl } from "./account-color";
+import { accountAvatarEl, paintAccountColor } from "./account-color";
 import { copyText } from "./copy-table";
 import type { Machine } from "./ipc/origin";
 import { banner } from "./kit/banner";
@@ -183,7 +183,6 @@ export function firstRow(spec: TopSpec): HTMLElement {
     more.addEventListener("click", () => {
       const items: MenuItem[] = [];
       if (item) {
-        const busy = item.inUse.length;
         items.push(
           { label: copyText("render.codeBlock.copy"), onClick: () => ops.copy(item.id) },
           { label: copyText("rot.more.rename"), onClick: () => ops.rename(item.id, item.rev) },
@@ -191,9 +190,10 @@ export function firstRow(spec: TopSpec): HTMLElement {
           {
             label: copyText("rsFilewinWriteops.label.delete"),
             danger: true,
-            enabled: busy === 0,
-            why: busy > 0 ? copyText("rot.more.inUse", { n: busy }) : undefined,
-            title: busy > 0 ? item.inUse.join(copyText("kit.text.sep")) : undefined,
+            // 能不能删 · 为什么 · 谁在用都是那台判好写好的（与删命令拒的同一处）。
+            enabled: item.remove.enabled,
+            why: item.remove.why,
+            title: item.remove.who,
             onClick: () => ops.remove(item.id),
           },
           { divider: true, label: "" },
@@ -257,7 +257,7 @@ export function hints(spec: TopSpec): HTMLElement[] {
   if (!v) return [];
   const { acts } = spec;
   return v.hints.flatMap((n) => {
-    const t = hintText(n, v);
+    const t = hintText(n);
     const h = n.hint;
     // 设置页那一形「N 个会话还在用旧版」写在编辑小窗的底行。
     if (h.k === "older") return [];
@@ -446,11 +446,9 @@ function accountPane(
   for (const cell of row.cells) grid.append(...cellRows(spec, cell, row.row));
   pane.appendChild(grid);
   const foot = el("div", s.rotPaneFoot);
-  const older = view.hints.find((n) => n.hint.k === "older");
-  const parts = [copyText("rot.pane.foot", { name: view.strategy?.id ?? "" })];
-  if (older) parts.push(older.text);
-  else if ((view.strategy?.inUse.length ?? 0) === 0) parts.push(copyText("rot.pane.noUse"));
-  foot.appendChild(el("span", s.rotPaneLine, parts.join(copyText("kit.text.sep"))));
+  // 底行那一整句是那台写好的；有会话还在用旧版 ⇒ 后面带［都载入新版］。
+  foot.appendChild(el("span", s.rotPaneLine, view.foot));
+  const older = view.hints.some((n) => n.hint.k === "older");
   if (older) {
     const b = hintButton(copyText("rot.hint.loadAll"), () => spec.acts.loadNew(), { ghost: true, act: "loadAll" });
     foot.appendChild(b);
@@ -768,8 +766,7 @@ function simulation(spec: BoardSpec, view: RotationViewReply): HTMLElement {
   const top = el("div", s.rotSimTop);
   const useColor = (seg: HTMLElement, account: string | undefined | null): void => {
     if (account) {
-      const slot = acctIn(view, account)?.color;
-      if (slot !== undefined) seg.dataset.c = String(slot);
+      paintAccountColor(seg, acctIn(view, account)?.color ?? null);
     } else seg.dataset.hold = "true";
   };
   // 每段写的字照回包（号名 · 停发）。

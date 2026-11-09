@@ -214,6 +214,64 @@ pub struct CommandSpec {
     /// 这条命令**收不收入方向载荷**（CLI 面据此决定读不读 stdin）：那条命令的 [`super::typed::Command::TAKES_INPUT`]。
     /// 真不真由行为判据验（`tests/e2e/backend-cc-bus.sh`：声明无输入的命令，在 stdin 不关时必须秒回）。
     pub takes_input: bool,
+    /// 应答里成品住的那几处 `(路径, 成品名)`（外层的成品排在它里面那件之前；路径写法同格目录，空串 ＝ 整份应答）。
+    /// 请求信封的 `view` 只许点这几件（`stream::inbound::views`）；没写 ⇒ 空：带 `view` 一律拒。登记行上 [`CommandSpec::places`] 设。
+    pub places: &'static [(&'static str, &'static str)],
+    /// 阻塞档命令的总期限上限：发起方在请求信封里带它这一发愿意等多久（`within_ms`），分派按它收紧、装在执行这条命令的线程上
+    /// （`stream::inbound::caps`）。没写 ⇒ 不装，发起方带的期限对它不起作用。登记行上 [`CommandSpec::capped`] 设；上限常量住那条命令旁。
+    pub cap: Option<crate::platform::child::Deadline>,
+    /// 上不上一次性 CLI 面（[`Cli`]）。登记行上 [`CommandSpec::stream_only`] · [`CommandSpec::ui_only`] 设，理由写在那一行。
+    pub cli: Cli,
     /// 怎么跑 · 要什么能力 · 交出去跑的那一份（入参 · 回包 · 码表都从类型来，`typed.rs`）。
     pub run: super::typed::Typed,
+}
+
+/// 登记行上补的那几格（`typed::blocking::<X>("…").places(&[..])`）：一条命令的登记只住这一行，不按命令名另记一张表。
+impl CommandSpec {
+    /// 应答里成品住的那几处（[`CommandSpec::places`] 那一格）。
+    #[must_use]
+    pub const fn places(self, places: &'static [(&'static str, &'static str)]) -> Self {
+        Self { places, ..self }
+    }
+    /// 总期限上限（[`CommandSpec::cap`] 那一格）。
+    #[must_use]
+    pub const fn capped(self, cap: crate::platform::child::Deadline) -> Self {
+        Self {
+            cap: Some(cap),
+            ..self
+        }
+    }
+    /// 一次性进程里结构上答不了 ⇒ 不上 CLI 面（[`Cli::StreamOnly`]）；`why` 写为什么。
+    #[must_use]
+    pub const fn stream_only(self, why: &'static str) -> Self {
+        Self {
+            cli: Cli::StreamOnly(why),
+            ..self
+        }
+    }
+    /// 答得了、只是除了界面没人用得着 ⇒ 暂不上 CLI 面（[`Cli::UiOnly`]）；`why` 写为什么。
+    #[must_use]
+    pub const fn ui_only(self, why: &'static str) -> Self {
+        Self {
+            cli: Cli::UiOnly(why),
+            ..self
+        }
+    }
+}
+
+/// 一条命令上不上一次性 CLI 面（帧面硬臂那一档与占了 ccm 的词另判，见 `stream::cli::cli_exposed`）。
+/// 不上的两种理由分开记：混在一起时后一种被读成前一种，第二个前端（只有一次性 CLI 与流两条路进后端）就够不着。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Cli {
+    /// 上（缺省）。
+    Open,
+    /// **一次性进程里结构上答不了**：答出来是假话（读的是常驻进程才有的状态：watcher · 中转监听 · 转发账 · 可达表），
+    /// 或做的事活不过这个进程（换号重启要拿退出排空的票钉住常驻进程）。只收这一种理由。
+    StreamOnly(&'static str),
+    /// **答得出真话、只是除了界面没人用得着**：关于「调用方是谁」的产品判断，不是结构限制 ——
+    /// 有新的调用方（第二个前端）要它，就挪出去。理由不许是「命令行那一侧直接敲 `ccm` 就是它」：那挡的是第二个**入口**，挡不住第二个**前端**。
+    /// 2026-10-09 复核（第二个前端的审计 §4）：起新会话框三问 · tab 栏批量停 / 起 / 问样子 · 铸终端名 · 开终端那一串 · 各台搜索结果合并
+    /// 九条放出（事实全在这台：tmux 名单现探、会话快照问一次重探一次、记录在不在现读、合并是纯计算 ⇒ 一次性进程答的与常驻那一个同样是真话）。
+    /// 留着这一种的是 ↗ 拉前那一问（本机后端答 `session-window`，远端那一半问那台的 `session-terminals`）与装卸远端后端那两条。
+    UiOnly(&'static str),
 }

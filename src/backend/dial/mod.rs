@@ -69,19 +69,13 @@ pub mod ssh_config;
 pub mod terminal; // 开终端那一串（`ssh -t …` 外壳 ＋ PowerShell 窗口载荷）在这里渲
 pub mod terminal_processes; // ↗ 那一问的本机那一半：终端连接是这台电脑上哪个进程开的、它往上的进程链
 
-/// 开出 channel 之后的几种用法：拨号核心那一份（判据经这里够到；生产那一处是端口转发，进门前先装上本后端的那一套 [`host`]）。
+/// 开出 channel 之后的几种用法：拨号核心那一份（判据经这里够到；生产那一处是端口转发）。
 #[cfg(test)]
 pub(crate) use ssh_dial::uses;
 
-/// SFTP 客户端：拨号核心那一份，传输那一趟进门前先装上本后端的那一套（[`host`]）。
+/// SFTP 客户端：拨号核心那一份（本后端那一套由进程入口装上，[`host`]）。
 pub mod sftp {
     pub use ssh_dial::sftp::*;
-
-    /// 传输那一趟的会话（[`ssh_dial::sftp::open_for_transfer`]）；先装上本后端的那一套。
-    pub async fn open_for_transfer(d: &Dial) -> Result<Session, crate::common::said::Said> {
-        super::host();
-        ssh_dial::sftp::open_for_transfer(d).await
-    }
 
     /// 台架：起会话之前先装上本后端的那一套（[`super::sftp_rig`]；上层的传输判据经 `test-support` 够到）。
     #[cfg(feature = "test-support")]
@@ -93,7 +87,7 @@ pub mod sftp {
 #[path = "../../../tests/backend/dial_sftp_rig_host.rs"]
 pub mod sftp_rig;
 
-/// 装上本后端交给拨号核心的那一套（一个进程一次；进程入口 `stream/entry.rs` 起来就装，进拨号核心的几个口也各装一次兜住测试档）：
+/// 装上本后端交给拨号核心的那一套（一个进程一次；生产里只进程入口 `stream/entry.rs` 起来那一下装，测试档由台架起来时装）：
 /// 钥匙是私钥文件的路径（`~` 按这台家目录展开）· 认下的 host key 记进 cc-monitor 那份 known_hosts · 本机 ssh-agent · 详情写本后端的时刻与机器 ·
 /// 远端写只许暂存区那一处（建出来的目录收成 [`crate::common::own_dir::PRIVATE_DIR_MODE`]）。
 pub fn host() {
@@ -181,53 +175,6 @@ impl ssh_dial::env::Facts for BackendFacts {
 }
 
 use crate::common::said::Said;
-
-/// 那几台此刻有没有一条拨通了的长流（本机后端替那台开的常驻流，接上之后到断掉）：
-/// 「那台后端此刻在」只按它判（推公钥先问那台后端还是走一次 exec，`assets/pubkey.rs`）。记的那一处是 `control/feeds.rs`。
-pub mod streams {
-    use std::collections::HashMap;
-    use std::sync::Mutex;
-
-    static UP: Mutex<Option<HashMap<String, usize>>> = Mutex::new(None);
-
-    fn lock() -> std::sync::MutexGuard<'static, Option<HashMap<String, usize>>> {
-        UP.lock().unwrap_or_else(|e| e.into_inner())
-    }
-
-    /// 那一台此刻有没有拨通了的长流。
-    pub fn up(name: &str) -> bool {
-        lock()
-            .as_ref()
-            .and_then(|m| m.get(name))
-            .is_some_and(|n| *n > 0)
-    }
-
-    /// 一条拨通了的长流：活着算一条，被丢就减掉。
-    pub struct Held(String);
-
-    /// 记一条拨通了的长流。
-    pub fn hold(name: &str) -> Held {
-        *lock()
-            .get_or_insert_with(HashMap::new)
-            .entry(name.to_string())
-            .or_insert(0) += 1;
-        Held(name.to_string())
-    }
-
-    impl Drop for Held {
-        fn drop(&mut self) {
-            let mut g = lock();
-            if let Some(m) = g.as_mut() {
-                if let Some(n) = m.get_mut(&self.0) {
-                    *n = n.saturating_sub(1);
-                    if *n == 0 {
-                        m.remove(&self.0);
-                    }
-                }
-            }
-        }
-    }
-}
 
 /// 表里叫 `name` 的那一台 ⇒ 一份组好的拨号请求（蛇形键）：组法 · 判准 · 跳板一路只在 [`machine::request`]，照表里的次序竞速。
 /// ssh-agent 套接字不交 ⇒ 拨号核心用本进程自己的（`DialRequest::agent_sock` 缺席那一格）。

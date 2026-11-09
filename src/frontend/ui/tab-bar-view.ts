@@ -19,7 +19,7 @@ import type { GroupCount } from "./generated/GroupCount";
 import { barRows, type BarRow, type RowRect } from "./tab-drop";
 import { lightOf } from "./session-status";
 import { isRemoteOrigin } from "./ipc/origin";
-import { canReattach, closesQuietly, isEnded } from "./face-can";
+import { canReattach, closesQuietly, frontBlocked, isEnded } from "./face-can";
 import type { Tab } from "./tab-model";
 import type { TabStore } from "./tab-store";
 import type { TabBarPrefs } from "./tab-bar-prefs";
@@ -69,6 +69,8 @@ export interface TabButtonRefs {
    * 固定是右键菜单那一项的事；这里再放一个能点的东西就是同一个动作两个入口。
    */
   pinBadge: HTMLSpanElement;
+  /** 行尾 ↗ 拉前：一直在，做不了灰着（`aria-disabled`，`data-why` 是悬停那一句）。 */
+  frontBtn: HTMLSpanElement;
   /**
    * 这颗按钮上次**画出去的样子**（class 开关 ＋ title ＋ 标题 ＋ 未读数拼成一串）。
    * 一样 ⇒ `updateTabButton` 一个 DOM 都不写。按**输出**比而不是按输入比：输入散在 store 的好几张表里，
@@ -115,6 +117,8 @@ export interface TabBarViewHost {
   toggleSelect(sid: string): void;
   /** 行尾「更多」：开这个 tab 的菜单（锚在那颗按钮上）。 */
   openMenuAt(anchor: HTMLElement, sid: string): void;
+  /** 行尾 ↗：拉前（把它住的那个终端窗口拉到前面）。 */
+  front(sid: string): void;
   /** 栏底机器条那一行的修法（重新连接 · 连接设置 · 更新 …）。 */
   fixMachine(origin: string, fix: MachineFix): void;
   /** 组的菜单「在计划中查看本组接手的块」：开计划页按这一组筛块（组员照栏里的先后）；没挂 ⇒ 菜单里不出这一项。 */
@@ -244,7 +248,7 @@ export class TabBarView {
       const sid = this.sidOf.get(el);
       return sid === undefined ? null : this.hoverCard(sid);
     }, { placement: "right", hold: true, width: () => (folded() ? 260 : 300) });
-    delegateTooltip(this.listEl, ".tab-more, .tab-close", (el) => actHint(el));
+    delegateTooltip(this.listEl, ".tab-focus, .tab-more, .tab-close", (el) => actHint(el));
   }
 
   /** 栏顶那几颗全局入口（左：新建 · 历史 · 设置；右端：更多去处 ⋯）：宿主建好交进来，这里只摆。 */
@@ -394,7 +398,7 @@ export class TabBarView {
     if (!root) return null;
     const sid = this.sidOf.get(root);
     if (sid === undefined) return null;
-    const sub = t.closest(".tab-close, .tab-more");
+    const sub = t.closest(".tab-focus, .tab-close, .tab-more");
     return { sid, root: root as HTMLElement, sub: sub && root.contains(sub) ? sub : null };
   }
 
@@ -417,6 +421,9 @@ export class TabBarView {
       e.stopPropagation();
       if (sub.classList.contains("tab-more")) {
         this.host.openMenuAt(sub as HTMLElement, sid);
+      } else if (sub.classList.contains("tab-focus")) {
+        // ↗ 拉前；灰着的（脸上说没有窗口可拉 · 还没收到脸）点了不做事，悬停说为什么。
+        if (sub.getAttribute("aria-disabled") !== "true") this.host.front(sid);
       } else {
         this.host.closeTab(sid);
       }
@@ -1113,13 +1120,15 @@ export class TabBarView {
       b.appendChild(icon(name, "compact"));
       return b;
     };
-    // 只留 ⋯ ×：打开目录 · 终端在会话头与 ⋯ 里都有，点一下就切过去了。
+    // ↗ 拉前 · ⋯ · ×：↗ 一直渲，做不了灰着（`updateTabButton` 照 `frontBlocked` 写）。
+    const frontBtn = act("tab-focus", "front", copyText("terminal.head.front"));
+    acts.appendChild(frontBtn);
     acts.appendChild(act("tab-more", "more", copyText("history.row.more")));
     acts.appendChild(act("tab-close", "close", copyText("launch.slot.close")));
 
     root.append(dot, abbr, machine, titleEl, trail, acts);
 
-    return { root, dot, abbr, machine, label, needs, badge, acctBadge, holdBadge, pinBadge, drawn: null, acctDrawn: "" };
+    return { root, dot, abbr, machine, label, needs, badge, acctBadge, holdBadge, pinBadge, frontBtn, drawn: null, acctDrawn: "" };
   }
 
   /**
@@ -1221,6 +1230,18 @@ export class TabBarView {
       setText(refs.badge, unreadText);
     }
     this.updateAccountBadge(refs, sid, tab); // 账号头像随 tab 更新一并刷新
+    // ↗ 灰不灰：照 `frontBlocked`（脸上 `can.front` 说不能 · 还没收到脸）；变了才写。
+    const why = frontBlocked(tab.face);
+    const was = refs.frontBtn.dataset.why ?? null;
+    if (was !== why) {
+      if (why === null) {
+        delete refs.frontBtn.dataset.why;
+        refs.frontBtn.removeAttribute("aria-disabled");
+      } else {
+        refs.frontBtn.dataset.why = why;
+        refs.frontBtn.setAttribute("aria-disabled", "true");
+      }
+    }
   }
 }
 
@@ -1237,6 +1258,10 @@ function setShown(el: HTMLElement, on: boolean): void {
 
 /** 行尾那几颗动作的悬停提示（按类认是哪一颗）。 */
 function actHint(el: HTMLElement): string | null {
+  if (el.classList.contains("tab-focus")) {
+    const why = el.dataset.why;
+    return why ? `${copyText("terminal.head.front")} · ${why}` : withKey(copyText("terminal.head.front"), "terminal.bring-front");
+  }
   if (el.classList.contains("tab-close")) return withKey(copyText("launch.slot.close"), "tab.close-archived");
   if (el.classList.contains("tab-more")) return copyText("history.row.more");
   return null;

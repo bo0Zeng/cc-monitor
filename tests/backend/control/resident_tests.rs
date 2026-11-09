@@ -80,18 +80,15 @@ fn the_sandbox_refusal_truth_table() {
 #[test]
 fn the_relay_says_absent_only_when_nobody_listens() {
     use std::io::ErrorKind as K;
-    assert_eq!(
-        relay_refusal(K::NotFound),
-        crate::wire::listen::REFUSE_ABSENT
-    );
+    assert_eq!(relay_refusal(K::NotFound), cmd_wire::attach::REFUSE_ABSENT);
     assert_eq!(
         relay_refusal(K::ConnectionRefused),
-        crate::wire::listen::REFUSE_ABSENT
+        cmd_wire::attach::REFUSE_ABSENT
     );
     for k in [K::PermissionDenied, K::InvalidInput, K::Other] {
         assert_eq!(
             relay_refusal(k),
-            crate::wire::listen::REFUSE_UNREACHABLE,
+            cmd_wire::attach::REFUSE_UNREACHABLE,
             "{k:?}"
         );
     }
@@ -404,7 +401,7 @@ async fn a_resident_call_asks_the_one_that_listens() {
         ]
     })
     .await;
-    let tz = crate::common::time::Tz::of(&serde_json::json!("Asia/Shanghai"));
+    let tz = crate::common::time::Tz::of(Some("Asia/Shanghai"));
     let got = call_at(
         &dh,
         &asked("history-listing"),
@@ -431,7 +428,7 @@ async fn a_resident_call_carries_the_askers_deadline_and_zone() {
         )]
     })
     .await;
-    let tz = crate::common::time::Tz::of(&serde_json::json!("Asia/Shanghai"));
+    let tz = crate::common::time::Tz::of(Some("Asia/Shanghai"));
     let got = call_at(
         &dh,
         &asked("history-listing"),

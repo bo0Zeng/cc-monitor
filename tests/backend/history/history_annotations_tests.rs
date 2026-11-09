@@ -500,9 +500,11 @@ fn the_location_only_follows_the_home() {
         ])),
         Some(PathBuf::from("/h/.cc-monitor/history-metadata.json"))
     );
+    // 绝对路径照这台平台的写法（Windows 上 `/iso` 没有盘符，不算绝对）。
+    const ISO: &str = if cfg!(windows) { r"C:\iso" } else { "/iso" };
     assert_eq!(
-        path_from(&env(&[("HOME", "/h"), ("CCM_DATA_DIR", "/iso")])),
-        Some(PathBuf::from("/iso/history-metadata.json"))
+        path_from(&env(&[("HOME", "/h"), ("CCM_DATA_DIR", ISO)])),
+        Some(PathBuf::from(ISO).join("history-metadata.json"))
     );
     assert_eq!(
         path_from(&env(&[("HOME", "/h"), ("CCM_DATA_DIR", "rel")])),

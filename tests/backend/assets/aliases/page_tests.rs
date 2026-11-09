@@ -672,6 +672,34 @@ fn the_profiles_wire_matches_the_cross_language_golden() {
     );
 }
 
+/// 「账号那一形」只交号：放在哪种终端里那一格两端都没有读者（账号页只照号列命令名），不上线。
+#[test]
+fn the_account_shape_carries_only_the_account() {
+    let g = profiles_golden();
+    let t = tmp("shape", Some(g["book"].as_str().unwrap()));
+    let home = t.0.display().to_string();
+    let accts = t.0.join(".cc-monitor/accounts");
+    std::fs::create_dir_all(&accts).unwrap();
+    std::fs::write(
+        accts.join("accounts.json"),
+        g["manifest"].to_string().replace("<HOME>", &home),
+    )
+    .unwrap();
+    let read = read_with(&t.door(), &json!({}), Some(true), &Default::default()).unwrap();
+    let shapes: Vec<&Value> = read["profiles"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| &p["accountShape"])
+        .filter(|s| !s.is_null())
+        .collect();
+    assert!(!shapes.is_empty(), "夹具里有账号那一形的段");
+    for s in shapes {
+        let keys: Vec<&String> = s.as_object().unwrap().keys().collect();
+        assert_eq!(keys, ["account"], "{s}");
+    }
+}
+
 /// 别名表单 tmux 那一格旁的提示要的事实：这台有没有 tmux（与「文件与数据」· 起新会话框同一个判法），原样带着、不在这里猜。
 #[test]
 fn the_read_carries_whether_this_machine_has_tmux() {

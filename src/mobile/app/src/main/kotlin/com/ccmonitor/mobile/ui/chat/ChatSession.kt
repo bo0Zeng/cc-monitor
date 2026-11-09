@@ -25,6 +25,7 @@ import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Draft
 import com.ccmonitor.mobile.core.wire.gen.AgentPick
 import com.ccmonitor.mobile.core.wire.gen.ArriveEnd
+import com.ccmonitor.mobile.core.wire.gen.CanView
 import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.Commands
 import com.ccmonitor.mobile.core.wire.gen.Doc
@@ -38,7 +39,6 @@ import com.ccmonitor.mobile.core.wire.gen.SegHl
 import com.ccmonitor.mobile.core.wire.gen.SentAct
 import com.ccmonitor.mobile.core.wire.gen.SessionCommands
 import com.ccmonitor.mobile.core.wire.gen.SessionFace
-import com.ccmonitor.mobile.core.wire.gen.TermWay
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
 import com.ccmonitor.mobile.ui.chat.attach.AttachTray
@@ -107,8 +107,8 @@ data class ChatUiState(
     val note: String? = null,
     /** 输入框照脸上 `can.say` 的样子（[sayLook]）；`null` ＝ 照常。 */
     val say: SayLook? = null,
-    /** 顶栏「终端」那一颗照的那一格（脸上 `can.terminal.far`：手机从不在会话住的那台上看）；流上还没有它的脸 ⇒ `null`（照画、灰着）。 */
-    val terminal: TermWay? = null,
+    /** 顶栏「终端」那一颗照的那一格（脸上「看它的终端」`can.view`：手机拉不了窗，只看）；流上还没有它的脸 ⇒ `null`（照画、灰着）。 */
+    val terminal: CanView? = null,
     /** 两个 chip 抽屉里列的（那台那一家给的）；还没问 ⇒ `null`。 */
     val picks: Picks? = null,
     /** ［+］面板里的命令与 Skill（那台给的这条会话那一份）。 */

@@ -2012,7 +2012,7 @@ fn render_managed(c: &Container) -> String {
 }
 
 fn render_container(c: &Container) -> String {
-    let t = sq(&format!("={}:", c.name));
+    let t = sq(&crate::common::tmux_utf8::exact_target(&c.name));
     let size = match &c.size {
         Some((w, h)) => format!(" -x {w} -y {h}"),
         None => String::new(),

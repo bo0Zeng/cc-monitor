@@ -262,6 +262,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 current: Some(cmd_wire::files::WirePath::from("a.txt")),
                 bytes_done: Some(512),
                 bytes_total: Some(2048),
+                left_text: None,
             }),
             Frame::FilesBatch(crate::wire::FilesBatch {
                 ticket: s("b1"),
@@ -270,6 +271,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 current: None,
                 bytes_done: None,
                 bytes_total: None,
+                left_text: None,
             }),
         ],
         [
@@ -589,7 +591,7 @@ fn loc1b_session_added_carries_the_pid() {
     .unwrap();
     assert_eq!(
         line,
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"face\":{\"dot\":\"idle\",\"life\":{\"is\":\"live\"},\"settled\":false,\"name\":\"状态不明\",\"tip\":\"状态不明\",\"line\":\"状态不明\",\"tone\":\"plain\",\"order\":3,\"can\":{\"close\":{\"can\":\"no\",\"why\":\"运行中\"},\"resume\":{\"can\":\"no\",\"why\":\"运行中\"},\"terminal\":{\"near\":{\"go\":\"front\",\"said\":\"切到它的终端窗口\"},\"far\":{\"go\":\"here\",\"said\":\"在 cc-monitor 里打开它的终端\",\"open\":{\"kind\":\"attach\"}}},\"reattach\":{\"can\":\"no\",\"why\":\"运行中\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"},\"stop\":{\"can\":\"no\",\"why\":\"状态不明\"},\"say\":{\"can\":\"yes\",\"hint\":\"发消息…\"},\"end\":{\"can\":\"yes\"}}},\"label\":\"无消息的会话\",\"title\":\"无消息的会话\",\"pid\":4242}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"face\":{\"dot\":\"idle\",\"life\":{\"is\":\"live\"},\"settled\":false,\"name\":\"状态不明\",\"tip\":\"状态不明\",\"line\":\"状态不明\",\"tone\":\"plain\",\"order\":3,\"can\":{\"close\":{\"can\":\"no\",\"why\":\"运行中\"},\"resume\":{\"can\":\"no\",\"why\":\"运行中\"},\"front\":{\"can\":\"yes\"},\"attach\":{\"can\":\"yes\"},\"view\":{\"can\":\"yes\",\"said\":\"在 cc-monitor 里打开它的终端\",\"open\":{\"kind\":\"attach\"}},\"reattach\":{\"can\":\"no\",\"why\":\"运行中\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"},\"stop\":{\"can\":\"no\",\"why\":\"状态不明\"},\"say\":{\"can\":\"yes\",\"hint\":\"发消息…\"},\"end\":{\"can\":\"yes\"}}},\"label\":\"无消息的会话\",\"title\":\"无消息的会话\",\"pid\":4242}\n"
     );
 }
 

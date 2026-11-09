@@ -63,6 +63,7 @@ import {
   stateCarriersOfTs,
   stateNameCollisions,
   themeTokens,
+  tsVarFamilies,
   windowSheets,
   type CssDecl,
   type CssFacts,
@@ -76,6 +77,9 @@ import { nonEmpty } from "../../test-support/non-empty.ts";
 const FACTS: CssFacts = cssFacts(REPO_ROOT);
 const SET_PROP = setPropertyVars(REPO_ROOT);
 const THEME = themeTokens(REPO_ROOT);
+/** TS 照格号拼着读的令牌族（`var(--acct-c${格})`）：族里的令牌算有人读。 */
+const TS_FAMILIES = [...tsVarFamilies(REPO_ROOT).keys()];
+const readByTs = (name: string): boolean => TS_FAMILIES.some((p) => name.startsWith(p) && /^\d+$/.test(name.slice(p.length)));
 const HIDDEN: HiddenSite[] = hiddenSites(REPO_ROOT);
 
 const sorted = (xs: Iterable<string>): string[] => [...xs].sort();
@@ -168,7 +172,9 @@ describe("S30 ⑤ 自定义属性对账，两个方向", () => {
   });
 
   it("③ 反向：CSS 定义了却没人 var() 的，必须**恰好**是登记表里那几个", () => {
-    const dead = minus(FACTS.defined.keys(), FACTS.used);
+    // TS 照格号拼着读的那一族（号色 `--acct-c<格>` · `--acct-ink<格>`）不算死：CSS 只读 `var(--acct)`，格由 TS 现设。
+    nonEmpty(TS_FAMILIES);
+    const dead = minus(FACTS.defined.keys(), FACTS.used).filter((t) => !readByTs(t));
     const registered = sorted(Object.keys(UNUSED_TOKENS));
     expect(
       dead,

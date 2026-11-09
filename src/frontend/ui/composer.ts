@@ -8,7 +8,7 @@
  *   交了没回执 ⇒ 那台离线照它成品的 `heldSaid`、连着说「排队 · 无应答」）；［撤回］撤掉之后字回到输入框（框里已有别的字 ⇒ 另起一行接在后面）。
  *   那台离线（机器成品，宿主经 `machineChanged` 交来）⇒ 照手上那一份淡着画、排头写名单是上次所知；
  *   再上一排是附件（`attach-row.ts`，拖到主区上（宿主经 `takeDrops` 交落点）· 粘贴 · ［＋］进同一排）。
- * - 交出只走 `session-queue-put`（经待发）：回执到了 ⇒ 字与 chip 一起清、框下写那台那一句；那台拒了 ⇒ 字留着，那一句留在那一排、那一行写那台那一句（错误色，撤或再发）；
+ * - 交出只走 `session-queue-put`（经待发）：回执到了 ⇒ 字与 chip 一起清、框下不另写（那一句此刻什么样只在那一排照名单说）；那台拒了 ⇒ 字留着，那一句留在那一排、那一行写那台那一句（错误色，撤或再发）；
  *   没回执 ⇒ 留在待发（那一排那一行说，框下不另起一行），那台接上照原编号重交（不挂在这条会话开没开着）。
  * - 能不能说只读脸上的 `can.say`（那台判好、`why` 写好）：不能 ⇒ 框灰着、占位就是那一句；去终端只有会话头「终端」那一颗，框旁不另放。
  *   那台离线照常可写可发（成待发，占位写「连上后送」）；已结束能恢复的 ⇒ 可写，发一句 ＝ 先恢复（落后台）再把这句交进它的队。
@@ -93,8 +93,8 @@ export interface ComposerHost {
 /** 框最多长到几行（再多框内滚）。 */
 const MAX_ROWS = 8;
 
-/** 发完那一句（那台写好的）：成 · 没成（可带复制详情）。 */
-type Note = { text: string; tone: "ok" | "error"; detail?: string };
+/** 框下那一行：■ 没送成 · 撤回没成那几句（那台写好的，可带复制详情）。 */
+type Note = { text: string; detail?: string };
 
 export class Composer {
   readonly el: HTMLElement;
@@ -117,6 +117,10 @@ export class Composer {
   /** 此刻那条会话的名单（那台那一份；还没读到 ⇒ `null`）与它是哪一条。 */
   private queue: QueueList | null = null;
   private queueOf: string | null = null;
+  /** 手上的名单换过几次（[`readQueue`] 认答复是不是问出去之后又换过）。 */
+  private listGen = 0;
+  /** 重问了几次（[`readQueue`] 只认最后那一问的答复）。 */
+  private askSeq = 0;
   private watching: { origin: Machine; stop: () => void } | null = null;
   /** 此刻离线的那几台 ⇒ 连接层写好的离线那一句（机器成品 `offlineSaid`）。 */
   private readonly offline = new Map<string, string>();
@@ -294,9 +298,9 @@ export class Composer {
     let note: Note | null = null;
     try {
       const sent = await this.interrupt(t.origin, t.sessionId);
-      if (sent.result === "refused") note = { text: sent.said, tone: "error" };
+      if (sent.result === "refused") note = { text: sent.said };
     } catch (e) {
-      note = { text: saidOf(e), tone: "error", detail: detailOf(e) };
+      note = { text: saidOf(e), detail: detailOf(e) };
     }
     if (key !== this.key) return;
     this.stopping = false;
@@ -305,7 +309,7 @@ export class Composer {
   }
 
   /**
-   * 一句有了结局（头一次交 · 接上重交的都到这里）：是此刻对着的那条会话 ⇒ 回执到了清框（框里还是那一句）与附件、写那台那一句、重问名单；
+   * 一句有了结局（头一次交 · 接上重交的都到这里）：是此刻对着的那条会话 ⇒ 回执到了清框（框里还是那一句）与附件、清掉框下那一行、重问名单；
    * 那台拒了 ⇒ 字留着；那一句留在那一排那一行说（标失败，可撤可重交），框下不另写。编辑已发的那一句由编辑框说，这里不管。
    */
   private settled(key: string, o: { text: string; rewind?: unknown }, end: { at: string; said: string }): void {
@@ -322,8 +326,9 @@ export class Composer {
       this.onInput();
     }
     this.attachDrafts.get(key)?.clear();
+    // 那一句此刻什么样只在框上那一排说（照那台的名单）；回执那一句不写到框下 —— 它说的是落盘那一刻，送到之后就是假话。
+    this.showNote(null);
     void this.readQueue();
-    this.showNote({ text: end.said, tone: "ok" });
   }
 
   /** 撤待发里那一句：本地拿掉、字回到输入框；没被拒的万一已交到那台，照编号请它撤（没撤成 ⇒ 写那台那一句，不吞）。那台拒了的没进它的队，不问。 */
@@ -339,7 +344,7 @@ export class Composer {
     const key = pendingKey(t.origin, t.sessionId);
     void this.reads.cancel(t.origin, t.sessionId, id).then(
       (r) => this.gotQueue(key, r.queue),
-      (e: unknown) => this.showNote({ text: saidOf(e), tone: "error", detail: detailOf(e) }),
+      (e: unknown) => this.showNote({ text: saidOf(e), detail: detailOf(e) }),
     );
   }
 
@@ -353,7 +358,7 @@ export class Composer {
       if (r.cancelled && recall !== null && key === this.key) this.recall(recall);
       this.gotQueue(key, r.queue);
     } catch (e) {
-      this.showNote({ text: saidOf(e), tone: "error", detail: detailOf(e) });
+      this.showNote({ text: saidOf(e), detail: detailOf(e) });
     }
   }
 
@@ -365,11 +370,18 @@ export class Composer {
     this.onInput();
   }
 
+  /**
+   * 重问名单：只认最后问的那一次、且问出去之后手上的名单没换过（那台推来的 · 撤回来的）—— 别的答复都可能是更早那一刻读的
+   * （几问同时在飞 · 问与推走两条路，跨台时先后不定），拿它盖掉新的，送到摘掉的那一条就又回到那一排、再也没人撤。
+   */
   private async readQueue(): Promise<void> {
     const t = this.host.active();
     if (!t) return;
+    const ask = ++this.askSeq;
+    const gen = this.listGen;
     try {
-      this.gotQueue(pendingKey(t.origin, t.sessionId), await this.reads.read(t.origin, t.sessionId));
+      const q = await this.reads.read(t.origin, t.sessionId);
+      if (ask === this.askSeq && gen === this.listGen) this.gotQueue(pendingKey(t.origin, t.sessionId), q);
     } catch {
       // 断着 · 那台没有这一条：照旧画手上那一份。
     }
@@ -377,6 +389,7 @@ export class Composer {
 
   private gotQueue(key: string, q: QueueList): void {
     if (key !== this.key) return;
+    this.listGen += 1;
     this.queue = q;
     this.queueOf = key;
     this.paint();
@@ -447,7 +460,7 @@ export class Composer {
     // 说不了时框里那一句占位就是那台写的出路；去终端只有会话头「终端」那一颗，框旁不另放。
     const parts: HTMLElement[] = [];
     if (this.note) {
-      parts.push(el("span", this.note.tone === "ok" ? s.composerNoteOk : s.composerNoteError, this.note.text));
+      parts.push(el("span", s.composerNoteError, this.note.text));
       const copy = copyDetailButton(this.note.text, this.note.detail ?? "");
       if (copy) parts.push(copy);
     }

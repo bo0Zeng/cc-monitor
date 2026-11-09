@@ -54,6 +54,9 @@
       { "text": "原话", "use": "输入" },
       { "text": "待定", "use": "输入" }
     ],
+    "tests/backend/assets/aliases/dialect_tests.rs": [
+      { "text": "缺省号", "use": "输入" }
+    ],
     "tests/backend/platform/cfgless_guard.rs": [
       { "text": "路径", "use": "非文案" }
     ],

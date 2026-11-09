@@ -92,9 +92,9 @@ pub fn answer_set(req: &KeySetReq, own: &Own) -> Result<KeySet, Said> {
     answer_set_at(own, req)
 }
 
-/// 那份表在写句柄底下的落点（数据目录根上的 [`store::FILE_NAME`]，与 [`machine_path`] 同一处）。没有数据目录 ⇒ 拒。
+/// 那份表在写句柄底下的落点（数据目录根上的 [`super::creds::APIKEY_FILE_NAME`]，与 [`machine_path`] 同一处）。没有数据目录 ⇒ 拒。
 fn own_file(own: &Own) -> Result<OwnPath, Said> {
-    own.path(store::FILE_NAME)
+    own.path(super::creds::APIKEY_FILE_NAME)
         .map_err(|e| crate::wire::spec::fail("io_failed", e))
 }
 

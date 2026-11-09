@@ -11,7 +11,6 @@ pub(crate) mod gather;
 pub mod marks;
 pub(crate) mod sshd;
 
-use crate::agents::StepResultExt as _;
 use crate::common::cells::Words;
 use crate::common::json_patch::{self as patch, Plan};
 use crate::common::line_diff;
@@ -95,8 +94,8 @@ pub(crate) struct Hooks {
     pub installed: bool,
     pub path: String,
     pub text: Option<String>,
-    /// 要加的：每个事件一项（事件名 · 那一项）。
-    pub items: Vec<(String, Value)>,
+    /// 要加的：每一项（键路径 · 那一项；路径照那一家的拼法，见 `assets::cc_bus_hooks::slots_of`），往那条路径上的数组末尾加。
+    pub items: Vec<(Vec<String>, Value)>,
 }
 
 /// 收齐的事实。
@@ -214,19 +213,11 @@ pub(crate) enum ChoreAction {
     InstallFirst,
 }
 
-/// 要贴的那几行 ⇒ 那一件的行差（与写类工具那一张卡同一形；「+N −M」那一句与过程那一行右侧那一句同一处写）。
+/// 要贴的那几行 ⇒ 那一件的行差（与写类工具那一张卡同一形；「+N −M」那一句在 [`line_diff::stat`] 一处写）。
 fn diff_of(rows: Vec<LineDiffRow>, notice: Option<Words>) -> LineDiff {
     let count = |k: LineDiffKind| rows.iter().filter(|r| r.kind == k).count() as u32;
     let (added, removed) = (count(LineDiffKind::Add), count(LineDiffKind::Del));
-    let stat = cmd_wire::record::StepResult {
-        ok: true,
-        added: Some(added),
-        removed: Some(removed),
-        ..Default::default()
-    }
-    .written(false)
-    .text;
-    line_diff::assemble(rows, added, removed, false, notice, stat)
+    line_diff::assemble(rows, added, removed, false, notice)
 }
 
 fn row(kind: LineDiffKind, text: &str, old_no: Option<u32>, new_no: Option<u32>) -> LineDiffRow {
@@ -585,8 +576,8 @@ pub(crate) fn chores(f: &Facts) -> Vec<Chore> {
             let merged = h
                 .items
                 .iter()
-                .try_fold(now.to_string(), |text, (event, item)| {
-                    patch::push_item(&text, &["hooks", event], item).map(|p| p.whole)
+                .try_fold(now.to_string(), |text, (path, item)| {
+                    push_at(&text, path, item)
                 })
                 .filter(|_| !h.items.is_empty());
             if let Some(text) = merged {
@@ -645,13 +636,19 @@ pub(crate) fn chores(f: &Facts) -> Vec<Chore> {
     out
 }
 
+/// 往 `text` 里 `path` 那条路径上的数组末尾加一项 ⇒ 加好的整份；读不懂 ⇒ `None`。
+fn push_at(text: &str, path: &[String], item: &Value) -> Option<String> {
+    let path: Vec<&str> = path.iter().map(String::as_str).collect();
+    patch::push_item(text, &path, item).map(|p| p.whole)
+}
+
 /// 实时显示与收信落在同一份文件：先合实时显示、再在合好的那份上加两条钩子。
 fn merge_both(f: &Facts) -> Option<String> {
     let h = f.hooks.as_ref()?;
     let r = f.relay.iter().find(|r| r.path == h.path)?;
     let mut text = r.plan(r.url.as_ref()?)?.whole;
-    for (event, item) in &h.items {
-        text = patch::push_item(&text, &["hooks", event], item)?.whole;
+    for (path, item) in &h.items {
+        text = push_at(&text, path, item)?;
     }
     Some(text)
 }
@@ -687,7 +684,7 @@ fn fill_plan(c: &mut Chore, path: &str, p: &Plan) {
     let rows = p.diff.iter().map(|r| {
         let text = match r.kind {
             LineDiffKind::Add => line_diff::cell(&r.text),
-            _ => line_diff::cell(&relay_route_core::hide_key(&r.text)),
+            _ => line_diff::cell(&hide_key(&r.text)),
         };
         LineDiffRow { text, ..r.clone() }
     });
@@ -695,6 +692,38 @@ fn fill_plan(c: &mut Chore, path: &str, p: &Plan) {
     c.copy = Some(added.join("\n"));
     c.whole = Some(p.whole.clone());
     c.whole_covers = vec![c.id.clone()];
+}
+
+/// 一行里每一条插好钥匙的我们那一形地址（`relay_route_core::split_keyed_base_url` 认得的），钥匙段换成 `…`；其余逐字不变。
+/// 读者：上面从用户文件原样摘出的行（贴过的老地址里那把钥匙不出后端）。
+fn hide_key(line: &str) -> String {
+    const HEAD: &str = "http://127.0.0.1:";
+    let url_byte =
+        |b: u8| b.is_ascii_alphanumeric() || matches!(b, b':' | b'/' | b'-' | b'_' | b'~');
+    let mut out = String::with_capacity(line.len());
+    let mut rest = line;
+    while let Some(at) = rest.find(HEAD) {
+        let (before, from) = rest.split_at(at);
+        out.push_str(before);
+        let len = HEAD.len()
+            + from
+                .bytes()
+                .skip(HEAD.len())
+                .position(|b| !url_byte(b))
+                .unwrap_or(from.len() - HEAD.len());
+        let (url, after) = from.split_at(len);
+        match relay_route_core::split_keyed_base_url(url) {
+            Some((head, tail)) => {
+                out.push_str(head);
+                out.push('…');
+                out.push_str(tail);
+            }
+            None => out.push_str(url),
+        }
+        rest = after;
+    }
+    out.push_str(rest);
+    out
 }
 
 #[cfg(test)]

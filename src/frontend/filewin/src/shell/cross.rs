@@ -85,10 +85,11 @@ impl FileWindow {
                 .srcs
                 .iter()
                 .map(|s| cmd_wire::transfer::CopyFrom {
-                    remote_path: s.shown.clone(),
+                    path: cmd_wire::files::WirePath(s.bytes()),
+                    name: None,
                 })
                 .collect(),
-            to_dir: p.dir.clone(),
+            to_dir: cmd_wire::files::WirePath::from(p.dir.as_str()),
             on_exists: None,
             decide: None,
             ticket: None,

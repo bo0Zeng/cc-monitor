@@ -1,6 +1,7 @@
 //! 一段相对路径拆成普通段：本机写面（`root_path::lexical_in_root`）· 远端写围栏（`sftp::fence_lexical`）· 解压条目（`files::extract::entry_rel`）
 //! 同一道词法判定，都调这里；各自多出来的那一层（远端「只许两个根」、解压「`.` 剥掉」）留在各自那里。
 //! 零依赖、无 IO 的一份：拨号核心（远端写围栏，手机也经它链进来）与后端那两处都引这里，判定只这一份。
+//! 另收路径的最后一段（[`last_segment`]：项目名只这一种切法，后端清单 · 搜索 · 标题 · 会话事实 · 标签页分组都调它）。
 
 /// `.` 段怎么办：写面与远端拒（让调用方送干净的段），解压剥掉（包里常见 `./a`）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -50,6 +51,12 @@ pub fn plain_segments(
         }
     }
     Ok(segs)
+}
+
+/// 一条路径的最后一段（后端照会话的项目目录写项目名，清单行 · 搜索行 · 标题 · 会话事实都调它）：`/` 与 `\` 都是分隔符
+/// （会话可能起在 Windows 上、后端在 Linux 上），尾分隔符不算；一段都没有（空串 · 全是分隔符）⇒ `None`。
+pub fn last_segment(path: &str) -> Option<&str> {
+    path.split(['/', '\\']).rfind(|s| !s.is_empty())
 }
 
 #[cfg(test)]

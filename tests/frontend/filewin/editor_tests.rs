@@ -470,7 +470,7 @@ fn the_one_line_check_is_conservative_for_the_worst_escaping() {
         "cmd": WRITE_TEXT,
         "args": save_args_at(&at, &worst, SHA0),
         "within_ms": u64::MAX,
-        "tz": "Z".repeat(host_core::TZ_ROOM),
+        "tz": "Z".repeat(platform_core::tz::TZ_ROOM),
     }))
     .unwrap()
     .len();

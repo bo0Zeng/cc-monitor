@@ -208,11 +208,25 @@ impl Key {
         format!("{} / {}", self.os.label(), self.arch.label())
     }
 
+    /// 这一格在槽目录（[`SLOTS_DIR`]）里那个文件的名字：`<os>-<arch>` 小写（`linux-x86_64`）。壳照它落、后端照 [`Key::of_slot_name`] 认。
+    pub fn slot_name(self) -> String {
+        format!("{}-{}", self.os.label(), self.arch.label()).to_lowercase()
+    }
+
+    /// [`Key::slot_name`] 的反面：槽目录里的文件名 ⇒ 哪一格；认不出 ⇒ `None`（不算带着）。
+    pub fn of_slot_name(name: &str) -> Option<Key> {
+        let (os, arch) = name.split_once('-')?;
+        key_of(os, arch).ok()
+    }
+
     /// 本机：目标机器恰好是自己（`consts` 在编译期就是这一份产物的 `TARGET`）。
     pub fn this_machine() -> Result<Key, Refusal> {
         key_of(std::env::consts::OS, std::env::consts::ARCH)
     }
 }
+
+/// 这一版带着的那几格字节落在哪：后端落点旁边的这一层目录（monitor 起来时落、本机后端装 · 卸时读），文件名是 [`Key::slot_name`]。
+pub const SLOTS_DIR: &str = "slots";
 
 /// 表 A 里「有产线」的格子（`release.yml` 真编得出字节的那几格；判据对着 `release.yml` 读）。
 pub const LINES: &[Key] = &[

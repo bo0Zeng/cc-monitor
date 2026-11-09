@@ -1,4 +1,6 @@
 use super::*;
+use crate::detail::Shell as _;
+use cmd_wire::deploy::{ActionTag, DeployInstallReq, DeployUninstallReq};
 
 // 删远端会话文件经远端后端（`files-delete-session`，只收 sid）：「只收 sid · 落点由后端按 sid 找」的判据住后端。
 
@@ -283,13 +285,14 @@ fn the_release_pipeline_stages_every_arch_that_build_rs_embeds() {
 //
 // 要求：「部署决策（该不该换 · 换成什么 · 身份判定）与那一趟装都在后端；monitor 只交字节文件的路径、收进度」。
 
-/// 🔴 按钮那条部署路**恰好一次**请本机常驻后端装（`install(`；自动装在本机后端那几条常驻流里，壳这一侧没有），本文件生产段里**零处**再做判定或碰那台
-/// （问那台 `uname` · 查表 A/B · 扫身份戳 · 判新旧 · 判落点 · 放字节 · 删残件），也零处碰旁挂标记。带正控。
+/// 🔴 壳这一侧只把这一版带着的字节落成槽：装 · 卸由界面直接问本机常驻后端（`deploy-install` · `deploy-uninstall`，只交名字），
+/// 本文件生产段里**零处**再做判定、碰那台（问那台 `uname` · 查表 A/B · 扫身份戳 · 判新旧 · 判落点 · 放字节 · 删残件）、
+/// 零处有装 · 卸的命令或问后端的那一口；槽的目录与名字只经契约 crate（`SLOTS_DIR` · `Key::slot_name`），不自己拼。带正控。
 #[test]
-fn the_deploy_paths_only_hand_facts_to_the_backend() {
+fn the_shell_only_places_the_carried_slots() {
     let prod =
         guard_core::production_code(include_str!("../../../src/frontend/shell/src/deploy.rs"));
-    let decisions = |code: &str| -> Vec<&'static str> {
+    let forbidden = |code: &str| -> Vec<&'static str> {
         [
             "probe_key(",
             "choose(",
@@ -304,42 +307,33 @@ fn the_deploy_paths_only_hand_facts_to_the_backend() {
             "fs.put(",
             "fs.mkdirs(",
             "fs.remove(",
+            "tauri::command",
+            "DeployInstallReq",
+            "DeployUninstallReq",
+            "deploy_remote_backend",
+            "uninstall_remote_backend",
+            ".ask(",
+            "\"slots\"",
+            "os.label()",
+            "arch.label()",
         ]
         .into_iter()
         .filter(|f| code.contains(f))
         .collect()
     };
     assert_eq!(
-        decisions(&prod),
+        forbidden(&prod),
         Vec::<&str>::new(),
-        "deploy.rs 又自己判起了部署 / 自己放起了字节 —— 那一趟住本机常驻后端（`deploy-install`）"
+        "deploy.rs 又自己判起了部署 / 问起了后端 / 拼起了槽名 —— 那一趟住本机常驻后端，槽名住 `deploy_contract::Key`"
     );
-    for sig in ["pub async fn deploy_remote_backend("] {
-        let code = dp1_body(&prod, sig);
-        guard_core::find_pinned(&code, "install(")
-            .unwrap_or_else(|e| panic!("{sig}：不是恰好一处请后端装（{e}）"));
-        for marker in [
-            "/.build_id",
-            "read_marker(",
-            "put_marker(",
-            "deploy_decision(",
-        ] {
-            assert!(!code.contains(marker), "{sig} 又碰起了旁挂标记：{marker}");
-        }
-    }
-    let body = dp1_body(&prod, "async fn install_for(");
-    guard_core::find_pinned(&body, "ask_backend(&DeployInstallReq {")
-        .unwrap_or_else(|e| panic!("装那一口不是恰好一处问本机后端（{e}）"));
-    let body = dp1_body(&prod, "async fn uninstall_for(");
-    guard_core::find_pinned(&body, "ask_backend(&DeployUninstallReq {")
-        .unwrap_or_else(|e| panic!("卸那一口不是恰好一处问本机后端（{e}）"));
-    let body = dp1_body(&prod, "async fn ask_backend<");
-    guard_core::find_pinned(&body, ".ask(None, req, None, deadline)")
-        .unwrap_or_else(|e| panic!("问本机后端那一口不是恰好一处（{e}）"));
+    guard_core::find_pinned(&prod, ".slot_name()")
+        .unwrap_or_else(|e| panic!("落槽不是恰好一处照 `Key::slot_name` 起名（{e}）"));
+    guard_core::find_pinned(&prod, "deploy_contract::SLOTS_DIR")
+        .unwrap_or_else(|e| panic!("槽目录不是恰好一处照 `SLOTS_DIR`（{e}）"));
     // 正控：每一种写法都认得出来。
     assert_eq!(
-        decisions("probe_key( choose( key_from_uname( judge( stamp_scan_cmd( interpret_stamp_scan( interpret_target_probe( identity_decision( identity_of_bytes( build_relation( fs.put( fs.mkdirs( fs.remove(").len(),
-        13
+        forbidden("probe_key( choose( key_from_uname( judge( stamp_scan_cmd( interpret_stamp_scan( interpret_target_probe( identity_decision( identity_of_bytes( build_relation( fs.put( fs.mkdirs( fs.remove( tauri::command DeployInstallReq DeployUninstallReq deploy_remote_backend uninstall_remote_backend .ask( \"slots\" os.label() arch.label()").len(),
+        22
     );
 }
 
@@ -362,7 +356,7 @@ fn the_landing_constant_is_the_backend_one_and_no_entry_is_made_here() {
     }
 }
 
-/// **界面那一侧对着真后端 ＋ 真 sshd**：装 · 卸经本机常驻后端（`deploy-install` · `deploy-uninstall`）、
+/// **界面那一侧对着真后端 ＋ 真 sshd**：装 · 卸经本机常驻后端（`deploy-install` · `deploy-uninstall`，只交名字；带着的那一格落在被测后端家目录的槽里）、
 /// 传输经中继（`transfer_relay::transfer_call` / `watch_ticket`），全程界面进程零 SSH。
 ///
 /// 只由 `tests/evidence/sftp-loopback.py --monitor` 带 `SR1B_LOOPBACK`
@@ -424,7 +418,7 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     // ① 装那一趟整趟在本机常驻后端（`deploy-install`）：这一版「带着」的那一格就是台架那台的键、字节是被测的那份后端本身
     //   （它得真跑得起 `--place-self`），身份读它自己的戳。
     let me = std::fs::read(s("backend")).expect("读不到被测后端");
-    let deploy_contract::RemoteIdentity::Stamp(id) = deploy_contract::identity_of_bytes(
+    let deploy_contract::RemoteIdentity::Stamp(_) = deploy_contract::identity_of_bytes(
         &me,
         deploy_contract::Marks {
             open: deploy_contract::STAMP_OPEN,
@@ -433,14 +427,28 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     ) else {
         panic!("被测后端不说自己是哪一版");
     };
+    // 被测后端照它家目录里的槽目录认带着哪一格：把被测的那份字节落成台架那台的那一格（同壳起来时落槽那一下）。
     let key = deploy_contract::Key::this_machine().expect("台架那台的键认不出");
-    let slots = vec![SlotRow {
-        os: key.os.label().to_string(),
-        arch: key.arch.label().to_string(),
-        id,
-        path: s("backend"),
-    }];
-    let decide = || async { install_for(&cfg, slots.clone()).await.map(|i| i.action) };
+    let (landing_dir, _) = relay_route_core::BACKEND_LANDING_REL
+        .rsplit_once('/')
+        .unwrap();
+    let slots_at = format!("{home}/{landing_dir}/{}", deploy_contract::SLOTS_DIR);
+    std::fs::create_dir_all(&slots_at).unwrap();
+    std::fs::write(format!("{slots_at}/{}", key.slot_name()), &me).unwrap();
+    let decide = || async {
+        ask_backend(&DeployInstallReq {
+            machine: cfg.clone(),
+        })
+        .await
+        .map(|i| i.action)
+    };
+    let uninstall = || async {
+        ask_backend(&DeployUninstallReq {
+            machine: cfg.clone(),
+        })
+        .await
+        .map(|u| u.said)
+    };
     // 「落点上是一份不说自己是哪一版的东西」那一句照文案表现拼（原话改了这里跟着走，不抄字面量）。
     let unstamped = copy_core::copy_text(
         "rsSftp.identity.unstamped",
@@ -469,9 +477,7 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
         leftover,
         "判定之后盘上那份变了"
     );
-    let msg = uninstall_for(&cfg, slots.clone())
-        .await
-        .expect("卸载（出路）");
+    let msg = uninstall().await.expect("卸载（出路）");
     assert!(msg.starts_with("已删除 ~/.cc-monitor/bin/ccm"), "{msg}");
     assert_eq!(decide().await, Ok(ActionTag::Deploy), "落点缺 ⇒ 该装");
     assert_eq!(
@@ -499,7 +505,7 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     );
     std::fs::write(&backend_path, &me).unwrap();
     // ④ 卸载（同那颗按钮的本体）：传一份暂存件、由它删后端那一份
-    let msg = uninstall_for(&cfg, slots.clone()).await.expect("卸载");
+    let msg = uninstall().await.expect("卸载");
     assert!(msg.starts_with("已删除 ~/.cc-monitor/bin/ccm"), "{msg}");
     assert!(!std::path::Path::new(&backend_path).exists());
     // ⑤ 上传经中继：开单 → 订阅即起跑 → 终局 Done，暂存件逐字节等于本机那份
@@ -569,13 +575,23 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
 // 自动装那一趟住本机后端那几条常驻流（`control/feeds.rs`）：每一步与收尾记进那台的机器状态成品（`deploy_plan::answer_install`），
 // 界面照成品画 —— 壳这一侧没有自动装、也就没有要发的那一句（`remote-health` 的 `deploy` 那一格随之删了）。
 
-/// 切出生产段里一个函数的体（到列 0 的 `}` 为止）。
-fn dp1_body(prod: &str, sig: &str) -> String {
-    let at =
-        guard_core::find_pinned(prod, sig).unwrap_or_else(|e| panic!("{sig} 不是恰好一处：{e}"));
-    let rest = &prod[at..];
-    let end = rest.find("\n}\n").unwrap_or(rest.len());
-    rest[..end].to_string()
+/// 台架问被测的本机常驻后端一条装 / 卸（同界面经通道问 `<local>` 那两条）：失败交那一份原样。
+async fn ask_backend<C: cmd_wire::Call>(req: &C) -> Result<C::Reply, cmd_wire::failed::Failed> {
+    let cmd = C::NAME;
+    let client = crate::inbound_client::local_backend_accepting(cmd)
+        .await
+        .map_err(|said| Said::from(said).named(cmd))?;
+    let deadline = tokio::time::Instant::now() + guard_core::wall::CEILING;
+    let got = client.ask(None, req, None, deadline).await.map_err(|e| {
+        use crate::backend_route::{route_call_error, Routed};
+        let said = match route_call_error(&e, &copy_core::local_machine(), |_code, message| {
+            message.to_string()
+        }) {
+            Routed::NoChannel(s) | Routed::Refused(s) => s,
+        };
+        crate::detail::of_call(said, cmd, &e)
+    })?;
+    got.map_err(|e| Said::with_raw(e.to_string(), e).named(cmd))
 }
 
 /// 🔴 **A1：别名块的真相不住 `deploy.rs`**（

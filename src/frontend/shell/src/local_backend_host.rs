@@ -407,19 +407,18 @@ fn send_attach(
 ) -> Result<(), Said> {
     use std::io::Write;
     let mut w = sock;
-    w.write_all(
-        attach_line(host_core::viewer_tz().as_deref(), None, Some(watch.clone())).as_bytes(),
-    )
-    .and_then(|()| w.flush())
-    .map_err(|e| {
-        Said::with_raw(
-            copy_text(
-                "rsLocalBackendHost.attach.sendFailed",
-                &[("why", &copy_core::io_reason(e.kind()))],
-            ),
-            &e,
-        )
-    })?;
+    let tz = crate::inbound_client::viewer_tz();
+    w.write_all(attach_line(tz.as_deref(), None, Some(watch.clone())).as_bytes())
+        .and_then(|()| w.flush())
+        .map_err(|e| {
+            Said::with_raw(
+                copy_text(
+                    "rsLocalBackendHost.attach.sendFailed",
+                    &[("why", &copy_core::io_reason(e.kind()))],
+                ),
+                &e,
+            )
+        })?;
     let line = read_handshake_line(sock)?;
     match cmd_wire::attach::AttachReply::of(&line) {
         Some(cmd_wire::attach::AttachReply::Ok { .. }) => Ok(()),
@@ -1200,7 +1199,7 @@ fn run_resident_stop_within(
                 StderrSink::Captured,
                 |cmd| {
                     // 本机落点就是 `ccm`：打头的 `--` 让它当后端用（没有它整行交给 claude）。
-                    cmd.args([local_backend::BACKEND_SEP, "--resident-stop"])
+                    cmd.args([local_backend::BACKEND_SEP, relay_route_core::RESIDENT_STOP])
                         .env_remove("TMUX")
                         .envs(handed.iter().cloned())
                         .stdin(std::process::Stdio::null())

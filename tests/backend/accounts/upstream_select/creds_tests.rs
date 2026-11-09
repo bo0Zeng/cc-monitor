@@ -19,7 +19,7 @@ fn announce_all(loaded: &Loaded, out: &mut dyn std::io::Write) -> usize {
 
 /// 这个临时「家」下那份文件的默认落点（数据目录 `~/.cc-monitor` 根上；期望手写，不借生产那一份）。
 fn default_file(home: &Path) -> PathBuf {
-    home.join(".cc-monitor").join(store::FILE_NAME)
+    home.join(".cc-monitor").join(APIKEY_FILE_NAME)
 }
 
 /// 取值器：只答 `HOME`。
@@ -204,6 +204,6 @@ fn a_missing_file_prints_the_template_so_import_does_not_need_guessing() {
     );
     assert!(text.contains("plain JSON"), "没说清它是明文 JSON：{text}");
     // 路径**总是**印（文件在哪写给人看）。
-    assert!(text.contains(store::FILE_NAME), "没印出路径：{text}");
+    assert!(text.contains(APIKEY_FILE_NAME), "没印出路径：{text}");
     let _ = std::fs::remove_dir_all(&home);
 }

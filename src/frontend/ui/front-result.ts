@@ -1,6 +1,6 @@
 /**
- * 「终端」拉窗那一下的结局 ⇒ 底部一条（一次性结局全产品只这一种样子：锚在按钮上的浮层 · 打勾都不另起）。那一张一律由 `face_core::front` 写好交来
- * （壳拉前之后 · 本机后端 `session-window` 说不出链时 · 出口这一跳没成时壳照 `front_missed` 写），这里照摆、不按结局挑字：
+ * 「终端」拉窗那一下的结局 ⇒ 底部一条（一次性结局全产品只这一种样子：锚在按钮上的浮层 · 打勾都不另起）。那一张一律由本机后端照
+ * `face_core::front` 写好、壳照结局码挑出来交来（说不出链 · 窗口那一跳没成的每一种），这里照摆、不按结局挑字：
  * 只排语气 ⇒ 底部条的级别、按钮上的字。切过去了 ⇒ 什么都不出（窗口到了前面就是回执）。
  * 连那一张都没问到（壳那一问失败）⇒ 照壳交来的那一句进失败提示（详情可复制）。
  */
@@ -54,17 +54,24 @@ export function frontActLabel(a: Exclude<FrontAct, { kind: "copy" }>): string {
   }
 }
 
-/** 那一张 ⇒ 底部一条：正文与灰字办法进灰字；［复制详情］照 `copy` 那一颗出；其余按钮点了交 `act`。 */
+/** 上一条拉窗结局还开着时收起它的那一下（没有 ⇒ `null`）。 */
+let shown: (() => void) | null = null;
+
+/**
+ * 那一张 ⇒ 底部一条：正文与灰字办法进灰字；［复制详情］照 `copy` 那一颗出；其余按钮点了交 `act`。
+ * 每点一次都重新出一条：先收起上一条（同标题的不并进上一条成 ×N，「消息」里各记一条）。
+ */
 export function showFrontResult(view: FrontView, act: (a: FrontAct) => void | Promise<void>): void {
+  shown?.();
   const detail = [view.body, view.hint ?? ""].filter((x) => x !== "").join("\n");
   const copy = view.acts.find((a): a is Extract<FrontAct, { kind: "copy" }> => a.kind === "copy");
   const action: ToastAction[] = view.acts
     .filter((a): a is Exclude<FrontAct, { kind: "copy" }> => a.kind !== "copy")
     .map((a) => ({ label: frontActLabel(a), run: () => void act(a) }));
-  toast(view.title, detail, { level: levelOf(view.tone), ...(action.length > 0 ? { action } : {}), ...(copy ? { detail: copy.detail } : {}) });
+  shown = toast(view.title, detail, { level: levelOf(view.tone), ...(action.length > 0 ? { action } : {}), ...(copy ? { detail: copy.detail } : {}) });
 }
 
-/** 连那一张都没问到（壳那一问失败，`bringTerminalToFront` 拒了）：照壳交来的那一句进全产品那条失败提示（标题是那一颗的名字「终端」，详情可复制）。 */
+/** 连那一张都没问到（壳那一问失败，`bringTerminalToFront` 拒了）：照壳交来的那一句进全产品那条失败提示（标题是那一颗的名字「切到终端」，详情可复制）。 */
 export function frontAskFailed(e: unknown): void {
-  failToast(copyText("mobDrawer.item.terminal"), e);
+  failToast(copyText("terminal.head.front"), e);
 }

@@ -17,66 +17,11 @@ use crate::detail::Shell as _;
 use copy_core::copy_text;
 use copy_core::said::Said;
 
-/// 远端命令长度上限（防 IPC 侧异常输入；正常 resume 命令 <300 字节）。
-const MAX_REMOTE_CMD: cap_core::Cap = cap_core::Cap {
-    bytes: 4096,
-    over: cap_core::Over::Reject,
-};
-
 // 这里原来一个只双写 ASCII `'` 的 PowerShell 引号器（本机数据目录带弯引号时握手前奏会断）：前奏整段搬进本机后端，
 // PowerShell 字面量只经后端 `platform/shell/dialect.rs::ps_literal` ⇒ 删了。monitor 生产段零 PowerShell 引号器（`quote_singleton_guard_tests`）。
 
-/// L1（local-as-remote）：**与传输无关**的那层命令校验 —— 三条送法一律适用。
-///
-/// 远端那条送法的同一组判据今天住本机后端（`dial/terminal.rs`，帧命令 `terminal-ssh`）；这里只剩 POSIX 本地那条路
-/// （[`build_local_posix_argv`]）用。
-///
-/// **刻意不含「拒绝双引号」那条**：它的理由是 PowerShell 5.1 向 native 程序传参对内嵌 `"`
-/// 有历史畸变（见调用处），是**那条送法的**约束，不是命令本身的性质。
-/// 把它一并搬进来，等于把一个 Windows 怪癖套到 Linux 上 —— 判据要落在性质上。
-fn validate_launch_cmd(cmd: &str, what: &str) -> Result<(), Said> {
-    if cmd.trim().is_empty() {
-        return Err(Said::of(
-            "rsLaunch.refuse.empty",
-            &[("what", &what.to_string())],
-        ));
-    }
-    if cmd.len() > MAX_REMOTE_CMD.as_len() {
-        return Err(Said::of(
-            "rsLaunch.refuse.tooLong",
-            &[
-                ("what", &what.to_string()),
-                ("len", &(cmd.len()).to_string()),
-                ("max", &MAX_REMOTE_CMD.bytes.to_string()),
-            ],
-        ));
-    }
-    if cmd.chars().any(|c| c.is_control()) {
-        return Err(Said::of(
-            "rsLaunch.refuse.control",
-            &[("what", &what.to_string())],
-        ));
-    }
-    Ok(())
-}
-
-/// L1：**POSIX 本地**送法 —— 直接 exec，**不要 ssh 包**。
-///
-/// 返回 argv 而不是命令串：本地没有「要穿过一层 shell」的问题，拼成串再让别人拆是
-/// 白白造一个注入面。`bash -lic` 这层**保留**——它和远端那条路是同一个语义
-///（PATH / 别名 / 函数按「用户粘贴进交互终端」解析），`ccm` 正是靠它才被找到。
-///
-/// ⇒ 与远端那条送法的关系就是 §2「payload 共享、transport 只管送」：
-/// 同一个 `cmd`，本地是 `bash -lic <cmd>`，远端是把这同一串再包进 ssh（那一层今天由本机后端 `terminal-ssh` 渲）。
-/// 两侧各有测试逐字节钉住（本侧 `local_posix_sends_the_payload_itself_without_an_ssh_wrap`，
-/// 远端那侧在 `tests/backend/dial_terminal_tests.rs`）。
-pub fn build_local_posix_argv(cmd: &str) -> Result<Vec<String>, Said> {
-    validate_launch_cmd(cmd, &copy_text("rsLaunch.what.localCmd", &[]))?;
-    Ok(vec!["bash".into(), "-lic".into(), cmd.into()])
-}
-
-// 开窗的两个平台臂（POSIX 规范化终端出口 · Windows `wt.exe` / `powershell.exe`）搬进 `platform/terminal.rs`，
-//   头注逐字随之；本文件只剩「跑什么」的校验与开窗 · 设置页那两条 Tauri 命令。
+// 开窗的两个平台臂（POSIX 规范化终端出口 · Windows `wt.exe` / `powershell.exe`）与 POSIX 那一臂「跑什么」的校验 · argv
+//   （`build_local_posix_argv`，只那一臂读）住 `platform/terminal.rs`；本文件只剩开窗 · 设置页那两条 Tauri 命令。
 
 /// 开窗命令交出去的结局：开了 · 这台开不了终端窗口（壳写好的那几句，界面照摆）。调用方按 `outcome` 判，不按哪句话里的字判。
 /// 远端窗口那一问（`chan/host.rs`）开不了窗时回的也是这里的 `said`。

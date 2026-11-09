@@ -63,8 +63,12 @@ pub mod runs;
 pub mod schema;
 // 一行记录里通用层要的会话级那几格 · 正文的形状（清单 · 全文搜索 · 骨架索引共用这一份读法）。
 pub(crate) mod session_line;
+// 用户级设置文件里钩子那一格的读与拼（注册表足迹面那两格）。
+pub(crate) mod settings_hooks;
 pub mod sign_in;
 pub(crate) mod steps;
+// 任务文件（注册表 `LocalFace.tasks` 那一格）：字段名与状态那几个值。
+pub(crate) mod tasks;
 // 记录文本：正文 / 工具内容怎么抽 · CLI 注入怎么剥。
 pub(crate) mod text;
 // skill 接入面的声明（收件箱那几个人要改的文件 ＋ Claude 数据文件的纵深围栏）：从 monitor 搬来。
@@ -288,7 +292,7 @@ pub(crate) const LOCAL: super::LocalFace = super::LocalFace {
     home_at: paths::home_of,
     pidfile_dir: paths::sessions_root,
     cmdline_may_be_agent: liveness::cmdline_may_be_agent,
-    tasks_dir: Some(paths::tasks_root),
+    tasks: Some(tasks::FACE),
     proc_of: pidfile::proc_of,
 };
 
@@ -315,8 +319,8 @@ pub const RECORDS: super::RecordFace = super::RecordFace {
     branch: Some(branch::build_branch_records),
     drift: Some(drift::snapshot),
     text: Some(super::TextFace {
-        main: text::extract_text_blocks,
-        tool: text::extract_tool_text,
+        main: session_line::main_of,
+        tool: session_line::tool_of,
         user: text::user_text_of_record,
         lands: record_of::lands_of,
         line: session_line::line_of,

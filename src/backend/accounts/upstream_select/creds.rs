@@ -25,19 +25,22 @@ pub(crate) struct Loaded {
     pub(crate) problem: Option<String>,
 }
 
+/// 那份表在数据目录根上的名字（照声明表那一行的落点 `relay_route_core::APIKEY_CREDENTIALS_REL` 取）。
+pub(crate) const APIKEY_FILE_NAME: &str =
+    relay_route_core::file_name_of(relay_route_core::APIKEY_CREDENTIALS_REL);
+
 /// 算出那份文件在哪：这台的家（默认 `~/.cc-monitor`）根上那一份。位置只跟着家走，没有另指它的变量。
 ///
-/// 数据目录与 monitor 那一侧同一条规矩：`store::monitor_data_dir(CCM_DATA_DIR, HOME)`，不按 agent 家（换号不许把凭据换到另一份）。
+/// 数据目录与 monitor 那一侧同一条规矩（`platform::paths::data_home_from`），不按 agent 家（换号不许把凭据换到另一份）。
 /// 推不出（`CCM_DATA_DIR` 设了却不是绝对路径 / 没有家目录）⇒ `Err`（那句话），不退回真 profile。
 /// 纯函数：取值器是注入的，判据不必去改进程环境（`set_var` 与并行跑的别的判据是竞态）。
 pub(crate) fn resolve_path(get: &dyn Fn(&str) -> Option<String>) -> Result<PathBuf, String> {
-    let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into));
-    store::monitor_data_dir(get(store::DATA_DIR_ENV).as_deref(), home)
-        .map(|d| store::credentials_path(&d))
+    crate::platform::paths::data_home_from(get)
+        .map(|d| d.join(APIKEY_FILE_NAME))
         .ok_or_else(|| {
             copy_text(
                 "beUpstreamCreds.path.noDataDir",
-                &[("env", store::DATA_DIR_ENV)],
+                &[("env", relay_route_core::DATA_DIR_ENV)],
             )
         })
 }

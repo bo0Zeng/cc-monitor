@@ -25,7 +25,7 @@ pub async fn claim_then_log(
     if mode == listen::Mode::Stdio {
         return Ok((None, install()));
     }
-    let Some(dh) = resident::data_home_from(env) else {
+    let Some(dh) = crate::platform::paths::data_home_from(env) else {
         tracing::error!("找不到这台的家 ⇒ 拒绝起常驻");
         return Err(listen::EXIT_BAD_LISTEN_CONFIG);
     };

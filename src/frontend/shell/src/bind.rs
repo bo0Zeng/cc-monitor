@@ -420,9 +420,115 @@ fn find_window_by_marker_substr(marker: &str) -> Option<MarkerHit> {
     crate::platform::hwnd::first_visible_window(marker, title_carries_marker)
 }
 
-// ↗ 一次的结局（`FrontOutcome`）与它的两种原因住 `face_core::front`：浮层那一张也在那里写（[`FrontOutcome::told`]），壳只判窗口的事。
-// 分不清的原因由 [`several_why`] 判，标签页没切成的原因由 [`pick_tab`] · [`tab_step`] 判。
-use face_core::front::{FrontOutcome, SeveralWhy, TabMiss};
+// ↗ 一次窗口那一跳的结局（`FrontOutcome`）与它的两种原因是壳自己的判断；浮层那一张由本机后端照结局码写好、随 `session-window` 的回包来
+// （[`told`] 照码挑一张，壳不写字）。分不清的原因由 [`several_why`] 判，标签页没切成的原因由 [`pick_tab`] · [`tab_step`] 判。
+use cmd_wire::front::{FrontCode, FrontTold};
+
+/// 窗口那一跳一次的结局（闭集）。分不清是哪个窗口时**不挑一个切**：照实说拉不了、带候选个数和原因。
+/// 不上线（线上只过 [`FrontOutcome::code`]）；诊断子命令 `--ccm-pick` 照它印一行 JSON。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum FrontOutcome {
+    /// 窗口到前面了（核过前台），要切的标签页也选中了（或窗口里只有一个标签 / 没有标签这回事）。
+    Switched,
+    /// 链上哪一级都认不出显示在哪个窗口，终端程序又开着几个窗口 ⇒ 分不清；`count` 是候选窗口个数，`why` 是为什么认不出。
+    Several {
+        program: String,
+        count: usize,
+        why: SeveralWhy,
+    },
+    /// 窗口到前面了，标签页没切成（原因见 `why`）：前面显示的可能是同一窗口里别的标签。
+    SwitchedWindow { why: TabMiss },
+    /// 认得的那个窗口已经不在了。
+    WindowGone,
+    /// 句柄或进程号已被别的进程复用 ⇒ 认不准（细节进日志）。
+    Unclear,
+    /// 找到了，系统不许抢前台（它在任务栏闪），或答应了前台却没换。
+    Refused,
+    /// 整条链上哪一级都没有窗口：真在后台。
+    NoWindow { program: String },
+    /// Wayland 会话：别的程序的窗口 cc-monitor 看不见、也切不过去（`desktop` 是桌面名，可能空）。
+    DesktopWontSwitch { desktop: String },
+    /// 这台系统没有「按句柄找 / 验 / 拉前窗口」这一族。
+    Unsupported,
+    /// 窗口那一跳没在期限内回（系统调用卡住）。
+    TimedOut,
+}
+
+/// 分不清时，链上为什么没有一级认出它显示在哪个窗口。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SeveralWhy {
+    /// Linux：本会话的 shell 没登记（开在接上终端之前）。
+    Unregistered,
+    /// Windows：借本会话的控制台被系统拒了。
+    ConsoleUnreachable,
+    /// Windows：终端是以管理员身份运行的，cc-monitor 借不到它名下的控制台。
+    Elevated,
+    /// Windows：终端程序不提供控制台（不把伪控制台挂到自己窗口下，如 VS Code 的终端）。
+    Foreign,
+}
+
+/// 窗口切过去了、标签页没切成的原因。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TabMiss {
+    /// 记号一直没出现在标签名上：标签名被固定（手动改过名）· 终端设置不显示程序标题（`suppressApplicationTitle`）。
+    TitleIgnored,
+    /// 读不到 / 点不了那个窗口的标签页（UI Automation 不给）。
+    NoUia,
+    /// 终端是以管理员身份运行的：cc-monitor 无权读它的标签页。
+    Elevated,
+    /// 读不到本会话的控制台（挂不上记号）。
+    NoConsole,
+}
+
+impl FrontOutcome {
+    /// 结局 ⇒ 线上的结局码（切过去了 ⇒ `None`）。候选个数 · 程序名 · 桌面名只进诊断，不上线。
+    pub fn code(&self) -> Option<FrontCode> {
+        use FrontCode as C;
+        Some(match self {
+            FrontOutcome::Switched => return None,
+            FrontOutcome::Several { why, .. } => match why {
+                SeveralWhy::Unregistered => C::SeveralUnregistered,
+                SeveralWhy::ConsoleUnreachable => C::SeveralConsole,
+                SeveralWhy::Elevated => C::SeveralElevated,
+                SeveralWhy::Foreign => C::SeveralForeign,
+            },
+            FrontOutcome::SwitchedWindow { why } => match why {
+                TabMiss::TitleIgnored => C::TabTitleIgnored,
+                TabMiss::NoUia => C::TabNoUia,
+                TabMiss::Elevated => C::TabElevated,
+                TabMiss::NoConsole => C::TabNoConsole,
+            },
+            FrontOutcome::WindowGone => C::Gone,
+            FrontOutcome::Unclear => C::Unclear,
+            FrontOutcome::Refused => C::Refused,
+            FrontOutcome::NoWindow { .. } => C::NoWindow,
+            FrontOutcome::DesktopWontSwitch { .. } => C::DesktopWontSwitch,
+            FrontOutcome::Unsupported => C::Unsupported,
+            FrontOutcome::TimedOut => C::TimedOut,
+        })
+    }
+}
+
+/// 本机后端答的那一份 ＋ 窗口那一跳的结局 ⇒ 交给界面的：切过去了 ⇒ 切过去了；没成 ⇒ 回包里那个结局码的那一张；
+/// 标签没对上、链又空（`hop` 空）⇒ 回包的 `face`。回包里缺那一张 ⇒ `None`（回包认不出）。
+pub(crate) fn told(
+    window: &cmd_wire::session::SessionWindow,
+    hop: Option<FrontOutcome>,
+) -> Option<FrontTold> {
+    let face = match hop.as_ref().map(FrontOutcome::code) {
+        Some(None) => return Some(FrontTold::Switched),
+        Some(Some(code)) => window
+            .missed
+            .iter()
+            .find(|m| m.code == code)
+            .map(|m| m.face.clone()),
+        None => window.face.clone(),
+    }?;
+    Some(FrontTold::Said(face))
+}
 
 /// 这一种桌面会话上 ↗ 走不走得通：Windows · X11 ⇒ 走（`None`）；Wayland ⇒ 照实说切不了；别的 ⇒ 不支持。
 pub(crate) fn refusal_of(session: &crate::platform::hwnd::DisplaySession) -> Option<FrontOutcome> {
@@ -658,12 +764,8 @@ fn bring_pick(p: &Pick) -> FrontOutcome {
     with_tab(activate(w.hwnd), tab)
 }
 
-/// 本机后端回的进程链的一级（开着那条连接的进程在前）。`start` 那一格本进程不用（属主起始时刻自己现读）。
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-pub struct ChainLink {
-    pub pid: u32,
-    pub name: String,
-}
+/// 本机后端回的进程链的一级（开着那条连接的进程在前；线上形住 `cmd_wire::session`）。`start` 那一格本进程不用（属主起始时刻自己现读）。
+pub use cmd_wire::session::ChainLink;
 
 /// 握手表里这一条还作不作数：登记的那个 shell 就是此刻这个进程（起始时刻 `start_now` 与登记时对得上；读不到也不算）·
 /// 它登记的窗口还在且属主没换（`window_ok`）。读法是参数（判据喂替身）。
@@ -819,7 +921,7 @@ pub(crate) fn labeled_window(
         .find_map(|(pid, _)| known(pid))
 }
 
-/// ↗ 一条命令的先后（读法是参数，判据喂替身）：什么都没得找 ⇒ `None`（界面摆本机后端那条原因）；这台切不了 ⇒ 照实说（`refusal`）；
+/// ↗ 一条命令的先后（读法是参数，判据喂替身）：什么都没得找 ⇒ `None`（[`told`] 摆本机后端那条原因）；这台切不了 ⇒ 照实说（`refusal`）；
 /// 先按窗口标签找（`by_label` 对上 ⇒ 那一次的结局）；没对上 ⇒ 沿链（`by_chain`）；链也空 ⇒ `None`。
 pub(crate) fn front_by(
     labels: &[String],
@@ -940,7 +1042,11 @@ pub fn pick_main() -> Option<i32> {
     let bind = BindRegistry::empty();
     let chain: Vec<ChainLink> = std::iter::once((pid, String::new()))
         .chain(crate::platform::pid::ancestors(pid))
-        .map(|(pid, name)| ChainLink { pid, name })
+        .map(|(pid, name)| ChainLink {
+            pid,
+            name,
+            start: 0,
+        })
         .collect();
     let outcome = bring_session_window(&[], &chain, &bind).unwrap_or(FrontOutcome::NoWindow {
         program: String::new(),

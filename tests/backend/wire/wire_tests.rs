@@ -1350,7 +1350,7 @@ fn the_fates_sort_after_every_live_session_on_one_ruler() {
 /// 悬停那一句 · 状态一句就是那台的离线那一句（与机器成品的 `offline_said` 同一处取字），短名照旧「状态不明」、不说已结束。
 #[test]
 fn the_unseen_face_is_unknown_closes_from_the_menu_and_says_that_machines_offline_line() {
-    use cmd_wire::frame::{Allow, CanClose, SessionDot, TermWay};
+    use cmd_wire::frame::{Allow, CanClose, CanView, SessionDot};
     let said = comms_inward::chan::said::offline("gpu-01");
     let f = face_core::book::unseen(crate::common::cells::Words(said.clone()));
     assert_eq!(f.dot, SessionDot::Unknown);
@@ -1358,11 +1358,10 @@ fn the_unseen_face_is_unknown_closes_from_the_menu_and_says_that_machines_offlin
     assert!(!f.settled, "看不见不是定局：重连后那台的帧把脸带回来");
     assert_eq!(f.can.close, CanClose::Menu);
     assert!(matches!(f.can.resume, Allow::No { .. }));
-    assert!(
-        matches!(f.can.terminal.near, TermWay::No { .. })
-            && matches!(f.can.terminal.far, TermWay::No { .. })
-    );
+    assert!(matches!(f.can.view, CanView::No { .. }));
     for a in [
+        &f.can.front,
+        &f.can.attach,
         &f.can.reattach,
         &f.can.model,
         &f.can.permission,

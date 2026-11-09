@@ -78,7 +78,9 @@ fn a_session_without_its_terminal_keeps_the_model_for_the_next_resume() {
         assert_eq!((r.why, r.said), (None, None));
     }
     let got = crate::history::history_annotations::resume_with_at(
-        &d.join(creds_core::store::HISTORY_METADATA_FILE),
+        &d.join(relay_route_core::file_name_of(
+            relay_route_core::HISTORY_ANNOTATIONS_REL,
+        )),
         sid,
     )
     .unwrap();

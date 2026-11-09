@@ -1,10 +1,18 @@
 {
   "ended": {
     "can": {
+      "attach": {
+        "can": "no",
+        "why": "会话已结束"
+      },
       "close": {
         "can": "quiet"
       },
       "end": {
+        "can": "no",
+        "why": "会话已结束"
+      },
+      "front": {
         "can": "no",
         "why": "会话已结束"
       },
@@ -29,21 +37,12 @@
         "can": "no",
         "why": "会话已结束"
       },
-      "terminal": {
-        "far": {
-          "go": "here",
-          "open": {
-            "kind": "resume"
-          },
-          "said": "恢复后在 cc-monitor 里打开终端"
+      "view": {
+        "can": "yes",
+        "open": {
+          "kind": "resume"
         },
-        "near": {
-          "go": "here",
-          "open": {
-            "kind": "resume"
-          },
-          "said": "恢复后在 cc-monitor 里打开终端"
-        }
+        "said": "恢复后在 cc-monitor 里打开终端"
       }
     },
     "dot": "ended",
@@ -59,10 +58,18 @@
   },
   "gone": {
     "can": {
+      "attach": {
+        "can": "no",
+        "why": "会话记录已不在"
+      },
       "close": {
         "can": "quiet"
       },
       "end": {
+        "can": "no",
+        "why": "会话记录已不在"
+      },
+      "front": {
         "can": "no",
         "why": "会话记录已不在"
       },
@@ -90,15 +97,9 @@
         "can": "no",
         "why": "会话记录已不在"
       },
-      "terminal": {
-        "far": {
-          "go": "no",
-          "why": "记录已不在 · 不可恢复"
-        },
-        "near": {
-          "go": "no",
-          "why": "记录已不在 · 不可恢复"
-        }
+      "view": {
+        "can": "no",
+        "why": "记录已不在 · 不可恢复"
       }
     },
     "dot": "gone",
@@ -114,11 +115,17 @@
   },
   "live-background": {
     "can": {
+      "attach": {
+        "can": "yes"
+      },
       "close": {
         "can": "no",
         "why": "运行中"
       },
       "end": {
+        "can": "yes"
+      },
+      "front": {
         "can": "yes"
       },
       "model": {
@@ -143,18 +150,12 @@
         "can": "no",
         "why": "后台任务运行中"
       },
-      "terminal": {
-        "far": {
-          "go": "here",
-          "open": {
-            "kind": "attach"
-          },
-          "said": "在 cc-monitor 里打开它的终端"
+      "view": {
+        "can": "yes",
+        "open": {
+          "kind": "attach"
         },
-        "near": {
-          "go": "front",
-          "said": "切到它的终端窗口"
-        }
+        "said": "在 cc-monitor 里打开它的终端"
       }
     },
     "dot": "background",
@@ -171,11 +172,17 @@
   },
   "live-idle": {
     "can": {
+      "attach": {
+        "can": "yes"
+      },
       "close": {
         "can": "no",
         "why": "运行中"
       },
       "end": {
+        "can": "yes"
+      },
+      "front": {
         "can": "yes"
       },
       "model": {
@@ -200,18 +207,12 @@
         "can": "no",
         "why": "空闲"
       },
-      "terminal": {
-        "far": {
-          "go": "here",
-          "open": {
-            "kind": "attach"
-          },
-          "said": "在 cc-monitor 里打开它的终端"
+      "view": {
+        "can": "yes",
+        "open": {
+          "kind": "attach"
         },
-        "near": {
-          "go": "front",
-          "said": "切到它的终端窗口"
-        }
+        "said": "在 cc-monitor 里打开它的终端"
       }
     },
     "dot": "idle",
@@ -228,11 +229,17 @@
   },
   "live-needs-you-tmux": {
     "can": {
+      "attach": {
+        "can": "yes"
+      },
       "close": {
         "can": "no",
         "why": "运行中"
       },
       "end": {
+        "can": "yes"
+      },
+      "front": {
         "can": "yes"
       },
       "model": {
@@ -259,18 +266,12 @@
         "can": "no",
         "why": "需手动"
       },
-      "terminal": {
-        "far": {
-          "go": "here",
-          "open": {
-            "kind": "attach"
-          },
-          "said": "在 cc-monitor 里打开它的终端"
+      "view": {
+        "can": "yes",
+        "open": {
+          "kind": "attach"
         },
-        "near": {
-          "go": "front",
-          "said": "切到它的终端窗口"
-        }
+        "said": "在 cc-monitor 里打开它的终端"
       }
     },
     "dot": "needs-you",
@@ -287,11 +288,17 @@
   },
   "live-unclear": {
     "can": {
+      "attach": {
+        "can": "yes"
+      },
       "close": {
         "can": "no",
         "why": "运行中"
       },
       "end": {
+        "can": "yes"
+      },
+      "front": {
         "can": "yes"
       },
       "model": {
@@ -316,18 +323,12 @@
         "can": "no",
         "why": "状态不明"
       },
-      "terminal": {
-        "far": {
-          "go": "here",
-          "open": {
-            "kind": "attach"
-          },
-          "said": "在 cc-monitor 里打开它的终端"
+      "view": {
+        "can": "yes",
+        "open": {
+          "kind": "attach"
         },
-        "near": {
-          "go": "front",
-          "said": "切到它的终端窗口"
-        }
+        "said": "在 cc-monitor 里打开它的终端"
       }
     },
     "dot": "idle",
@@ -343,6 +344,10 @@
   },
   "live-working-plain": {
     "can": {
+      "attach": {
+        "can": "no",
+        "why": "不在 tmux 或托管终端里 · 无终端可接"
+      },
       "close": {
         "can": "no",
         "why": "运行中"
@@ -350,6 +355,9 @@
       "end": {
         "can": "no",
         "why": "非 cc-monitor 起的 · 画面 / 送字不可用"
+      },
+      "front": {
+        "can": "yes"
       },
       "model": {
         "can": "no",
@@ -373,15 +381,9 @@
       "stop": {
         "can": "yes"
       },
-      "terminal": {
-        "far": {
-          "go": "no",
-          "why": "非 cc-monitor 起的 · 画面 / 送字不可用"
-        },
-        "near": {
-          "go": "front",
-          "said": "切到它的终端窗口"
-        }
+      "view": {
+        "can": "no",
+        "why": "不在 tmux 或托管终端里 · 无终端可接"
       }
     },
     "dot": "running",
@@ -398,11 +400,17 @@
   },
   "reading": {
     "can": {
+      "attach": {
+        "can": "yes"
+      },
       "close": {
         "can": "no",
         "why": "运行中"
       },
       "end": {
+        "can": "yes"
+      },
+      "front": {
         "can": "yes"
       },
       "model": {
@@ -427,18 +435,12 @@
         "can": "no",
         "why": "读记录中"
       },
-      "terminal": {
-        "far": {
-          "go": "here",
-          "open": {
-            "kind": "attach"
-          },
-          "said": "在 cc-monitor 里打开它的终端"
+      "view": {
+        "can": "yes",
+        "open": {
+          "kind": "attach"
         },
-        "near": {
-          "go": "front",
-          "said": "切到它的终端窗口"
-        }
+        "said": "在 cc-monitor 里打开它的终端"
       }
     },
     "dot": "idle",
@@ -454,11 +456,17 @@
   },
   "reconnectable": {
     "can": {
+      "attach": {
+        "can": "yes"
+      },
       "close": {
         "can": "no",
         "why": "运行中"
       },
       "end": {
+        "can": "yes"
+      },
+      "front": {
         "can": "yes"
       },
       "model": {
@@ -482,18 +490,12 @@
         "can": "no",
         "why": "Claude 已退出 · tmux 会话在"
       },
-      "terminal": {
-        "far": {
-          "go": "here",
-          "open": {
-            "kind": "attach"
-          },
-          "said": "在 cc-monitor 里打开它的终端"
+      "view": {
+        "can": "yes",
+        "open": {
+          "kind": "attach"
         },
-        "near": {
-          "go": "front",
-          "said": "切到它的终端窗口"
-        }
+        "said": "在 cc-monitor 里打开它的终端"
       }
     },
     "dot": "exited",
@@ -509,11 +511,19 @@
   },
   "unclear": {
     "can": {
+      "attach": {
+        "can": "no",
+        "why": "状态不明"
+      },
       "close": {
         "can": "no",
         "why": "状态不明"
       },
       "end": {
+        "can": "no",
+        "why": "状态不明"
+      },
+      "front": {
         "can": "no",
         "why": "状态不明"
       },
@@ -541,15 +551,9 @@
         "can": "no",
         "why": "状态不明"
       },
-      "terminal": {
-        "far": {
-          "go": "no",
-          "why": "状态不明"
-        },
-        "near": {
-          "go": "no",
-          "why": "状态不明"
-        }
+      "view": {
+        "can": "no",
+        "why": "状态不明"
       }
     },
     "dot": "unknown",
@@ -565,10 +569,18 @@
   },
   "unseen": {
     "can": {
+      "attach": {
+        "can": "no",
+        "why": "gpu-01 离线"
+      },
       "close": {
         "can": "menu"
       },
       "end": {
+        "can": "no",
+        "why": "gpu-01 离线"
+      },
+      "front": {
         "can": "no",
         "why": "gpu-01 离线"
       },
@@ -596,15 +608,9 @@
         "can": "no",
         "why": "gpu-01 离线"
       },
-      "terminal": {
-        "far": {
-          "go": "no",
-          "why": "gpu-01 离线"
-        },
-        "near": {
-          "go": "no",
-          "why": "gpu-01 离线"
-        }
+      "view": {
+        "can": "no",
+        "why": "gpu-01 离线"
       }
     },
     "dot": "unknown",

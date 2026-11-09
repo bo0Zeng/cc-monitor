@@ -127,7 +127,10 @@ impl Transport for T {
     ) -> Boxed<'_, Result<Self::Stream, Problem>> {
         let f = Arc::clone(&self.0);
         Box::pin(async move {
-            assert!(command.ends_with("-- --resident-attach"), "{command}");
+            assert!(
+                command.ends_with(&format!("-- {}", relay_route_core::RESIDENT_ATTACH)),
+                "{command}"
+            );
             f.attach_at
                 .lock()
                 .unwrap()
@@ -165,7 +168,10 @@ impl Transport for T {
     fn capture(&self, command: String) -> Boxed<'_, Result<Captured, Problem>> {
         let f = Arc::clone(&self.0);
         Box::pin(async move {
-            assert!(command.contains("-- --resident-ensure"), "{command}");
+            assert!(
+                command.contains(&format!("-- {}", relay_route_core::RESIDENT_ENSURE)),
+                "{command}"
+            );
             f.ensured.fetch_add(1, Ordering::SeqCst);
             f.captured.lock().unwrap().push(command.clone());
             Ok(f.ensures.lock().unwrap().pop_front().unwrap_or(Captured {
@@ -201,7 +207,7 @@ impl Transport for D {
         let t = T(Arc::clone(&self.0));
         Box::pin(async move { t.capture(command).await })
     }
-    fn install(&self) -> Boxed<'_, ()> {
+    fn install(&self) -> Boxed<'_, bool> {
         let f = Arc::clone(&self.0);
         Box::pin(async move {
             f.installed.fetch_add(1, Ordering::SeqCst);
@@ -210,10 +216,8 @@ impl Transport for D {
             if let Some(h) = hold {
                 h.notified().await;
             }
+            true
         })
-    }
-    fn installs(&self) -> bool {
-        true
     }
 }
 
@@ -236,6 +240,58 @@ fn start_desk(f: &Arc<Fake>) -> (Arc<Feed<D>>, Seen) {
         sink(move |e| s.lock().unwrap().push(e)),
     );
     (feed, seen)
+}
+
+/// 只答「这一轮放了」的宿主替身：除了 `install` 什么都不覆写（链路同 [`T`]）。循环该只照这一句走，不另问宿主是哪一种。
+struct Placer(Arc<Fake>);
+
+impl Transport for Placer {
+    type Stream = tokio::io::DuplexStream;
+    fn stream(
+        &self,
+        command: String,
+        progress: Progress,
+    ) -> Boxed<'_, Result<Self::Stream, Problem>> {
+        let t = T(Arc::clone(&self.0));
+        Box::pin(async move { t.stream(command, progress).await })
+    }
+    fn capture(&self, command: String) -> Boxed<'_, Result<Captured, Problem>> {
+        let t = T(Arc::clone(&self.0));
+        Box::pin(async move { t.capture(command).await })
+    }
+    fn install(&self) -> Boxed<'_, bool> {
+        let f = Arc::clone(&self.0);
+        Box::pin(async move {
+            f.installed.fetch_add(1, Ordering::SeqCst);
+            true
+        })
+    }
+}
+
+/// ★ 宿主答「放了」⇒ 那台旧就请它 `--replace`、换了再接：循环只照这一句走（没有「这一侧装不装」那一问）。
+#[tokio::test(start_paused = true)]
+async fn a_host_that_answers_placed_gets_the_old_backend_replaced() {
+    let f = Arc::new(Fake::default());
+    f.ensures.lock().unwrap().push_back(swapped(true));
+    {
+        let mut a = f.attaches.lock().unwrap();
+        a.push_back(upp("p9a-old"));
+        a.push_back(upp(MINE));
+    }
+    let feed = Feed::start(
+        cfg(),
+        Some(Arc::new(Placer(Arc::clone(&f)))),
+        desk(),
+        sink(|_| {}),
+    );
+    until("接上", || up(&feed)).await;
+    assert_eq!(f.installed.load(Ordering::SeqCst), 1, "旧了 ⇒ 问宿主一次");
+    assert_eq!(
+        *f.captured.lock().unwrap(),
+        vec![backend_command(ENSURE_REPLACE)],
+        "放了 ⇒ 请那台换一次"
+    );
+    assert_eq!(feed.theirs().as_deref(), Some(MINE));
 }
 
 async fn serve(peer: Peer, s: tokio::io::DuplexStream, f: Arc<Fake>) {
@@ -998,7 +1054,10 @@ async fn a_host_that_installs_retries_a_missing_backend_by_itself() {
     until("下一轮自己接上", || up(&feed)).await;
     assert_eq!(
         *f.steps.lock().unwrap(),
-        vec![INSTALL.to_string(), backend_command(ENSURE)],
+        vec![
+            INSTALL.to_string(),
+            backend_command(&[relay_route_core::RESIDENT_ENSURE])
+        ],
         "接不上那一轮先装再 ensure；第二轮接上的就是这一版 ⇒ 不再装"
     );
     assert!(

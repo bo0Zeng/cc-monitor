@@ -196,6 +196,7 @@ describe("〔STC〕第五问：会话事实", () => {
       agent: "claude",
       projectDir: "/g/proj",
       cwdShown: "/g/proj",
+      projectName: "proj",
       whereLine: "/g/proj",
       writers: [],
       pending: [

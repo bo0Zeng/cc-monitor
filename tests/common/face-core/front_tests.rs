@@ -1,10 +1,10 @@
-//! ↗ 浮层那一张由 `face_core::front` 一处写：壳的窗口结局 · 会话为什么没有链 ⇒ 标题 · 正文 · 灰字 · 语气 · 按钮。
+//! ↗ 浮层那一张由 `face_core::front` 一处写（只本机后端 `session-window` 调）：会话为什么没有链（`Unplaced::face`）·
+//! 壳窗口那一跳没成的每一种结局码（`missed_faces`）⇒ 标题 · 正文 · 灰字 · 语气 · 按钮。
 //! 逐种手写期望；句子取文案表（同一把 `copy_text`），判的是「哪一种出哪几句、哪几颗按钮、什么语气」。
-//! 挂在 `face-core/src/front.rs` 底下跑（那一张的两个写家：壳 · 本机后端 `session-window`，都调这一份）。
 
 use crate::front::*;
 use cmd_wire::cells::{Tone, Words};
-use cmd_wire::front::{FrontAct, FrontFace, FrontMiss, FrontTold};
+use cmd_wire::front::{FrontAct, FrontCode, FrontFace};
 use copy_core::copy_text;
 
 fn face(title: &str, body: &str, hint: Option<&str>, tone: Tone, acts: Vec<FrontAct>) -> FrontFace {
@@ -17,11 +17,13 @@ fn face(title: &str, body: &str, hint: Option<&str>, tone: Tone, acts: Vec<Front
     }
 }
 
-fn said(o: FrontOutcome, tmux: bool) -> FrontFace {
-    match o.told(tmux) {
-        FrontTold::Said(f) => f,
-        FrontTold::Switched => panic!("没切过去的结局写成了「切过去了」"),
-    }
+/// 那一串里结局码 `code` 的那一张。
+fn missed(code: FrontCode, tmux: bool) -> FrontFace {
+    let all = missed_faces(tmux);
+    let mut hits = all.iter().filter(|m| m.code == code);
+    let hit = hits.next().unwrap_or_else(|| panic!("{code:?} 没写那一张"));
+    assert!(hits.next().is_none(), "{code:?} 写了两张");
+    hit.face.clone()
 }
 
 fn t(k: &str) -> String {
@@ -29,57 +31,53 @@ fn t(k: &str) -> String {
 }
 
 #[test]
-fn switched_says_nothing() {
-    assert_eq!(FrontOutcome::Switched.told(false), FrontTold::Switched);
-    assert_eq!(
-        serde_json::to_value(FrontTold::Switched).unwrap(),
-        serde_json::json!({"kind": "switched"})
-    );
+fn every_code_has_exactly_one_face() {
+    for tmux in [false, true] {
+        let all = missed_faces(tmux);
+        assert_eq!(all.len(), FrontCode::ALL.len(), "一个码一张");
+        for code in FrontCode::ALL {
+            assert_eq!(all.iter().filter(|m| m.code == code).count(), 1, "{code:?}");
+        }
+    }
 }
 
 #[test]
-fn several_says_how_many_and_why_and_does_not_pick_one() {
-    let n = |why| FrontOutcome::Several {
-        program: "WindowsTerminal.exe".into(),
-        count: 3,
-        why,
-    };
-    let args: &[(&str, &str)] = &[("program", "WindowsTerminal.exe"), ("n", "3")];
+fn several_says_why_and_does_not_pick_one() {
     assert_eq!(
-        said(n(SeveralWhy::ConsoleUnreachable), false),
+        missed(FrontCode::SeveralConsole, false),
         face(
             &t("front.title.unsure"),
-            &copy_text("front.body.severalConsole", args),
+            &t("front.body.severalConsole"),
             Some(&t("front.hint.severalConsole")),
             Tone::Warn,
             vec![]
         )
     );
     assert_eq!(
-        said(n(SeveralWhy::Elevated), false),
+        missed(FrontCode::SeveralElevated, false),
         face(
             &t("front.title.unsure"),
-            &copy_text("front.body.severalElevated", args),
+            &t("front.body.severalElevated"),
             Some(&t("front.hint.severalElevated")),
             Tone::Warn,
             vec![]
         )
     );
     assert_eq!(
-        said(n(SeveralWhy::Foreign), false),
+        missed(FrontCode::SeveralForeign, false),
         face(
             &t("front.title.unsure"),
-            &copy_text("front.body.severalForeign", args),
+            &t("front.body.severalForeign"),
             None,
             Tone::Warn,
             vec![]
         )
     );
     assert_eq!(
-        said(n(SeveralWhy::Unregistered), false),
+        missed(FrontCode::SeveralUnregistered, false),
         face(
             &t("front.title.unsure"),
-            &copy_text("front.body.severalUnregistered", args),
+            &t("front.body.severalUnregistered"),
             Some(&t("front.hint.unregistered")),
             Tone::Warn,
             vec![FrontAct::Connect]
@@ -91,12 +89,7 @@ fn several_says_how_many_and_why_and_does_not_pick_one() {
 #[test]
 fn the_window_outcomes() {
     assert_eq!(
-        said(
-            FrontOutcome::SwitchedWindow {
-                why: TabMiss::TitleIgnored
-            },
-            false
-        ),
+        missed(FrontCode::TabTitleIgnored, false),
         face(
             &t("front.title.tabMissed"),
             &t("front.body.tabTitleIgnored"),
@@ -105,13 +98,13 @@ fn the_window_outcomes() {
             vec![]
         )
     );
-    for (why, body) in [
-        (TabMiss::NoUia, "front.body.tabNoUia"),
-        (TabMiss::Elevated, "front.body.tabElevated"),
-        (TabMiss::NoConsole, "front.body.tabNoConsole"),
+    for (code, body) in [
+        (FrontCode::TabNoUia, "front.body.tabNoUia"),
+        (FrontCode::TabElevated, "front.body.tabElevated"),
+        (FrontCode::TabNoConsole, "front.body.tabNoConsole"),
     ] {
         assert_eq!(
-            said(FrontOutcome::SwitchedWindow { why }, false),
+            missed(code, false),
             face(
                 &t("front.title.tabMissed"),
                 &t(body),
@@ -119,11 +112,11 @@ fn the_window_outcomes() {
                 Tone::Plain,
                 vec![]
             ),
-            "{why:?}"
+            "{code:?}"
         );
     }
     assert_eq!(
-        said(FrontOutcome::Refused, false),
+        missed(FrontCode::Refused, false),
         face(
             &t("front.title.flashing"),
             &t("front.body.refused"),
@@ -133,12 +126,7 @@ fn the_window_outcomes() {
         )
     );
     assert_eq!(
-        said(
-            FrontOutcome::NoWindow {
-                program: "ssh.exe".into()
-            },
-            false
-        ),
+        missed(FrontCode::NoWindow, false),
         face(
             &t("front.title.noTerminal"),
             &t("front.body.background"),
@@ -148,38 +136,22 @@ fn the_window_outcomes() {
         )
     );
     assert_eq!(
-        said(FrontOutcome::Unclear, false),
+        missed(FrontCode::Unclear, false),
         face(&t("front.title.unsure"), "", None, Tone::Plain, vec![]),
         "句柄 / 进程号复用：不上细节"
     );
     assert_eq!(
-        said(
-            FrontOutcome::DesktopWontSwitch {
-                desktop: "GNOME".into()
-            },
-            false
-        ),
+        missed(FrontCode::DesktopWontSwitch, false),
         face(
             &t("front.title.desktopWontSwitch"),
-            &copy_text("front.body.desktopWontSwitch", &[("desktop", "GNOME")]),
+            &t("front.body.desktopWontSwitchBare"),
             None,
             Tone::Plain,
             vec![FrontAct::OpenHere]
         )
     );
     assert_eq!(
-        said(
-            FrontOutcome::DesktopWontSwitch {
-                desktop: String::new()
-            },
-            false
-        )
-        .body,
-        Words(t("front.body.desktopWontSwitchBare")),
-        "桌面名读不到：不写空名字"
-    );
-    assert_eq!(
-        said(FrontOutcome::Unsupported, false),
+        missed(FrontCode::Unsupported, false),
         face(
             &t("front.title.failed"),
             &t("terminalFront.unavailable.short"),
@@ -188,12 +160,26 @@ fn the_window_outcomes() {
             vec![]
         )
     );
+    assert_eq!(
+        missed(FrontCode::TimedOut, false),
+        face(
+            &t("front.title.failed"),
+            &copy_text(
+                "front.body.timeout",
+                &[("machine", &copy_core::local_machine())]
+            ),
+            None,
+            Tone::Fail,
+            vec![FrontAct::Retry]
+        ),
+        "窗口那一跳卡住：这台没在期限内答，可重试"
+    );
 }
 
 #[test]
 fn a_closed_window_offers_open_in_terminal_only_in_tmux() {
     assert_eq!(
-        said(FrontOutcome::WindowGone, true),
+        missed(FrontCode::Gone, true),
         face(
             &t("front.title.gone"),
             "",
@@ -203,9 +189,16 @@ fn a_closed_window_offers_open_in_terminal_only_in_tmux() {
         )
     );
     assert!(
-        said(FrontOutcome::WindowGone, false).acts.is_empty(),
+        missed(FrontCode::Gone, false).acts.is_empty(),
         "不在 tmux 里：没有可接回的"
     );
+    for code in FrontCode::ALL.into_iter().filter(|c| *c != FrontCode::Gone) {
+        assert_eq!(
+            missed(code, true),
+            missed(code, false),
+            "{code:?} 与 tmux 无关"
+        );
+    }
 }
 
 #[test]
@@ -337,72 +330,17 @@ fn why_there_is_no_chain_with_that_machines_name() {
     );
 }
 
-/// 出口那一跳没成（`FrontMiss`，界面挑种类、壳照这一份写）：与本机后端问那台没问成的那几张同一张表，另两种带可复制的原话。
-#[test]
-fn the_exit_hops_own_misses_are_this_same_table() {
-    let m = "gpu-01";
-    let f = |miss: FrontMiss| Unplaced::from(miss).face(m);
-    assert_eq!(f(FrontMiss::Old), Unplaced::PeerOld.face(m));
-    assert_eq!(f(FrontMiss::TimedOut), Unplaced::PeerTimedOut.face(m));
-    assert_eq!(
-        f(FrontMiss::Unreached { said: "s".into() }),
-        Unplaced::Unreached { said: "s".into() }.face(m)
-    );
-    assert_eq!(
-        f(FrontMiss::Broken {
-            detail: "raw-said".into()
-        }),
-        face(
-            &t("front.title.failed"),
-            &t("reason.io.unknown"),
-            None,
-            Tone::Fail,
-            vec![FrontAct::Copy {
-                detail: "raw-said".into()
-            }]
-        )
-    );
-    assert_eq!(
-        f(FrontMiss::BadShape {
-            detail: "session-window: empty chain without face".into()
-        }),
-        face(
-            &t("front.title.badShape"),
-            "",
-            None,
-            Tone::Fail,
-            vec![FrontAct::Copy {
-                detail: "session-window: empty chain without face".into()
-            }]
-        )
-    );
-}
-
 #[test]
 fn windows_sentences_do_not_mention_registering() {
     let several = [
-        SeveralWhy::ConsoleUnreachable,
-        SeveralWhy::Elevated,
-        SeveralWhy::Foreign,
+        FrontCode::SeveralConsole,
+        FrontCode::SeveralElevated,
+        FrontCode::SeveralForeign,
     ]
-    .map(|why| {
-        said(
-            FrontOutcome::Several {
-                program: "WindowsTerminal.exe".into(),
-                count: 2,
-                why,
-            },
-            false,
-        )
-    });
+    .map(|code| missed(code, false));
     let others = [
         Unplaced::NotLive.face(&copy_core::local_machine()),
-        said(
-            FrontOutcome::NoWindow {
-                program: "claude.exe".into(),
-            },
-            false,
-        ),
+        missed(FrontCode::NoWindow, false),
     ];
     for f in several.into_iter().chain(others) {
         let text = format!(
@@ -423,16 +361,21 @@ fn windows_sentences_do_not_mention_registering() {
 }
 
 #[test]
-fn the_wire_shape_of_a_said_face() {
-    let v = serde_json::to_value(FrontOutcome::WindowGone.told(true)).unwrap();
+fn the_wire_shape_of_a_missed_face() {
+    let gone = missed_faces(true)
+        .into_iter()
+        .find(|m| m.code == FrontCode::Gone)
+        .expect("gone 那一张");
     assert_eq!(
-        v,
+        serde_json::to_value(gone).unwrap(),
         serde_json::json!({
-            "kind": "said",
-            "title": t("front.title.gone"),
-            "body": "",
-            "tone": "plain",
-            "acts": [{"kind": "open-in-terminal"}],
+            "code": "gone",
+            "face": {
+                "title": t("front.title.gone"),
+                "body": "",
+                "tone": "plain",
+                "acts": [{"kind": "open-in-terminal"}],
+            },
         })
     );
     let copy = serde_json::to_value(FrontAct::Copy { detail: "x".into() }).unwrap();

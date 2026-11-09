@@ -21,9 +21,9 @@
 import type { Tab } from "./tab-model";
 import { copyText } from "./copy-table";
 import { machineName } from "./control-said";
-import { canResume } from "./face-can";
+import { canResume, viewBlocked } from "./face-can";
 import { dotOf, stateWord } from "./session-face";
-import { renderScreen, screenPre } from "./terminal-screen";
+import { renderScreen, screenPre, type ScreenLine } from "./terminal-screen";
 import { startFollow, type Follow, type FollowEvents, type FollowStop } from "./terminal-follow";
 import {
   holderOf,
@@ -90,6 +90,13 @@ function keyOf(w: Watched): string {
 const originOf = (w: Watched): Machine => (w.kind === "tab" ? w.tab.origin : w.origin);
 const labelOf = (w: Watched): string => (w.kind === "tab" ? w.tab.title : w.title);
 const machineWord = (w: Watched): string => machineName(originOf(w));
+
+/** 一屏去掉尾部的空行（终端比内容高时光标以下那一截）：画出来的最后一行就是有内容的那一行，贴底即停在内容上。 */
+function contentLines(lines: readonly ScreenLine[]): readonly ScreenLine[] {
+  let end = lines.length;
+  while (end > 0 && lines[end - 1].text.trim() === "") end--;
+  return end === lines.length ? lines : lines.slice(0, end);
+}
 
 export interface TerminalPageHost {
   active(): Watched | null;
@@ -626,15 +633,19 @@ export class TerminalPage {
     if (this.phase === "none" && w.kind === "tab") {
       const tab = w.tab;
       const ended = canResume(tab.face); // 已结束（能恢复的那一态）
-      // 活着、名单里没有：不在任何终端里 · 在终端里却认不出，对用户是同一件事（非 cc-monitor 起的）；去它的窗口走会话头「终端」那一颗。
+      // 活着、名单里没有：脸上「看它的终端」做不了 ⇒ 照那台写好的那一句（不在 tmux 或托管终端里 …）；
+      // 说得了却认不出 ⇒ 名单里没认出它的终端那一句。去它的窗口走会话头「终端」那一颗。
+      const why = viewBlocked(tab.face);
       this.body.replaceChildren(
         ended
           ? emptyState({ icon: "terminal", text: copyText("terminal.empty.ended", { state: copyText("sessionState.ended.name") }), hint: copyText("terminal.empty.endedHint") })
-          : emptyState({
-              icon: "terminal",
-              text: copyText("terminal.empty.notOurs"),
-              hint: copyText("terminal.empty.notOursHint"),
-            }),
+          : why
+            ? emptyState({ icon: "terminal", text: why })
+            : emptyState({
+                icon: "terminal",
+                text: copyText("terminal.empty.notOurs"),
+                hint: copyText("terminal.empty.notOursHint"),
+              }),
       );
       return;
     }
@@ -682,7 +693,7 @@ export class TerminalPage {
       bars.push(banner("warn", this.shotError, [button({ label: copyText("accountChip.menu.refresh"), size: "compact", onClick: () => void this.refresh() })], this.shotDetail));
     this.bar.replaceChildren(...bars);
     if (this.painted !== this.shot) {
-      renderScreen(this.pre, this.shot?.lines ?? []);
+      renderScreen(this.pre, contentLines(this.shot?.lines ?? []));
       this.painted = this.shot;
     }
     this.screen.dataset.stale = String(this.shotError !== null || this.live.at === "stopped");

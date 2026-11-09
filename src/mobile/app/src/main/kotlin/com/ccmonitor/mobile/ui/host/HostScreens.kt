@@ -409,7 +409,7 @@ fun HostEditorScreen(
     var existing by remember { mutableStateOf<Host?>(null) }
     var label by remember { mutableStateOf("") }
     var host by remember { mutableStateOf("") }
-    var port by remember { mutableStateOf("22") }
+    var port by remember { mutableStateOf("") } // 空 ⇒ 库里那一行的缺省
     var user by remember { mutableStateOf("") }
     var authRef by remember { mutableStateOf<String?>(null) }
     val fresh = remember { hostEditStart(null) }
@@ -466,11 +466,12 @@ fun HostEditorScreen(
     }
 
     // 正在编的这一台（存的时候新建的那一台才换上新 id）；连同表里别的几台交核心判（判法与桌面同一处）· 展开地址。
+    val blank = Host(id = "", label = "", host = "", username = "")
     val draft =
-        (existing ?: Host(id = "", label = "", host = "", username = "")).copy(
+        (existing ?: blank).copy(
             label = label.ifBlank { host },
             host = host.trim(),
-            port = port.toIntOrNull() ?: 22,
+            port = port.toIntOrNull() ?: blank.port,
             username = user.trim(),
             authRef = if (authIsPassword) null else authRef, // 密码认证与 authRef 互斥
             addresses = addressText.lines().map { it.trim() }.filter { it.isNotEmpty() },
@@ -481,7 +482,6 @@ fun HostEditorScreen(
         )
     val others = allHosts.filter { it.id != existing?.id }
     val check = remember(others, draft) { machineCheck(others + draft) }
-    val previewEps = check.endpoints
 
     Column(
         Modifier
@@ -518,7 +518,7 @@ fun HostEditorScreen(
 
         MoreToggle(open = moreOpen) { moreOpen = !moreOpen }
         if (moreOpen) {
-            OutlinedTextField(port, { v -> port = v.filter { it.isDigit() } }, label = { Text(copyText("machineForm.field.port")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(port, { v -> port = v.filter { it.isDigit() } }, label = { Text(copyText("machineForm.field.port")) }, supportingText = { Text(copyText("addMachine.field.portHelp")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
 
             // 多地址：每行一个 host / host:port / [IPv6]:port，连接时与主地址并发竞速，先连通者胜。
             OutlinedTextField(
@@ -531,7 +531,7 @@ fun HostEditorScreen(
             )
             if (addressText.isNotBlank()) {
                 Text(
-                    copyText("mobHostEdit.field.extraPreview", "n" to previewEps.size, "addresses" to previewEps.joinToString(", ") { "${it.host}:${it.port}" }),
+                    copyText("mobHostEdit.field.extraPreview", "n" to check.shown.size, "addresses" to check.shown.joinToString(", ")),
                     style = monoSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

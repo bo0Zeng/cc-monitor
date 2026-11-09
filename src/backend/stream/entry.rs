@@ -20,18 +20,19 @@ use crate::stream::inbound::views::StreamWants;
 use crate::stream::writer::writer_task;
 use crate::stream::{cli, inbound, oneshot, tap, topic_body};
 use crate::wire::{self, drain, listen, topic_hook, Frame};
-use crate::{agents, control, dial, faces, history, observe, stderr_log};
+use crate::{accounts, agents, assets, control, dial, faces, history, observe, stderr_log};
 use comms_inward::line::{read_capped_line, CappedLine};
 use copy_core::discard::{Discard, Why};
 
 use std::path::PathBuf;
 use tokio::io::BufWriter;
 
-/// watcher 看见、控制面去做的那三件事（观测侧不改世界，只在那一刻报一声；两处起 watcher 都接这一份）。
+/// watcher 看见、别处去做 / 去判的那几件事（观测侧不改世界、不认识账号库，只在那一刻报一声或问一声；两处起 watcher 都接这一份）。
 const WATCH_REACTIONS: observe::watcher::Reactions = observe::watcher::Reactions {
     tmux_server_up: control::tmux_hook::install_for_this_process,
     session_seen: control::launch_account::adopt_seen,
     tag: control::identity_tag::tag_seen,
+    account_of: crate::accounts::manage::library::account_of_process_here,
 };
 
 /// `ccm -- <词>` 里那个词归不归后端：一次性子命令（闸门 [`cli::is_subcommand`]）∪ 流模式旗标。交给 `control::ccm::route` 那一问就是它。
@@ -188,14 +189,16 @@ pub async fn run() {
     );
     // 占着常驻的那一个（常驻监听口在本进程）：账号库补号色只由它写。
     let resident = listening.is_some();
+    //   写经 `inbound::LocalFiles`（与帧命令同一扇门）：补号色 · 账号库对齐（按需才建的共用目录接上 · 各号缺的共享链接补上）。
     if resident {
-        inbound::fill_account_colors();
-        inbound::share_on_demand_dirs();
+        accounts::manage::wire::colors_here(&inbound::LocalFiles);
+        accounts::manage::wire::align_here(&inbound::LocalFiles);
     }
     // 历史清单的缓存起来就后台热（低优先级的一次性线程）：第一次打开历史页 / 按 sid 开查看窗不再现扫整台。
     history::listing::warm_listing_in_background(agent_home.clone());
     // 照这台的配置文件 `profiles.toml` 把别名文件与链接对齐一次（写法变了的那一份当场换）。
-    inbound::align_aliases();
+    //   经本进程自己的文件管理面，写经 `inbound::LocalFiles`（与帧命令同一扇门）。
+    assets::aliases::align_here(&inbound::LocalFiles);
     // 各台常驻流上每一行先过资产同步用的写句柄（见下面那一段）。
     let sync_own = own.clone();
     if resident {
@@ -227,14 +230,18 @@ pub async fn run() {
     let hello = build_hello();
 
     // 别的进程（命令行 · quota-warm · AI 照 skill 调）写了这台的轮换 ⇒ 这一路也推 `changed {rotation}`（广播通道是进程内的）。
-    inbound::watch_rotation(&own);
+    //   盯这台的 `rotation.json` · 策略目录 · `quota.json` · 账号库（别的进程写了也发节点、推 `changed`）。
+    accounts::quota::setup::uses::watch_here(&own);
+    accounts::quota::nodes::watch_logins_here(faces::rotation_face::account_dirs());
     match listening {
         None => run_over_stdio(hello, agent_home, wants, own).await,
         Some((listener, held)) => {
             // 这台账号库里各号共用的用户级 MCP：常驻那条载体上盯各号的配置文件，一有动静同步一趟（一次性的 stdio 那条不起）。
-            inbound::watch_account_mcp(&own);
-            // 会话输入队的投递线程：只在占着常驻的这一个进程里起（一台只有一个投递的）。
-            inbound::deliver_queues(&own);
+            //   配置文件与共享集合写经 `inbound::LocalFiles`（与帧命令同一扇门）；凭据文件经 `own` 铸的窄句柄写。
+            accounts::manage::mcp_share_watch::start(&inbound::LocalFiles, own.clone());
+            // 会话输入队的投递线程：只在占着常驻的这一个进程里起（一台只有一个投递的，同一条不会被两个进程各送一次）；
+            //   终端没了恢复那一支预标信任经 `inbound::LocalFiles`。
+            faces::session_queue_deliver::start(own.clone(), &inbound::LocalFiles);
             // 停机信号只挂**一次**（不在 accept 循环里每轮重装一个 SIGTERM 处理器）。
             // 收到之后监听口随 `serve_listening` 一起丢（不再接新连接）；已接上的那条流是独立任务，
             //   排空期间照常写应答，新来的阻塞命令回 `shutting_down`（`drain::exit_after_drain`）。
@@ -556,10 +563,7 @@ async fn handshake_one(
                 cmd_wire::attach::AttachReply::Ok { deflate: true, .. }
             );
             let w = listen::Down::new(w, deflate);
-            let tz = tz
-                .as_deref()
-                .and_then(crate::common::time::Tz::named)
-                .unwrap_or_default();
+            let tz = crate::common::time::Tz::of(tz.as_deref());
             attached
                 .send(Attached {
                     reader: r,

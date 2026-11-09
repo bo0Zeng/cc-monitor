@@ -7,7 +7,6 @@
  */
 
 import { commands } from "../ipc/commands";
-import { openPath } from "@tauri-apps/plugin-opener";
 import { failToast } from "../kit/toast";
 import { enumeratePrefix } from "../local-storage";
 import { holdSkeletonHeight, makeSkeleton } from "./skeleton";
@@ -336,9 +335,9 @@ function collectMonitorLocalStorageKeys(): { key: string; value: string }[] {
 
 async function openItem(path: string): Promise<void> {
   try {
-    await openPath(path);
+    await commands.os_open({ kind: "path", path });
   } catch (e) {
-    console.warn(`[data-section] openPath ${path} failed:`, e);
+    console.warn(`[data-section] os_open ${path} failed:`, e);
     failToast(copyText("machineAliases.openRc.failed"), e);
   }
 }

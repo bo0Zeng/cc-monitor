@@ -5,7 +5,7 @@
  * 同一份文件（决定 2：一份文件两侧各读，不是两份表加一条对拍）——Rust 读口
  * 是 `src/common/copy-core` 的 `copy_text`（monitor · 常驻后端 · creds-core 共用）。
  *
- * 用法：`copyText("sessionOpen.attached.body", { machine, name })`。
+ * 用法：`copyText("sessionOpen.attached.body", { machine, at })`。
  * - key 必须是**字面量**：`tests/copy/copy-table.vitest.ts` 靠静态读调用点来做「表 ↔ 引用」两向相等，
  *   算出来的 key 它看不见 ⇒ 那条判据会直接报红，不会放过。
  * - 参数只递**命名**参数，与表里 `args` 相等；不在调用方拼接任何文字（决定 3）。

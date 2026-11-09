@@ -90,6 +90,7 @@
     "permissionModeText": "自动接受编辑",
     "projectDir": "/g/proj",
     "cwdShown": "/g/proj",
+    "projectName": "proj",
     "retries": [
       {
         "id": "rt-1",

@@ -1,8 +1,8 @@
-//! 要求：公钥推送进本机后端（`pubkey-push`），写 `authorized_keys` 经那台（后端不在就一次 exec、只写这一件）。
-//! 判校验 · 规划 · 解记号 · 那一串 shell。
+//! 要求：公钥推送进本机后端（`pubkey-push`），写 `authorized_keys` 只经那台后端（不在就没成）。
+//! 判校验 · 规划 · 只问那台 · 被写那台经文件管理面落地。
 use super::*;
 use crate::assets::aliases::test_support::HomeDoor;
-use serde_json::json;
+use serde_json::{json, Value};
 use std::sync::Mutex;
 
 // 线上那一份入参经 typed 那一处收（同分派），再交本体；回包写成线上那一份（判据照线上形比）。
@@ -22,51 +22,52 @@ fn answer_add(d: &dyn Door, args: &Value) -> Result<Value, crate::common::said::
     super::answer_add(d, &req).map(|r| serde_json::to_value(r).unwrap())
 }
 
-/// 替身两条路：记下走了哪一条、交了什么。
+/// 替身那一条路：记下问了哪台、交了什么；那台答什么由判据定。
 struct FakeReach {
-    up: bool,
+    answer: Result<PushOutcome, &'static str>,
     added: Mutex<Vec<(String, String)>>,
-    execs: Mutex<Vec<(Value, String)>>,
-    stdout: &'static str,
 }
 
 impl FakeReach {
-    fn new(up: bool) -> FakeReach {
+    /// 那台后端在，答 `outcome`。
+    fn answering(outcome: PushOutcome) -> FakeReach {
         FakeReach {
-            up,
+            answer: Ok(outcome),
             added: Mutex::new(Vec::new()),
-            execs: Mutex::new(Vec::new()),
-            stdout: "ADDED\n",
+        }
+    }
+
+    /// 那台后端不在：问它就回问不到那一句（码 `unreachable`，同 `remote_ask` 查无那一台）。
+    fn unanswered() -> FakeReach {
+        FakeReach {
+            answer: Err(NOT_THERE),
+            added: Mutex::new(Vec::new()),
         }
     }
 }
 
-type BoxFut<'a> =
-    std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send + 'a>>;
+const NOT_THERE: &str = "那台后端不在";
 
 impl Reach for FakeReach {
-    fn hosts(&self) -> Vec<crate::dial::Host> {
-        Vec::new()
-    }
-    fn backend_up(&self, _machine: &str) -> bool {
-        self.up
-    }
     fn ask_add<'a>(
         &'a self,
         machine: &'a str,
         key: &'a str,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<PushOutcome, String>> + Send + 'a>>
-    {
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<PushOutcome, crate::common::said::Said>>
+                + Send
+                + 'a,
+        >,
+    > {
         self.added
             .lock()
             .unwrap()
             .push((machine.to_string(), key.to_string()));
-        Box::pin(async { Ok(PushOutcome::Already) })
-    }
-    fn exec_once<'a>(&'a self, dial: &'a Value, command: String) -> BoxFut<'a> {
-        self.execs.lock().unwrap().push((dial.clone(), command));
-        let out = self.stdout.to_string();
-        Box::pin(async move { Ok(out) })
+        let answer = self
+            .answer
+            .map_err(|s| crate::common::said::Said::new("unreachable", s.to_string()));
+        Box::pin(async move { answer })
     }
 }
 
@@ -79,42 +80,40 @@ fn args() -> Value {
 }
 
 /// ★★ **入口真的净化过公钥吗**（原 `the_push_entry_point_actually_sanitizes_the_key`，audit-0805）：喂一个空公钥 ⇒
-/// 两条路**一条都不走**就被拒（净化第一条就是「公钥为空」）。净化没接上 ⇒ 它会带着空 key 往下走（替身记得到）。
+/// 那台**问都不问**就被拒（净化第一条就是「公钥为空」）。净化没接上 ⇒ 它会带着空 key 往下走（替身记得到）。
 #[tokio::test]
 async fn the_push_entry_point_actually_sanitizes_the_key() {
-    for up in [true, false] {
-        let r = FakeReach::new(up);
-        let err = answer_push(&args(), &r, &|_p| Ok(String::new()))
-            .await
-            .expect_err("空公钥竟然一路走通了 —— 净化没接上");
-        assert!(
-            err.said
-                .contains(copy_core::copy_static!("rsPubkey.sanitizePublicKey.empty")),
-            "拒绝了，但不是净化拒的：{err:?}"
-        );
-        assert!(
-            r.added.lock().unwrap().is_empty() && r.execs.lock().unwrap().is_empty(),
-            "带着未净化的 key 越过了这一步"
-        );
-    }
+    let r = FakeReach::answering(PushOutcome::Added);
+    let err = answer_push(&args(), &r, &|_p| Ok(String::new()))
+        .await
+        .expect_err("空公钥竟然一路走通了 —— 净化没接上");
+    assert!(
+        err.said
+            .contains(copy_core::copy_static!("rsPubkey.sanitizePublicKey.empty")),
+        "拒绝了，但不是净化拒的：{err:?}"
+    );
+    assert!(
+        r.added.lock().unwrap().is_empty(),
+        "带着未净化的 key 越过了这一步"
+    );
 }
 
-/// 🔴 **按此刻状态分两条路，不是失败退回**：那台在可达表里 ⇒ 只问它 `authorized-keys-add`（带净化过的 key、按那台的名字）；
-/// 不在 ⇒ 只跑一次 exec（拨号请求是那三格原样、整串就是 [`authorized_keys_cmd`]）。读的 `.pub` 默认是私钥同名那一份。
+/// 🔴 **只问那台**：一律问它 `authorized-keys-add`（带净化过的 key、按那台的名字）；那台答了 ⇒ 那一句照它的结局写；
+/// 问不到 ⇒ 那一句照问不到那一句、落到线上是 `failed`。读的 `.pub` 默认是私钥同名那一份。
+/// 不再有往那台写 `authorized_keys` 的 shell 那一臂：问那台的那一条路（[`Reach`]）只有 `ask_add` 这一口（生产里是问那台后端的那一次子命令）。
 #[tokio::test]
-async fn it_asks_that_backend_when_it_is_up_and_execs_once_only_when_it_is_not() {
+async fn it_only_ever_asks_that_backend_and_fails_when_it_is_not_there() {
     let read = |p: &str| {
         assert_eq!(p, "/k/id_ed25519.pub", "默认读的不是私钥同名那一份");
         Ok(format!("{KEY}\n"))
     };
-    let up = FakeReach::new(true);
+    let up = FakeReach::answering(PushOutcome::Already);
     let v = answer_push(&args(), &up, &read).await.unwrap();
     assert_eq!(
         *up.added.lock().unwrap(),
         vec![("dev".to_string(), KEY.to_string())]
     );
-    assert!(up.execs.lock().unwrap().is_empty(), "后端在还去 exec 了");
-    // 那一句后端写好（本来就有 · 带推的那一份），界面照摆；回包只这一格（结局 · 走了哪条都不另带）。
+    // 那一句后端写好（本来就有 · 带推的那一份），界面照摆；回包只这一格。
     assert_eq!(
         v,
         json!({ "said": copy_text(
@@ -123,29 +122,23 @@ async fn it_asks_that_backend_when_it_is_up_and_execs_once_only_when_it_is_not()
         ) })
     );
 
-    let down = FakeReach::new(false);
-    let v = answer_push(&args(), &down, &read).await.unwrap();
-    assert!(down.added.lock().unwrap().is_empty());
-    let execs = down.execs.lock().unwrap();
-    assert_eq!(execs.len(), 1, "只许一次 exec");
-    // 表单那一台照它组好的拨号请求交出去（蛇形键，线上那一形不往下传）。
+    // 那台后端不在（还没装 · 没接上）：照样只问它，问不到就是没成 —— 一次 exec 都不跑（「先装后端」）。
+    let gone = FakeReach::unanswered();
+    let err = answer_push(&args(), &gone, &read)
+        .await
+        .expect_err("那台后端不在，推公钥竟然成了");
     assert_eq!(
-        (
-            &execs[0].0["host"],
-            &execs[0].0["user"],
-            &execs[0].0["key_path"]
-        ),
-        (&json!("192.0.2.2"), &json!("u"), &json!("/k/id_ed25519"))
+        *gone.added.lock().unwrap(),
+        vec![("dev".to_string(), KEY.to_string())],
+        "后端不在也只问那台"
     );
-    assert!(execs[0].0.get("machine").is_none(), "{}", execs[0].0);
-    assert_eq!(execs[0].1, authorized_keys_cmd(KEY));
-    // 推的是哪一份只住那一句里（界面除了摆它不读别的）。
-    assert_eq!(
-        v,
-        json!({ "said": copy_text(
-            "machineCard.pushKey.added",
-            &[("path", "/k/id_ed25519.pub")]
-        ) })
+    assert_eq!(err.said, NOT_THERE);
+    assert!(
+        matches!(
+            crate::wire::typed::of_fail_with(PushErr::Failed)(err),
+            PushErr::Failed(_)
+        ),
+        "问不到那台，线上不是 failed"
     );
 }
 
@@ -191,7 +184,7 @@ fn the_key_lands_through_this_backends_file_face() {
     assert_eq!(
         (dm, fm),
         (0o700, 0o600),
-        "权限要与 shell 那一串的 chmod 逐条同"
+        ".ssh 要 700、authorized_keys 要 600"
     );
     assert_eq!(before, after, "第二次是 already，一个字节都不该写");
     assert_eq!(
@@ -237,118 +230,9 @@ fn sanitize_rejects_bad_input() {
     assert!(sanitize_public_key("ssh-ed25519 !!! comment").is_err());
 }
 
+/// 并进 `authorized_keys` 的纯规划：整行相等才算已有 · 末行无换行先补一个 · 空文件 / 不在直接一行。
 #[test]
-fn cmd_follows_mobile_contract() {
-    let c = authorized_keys_cmd("ssh-ed25519 AAAA user@host");
-    assert!(c.contains("printf '%s\\n'"), "须 printf %s 而非 echo");
-    assert!(!c.contains("echo "), "不得用 echo");
-    assert!(c.contains("grep -qxF"), "须 grep -qxF 精确去重");
-    assert!(c.contains("mkdir -p"));
-    assert!(c.contains("chmod 700"));
-    assert!(c.contains("chmod 600"));
-    assert!(c.contains("ADDED"));
-    assert!(c.contains("ALREADY"));
-    // key 经 shell_quote 单引号包裹
-    assert!(c.contains("'ssh-ed25519 AAAA user@host'"));
-}
-
-/// 带单引号 · `$` · `;` 的异常输入：真跑一遍那串 shell，写进去的就是原样那一行（命令结构没被它破坏），再跑一遍认出已有。
-#[cfg(unix)]
-#[test]
-fn cmd_escapes_single_quote_injection() {
-    let key = "ssh-ed25519 AAAA a'b $(touch pwned); c";
-    let home = std::env::temp_dir().join(format!("ccm-pubkey-quote-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&home);
-    std::fs::create_dir_all(&home).expect("建夹具家目录");
-    let run = || {
-        let out = std::process::Command::new("sh")
-            .arg("-c")
-            .arg(authorized_keys_cmd(key))
-            .env("HOME", &home)
-            .current_dir(&home)
-            .output()
-            .expect("起 sh");
-        String::from_utf8_lossy(&out.stdout).into_owned()
-    };
-    assert_eq!(parse_push_outcome(&run()), Ok(PushOutcome::Added));
-    assert_eq!(parse_push_outcome(&run()), Ok(PushOutcome::Already));
-    let written =
-        std::fs::read_to_string(home.join(".ssh/authorized_keys")).expect("读 authorized_keys");
-    assert_eq!(written, format!("{key}\n"));
-    assert!(!home.join("pwned").exists(), "输入里的命令替换被执行了");
-    let _ = std::fs::remove_dir_all(&home);
-}
-
-#[test]
-fn parse_outcome_markers() {
-    assert_eq!(parse_push_outcome("ADDED\n").unwrap(), PushOutcome::Added);
-    assert_eq!(
-        parse_push_outcome("ALREADY\n").unwrap(),
-        PushOutcome::Already
-    );
-    assert!(parse_push_outcome("").is_err());
-    assert!(parse_push_outcome("mkdir: cannot create: permission denied\n").is_err());
-}
-
-/// D-重要1 回归:在真实 `sh` 上跑生成的命令,验证「既有 key 无尾换行时追加不粘行」+
-/// 幂等(同 key 再推 → ALREADY)。Windows CI 跳过(cfg unix)。
-#[cfg(unix)]
-#[test]
-fn append_respects_newline_boundary_and_idempotent() {
-    use std::process::Command;
-    let dir = std::env::temp_dir().join(format!("ccm-f50-{}", std::process::id()));
-    let ssh = dir.join(".ssh");
-    std::fs::remove_dir_all(&dir).ok();
-    std::fs::create_dir_all(&ssh).unwrap();
-    let ak = ssh.join("authorized_keys");
-    // 既有 key,故意**不带尾换行**——触发粘行 bug 的条件。
-    std::fs::write(&ak, "ssh-ed25519 AAAAEXISTING existing@host").unwrap();
-
-    let key = "ssh-ed25519 AAAANEWKEY new@host";
-    let run = |k: &str| {
-        Command::new("sh")
-            .arg("-c")
-            .arg(authorized_keys_cmd(k))
-            .env("HOME", &dir)
-            .output()
-            .unwrap()
-    };
-
-    let out = run(key);
-    assert!(
-        String::from_utf8_lossy(&out.stdout).contains("ADDED"),
-        "首推应 ADDED"
-    );
-    let content = std::fs::read_to_string(&ak).unwrap();
-    let lines: Vec<&str> = content.lines().filter(|l| !l.trim().is_empty()).collect();
-    assert!(
-        lines.iter().any(|l| l.contains("AAAAEXISTING")),
-        "既有 key 应保留独占一行: {content:?}"
-    );
-    assert!(lines.contains(&key), "新 key 应独占一行: {content:?}");
-    assert!(
-        !content.contains("AAAAEXISTINGssh-ed25519"),
-        "两把 key 不得粘成一行: {content:?}"
-    );
-
-    // 同 key 再推 → 幂等 ALREADY,不重复追加。
-    let out2 = run(key);
-    assert!(
-        String::from_utf8_lossy(&out2.stdout).contains("ALREADY"),
-        "重复推同 key 应 ALREADY"
-    );
-    let n = std::fs::read_to_string(&ak)
-        .unwrap()
-        .matches("AAAANEWKEY")
-        .count();
-    assert_eq!(n, 1, "新 key 不应被追加两次");
-
-    std::fs::remove_dir_all(&dir).ok();
-}
-
-/// 并进 `authorized_keys` 的纯规划：整行相等才算已有（`grep -qxF` 同义）· 末行无换行先补一个 · 空文件 / 不在直接一行。
-#[test]
-fn authorized_keys_plan_matches_the_shell_line() {
+fn authorized_keys_plan_appends_one_whole_line() {
     let k = "ssh-ed25519 AAAAC3Nza me@x";
     assert_eq!(
         plan_authorized_keys(None, k),
@@ -379,7 +263,7 @@ fn authorized_keys_plan_matches_the_shell_line() {
 async fn the_push_reply_has_exactly_the_golden_keys() {
     let golden: Value =
         serde_json::from_str(include_str!("../../__fixtures__/pubkey-push.golden.json")).unwrap();
-    let r = FakeReach::new(false);
+    let r = FakeReach::answering(PushOutcome::Added);
     let got = answer_push(&golden["request"], &r, &|_p| Ok(format!("{KEY}\n")))
         .await
         .unwrap();
@@ -396,7 +280,7 @@ async fn the_push_reply_has_exactly_the_golden_keys() {
 #[tokio::test]
 async fn push_public_key_unknown_type_omits_sentinel_content_and_reports_file() {
     let sentinel = "SENTINEL_SECRET_TOKEN_PUBKEY_98765";
-    let fake_reach = FakeReach::new(true);
+    let fake_reach = FakeReach::answering(PushOutcome::Added);
     let read = |_p: &str| Ok(format!("{sentinel} foo@bar\n"));
     let err = answer_push(&args(), &fake_reach, &read)
         .await

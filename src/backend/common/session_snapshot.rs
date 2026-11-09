@@ -12,13 +12,11 @@
 //!
 //! # 不承诺的
 //!
-//! - 它不是 `probe()` 的替代品：`control/gate.rs::probe` 取的是 `#{session_id}` 句柄（关 TOCTOU 窗口）；本模块交出来的是名字，
+//! - 它不是门那一探的替代品：`control/gate.rs::probe_with` 取的是 `#{session_id}` 句柄（关 TOCTOU 窗口）；本模块交出来的是名字，
 //!   名字会被重新绑定 ⇒ 不许拿它去下破坏性命令。
-//! - 不带 `#{session_id}`：两个消费者（`cc_bus::join_identity` 与 `ccm` 的铸名避让）都不问那一列，watcher 那条路（`TMUX_LS_FMT`）里也没有它。
+//! - 不带 `#{session_id}`：两个消费者（`cc_bus::join_identity` 与 `ccm` 的铸名避让）都不问那一列；格式串里有它（会话账本要），快照这一行不收。切行住探测器那一侧（`host::tmux::session_rows`）。
 
 use std::sync::Mutex;
-
-use crate::common::tmux_utf8::tab_underflow;
 
 /// 命令级错误：`(code, message)`。与 `control::gate` 同型。
 use crate::common::said::Said;
@@ -155,37 +153,6 @@ impl SessionSnapshot {
             *g = rows;
         }
     }
-}
-
-/// `crate::host::tmux::LIST_FMT` 的列数 —— [`tab_underflow`] 的 N。**改格式串必须同步这个数。**
-const LIST_FMT_FIELDS: usize = 3;
-
-/// 把 `crate::host::tmux::LIST_FMT` 的 stdout 切成行（探测器 `host::tmux::list_sessions` 交来）。段数下溢 ⇒ 打印通道被改写 ⇒ 出声 + 整行不当好数据。空行不算下溢（本来就该被 `name.is_empty()` 丢掉）。
-pub fn parse_rows(text: &str) -> Vec<SessionRow> {
-    text.lines()
-        .filter_map(|line| {
-            if !line.trim().is_empty() && tab_underflow(line, LIST_FMT_FIELDS) {
-                tracing::warn!(
-                    "CCM_TMUX_UNPARSABLE list-sessions 切出 {} 段 < {LIST_FMT_FIELDS} —— \
-                     tmux 打印通道被改写（客户端不是 UTF-8 ⇒ TAB 变 `_`），\
-                     整行不当好数据。原样回包：{line:?}",
-                    line.split('\t').count()
-                );
-                return None;
-            }
-            let mut it = line.split('\t');
-            let name = it.next()?.trim();
-            if name.is_empty() {
-                return None;
-            }
-            let active = it.next().unwrap_or_default();
-            Some(rows_of(
-                name,
-                pane_sids(active, it.next().unwrap_or_default()),
-            ))
-        })
-        .flatten()
-        .collect()
 }
 
 // 判据用的两个口子（脚本化的探测器 · 陈值）：本包与上层的测试档（经 `test-support`）共用。

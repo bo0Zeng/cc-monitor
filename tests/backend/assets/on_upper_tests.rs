@@ -107,7 +107,7 @@ fn an_inner_request_with_an_extra_key_is_bad_args() {
 fn one_push_chunk_fits_under_the_remote_cli_stdin_cap() {
     let overhead = "{\"catalog\":{\"machines\":[]}}\n".len() as u64;
     assert!(
-        PUSH_MAX_BYTES.bytes + overhead <= crate::control::cli_args::MAX_CLI_STDIN.bytes,
+        PUSH_MAX_BYTES.bytes + overhead <= crate::wire::cli_args::MAX_CLI_STDIN.bytes,
         "PUSH_MAX_BYTES（{}）＋ 外层 {overhead} 字节 > 远端 CLI 面 stdin 上限 —— 切块上限要跟着它",
         PUSH_MAX_BYTES.bytes
     );

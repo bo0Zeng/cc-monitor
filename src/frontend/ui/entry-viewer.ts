@@ -16,7 +16,7 @@ import "./entry-common"; // 全局错误捕获（模块副作用）
 import { installGlobalClickDelegation } from "./entry-render-common";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { emit } from "@tauri-apps/api/event";
-import { isLocalOrigin, isRemoteOrigin, LOCAL, type Machine } from "./ipc/origin";
+import { isLocalOrigin, LOCAL, type Machine } from "./ipc/origin";
 import { loadTheme } from "./theme";
 import { bindErrorToast } from "./backend-errors";
 import { dispatcher } from "./keybindings/registry";
@@ -44,7 +44,7 @@ import { openSettingsWindow } from "./open-settings";
 import { connectTerminalOf } from "./settings-dest";
 import { SWITCH_TO_SESSION_EVENT } from "./window-events";
 import { windowStatus, windowTitle } from "./viewer-window-text";
-import { isLive, isUnclear, terminalWay } from "./face-can";
+import { frontBlocked, isLive, isUnclear } from "./face-can";
 import { bootstrapAgentWindow } from "./views/agent-window";
 
 // Vite HMR：任何热更新一律整页重载（理由见 `main.ts` 同名那段）。
@@ -241,16 +241,15 @@ function actionsOf(r: HistoryRow, live: boolean): HTMLElement[] {
   if (r.reveal) {
     out.push(button({ label: copyText("history.menu.openDir"), kind: "icon", icon: "folder", hint: copyText("history.menu.openDir"), onClick: () => void revealInFolder(r.projectPath) }));
   }
-  // 「终端」：这扇窗开不了终端页，只在脸上说「拉它的外部窗口」时给（在这里开 ⇒ 走［切过去］到主窗口）。
-  const way = live ? terminalWay(r.face, isRemoteOrigin(r.origin)) : null;
-  const termLabel = copyText("mobDrawer.item.terminal");
-  if (way?.go === "front") {
+  // 拉前：这扇窗只给拉前（看它的终端 ⇒ 走［切过去］到主窗口）；点得了才给。
+  if (live && frontBlocked(r.face) === null) {
+    const label = copyText("terminal.head.front");
     out.push(
       button({
-        label: termLabel,
+        label,
         kind: "icon",
-        icon: "terminal",
-        hint: way.said,
+        icon: "front",
+        hint: label,
         onClick: (ev) => void viewerFront(ev.currentTarget as HTMLElement, r, r.origin),
       }),
     );

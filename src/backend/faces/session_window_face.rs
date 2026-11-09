@@ -10,7 +10,10 @@
 //! - `labels`：各终端带的窗口标签（`LC_CCM_WINDOW`，最近动静在前），壳先按它找；`chain` 空 ⇔ `face` 在。
 //! - `face`：用那台的名字写好的那一张（`face_core::front::Unplaced::face`）。会话不在 · 那台旧 · 那台到期 · 那台没问到（那一句是连接层写的，照摆）
 //!   也是那一张，不是码；码只剩这台自己没查成的 `failed` · `child_timed_out`。
-//! - `tmux`：会话在 tmux 里（窗口关了时壳才给［在终端里打开］，出口原样交壳）。
+//! - `missed`：壳窗口那一跳没成的每一种结局码的那一张（`face_core::front::missed_faces`）；会话在 tmux 里 ⇒ 「窗口关了」那张带［在终端里打开］。
+//!   壳照自己的结局码挑一张，不写字。
+//!
+//! 入参与回包的线上形住 `cmd_wire::session`（壳照类型问、照类型解）。
 
 use crate::common::said::Said;
 use crate::common::seen_terminal::WindowLabel;
@@ -18,38 +21,22 @@ use crate::dial::opened_windows::Records;
 use crate::dial::remote_ask::{Remote, Table};
 use crate::dial::terminal_processes::{Link, OpenedHere, TerminalProcessesReq};
 use crate::observe::session_terminals::{Here, Showing, ShownWhy, SidReq};
-use cmd_wire::front::FrontFace;
+pub use cmd_wire::session::{SessionWindow, SessionWindowReq};
 use face_core::front::Unplaced;
-use serde::Serialize;
 
-/// `session-window` 的入参。
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-#[serde(deny_unknown_fields)]
-pub struct SessionWindowReq {
-    /// 会话所在那台（本机 ⇒ `<local>`）。
-    pub(crate) machine: cmd_wire::Machine,
-    /// 会话 id。
-    pub(crate) sid: cmd_wire::Sid,
-}
-
-/// `session-window` 的应答。
-#[derive(Debug, Serialize, PartialEq, Eq)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct SessionWindow {
-    /// 显示它的终端带的窗口标签（`<shell 进程号>-<起始时刻>`），最近动静在前；没带 ⇒ 空。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "Array<string>"))]
-    pub(crate) labels: Vec<WindowLabel>,
-    /// 这台上显示它的那个终端进程往上的进程链（自下而上）；空 ⇔ 有 `face`。
-    pub chain: Vec<Link>,
-    /// 会话在 tmux 里。
-    pub(crate) tmux: bool,
-    /// 链为什么是空的：写好的那一张（出口照摆；壳按标签也没找到窗口时摆它）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub face: Option<FrontFace>,
+/// 回包那一份：标签照线上那一串写回 · 链 · 链空的原因那一张 · 窗口那一跳没成的那几张（照在不在 tmux 写）。
+fn window(
+    labels: Vec<WindowLabel>,
+    chain: Vec<Link>,
+    tmux: bool,
+    face: Option<cmd_wire::front::FrontFace>,
+) -> SessionWindow {
+    SessionWindow {
+        labels: labels.iter().map(ToString::to_string).collect(),
+        chain,
+        face,
+        missed: face_core::front::missed_faces(tmux),
+    }
 }
 
 crate::wire::typed::codes! {
@@ -66,9 +53,7 @@ crate::wire::typed::codes! {
 pub struct SessionWindowCmd;
 
 impl crate::wire::typed::Command for SessionWindowCmd {
-    const NAME: &'static str = "session-window";
-    type Req = SessionWindowReq;
-    type Reply = SessionWindow;
+    crate::wire::typed::by_call!(SessionWindowReq);
     type Err = SessionWindowErr;
 }
 
@@ -204,12 +189,7 @@ where
         .and_then(|r| crate::dial::terminal_processes::parse_tables(&r))
         .map(|t| crate::dial::terminal_processes::opened_chain(&rec.label, &t.procs));
     let hit = match found {
-        Ok(OpenedHere::Chain(chain)) => Some(SessionWindow {
-            labels: vec![rec.label],
-            chain,
-            tmux: false,
-            face: None,
-        }),
+        Ok(OpenedHere::Chain(chain)) => Some(window(vec![rec.label], chain, false, None)),
         Ok(OpenedHere::Gone) => {
             records.forget(sid);
             None
@@ -235,12 +215,7 @@ where
 
 /// 链空、只有那一张的那一份。
 fn reason(labels: Vec<WindowLabel>, tmux: bool, why: Unplaced, machine: &str) -> SessionWindow {
-    SessionWindow {
-        labels,
-        chain: Vec::new(),
-        tmux,
-        face: Some(why.face(machine)),
-    }
+    window(labels, Vec::new(), tmux, Some(why.face(machine)))
 }
 
 /// 本机会话：显示它的终端进程 ⇒ 第一个在进程表里数得出链的那一个。
@@ -266,12 +241,7 @@ fn local_window(
             .iter()
             .find_map(|(pid, _)| crate::dial::terminal_processes::chain(*pid, &procs))
         {
-            Some(chain) => SessionWindow {
-                labels,
-                chain,
-                tmux,
-                face: None,
-            },
+            Some(chain) => window(labels, chain, tmux, None),
             None => reason(labels, tmux, Unplaced::QueryFailed, machine),
         },
     )
@@ -302,14 +272,7 @@ fn remote_window(
     .map_err(|f| SessionWindowErr::Failed(f.said))?;
     // 对不上的那几个词（`dial/terminal_processes.rs::product` 写的）⇒ 原因。
     let why = match (found.why, found.addr) {
-        (None, _) => {
-            return Ok(SessionWindow {
-                labels,
-                chain: found.chain,
-                tmux,
-                face: None,
-            })
-        }
+        (None, _) => return Ok(window(labels, found.chain, tmux, None)),
         (Some("not-ssh"), _) => Unplaced::NotSsh,
         (Some("elsewhere"), addr) => Unplaced::Elsewhere {
             addr: addr.unwrap_or_default(),

@@ -216,8 +216,8 @@ export default defineConfig({
     testTimeout: WALL_CEILING_MS,
     hookTimeout: WALL_CEILING_MS,
     // 模块 CSS 照产品那样处理：不处理时 `composes`（如 `composes: one-line from global`）不生效，jsdom 里的类名比产品少一截，
-    // DOM 与产品对不上（秤 2 的 DOM 指纹就是这样逮到的）。
-    css: { include: [/\.module\.css$/] },
+    // DOM 与产品对不上（秤 2 的 DOM 指纹就是这样逮到的）。主题令牌的原文（`tokens.css?raw`）估高模块在加载时要读，不能被换成空串。
+    css: { include: [/\.module\.css$/, /shared\/theme\/tokens\.css\?raw$/] },
     setupFiles: ["tests/test-support/pin-locale.ts", "tests/test-support/host-facts-default.ts"], // 默认 locale 钉在上面那行 `LANG` 上（Windows 那一半，见顶上）
     // F08b：覆盖率**设地板阈值（下方 thresholds）**——`npm run coverage` 与 CI 的 `coverage floor`
     // 步骤（ci.yml，**无 `|| true`=真·阻断门禁**）都吃它，低于地板即红。**不是** advisory、不是只报告。

@@ -9,7 +9,7 @@ use crate::accounts::upstream_select::turn;
 use crate::faces::rotation_face::Ctx;
 use crate::wire::typed::Command;
 pub(crate) use cmd_wire::rotation::{
-    RotDone, RotTempOp, RotUnusable, RotationTempReply, RotationTempReq, RotationUseNowReq,
+    RotDone, RotTempOp, RotationTempReply, RotationTempReq, RotationUseNowReq,
 };
 use copy_core::copy_text;
 
@@ -77,7 +77,7 @@ crate::wire::typed::codes! {
         /// 那个号不在这台的账号里。
         NotListed = "not_listed",
         /// 拖到第一格（现在用它）而它事实上发不出去（同 `rotation-use-now`）。
-        Unusable = "unusable" => RotUnusable,
+        Unusable = "unusable",
         IoFailed = "io_failed",
     }
 }
@@ -97,11 +97,17 @@ impl crate::wire::typed::Handle for RotationTemp {
         cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<RotationTempReply, RotationTempErr>> + Send + 'static
     {
-        let (_cx, needs) = cx.split();
+        let (cx, needs) = cx.split();
         async move {
             let (_files, own) = (needs.0, &needs.1);
 
-            temp_with(&Ctx::here(), own, &req, crate::common::time::now_secs())
+            temp_with(
+                &Ctx::here(),
+                own,
+                &req,
+                crate::common::time::now_secs(),
+                &cx.tz,
+            )
         }
     }
 }
@@ -128,6 +134,7 @@ pub(crate) fn temp_with(
     own: &crate::platform::Own,
     req: &RotationTempReq,
     now: u64,
+    tz: &crate::common::time::Tz,
 ) -> Result<RotationTempReply, RotationTempErr> {
     let s = session_of(ctx, &req.sid).ok_or_else(|| RotationTempErr::NoSession(no_session()))?;
     let account = match &req.op {
@@ -146,10 +153,10 @@ pub(crate) fn temp_with(
             sid: req.sid.clone(),
             account: account.clone(),
         };
-        use_now_with(ctx, own, &use_now, now).map_err(|e| match e {
+        use_now_with(ctx, own, &use_now, now, tz).map_err(|e| match e {
             RotationUseNowErr::NoSession(t) => RotationTempErr::NoSession(t),
             RotationUseNowErr::NotListed(t) => RotationTempErr::NotListed(t),
-            RotationUseNowErr::Unusable(t, u) => RotationTempErr::Unusable(t, u),
+            RotationUseNowErr::Unusable(t) => RotationTempErr::Unusable(t),
             RotationUseNowErr::IoFailed(t) => RotationTempErr::IoFailed(t),
             RotationUseNowErr::BadArgs(t) => RotationTempErr::BadArgs(t),
         })?;
@@ -203,7 +210,7 @@ crate::wire::typed::codes! {
         NoSession = "no_session",
         NotListed = "not_listed",
         /// 那个号事实上发不出去（被拒 · 没登录 · 没 key · 用满）。策略的上限不拦它。
-        Unusable = "unusable" => RotUnusable,
+        Unusable = "unusable",
         IoFailed = "io_failed",
     }
 }
@@ -223,12 +230,32 @@ impl crate::wire::typed::Handle for RotationUseNow {
         cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<RotDone, RotationUseNowErr>> + Send + 'static
     {
-        let (_cx, needs) = cx.split();
+        let (cx, needs) = cx.split();
         async move {
             let (_files, own) = (needs.0, &needs.1);
 
-            use_now_with(&Ctx::here(), own, &req, crate::common::time::now_secs())
+            use_now_with(
+                &Ctx::here(),
+                own,
+                &req,
+                crate::common::time::now_secs(),
+                &cx.tz,
+            )
         }
+    }
+}
+
+/// 号名（同号牌那一格 · `accounts-list` 那一行）。
+fn label_of(account: &str) -> String {
+    crate::accounts::quota::name_words::account_text(account)
+}
+
+/// 换到 `account` 被拒的那一句：「号名 此刻不可用：事实那一句」；事实说不出 ⇒「号名 此刻无法发送」。
+fn refused_line(account: &str, why: Option<String>) -> String {
+    let name = label_of(account);
+    match why {
+        Some(why) => copy_text("rot.acct.refused", &[("account", &name), ("why", &why)]),
+        None => copy_text("beRotation.edit.unusable", &[("acct", &name)]),
     }
 }
 
@@ -237,6 +264,7 @@ pub(crate) fn use_now_with(
     own: &crate::platform::Own,
     req: &RotationUseNowReq,
     now: u64,
+    tz: &crate::common::time::Tz,
 ) -> Result<RotDone, RotationUseNowErr> {
     let s = session_of(ctx, &req.sid).ok_or_else(|| RotationUseNowErr::NoSession(no_session()))?;
     if !listed(ctx, &s, &req.account) {
@@ -258,32 +286,21 @@ pub(crate) fn use_now_with(
     let sigma = match decide::use_now(&ctx.hop.sigma(&req.sid, &s, now), &facts, now, &req.account)
     {
         Ok(x) => x,
+        // 被拒那一句整句在这里写（号名同号牌那一格 · 事实那一句按看的那一台的时区）：两端照摆。
         Err(_) if s.off.contains(&req.account) => {
-            return Err(RotationUseNowErr::Unusable(
-                copy_text("beRotation.edit.offNow", &[("acct", &req.account)]),
-                RotUnusable {
-                    why: None,
-                    until: None,
-                },
-            ));
+            return Err(RotationUseNowErr::Unusable(copy_text(
+                "beRotation.edit.offNow",
+                &[("acct", &label_of(&req.account))],
+            )));
         }
-        Err(until) => {
-            let why = ctx
+        Err(_) => {
+            let fact = ctx
                 .hop
-                .fact_one(
-                    &s.agent,
-                    &ctx.hop.book(),
-                    &req.account,
-                    &row,
-                    now,
-                    &crate::common::time::Tz::default(),
-                )
-                .blocked
-                .map(|b| b.why);
-            return Err(RotationUseNowErr::Unusable(
-                copy_text("beRotation.edit.unusable", &[("acct", &req.account)]),
-                RotUnusable { why, until },
-            ));
+                .fact_one(&s.agent, &ctx.hop.book(), &req.account, &row, now, tz);
+            return Err(RotationUseNowErr::Unusable(refused_line(
+                &req.account,
+                fact.blocked.map(|b| b.text),
+            )));
         }
     };
     rotation::face_change(&ctx.hop.store, own, |b| {

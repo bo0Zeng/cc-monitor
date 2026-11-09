@@ -18,7 +18,19 @@ pub fn cell(text: &str) -> String {
     copy_core::clip(text.strip_suffix('\r').unwrap_or(text), DIFF_LINE_MAX)
 }
 
-/// 攒好的行 ＋ 整份的增删数 ⇒ 行差：收着画几行。`stat` ＝「+N −M」那一句（调用方照过程那一行右侧那一句的写法给）；
+/// ★ 「+N −M」那一句（唯一一处）：为零的那一半不写，都为零 ⇒ 空串。行差的 `stat` 与过程那一行右侧那一句（`step_clock::said`）都照它。
+pub fn stat(added: u32, removed: u32) -> String {
+    [
+        (added > 0).then(|| format!("+{added}")),
+        (removed > 0).then(|| format!("−{removed}")),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join(" ")
+}
+
+/// 攒好的行 ＋ 整份的增删数 ⇒ 行差：收着画几行，「+N −M」那一句照 [`stat`] 写；
 /// `notice` ＝ 降级了的那一句（[`ops`] 超了格数上界时写的），照带。
 pub fn assemble(
     rows: Vec<LineDiffRow>,
@@ -26,7 +38,6 @@ pub fn assemble(
     removed: u32,
     truncated: bool,
     notice: Option<Words>,
-    stat: Words,
 ) -> LineDiff {
     LineDiff {
         shown: u32::try_from(rows.len().min(DIFF_SHOWN)).unwrap_or(u32::MAX),
@@ -34,7 +45,7 @@ pub fn assemble(
         truncated,
         added,
         removed,
-        stat,
+        stat: Words(stat(added, removed)),
         notice,
     }
 }

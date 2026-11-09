@@ -1,28 +1,29 @@
 //! **一台的常驻流，断了自己接回去** —— 桌面与手机同一条重连循环（全仓只这一处：退避是本模块私有的，别处造不出一份）。宿主只接几根线：
-//! 下面那条 SSH（[`Transport`]）· 往外交的事（[`Sink`]）· 装不装后端（[`Transport::installs`]）。
+//! 下面那条 SSH（[`Transport`]）· 往外交的事（[`Sink`]）· 这一轮放没放新的后端（[`Transport::install`]）。
 //!
 //! 接一台只有一条路：先直接接常驻流（`--resident-attach`，平时一条 exec 就接上）；没接上 ⇒ `--resident-ensure`（常驻不在就起）
-//! ⇒ 再接一次（ensure 等口绑好才回；还回 `absent` ⇒ 这一轮没成、照退避再来）。新旧由那台在 attach 回话里给（attach 行带手上这一版）；认不得这一形 attach 行的当旧：
-//! - 自己装后端的宿主（本机后端）：接不上 ⇒ 先装再 ensure；接上的不是手上这一版 ⇒ 先装、再 `--resident-ensure --replace`（只升不降由那台判）、换了就再接；
-//! - 不装的（手机）：旧 ⇒ 照接、说「要更新」（认不得 attach 行的接不上 ⇒ 断着、修法「更新」）；同或新 ⇒ 接。
+//! ⇒ 再接一次（ensure 等口绑好才回；还回 `absent` ⇒ 这一轮没成、照退避再来）。新旧由那台在 attach 回话里给（attach 行带手上这一版）；认不得这一形 attach 行的当旧。
+//! 接不上 · 接上的不是手上这一版 ⇒ 问宿主一次这一轮放没放新的（[`Transport::install`]），只照它的回答走：
+//! - 放了：旧 ⇒ `--resident-ensure --replace`（只升不降由那台判）、换了就再接；没人在听 ⇒ ensure 再接；
+//! - 没放：旧 ⇒ 照接、说「要更新」（认不得带 deflate 的 attach 行 ⇒ 不压再接一次；还认不得 ⇒ 断着、修法「更新」）；同或新 ⇒ 接。
 //!
 //! 能不能用逐条命令由形状指纹判（[`InboundClient::call`]）。
 //!
 //! 什么时候接：
 //! - 宿主交了一条 SSH（[`Feed::set_transport`]）⇒ 当场接；换了一条 ⇒ 旧流关掉、在新的上接；交 `None` ⇒ 不接、停在断开。
-//! - 装得了后端的宿主（本机后端）只在接不上、或接上的不是这一版时先装（[`Transport::install`]），接上的就是这一版就什么都不多做。
+//! - 只在接不上、或接上的不是这一版时问宿主放没放新的（[`Transport::install`]），接上的就是这一版就什么都不多做。
 //! - 流断了 ⇒ 按退避接（[`crate::backoff`]，活过 30 s 才清零）。下面那条 SSH 死没死不问宿主：再拨那一拨在拨号核心的池里自己换一条。
 //! - 开链路那一步 [`DIAL_WITHIN`] 里拨号核心一步进展都没报（静默断网；慢链路每过一步重新计时，[`Progress`]）⇒ 丢下、隔下界再拨，不涨退避；拨着的时候宿主报了事（[`Feed::wake`] · [`Feed::reconnect`] ·
 //!   换了一条 SSH）⇒ 丢下马上再拨。
 //! - 连着的时候判死靠流自己的心跳（[`HEARTBEAT_IDLE`] 没来字节就问活、连着 [`PING_MISSES`] 问都没来字节就判死，一问的期限照最近的往返放宽），流上来着字节就算连着；
 //!   宿主报「网回来了 · 网变了 · 回前台」时连着 ⇒ 当场问一句活。
 //! - 走不通、要人动手的那几种不自己反复试，等 [`Feed::reconnect`] / [`Feed::wake`]（［重试］· 回前台 · 网络变了 · 机器页「起」）：
-//!   那台不是 Unix（常驻脱离不了）恒是；没装 · 起不了常驻 · 不是我们的后端只在装不了后端的宿主上是（装得了的下一轮装过再试）。
+//!   那台不是 Unix（常驻脱离不了）恒是；没装 · 起不了常驻 · 不是我们的后端只在这一轮宿主没放新的时是（放了的下一轮照退避再试）。
 //!
 //! 每次接上先交 [`Event::Attached`]（那台的 hello 原样一行 ＋ 这条连接的客户端），再交 [`State::Up`]（`epoch` 加一，之前在路上的问答作废）。
 //! 在看名单住这一台的名单台（[`Desk`]）：attach 行带它此刻那份（那台从第一帧起照它发），接上之后把这条连接交给它（[`Desk::up`]）。
 
-use crate::attach::{self, AttachFail, RELAY_ABSENT};
+use crate::attach::{self, AttachFail};
 use crate::backoff::{
     PingWindow, DIAL_WITHIN, HEARTBEAT_IDLE, MIN_HEALTHY_UPTIME, PING_CEIL, PING_MISSES,
     RECONNECT_MAX, RECONNECT_MIN,
@@ -32,11 +33,13 @@ use crate::frames::Admit;
 use crate::line::BACKEND_FRAME_LINE_CAP;
 use crate::watch::Desk;
 use cmd_wire::attach::Relation;
+use cmd_wire::attach::{REFUSE_ABSENT, REFUSE_MALFORMED, REFUSE_UNREACHABLE};
 use cmd_wire::dial::{CaptureEnd, Captured, OLD_BACKEND_MARKER};
 use cmd_wire::machine::{Blocker, Why};
 use comms_inward::line::{read_capped_line, CappedLine};
 use copy_core::copy_text;
 use copy_core::discard::{self, Discard};
+use relay_route_core::{RESIDENT_ATTACH, RESIDENT_ENSURE};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
@@ -119,7 +122,7 @@ pub async fn dial_within<F: Future>(progress: &Progress, dial: F) -> Option<F::O
     }
 }
 
-/// 下面那条 SSH：开一条长 exec（字节原样对拷）· 跑一次收全；外加宿主那两样（装不装得了后端 · 装那一步）。
+/// 下面那条 SSH：开一条长 exec（字节原样对拷）· 跑一次收全；外加宿主那一问（这一轮放没放新的后端）。
 /// 手机：拨号核心在这台手机上开的链路；本机常驻后端：池里那条 SSH（`control/feeds.rs`）。
 pub trait Transport: Send + Sync + 'static {
     type Stream: AsyncRead + AsyncWrite + Unpin + Send + 'static;
@@ -131,15 +134,11 @@ pub trait Transport: Send + Sync + 'static {
     ) -> Boxed<'_, Result<Self::Stream, Problem>>;
     /// 跑一次收全：stdout · stderr · 通道怎么收尾（拨号核心交回的那一行原样）。
     fn capture(&self, command: String) -> Boxed<'_, Result<Captured, Problem>>;
-    /// 把手上这一版的后端放到那台的落点（本机后端：`deploy-install` 那一趟）。只在 [`Self::installs`] 的宿主上、
-    /// 接不上或接上的不是这一版（`Relation::Same` 以外）时走，紧接着 `--resident-ensure [--replace]`。装没装成由宿主自己记（机器状态那几步）、
-    /// 不阻断这一轮：手动装的后端照样接。缺省不做事。
-    fn install(&self) -> Boxed<'_, ()> {
-        Box::pin(async {})
-    }
-    /// 这一侧自己装后端（本机后端）⇒ 接不上 / 接上的不是这一版时先 [`Self::install`]、再请那台 `--replace`；不装 ⇒ `false`（手机，缺省）。
-    fn installs(&self) -> bool {
-        false
+    /// 这一轮把手上这一版的后端放到那台的落点没有（本机后端：`deploy-install` 那一趟，回装成没有）。循环只在接不上、
+    /// 或接上的不是这一版（`Relation::Same` 以外 · 认不得这一形 attach 行）时问一次，只照这一句走：放了 ⇒ 请那台 `--resident-ensure [--replace]` 换上再接；
+    /// 没放 ⇒ 照接已有的（旧了照接、说要更新；没有 ⇒ 要人动手）。装没装成由宿主自己记（机器状态那几步）。缺省不放（手机）。
+    fn install(&self) -> Boxed<'_, bool> {
+        Box::pin(async { false })
     }
     /// 刚开出来的那条长 exec 走的这一跳远不远：拨号核心那一跳判准的答案（`ssh-dial` 的 `compression_for`，经池里那条连接的读数交来）。
     /// 近（回环 · 往返不到门槛）⇒ attach 行不要那台压（压了只花那台的 CPU、多等几十毫秒）。答不上来 ⇒ 远（缺省：宁可压）。
@@ -148,17 +147,18 @@ pub trait Transport: Send + Sync + 'static {
     }
 }
 
-/// 那台后端的一条子命令在远端 shell 里的写法（落点固定 `~/.cc-monitor/bin/ccm`，打头的 `--` 让它当后端用）。只收常量词。
-pub fn backend_command(word: &'static str) -> String {
-    format!("{} -- {word}", relay_route_core::BACKEND_LANDING_SHELL)
+/// 那台后端的一条子命令在远端 shell 里的写法（落点固定 `~/.cc-monitor/bin/ccm`，打头的 `--` 让它当后端用）。只收常量词
+/// （子命令词住 `relay_route_core`：[`RESIDENT_ATTACH`] · [`RESIDENT_ENSURE`] · [`relay_route_core::RESIDENT_STOP`]，停那一趟回话读法同 [`read_one_shot`]）。
+pub fn backend_command(words: &[&'static str]) -> String {
+    format!(
+        "{} -- {}",
+        relay_route_core::BACKEND_LANDING_SHELL,
+        words.join(" ")
+    )
 }
 
-pub const ATTACH: &str = "--resident-attach";
-pub const ENSURE: &str = "--resident-ensure";
-/// 换装：在跑的那一个停掉、换成落点上这一版。
-pub const ENSURE_REPLACE: &str = "--resident-ensure --replace";
-/// 停那台的常驻（同机监督者：请它收尾 → 宽限期内等 → 到点强杀），回话读法同 [`read_one_shot`]。
-pub const STOP: &str = "--resident-stop";
+/// 换装：在跑的那一个比落点旧才停掉、换成落点上这一版（只升不降由那台判）。
+pub const ENSURE_REPLACE: &[&str] = &[RESIDENT_ENSURE, "--replace"];
 
 /// 一台此刻通不通（只有控制要的：成品由后端 `deploy::machine` 照它定）。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -273,7 +273,7 @@ pub struct Fail {
 enum FailKind {
     /// 断在路上（被掐 · 小中继与常驻断开 · 拨不通 · 问不成换不换）：再试会好。
     Transient,
-    /// 断在那台本身：不是 Unix ⇒ 怎样都不会好；没有后端 · 后端旧了 ⇒ 装一次会好（装得了的宿主下一轮再试，装不了的等人）。
+    /// 断在那台本身：不是 Unix ⇒ 怎样都不会好；没有后端 · 后端旧了 ⇒ 装一次会好（这一轮放了新的 ⇒ 下一轮再试，没放 ⇒ 等人）。
     Blocked(Blocker),
     /// 拨出去到 [`DIAL_WITHIN`] 都没回话：没够到那一台（静默断网）⇒ 再试会好，不涨退避（没有一次登录落到它身上）。
     Unreached,
@@ -496,8 +496,9 @@ impl<T: Transport> Feed<T> {
             let started = tokio::time::Instant::now();
             let cut = Arc::new(Notify::new());
             *lock(&self.cut) = Some(Arc::clone(&cut));
-            let installs = t.installs();
-            let (saw_hello, needs_hand, reached) = match self.connect(&t, &cut).await {
+            // 这一轮宿主放没放新的后端（[`Transport::install`] 的回答；没问就是没放）。
+            let mut placed = false;
+            let (saw_hello, needs_hand, reached) = match self.connect(&t, &cut, &mut placed).await {
                 Ok(Connected {
                     client,
                     reader,
@@ -554,7 +555,7 @@ impl<T: Transport> Feed<T> {
                     };
                     let needs_hand = match blocker {
                         Some(Blocker::NotUnix) => true,
-                        Some(Blocker::NoBackend | Blocker::OldBackend) => !installs,
+                        Some(Blocker::NoBackend | Blocker::OldBackend) => !placed,
                         None => false,
                     };
                     self.set_state(State::Down {
@@ -599,51 +600,70 @@ impl<T: Transport> Feed<T> {
         }
     }
 
-    /// 接一次：直接接 ⇒ 没接上就 ensure ⇒ 再接；每一轮自己装后端的宿主见那台不是这一版（或认不得这一形 attach 行）⇒ 请它换一次、换了再接。
-    /// 链路都开不出来（拨不通 · 没人回话 · 拨着被宿主叫停）⇒ 不 ensure（ensure 走的是同一条路）。
-    async fn connect(&self, t: &Arc<T>, cut: &Notify) -> Result<Connected<T::Stream>, Fail> {
-        let attached = match self.attach_on(t, cut).await {
-            Ok(a) => Some(a),
-            Err(AttachOr::Shake(AttachFail::Old)) => None,
+    /// 接一次：直接接 ⇒ 接上的就是这一版 ⇒ 成。接不上 · 那台不是这一版 · 认不得这一形 attach 行 ⇒ 问宿主一次这一轮放没放新的（`placed`），只照它走：
+    /// 放了 ⇒ 旧的请它换（`--resident-ensure --replace`，只升不降由那台判）、换了再接，没人在听的 ensure 再接；
+    /// 没放 ⇒ 接上的照接，认不得带 deflate 的 attach 行 ⇒ 不压再接一次，没人在听 ⇒ ensure 再接。
+    /// 链路都开不出来（拨不通 · 没人回话 · 拨着被宿主叫停）⇒ 不问、不 ensure（ensure 走的是同一条路）。
+    async fn connect(
+        &self,
+        t: &Arc<T>,
+        cut: &Notify,
+        placed: &mut bool,
+    ) -> Result<Connected<T::Stream>, Fail> {
+        let first = match self.attach_once(t, cut, true).await {
+            Ok(a) if a.relation == Relation::Same => return Ok(self.connected(a)),
             Err(e @ (AttachOr::Dial(_) | AttachOr::Unanswered | AttachOr::Interrupted)) => {
                 return Err(self.attach_problem(e))
             }
-            Err(_) => {
-                // 接不上（没人在听 · 不是我们的后端 …）：装得了的宿主先把这一版放到落点，再 ensure。
-                if t.installs() {
-                    t.install().await;
-                }
-                self.ensure(t, ENSURE).await?;
-                Some(self.attach_after_ensure(t, cut).await?)
-            }
+            other => other,
         };
-        // 自己装后端的宿主：那台不是手上这一版 ⇒ 先装、再请它确保在听的不旧于落点（只升不降由 `--replace` 自己判）；换了才重接。
-        let attached = match attached {
-            Some(a) if t.installs() && a.relation != Relation::Same => {
-                t.install().await;
+        *placed = t.install().await;
+        let attached = match first {
+            Ok(a) if *placed => {
                 if self.ensure(t, ENSURE_REPLACE).await? {
                     tracing::info!(
                         "resident feed [{}] 那台换上了落点那一份 ⇒ 重接",
                         self.cfg.machine
                     );
                     drop(a);
-                    self.attach_after_ensure(t, cut).await?
+                    self.attach_after_ensure(t, cut, true).await?
                 } else {
                     a
                 }
             }
-            Some(a) => a,
-            None if t.installs() => {
+            Ok(a) => a,
+            Err(AttachOr::Shake(AttachFail::Old)) if *placed => {
                 tracing::info!(
-                    "resident feed [{}] 那台认不得这一形 attach 行 ⇒ 装上这一版、换掉再接",
+                    "resident feed [{}] 那台认不得这一形 attach 行 ⇒ 放了这一版、换掉再接",
                     self.cfg.machine
                 );
-                t.install().await;
                 self.ensure(t, ENSURE_REPLACE).await?;
-                self.attach_after_ensure(t, cut).await?
+                self.attach_after_ensure(t, cut, true).await?
             }
-            None => return Err(self.attach_problem(AttachOr::Shake(AttachFail::Old))),
+            Err(AttachOr::Shake(AttachFail::Old)) => match self.attach_plain(t, cut).await {
+                Ok(a) => a,
+                Err(
+                    e @ (AttachOr::Shake(AttachFail::Old)
+                    | AttachOr::Dial(_)
+                    | AttachOr::Unanswered
+                    | AttachOr::Interrupted),
+                ) => return Err(self.attach_problem(e)),
+                Err(_) => {
+                    self.ensure(t, &[RESIDENT_ENSURE]).await?;
+                    self.attach_after_ensure(t, cut, false).await?
+                }
+            },
+            // 接不上（没人在听 · 不是我们的后端 …）⇒ ensure 再接。
+            Err(_) => {
+                self.ensure(t, &[RESIDENT_ENSURE]).await?;
+                self.attach_after_ensure(t, cut, *placed).await?
+            }
         };
+        Ok(self.connected(attached))
+    }
+
+    /// 握上手的那一条 ⇒ 这条连接的客户端（名字 · 时区）＋ 那台形状不同的那几种帧。
+    fn connected(&self, attached: attach::Attached<T::Stream>) -> Connected<T::Stream> {
         let attach::Attached {
             reader,
             writer,
@@ -666,33 +686,41 @@ impl<T: Transport> Feed<T> {
                 }
             );
         }
-        Ok(Connected {
+        Connected {
             client,
             reader,
             hello,
             relation,
             differs,
             carried,
-        })
+        }
     }
 
     /// 开一条 `--resident-attach`、握手：attach 行带手上这一版（那台回新旧）、这一跳远 ⇒ 要那台压（回认 ⇒ 读半边边读边解；近的不要）。
-    /// 那台认不得这一形（比 `deflate` 那一格早）而这一侧不自己装后端 ⇒ 不带这一格再开一条，照不压接上；自己装的宿主照旧当旧（装上这一版再接）。
+    /// 那台认不得这一形（比 `deflate` 那一格早）而这一轮没放新的 ⇒ 不带这一格再开一条，照不压接上；放了的照旧当旧。
     async fn attach_on(
         &self,
         t: &Arc<T>,
         cut: &Notify,
+        placed: bool,
     ) -> Result<attach::Attached<T::Stream>, AttachOr> {
         match self.attach_once(t, cut, true).await {
-            Err(AttachOr::Shake(AttachFail::Old)) if !t.installs() => {
-                tracing::info!(
-                    "resident feed [{}] 那台认不得带 deflate 的 attach 行 ⇒ 不压再接",
-                    self.cfg.machine
-                );
-                self.attach_once(t, cut, false).await
-            }
+            Err(AttachOr::Shake(AttachFail::Old)) if !placed => self.attach_plain(t, cut).await,
             r => r,
         }
+    }
+
+    /// 那台认不得带 deflate 的 attach 行、这一轮又没放新的 ⇒ 不带这一格再开一条（照不压接上）。
+    async fn attach_plain(
+        &self,
+        t: &Arc<T>,
+        cut: &Notify,
+    ) -> Result<attach::Attached<T::Stream>, AttachOr> {
+        tracing::info!(
+            "resident feed [{}] 那台认不得带 deflate 的 attach 行 ⇒ 不压再接",
+            self.cfg.machine
+        );
+        self.attach_once(t, cut, false).await
     }
 
     /// 开一条 `--resident-attach`、握手一次（`deflate` 且这一跳远（[`Transport::far`]）⇒ attach 行要那台压）。
@@ -708,7 +736,7 @@ impl<T: Transport> Feed<T> {
         let progress = Progress::default();
         let dial = dial_within(
             &progress,
-            t.stream(backend_command(ATTACH), progress.clone()),
+            t.stream(backend_command(&[RESIDENT_ATTACH]), progress.clone()),
         );
         let cut = cut.notified();
         tokio::pin!(dial, cut);
@@ -747,10 +775,11 @@ impl<T: Transport> Feed<T> {
         &self,
         t: &Arc<T>,
         cut: &Notify,
+        placed: bool,
     ) -> Result<attach::Attached<T::Stream>, Fail> {
-        match self.attach_on(t, cut).await {
+        match self.attach_on(t, cut, placed).await {
             Ok(a) => Ok(a),
-            Err(AttachOr::Shake(AttachFail::Refused(r))) if r == RELAY_ABSENT => Err(Fail::new(
+            Err(AttachOr::Shake(AttachFail::Refused(r))) if r == REFUSE_ABSENT => Err(Fail::new(
                 Problem::new(
                     copy_text(
                         "rsRemoteResident.relay.absent",
@@ -786,14 +815,14 @@ impl<T: Transport> Feed<T> {
             AttachOr::Shake(f) => f,
         };
         match f {
-            AttachFail::Refused(r) if r == RELAY_ABSENT => Fail::new(
+            AttachFail::Refused(r) if r == REFUSE_ABSENT => Fail::new(
                 Problem::new(
                     copy_text("rsRemoteResident.relay.absent", &[("machine", m)]),
                     "",
                 ),
                 FailKind::Transient,
             ),
-            AttachFail::Refused(r) if r == "unreachable" => Fail::new(
+            AttachFail::Refused(r) if r == REFUSE_UNREACHABLE => Fail::new(
                 Problem::new(
                     copy_text("rsRemoteResident.relay.unreachable", &[("machine", m)]),
                     "",
@@ -821,7 +850,7 @@ impl<T: Transport> Feed<T> {
             AttachFail::Old => Fail::new(
                 Problem::new(
                     copy_core::backend_old(m),
-                    format!("refused: {}", attach::REFUSE_MALFORMED),
+                    format!("refused: {REFUSE_MALFORMED}"),
                 ),
                 FailKind::Blocked(Blocker::OldBackend),
             ),
@@ -829,9 +858,9 @@ impl<T: Transport> Feed<T> {
     }
 
     /// `--resident-ensure`（常驻不在就起）/ `--resident-ensure --replace`（在听的比落点旧才换）。回那台起没起新的一位。
-    async fn ensure(&self, t: &Arc<T>, word: &'static str) -> Result<bool, Fail> {
+    async fn ensure(&self, t: &Arc<T>, words: &[&'static str]) -> Result<bool, Fail> {
         let exec = t
-            .capture(backend_command(word))
+            .capture(backend_command(words))
             .await
             .map_err(|p| Fail::new(p, FailKind::Transient))?;
         read_one_shot(&exec, &self.cfg.machine).map(|v| v["replaced"] == true)

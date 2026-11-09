@@ -386,9 +386,11 @@ pub fn machine_check_json(table: &str, at: usize) -> String {
     let Ok(hosts) = machine_table(table) else {
         return String::new();
     };
+    let endpoints = hosts.get(at).map(|h| h.endpoints()).unwrap_or_default();
     let check = cmd_wire::phone::MachineCheck {
         fault: ssh_dial::machine::table_fault(&hosts),
-        endpoints: hosts.get(at).map(|h| h.endpoints()).unwrap_or_default(),
+        shown: endpoints.iter().map(ssh_dial::connect::label).collect(),
+        endpoints,
     };
     serde_json::to_string(&check).unwrap_or_default()
 }
@@ -1555,6 +1557,16 @@ mod tests {
         let fine: cmd_wire::phone::MachineCheck =
             serde_json::from_str(&super::machine_check_json(&table, 1)).unwrap();
         assert_eq!(fine.fault, None);
+    }
+
+    /// 编辑页预览那一串是拨号核心写的：v6 加方括号；端口不交 ⇒ 缺省那一个（只在拨号核心）。
+    #[test]
+    fn the_check_writes_each_address_line() {
+        let table = r#"[{"host":"2001:db8::1","user":"u","addresses":["h.lan:2222"]}]"#;
+        let c: cmd_wire::phone::MachineCheck =
+            serde_json::from_str(&super::machine_check_json(table, 0)).unwrap();
+        assert_eq!(c.shown, ["[2001:db8::1]:22", "h.lan:2222"]);
+        assert_eq!(c.shown.len(), c.endpoints.len());
     }
 
     /// 文件页那一问：交进 `files-ls` 的原行 ⇒ 顶栏 · ⋯（每项四格）· 点一下做什么；那台断着 ⇒ 灰着说离线；读不动 ⇒ 什么都不给。

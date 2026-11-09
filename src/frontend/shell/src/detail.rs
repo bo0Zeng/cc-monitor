@@ -16,7 +16,7 @@ pub(crate) fn now() -> String {
     let t = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX));
-    stamp(t, host_core::local_offset_at(t))
+    stamp(t, platform_core::tz::offset_secs(t).unwrap_or(0))
 }
 
 /// 「本机」那一项的值：`cc-monitor 4.1.5 (p9k-…) · Linux x86_64`。

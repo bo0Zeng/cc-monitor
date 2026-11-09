@@ -311,7 +311,7 @@ fn the_monitor_has_no_capture_path_any_more() {
 /// ★ **monitor 里没有一处把目标插进 tmux 命令串**（`-t {…}`，零命中 ＋ 合成语料两向承重）。
 ///
 /// 裸 `-t <名>` 是「精确 → 名字开头 → glob」三级解析（`INVARIANTS §31a`，tmux 3.6 实测：只有 `sib-2` 时 `kill-session -t sib` 杀掉 `sib-2`）。
-/// 精确匹配形 `=名:` 只住后端 `control/launch.rs::exact_target`；monitor 这一侧连那份跨轨锚点也删了 ⇒ 人群恒等 0，
+/// 精确匹配形 `=名:` 只住后端 `common/tmux_utf8.rs::exact_target`；monitor 这一侧连那份跨轨锚点也删了 ⇒ 人群恒等 0，
 /// 牙压在两份合成语料上（同一把尺子在坏语料上红、在调了 `exact_target` 的语料上不红）。
 #[test]
 fn every_target_placeholder_comes_from_exact_target() {
@@ -404,4 +404,76 @@ fn utf8_client_kou_jing_has_one_home_and_this_side_has_none() {
         !corpus.contains("LC_ALL"),
         "monitor 这一侧长出了 env 形 —— 它今天零处跨 SSH 的 tmux 读，更不该自带口径"
     );
+}
+
+// ── 后端那一侧：tmux 原语各只住一处（W58）─────────────────────────────
+
+/// 后端生产段里含 `needle` 的文件（相对 `src/backend/`，排好序）。
+fn backend_files_with(needle: &str) -> Vec<String> {
+    let root = guard_core::addr::backend_src_root();
+    let mut hits: Vec<String> = guard_core::walk_tree(&root, &["rs"])
+        .into_iter()
+        .filter(|(p, src)| guard_core::addr::production_side_of(p, src).contains(needle))
+        .map(|(p, _)| {
+            p.strip_prefix(&root)
+                .unwrap_or(&p)
+                .to_string_lossy()
+                .replace('\\', "/")
+        })
+        .collect();
+    hits.sort();
+    hits.dedup();
+    hits
+}
+
+/// 一根针：`needle` 只许出现在 `home`（与登记着、等别的块并回再删的 `pending`）里；家里得真有它（正控）。
+fn only_at_home(needle: &str, home: &str, pending: &[&str]) {
+    let hits = backend_files_with(needle);
+    assert!(
+        hits.iter().any(|h| h == home),
+        "正控失败：家 `{home}` 的生产段里认不出 `{needle}` —— 本条的尺子没在量"
+    );
+    let stray: Vec<&String> = hits
+        .iter()
+        .filter(|h| *h != home && !pending.contains(&h.as_str()))
+        .collect();
+    assert!(
+        stray.is_empty(),
+        "`{needle}` 只许住 `{home}`，又在这几份的生产段里各写了一份：{stray:?}"
+    );
+}
+
+/// ★ 挂着 sid 的窗格挑哪个只住宿主口：门（`control/gate.rs`）生产段不再自己列窗格。
+#[test]
+fn the_gate_does_not_list_panes_itself() {
+    only_at_home("\"list-panes\"", "host/tmux.rs", &[]);
+}
+
+/// ★ 起子进程时摘掉 `TMUX` · `TMUX_PANE`（不当成嵌套 tmux）只经 `common::tmux_utf8::unnested` 一处。
+#[test]
+fn the_nested_tmux_env_is_removed_through_one_home() {
+    let stray = backend_files_with("env_remove(\"TMUX");
+    assert!(
+        stray.is_empty(),
+        "这几份的生产段自己写了 `env_remove(\"TMUX…\")` —— 改调 `common::tmux_utf8::unnested`：{stray:?}"
+    );
+    only_at_home("TMUX_INHERITED_ENV", "common/tmux_utf8.rs", &[]);
+}
+
+/// ★ `TMUX_PANE` 这个名字只写在 `common/tmux_utf8.rs`。
+#[test]
+fn the_tmux_pane_env_name_has_one_home() {
+    only_at_home("\"TMUX_PANE\"", "common/tmux_utf8.rs", &[]);
+}
+
+/// ★ 「tmux 这个程序起不来」那一句只在宿主口造（`host::tmux::tmux_unavailable`）。
+#[test]
+fn tmux_unavailable_is_said_in_one_place() {
+    only_at_home("reason.tmux.startFailed", "host/tmux.rs", &[]);
+}
+
+/// ★ 精确目标 `=名:` 只拼一处（`common::tmux_utf8::exact_target`，`INVARIANTS §31a`）。
+#[test]
+fn the_exact_target_is_spelled_in_one_place() {
+    only_at_home("\"={", "common/tmux_utf8.rs", &[]);
 }

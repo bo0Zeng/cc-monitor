@@ -2,8 +2,8 @@
  * 要求：推送公钥是本机后端帧命令 `pubkey-push {machine}`，与 `remote-probe` 同形（「monitor 零 SSH」）。
  *
  * F50「一键推送公钥」**走通道，本机常驻后端办**：`chan.call(<local>, "pubkey-push", {machine, pubKeyPath})`。
- * 读本机那份 `.pub` · 校验 · 那台后端在就经它写 / 不在就一次 exec，全在后端（`src/backend/assets/pubkey.rs`）；界面只交设置页表单里那台
- * （可能还没保存；跳板照本机后端的机器表按名字找，同 `remote-probe.ts`）。入参 · 回包都是后端类型生成的；回包形状由握手时的形状指纹管。
+ * 读本机那份 `.pub` · 校验 · 一律问那台后端写（不在就没成，先装后端），全在后端（`src/backend/assets/pubkey.rs`）；界面交设置页那台，
+ * 后端按名字照本机后端的机器表找它（表单里还没保存的那几格不生效）。入参 · 回包都是后端类型生成的；回包形状由握手时的形状指纹管。
  * 本机后端不在 ⇒ 通道那一层报（D11，不回落）。
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";

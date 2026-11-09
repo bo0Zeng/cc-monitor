@@ -214,7 +214,7 @@ pub fn product_of(id: &str, a: &AskIn, label: Option<&str>, since_ms: u64) -> As
             for (i, s) in a.suggestions.iter().enumerate() {
                 choices.push(c(
                     &format!("always-{i}"),
-                    copy_text("beAsk.choice.allowAlways", &[("rule", &s.text)]),
+                    copy_text("beAsk.choice.allowAlways", &[("rule", &s.said())]),
                     ChoiceLook::Plain,
                     NoteNeed::None,
                 ));

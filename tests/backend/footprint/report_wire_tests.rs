@@ -187,7 +187,7 @@ fn same_file() -> Facts {
         installed: false,
         path: "/h/s.json".into(),
         text: Some(text),
-        items: vec![("Stop".into(), json!({"hooks": []}))],
+        items: vec![(vec!["hooks".into(), "Stop".into()], json!({"hooks": []}))],
     });
     f
 }

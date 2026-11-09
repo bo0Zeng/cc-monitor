@@ -3153,6 +3153,196 @@
           "state": "ok"
         }
       }
+    },
+    {
+      "cmd": "machines-try",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "a",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "edits": [
+        {
+          "field": "label",
+          "op": "setin",
+          "value": "a",
+          "where": [
+            {
+              "equals": "a",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        },
+        {
+          "field": "host",
+          "op": "setin",
+          "value": "",
+          "where": [
+            {
+              "equals": "a",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "fault": {
+          "code": "no_host",
+          "name": "a",
+          "said": "需填地址"
+        }
+      }
+    },
+    {
+      "cmd": "machines-set",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "a",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "edits": [
+        {
+          "field": "label",
+          "op": "setin",
+          "value": "a",
+          "where": [
+            {
+              "equals": "a",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        },
+        {
+          "field": "host",
+          "op": "setin",
+          "value": "",
+          "where": [
+            {
+              "equals": "a",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        }
+      ],
+      "refused": {
+        "code": "bad_machine",
+        "data": {
+          "code": "no_host",
+          "name": "a",
+          "said": "需填地址"
+        },
+        "said": "a · 需填地址 · 未保存"
+      }
+    },
+    {
+      "cmd": "machines-try",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "a",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "edits": [
+        {
+          "op": "insertin",
+          "value": {
+            "addresses": [],
+            "connect": true,
+            "host": "",
+            "jump": "",
+            "keyPath": "",
+            "label": "",
+            "user": ""
+          },
+          "where": [
+            {
+              "equals": "",
+              "fields": [
+                "host"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "fault": {
+          "code": "no_host",
+          "name": "",
+          "said": "需填地址"
+        }
+      }
+    },
+    {
+      "cmd": "machines-try",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "a",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "edits": [
+        {
+          "op": "insertin",
+          "value": {
+            "addresses": [],
+            "connect": true,
+            "host": "7.7.7.7",
+            "jump": "",
+            "keyPath": "",
+            "label": "box",
+            "user": "root"
+          },
+          "where": [
+            {
+              "equals": "box",
+              "fields": [
+                "label"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "fault": null
+      }
     }
   ],
   "读法": [

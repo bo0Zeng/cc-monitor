@@ -81,22 +81,7 @@
        "resume": {
         "can": "yes"
        },
-       "terminal": {
-        "near": {
-         "go": "here",
-         "said": "恢复后在 cc-monitor 里打开终端",
-         "open": {
-          "kind": "resume"
-         }
-        },
-        "far": {
-         "go": "here",
-         "said": "恢复后在 cc-monitor 里打开终端",
-         "open": {
-          "kind": "resume"
-         }
-        }
-       },
+       "front": {"can": "no", "why": "会话已结束"}, "attach": {"can": "no", "why": "会话已结束"}, "view": {"can": "yes", "said": "恢复后在 cc-monitor 里打开终端", "open": {"kind": "resume"}},
        "stop": {
         "can": "no",
         "why": "会话已结束"
@@ -174,22 +159,7 @@
        "resume": {
         "can": "yes"
        },
-       "terminal": {
-        "near": {
-         "go": "here",
-         "said": "恢复后在 cc-monitor 里打开终端",
-         "open": {
-          "kind": "resume"
-         }
-        },
-        "far": {
-         "go": "here",
-         "said": "恢复后在 cc-monitor 里打开终端",
-         "open": {
-          "kind": "resume"
-         }
-        }
-       },
+       "front": {"can": "no", "why": "会话已结束"}, "attach": {"can": "no", "why": "会话已结束"}, "view": {"can": "yes", "said": "恢复后在 cc-monitor 里打开终端", "open": {"kind": "resume"}},
        "stop": {
         "can": "no",
         "why": "会话已结束"
@@ -268,22 +238,7 @@
        "resume": {
         "can": "yes"
        },
-       "terminal": {
-        "near": {
-         "go": "here",
-         "said": "恢复后在 cc-monitor 里打开终端",
-         "open": {
-          "kind": "resume"
-         }
-        },
-        "far": {
-         "go": "here",
-         "said": "恢复后在 cc-monitor 里打开终端",
-         "open": {
-          "kind": "resume"
-         }
-        }
-       },
+       "front": {"can": "no", "why": "会话已结束"}, "attach": {"can": "no", "why": "会话已结束"}, "view": {"can": "yes", "said": "恢复后在 cc-monitor 里打开终端", "open": {"kind": "resume"}},
        "stop": {
         "can": "no",
         "why": "会话已结束"
@@ -362,22 +317,7 @@
        "resume": {
         "can": "yes"
        },
-       "terminal": {
-        "near": {
-         "go": "here",
-         "said": "恢复后在 cc-monitor 里打开终端",
-         "open": {
-          "kind": "resume"
-         }
-        },
-        "far": {
-         "go": "here",
-         "said": "恢复后在 cc-monitor 里打开终端",
-         "open": {
-          "kind": "resume"
-         }
-        }
-       },
+       "front": {"can": "no", "why": "会话已结束"}, "attach": {"can": "no", "why": "会话已结束"}, "view": {"can": "yes", "said": "恢复后在 cc-monitor 里打开终端", "open": {"kind": "resume"}},
        "stop": {
         "can": "no",
         "why": "会话已结束"
@@ -455,22 +395,7 @@
        "resume": {
         "can": "yes"
        },
-       "terminal": {
-        "near": {
-         "go": "here",
-         "said": "恢复后在 cc-monitor 里打开终端",
-         "open": {
-          "kind": "resume"
-         }
-        },
-        "far": {
-         "go": "here",
-         "said": "恢复后在 cc-monitor 里打开终端",
-         "open": {
-          "kind": "resume"
-         }
-        }
-       },
+       "front": {"can": "no", "why": "会话已结束"}, "attach": {"can": "no", "why": "会话已结束"}, "view": {"can": "yes", "said": "恢复后在 cc-monitor 里打开终端", "open": {"kind": "resume"}},
        "stop": {
         "can": "no",
         "why": "会话已结束"
@@ -549,22 +474,7 @@
        "resume": {
         "can": "yes"
        },
-       "terminal": {
-        "near": {
-         "go": "here",
-         "said": "恢复后在 cc-monitor 里打开终端",
-         "open": {
-          "kind": "resume"
-         }
-        },
-        "far": {
-         "go": "here",
-         "said": "恢复后在 cc-monitor 里打开终端",
-         "open": {
-          "kind": "resume"
-         }
-        }
-       },
+       "front": {"can": "no", "why": "会话已结束"}, "attach": {"can": "no", "why": "会话已结束"}, "view": {"can": "yes", "said": "恢复后在 cc-monitor 里打开终端", "open": {"kind": "resume"}},
        "stop": {
         "can": "no",
         "why": "会话已结束"
@@ -643,22 +553,7 @@
        "resume": {
         "can": "yes"
        },
-       "terminal": {
-        "near": {
-         "go": "here",
-         "said": "恢复后在 cc-monitor 里打开终端",
-         "open": {
-          "kind": "resume"
-         }
-        },
-        "far": {
-         "go": "here",
-         "said": "恢复后在 cc-monitor 里打开终端",
-         "open": {
-          "kind": "resume"
-         }
-        }
-       },
+       "front": {"can": "no", "why": "会话已结束"}, "attach": {"can": "no", "why": "会话已结束"}, "view": {"can": "yes", "said": "恢复后在 cc-monitor 里打开终端", "open": {"kind": "resume"}},
        "stop": {
         "can": "no",
         "why": "会话已结束"
@@ -736,22 +631,7 @@
        "resume": {
         "can": "yes"
        },
-       "terminal": {
-        "near": {
-         "go": "here",
-         "said": "恢复后在 cc-monitor 里打开终端",
-         "open": {
-          "kind": "resume"
-         }
-        },
-        "far": {
-         "go": "here",
-         "said": "恢复后在 cc-monitor 里打开终端",
-         "open": {
-          "kind": "resume"
-         }
-        }
-       },
+       "front": {"can": "no", "why": "会话已结束"}, "attach": {"can": "no", "why": "会话已结束"}, "view": {"can": "yes", "said": "恢复后在 cc-monitor 里打开终端", "open": {"kind": "resume"}},
        "stop": {
         "can": "no",
         "why": "会话已结束"
@@ -830,22 +710,7 @@
        "resume": {
         "can": "yes"
        },
-       "terminal": {
-        "near": {
-         "go": "here",
-         "said": "恢复后在 cc-monitor 里打开终端",
-         "open": {
-          "kind": "resume"
-         }
-        },
-        "far": {
-         "go": "here",
-         "said": "恢复后在 cc-monitor 里打开终端",
-         "open": {
-          "kind": "resume"
-         }
-        }
-       },
+       "front": {"can": "no", "why": "会话已结束"}, "attach": {"can": "no", "why": "会话已结束"}, "view": {"can": "yes", "said": "恢复后在 cc-monitor 里打开终端", "open": {"kind": "resume"}},
        "stop": {
         "can": "no",
         "why": "会话已结束"
@@ -961,22 +826,7 @@
        "resume": {
         "can": "yes"
        },
-       "terminal": {
-        "near": {
-         "go": "here",
-         "said": "恢复后在 cc-monitor 里打开终端",
-         "open": {
-          "kind": "resume"
-         }
-        },
-        "far": {
-         "go": "here",
-         "said": "恢复后在 cc-monitor 里打开终端",
-         "open": {
-          "kind": "resume"
-         }
-        }
-       },
+       "front": {"can": "no", "why": "会话已结束"}, "attach": {"can": "no", "why": "会话已结束"}, "view": {"can": "yes", "said": "恢复后在 cc-monitor 里打开终端", "open": {"kind": "resume"}},
        "stop": {
         "can": "no",
         "why": "会话已结束"
@@ -1054,22 +904,7 @@
        "resume": {
         "can": "yes"
        },
-       "terminal": {
-        "near": {
-         "go": "here",
-         "said": "恢复后在 cc-monitor 里打开终端",
-         "open": {
-          "kind": "resume"
-         }
-        },
-        "far": {
-         "go": "here",
-         "said": "恢复后在 cc-monitor 里打开终端",
-         "open": {
-          "kind": "resume"
-         }
-        }
-       },
+       "front": {"can": "no", "why": "会话已结束"}, "attach": {"can": "no", "why": "会话已结束"}, "view": {"can": "yes", "said": "恢复后在 cc-monitor 里打开终端", "open": {"kind": "resume"}},
        "stop": {
         "can": "no",
         "why": "会话已结束"
@@ -1147,22 +982,7 @@
        "resume": {
         "can": "yes"
        },
-       "terminal": {
-        "near": {
-         "go": "here",
-         "said": "恢复后在 cc-monitor 里打开终端",
-         "open": {
-          "kind": "resume"
-         }
-        },
-        "far": {
-         "go": "here",
-         "said": "恢复后在 cc-monitor 里打开终端",
-         "open": {
-          "kind": "resume"
-         }
-        }
-       },
+       "front": {"can": "no", "why": "会话已结束"}, "attach": {"can": "no", "why": "会话已结束"}, "view": {"can": "yes", "said": "恢复后在 cc-monitor 里打开终端", "open": {"kind": "resume"}},
        "stop": {
         "can": "no",
         "why": "会话已结束"
@@ -1278,22 +1098,7 @@
        "resume": {
         "can": "yes"
        },
-       "terminal": {
-        "near": {
-         "go": "here",
-         "said": "恢复后在 cc-monitor 里打开终端",
-         "open": {
-          "kind": "resume"
-         }
-        },
-        "far": {
-         "go": "here",
-         "said": "恢复后在 cc-monitor 里打开终端",
-         "open": {
-          "kind": "resume"
-         }
-        }
-       },
+       "front": {"can": "no", "why": "会话已结束"}, "attach": {"can": "no", "why": "会话已结束"}, "view": {"can": "yes", "said": "恢复后在 cc-monitor 里打开终端", "open": {"kind": "resume"}},
        "stop": {
         "can": "no",
         "why": "会话已结束"

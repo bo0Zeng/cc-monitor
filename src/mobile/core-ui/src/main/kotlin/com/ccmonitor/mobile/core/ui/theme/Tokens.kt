@@ -39,7 +39,7 @@ data class Radii(
     val xl: Dp = ThemeTokens.RadiusXl,
 )
 
-/** 账号身份色一格：底 ＋ 底上的字（`--acct-cN` · `--acct-inkN`）。 */
+/** 账号身份色一格：底 ＋ 底上的字（`--acct-c<格>` · `--acct-ink<格>`；列表 `ThemeTokens.Acct` 由 genThemeTokens 生成）。 */
 @Immutable
 data class AcctColor(
     val bg: Color,
@@ -87,17 +87,8 @@ data class AppTokens(
     val diffAddBorder: Color = ThemeTokens.DiffAddGutter,
     val diffDelBg: Color = ThemeTokens.DiffDelBg,
     val diffDelBorder: Color = ThemeTokens.DiffDelGutter,
-    val acct: List<AcctColor> =
-        listOf(
-            AcctColor(ThemeTokens.AcctC0, ThemeTokens.AcctInk0),
-            AcctColor(ThemeTokens.AcctC1, ThemeTokens.AcctInk1),
-            AcctColor(ThemeTokens.AcctC2, ThemeTokens.AcctInk2),
-            AcctColor(ThemeTokens.AcctC3, ThemeTokens.AcctInk3),
-            AcctColor(ThemeTokens.AcctC4, ThemeTokens.AcctInk4),
-            AcctColor(ThemeTokens.AcctC5, ThemeTokens.AcctInk5),
-            AcctColor(ThemeTokens.AcctC6, ThemeTokens.AcctInk6),
-            AcctColor(ThemeTokens.AcctC7, ThemeTokens.AcctInk7),
-        ),
+    /** 号色那几格（生成器照 tokens.css 成对出，几格只在那里写一次）。 */
+    val acct: List<AcctColor> = ThemeTokens.Acct,
     val planKind: List<Color> =
         listOf(
             ThemeTokens.PlanKind0,

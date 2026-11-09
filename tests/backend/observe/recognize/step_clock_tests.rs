@@ -4,7 +4,7 @@
 
 use super::*;
 use crate::agents::record::{Block, Body, Draw, Record};
-use crate::agents::{Speaker, StepResult, StepResultExt, UserText};
+use crate::agents::{Speaker, StepResult, UserText};
 use std::collections::BTreeMap;
 
 /// 一条回复，带这几次工具调用，时刻 `at_ms`。
@@ -35,13 +35,20 @@ fn reply(at_ms: Option<i64>, calls: &[&str]) -> Record {
     }
 }
 
-/// 一条带这几次结果的记录（都说不上的那一形：只有耗时那一句），时刻 `at_ms`。
+/// 一条带这几次结果的记录（都说不上的那一形：适配层交来的只有数与码，`text` 空），时刻 `at_ms`。
 fn results(at_ms: Option<i64>, of: &[&str]) -> Record {
-    let plain = StepResult {
-        ok: true,
-        ..Default::default()
-    }
-    .written(false);
+    with(
+        at_ms,
+        of,
+        StepResult {
+            ok: true,
+            ..Default::default()
+        },
+    )
+}
+
+/// 同上，每一格都是适配层交来的 `plain`。
+fn with(at_ms: Option<i64>, of: &[&str], plain: StepResult) -> Record {
     Record {
         agent: "claude".into(),
         id: format!("s{}", at_ms.unwrap_or(-1)),
@@ -165,4 +172,130 @@ fn a_codex_call_output_ninety_seconds_later_gets_its_duration_written() {
     let c = results.get("c1").expect("codex 的结果也进 results");
     assert!(c.ok);
     assert_eq!(c.text.0, copy_core::short_duration(90_000));
+}
+
+/// ★ 适配层只交数与码（`text` 空）：失败的那一步配上了用时 ⇒「失败 · 用时」，配不上 ⇒「失败」；报错尾巴同一处写。
+/// 写字只在这一处，不拿写好的字认事实。
+#[test]
+fn a_failed_step_says_failed_with_or_without_its_duration() {
+    let failed = StepResult {
+        ok: false,
+        ..Default::default()
+    };
+    let mut clock = StepClock::default();
+    clock.note(&reply(Some(T), &["c1"]));
+    let mut r = with(Some(T + 90_000), &["c1", "c2"], failed);
+    clock.time(&mut r);
+    let dur = copy_core::short_duration(90_000);
+    assert_eq!(
+        cell(&r, "c1"),
+        copy_core::copy_text("stream.step.failedFor", &[("dur", &dur)])
+    );
+    assert_eq!(
+        cell(&r, "c2"),
+        copy_core::copy_text("runs.state.failed", &[]),
+        "配不上：照没有用时的那一形"
+    );
+    let Body::Said { results, .. } = &r.body else {
+        panic!("不是带结果的那一条")
+    };
+    assert_eq!(
+        results["c2"].error.as_ref().map(|w| w.0.clone()),
+        Some(copy_core::copy_text("stream.result.error", &[]))
+    );
+}
+
+/// ★★ 过程那一行右侧那一句只在这里写（`said`）：改动 `+a −r`（为零的那一半不写）· 读了几行只给读文件那一类 · 几个文件 ·
+/// 未批准 · 答了什么；都说不上 ⇒ 空串，配上了用时 ⇒ 只写用时；别的那几形配上了也不带用时。
+#[test]
+fn the_right_hand_sentence_is_written_here_once() {
+    use crate::agents::Answer;
+    let t = |r: StepResult, ms: Option<u64>| said(r, ms).text.0;
+    let ok = StepResult {
+        ok: true,
+        ..Default::default()
+    };
+    let dur = copy_core::short_duration(90_000);
+    // 读文件：读了几行；命令输出几行 · 搜索命中几行不说。
+    let read = StepResult {
+        lines: Some(12),
+        read: true,
+        ..ok.clone()
+    };
+    assert_eq!(
+        t(read.clone(), None),
+        copy_core::copy_text("stream.step.lines", &[("n", "12")])
+    );
+    assert_eq!(
+        t(read.clone(), Some(90_000)),
+        t(read, None),
+        "读了几行：不带用时"
+    );
+    let out = StepResult {
+        lines: Some(2),
+        ..ok.clone()
+    };
+    assert_eq!(t(out.clone(), None), "", "不是读文件那一类：行数不说");
+    assert_eq!(t(out, Some(90_000)), dur, "都说不上：只剩用时");
+    // 改动。
+    let diff = StepResult {
+        added: Some(2),
+        removed: Some(1),
+        ..ok.clone()
+    };
+    assert_eq!(t(diff, None), "+2 −1");
+    let only_add = StepResult {
+        added: Some(3),
+        removed: Some(0),
+        ..ok.clone()
+    };
+    assert_eq!(t(only_add, None), "+3");
+    // 几个文件。
+    let files = StepResult {
+        files: Some(4),
+        ..ok.clone()
+    };
+    assert_eq!(
+        t(files, None),
+        copy_core::copy_text("stream.step.files", &[("n", "4")])
+    );
+    // 答了什么。
+    let approved = StepResult {
+        answer: Some(Answer::Approved),
+        ..ok.clone()
+    };
+    assert_eq!(
+        t(approved, Some(90_000)),
+        copy_core::copy_text("interactive.done.approved", &[])
+    );
+    // 未批准：不写报错尾巴、配上了也不带用时。
+    let rejected = said(
+        StepResult {
+            ok: false,
+            rejected: true,
+            ..Default::default()
+        },
+        Some(90_000),
+    );
+    assert_eq!(
+        rejected.text.0,
+        copy_core::copy_text("stream.step.rejected", &[])
+    );
+    assert_eq!(rejected.error, None);
+    // 失败带退出码 ⇒ 尾巴写退出码。
+    let exit = said(
+        StepResult {
+            ok: false,
+            exit_code: Some(2),
+            ..Default::default()
+        },
+        None,
+    );
+    assert_eq!(
+        exit.error.map(|w| w.0),
+        Some(copy_core::copy_text(
+            "stream.result.exitCode",
+            &[("n", "2")]
+        ))
+    );
 }

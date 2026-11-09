@@ -287,4 +287,6 @@ pub(crate) const FACE: crate::agents::FootprintFace = crate::agents::FootprintFa
     env: UNMANAGED_ENV,
     under_agent_home,
     user_settings: user_settings_files,
+    stop_hook_commands: super::settings_hooks::stop_hook_commands,
+    stop_hook_slots: super::settings_hooks::stop_hook_slots,
 };

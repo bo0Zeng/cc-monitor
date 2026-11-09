@@ -9,7 +9,7 @@
  * 点下去真正做事的住 `tab-session-actions.ts`。
  */
 import type { Tab } from "./tab-model";
-import { canResume, closesFromMenu, terminalAlive, terminalWay } from "./face-can";
+import { attachBlocked, canResume, closesFromMenu, frontBlocked, terminalAlive, viewBlocked } from "./face-can";
 import type { SessionFace } from "./generated/SessionFace";
 import { copyText } from "./copy-table";
 import type { TabGroup } from "./tab-bar-prefs";
@@ -19,7 +19,7 @@ import { openSession } from "./session-open";
 // 标签页里的会话都是流跟的那一家（记录树那一家）。
 import { agentHasAccounts, displayNameOf } from "./agent-profile";
 // 本机 = `LOCAL`（`"<local>"`）；「是不是本机」只经 `ipc/origin.ts` 判。
-import { isLocalOrigin, isRemoteOrigin, type Machine } from "./ipc/origin";
+import { isLocalOrigin, type Machine } from "./ipc/origin";
 import { standingOf, type Standing } from "./sessions-where";
 import type { Launch } from "./generated/Launch";
 import {
@@ -130,9 +130,10 @@ export interface TabMenuHost {
   /** 隐藏 · 取消隐藏（与批量菜单同一口：交命令、给撤销 toast；栏上那一格等推帧来了才挪）。 */
   hide(sids: readonly string[]): void;
   unhide(sids: readonly string[]): void;
-  /** 打开工作目录 · 「终端」那一颗（拉它的窗口还是在这里开照脸上那一格，宿主那一条判）。 */
+  /** 打开工作目录 · 拉前（把它住的那个终端窗口拉到前面）· 看它的终端（底部抽屉的终端页）。 */
   openCwd(sid: string): void;
-  terminal(sid: string): void;
+  front(sid: string): void;
+  view(sid: string): void;
   /** 「账号…」：开这个会话的「账号」面板（与状态栏账号按钮同一个）。 */
   openAccountPanel?: (sid: string) => void;
   /** 面板接上了没有（没接 ⇒ 不给「账号…」）。 */
@@ -178,11 +179,12 @@ export class TabMenu {
     // ① 看它
     items.push({ id: "popOut", icon: "popOut", label: copyText("history.menu.openWindow"), detail: keyOf("tab.pop-out"), onClick: () => void this.actions.openInNewWindow(sid) });
     if (t?.projectDir) items.push({ icon: "folder", label: copyText("tabBarView.tab.cwdHint"), detail: keyOf("tab.open-cwd"), onClick: () => this.host.openCwd(sid) });
-    // 「终端」一直在：做不了灰着、第二行写那台写好的那一句；做得了 ⇒ 第二行是去做什么（拉窗 · 在这里开）。
+    // 终端那三样各自一项、一直在：做不了灰着、第二行写那一句（拉前 · 在终端里打开 · 看它的终端各读各的那一格）。
     if (t) {
-      const way = terminalWay(t.face, isRemoteOrigin(t.origin));
-      const term: MenuItem = { id: "terminal", icon: "terminal", label: copyText("mobDrawer.item.terminal"), detail: keyOf("session.terminal"), onClick: () => this.host.terminal(sid) };
-      items.push(way === null || way.go === "no" ? { ...term, enabled: false, why: way?.why, onClick: () => {} } : { ...term, title: way.said });
+      const gate = (it: MenuItem, why: string | null): MenuItem => (why === null ? it : { ...it, enabled: false, why: why || undefined, onClick: () => {} });
+      items.push(gate({ id: "front", icon: "front", label: copyText("terminal.head.front"), detail: keyOf("terminal.bring-front"), onClick: () => this.host.front(sid) }, frontBlocked(t.face)));
+      items.push(gate({ id: "openTerm", icon: "terminal", label: copyText("sessionHead.act.openTerm"), onClick: () => void this.attach(t.origin, sid) }, attachBlocked(t.face)));
+      items.push(gate({ id: "terminal", icon: "terminal", label: copyText("sessionHead.act.terminal"), detail: keyOf("panel.toggle-terminal"), onClick: () => this.host.view(sid) }, viewBlocked(t.face)));
     }
 
     // ② 改标题 · 固定 · 分组 · 隐藏（隐藏的会话只有「取消隐藏」：它不占标签页，不固定、不分组）
@@ -307,7 +309,7 @@ export class TabMenu {
 
 
 
-  /** 拉窗没成那一条上的［终端］：交那台接回（接哪个 · 命中几个都是那台判、那台说）。 */
+  /** 在终端里打开（右键那一项 · 拉窗没成那一条上的［在终端里打开］）：交那台接回（接哪个 · 命中几个都是那台判、那台说）。 */
   async attachTo(sid: string): Promise<void> {
     const t = this.host.tab(sid);
     if (!t) return;

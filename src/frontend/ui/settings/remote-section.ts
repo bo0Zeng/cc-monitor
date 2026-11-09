@@ -3,7 +3,7 @@
  * 机器表住本机后端（`machines.json`，`machines-read` / `-try` / `-set`）；壳按 `changed {machines}` 重问、对齐远端流。
  *
  * camelCase key 必须与 Rust reader 一致（否则后端读不到）：
- *   enabled (bool) / hosts[] 内每台：label (可选，默认 host) / host / port (默认 22) / user / keyPath (可选)。
+ *   enabled (bool) / hosts[] 内每台：label (可选，默认 host) / host / port (可缺：缺省只在拨号核心) / user / keyPath (可选)。
  *   落点恒是那台的 `~/.cc-monitor/bin/ccm`。
  *
  * 没有 `hosts` 键的单对象形状不认：一台都不显示，机器列表顶上说「远端配置认不出：…」（`remote-config.ts::REMOTE_CONFIG_UNRECOGNIZED`）。
@@ -472,8 +472,8 @@ export class RemoteSection {
     if (!card) return [];
     const origin = card.savedName();
     return [
-      { label: copyText("main.cmd.newSession"), onClick: () => card.openLauncher() },
-      { label: copyText("machineAliases.rc.open"), onClick: () => card.openFiles() },
+      { label: copyText("main.cmd.newSession"), onClick: () => void card.openLauncher() },
+      { label: copyText("machineAliases.rc.open"), onClick: () => void card.openFiles() },
       { label: copyText("machineList.menu.portForward"), onClick: () => openPortForwardPanel() },
       { label: copyText("accountChip.menu.refresh"), enabled: origin !== "", onClick: () => this.pages?.refreshMachine?.(origin) },
       { divider: true, label: "" },
@@ -491,7 +491,7 @@ export class RemoteSection {
     const c = card.collect();
     if (!c.host) return "";
     const who = c.user ? `${c.user}@${c.host}` : c.host;
-    return withPort ? `${who}:${c.port || 22}` : who;
+    return withPort && c.port !== undefined ? `${who}:${c.port}` : who;
   }
 
   /** 列表那一行的第二行：`user@host · 系统`。 */
@@ -680,7 +680,7 @@ export class RemoteSection {
     return openAddMachine({
       prefill,
       tryAdd: (cfgs) => tryRemoteConfig({ upsert: cfgs.map((value) => ({ key: null, value })) }),
-      imported: () => importSshHosts(this.cards.map((c) => c.collect()).map((h) => ({ host: h.host, user: h.user, port: h.port || 22 }))),
+      imported: () => importSshHosts(),
       add: async (cfgs) => {
         const cards = cfgs.map((c) => this.appendCard(c));
         const said = await this.save();
@@ -812,20 +812,8 @@ export class RemoteSection {
 
   /** 任一控件变化 → 组装 → merge 进 config.json → 提示重启；写走统一写口。存进去了 ⇒ `null`；没存进去 ⇒ 那一句（原因也画在横幅上）。 */
   private async save(): Promise<string | null> {
-    // 还没落过盘、主机或用户没填的卡（「＋ 添加机器」刚出来那张）不进补丁：
-    // 写进去就是一条认不出、删不掉的空机器。它留在界面上，填完了再存。
-    const saving = this.cards.filter((c) => {
-      const h = c.collect();
-      return c.persistedKey !== null || (!!h.host && !!h.user);
-    });
-    // best-effort UI 校验：某台缺必填字段 → 软提示（不拦保存，后端会跳过该台）。
-    const incompleteCount = saving.map((c) => c.collect()).filter((h) => !h.host || !h.user).length;
-
-    if (incompleteCount > 0) {
-      this.showBanner(
-        copyText("remote.save.incomplete", { n: incompleteCount }),
-      );
-    }
+    // 地址 · 用户填没填不在这里判：写口照机器表那一道拒、那一句画在横幅上（新加的卡都过了添加框那一问）。
+    const saving = this.cards;
 
     // 局部合并，不整表覆盖（整表覆盖会把不在本页的机器静默删光）：
     // - upsert 用每张卡的 `persistedKey` 定位盘上那一条 ⇒ 改 label（换 origin）仍是改那一条，不变成「新增 ＋ 孤儿」；
@@ -874,7 +862,7 @@ export class RemoteSection {
 
     const changed = !sameRemote(next, this.original);
     this.original = next;
-    if (changed && incompleteCount === 0) {
+    if (changed) {
       this.showBanner(copyText("remote.save.done"));
     }
     // 机器表改了 ⇒ 本机后端推 `changed {machines}`，壳照它当场对齐那几条流（加的去连、删的 · 停用的断开、改了连接参数的重连）。

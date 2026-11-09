@@ -76,13 +76,9 @@ impl Own {
 
     /// 同 [`Own::issue`]，环境由 `get` 答（启动入口的判据喂注入的环境；只许启动入口调，同一份名单管）。
     pub fn issue_with(get: &dyn Fn(&str) -> Option<String>) -> Own {
-        let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into));
         Own {
-            data: creds_core::store::monitor_data_dir(
-                get(creds_core::store::DATA_DIR_ENV).as_deref(),
-                home.clone(),
-            ),
-            home,
+            data: crate::platform::paths::data_home_from(get),
+            home: crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into)),
         }
     }
 

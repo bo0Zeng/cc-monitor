@@ -218,6 +218,6 @@ describe("说一句：回执到了才算送出", () => {
     expect(ids.length).toBe(2);
     expect(new Set(ids).size).toBe(1);
     expect(box.value).toBe("");
-    expect(page.el.textContent).toContain("q-1");
+    expect(page.el.textContent, "回执那一句不写到框下（那一句此刻什么样只在那一排照名单说）").not.toContain("q-1");
   });
 });

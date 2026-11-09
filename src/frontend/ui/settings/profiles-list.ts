@@ -9,7 +9,7 @@
  *
  * 本文件一个 ccm 选项都不认、不合并：五问见 `../profiles-reads`。构造零 I/O：第一次 `load()` 才发第一条。
  */
-import { openPath } from "@tauri-apps/plugin-opener";
+import { commands } from "../ipc/commands";
 import { copyText } from "../copy-table";
 import { writeClipboard } from "../clipboard";
 import { button } from "../kit/button";
@@ -677,7 +677,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
   const onOpenFile = async (): Promise<void> => {
     if (!book) return;
     try {
-      await openPath(book.path);
+      await commands.os_open({ kind: "path", path: book.path });
     } catch (e) {
       failToast(copyText("profilesPage.open.failed"), e, { fact: book.path });
     }

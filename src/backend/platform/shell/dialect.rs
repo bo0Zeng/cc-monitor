@@ -106,6 +106,18 @@ pub struct Call<'a> {
     pub landing: &'a str,
 }
 
+/// 托管入口（`cch` · `<号>cch`）补全要的那几个词。**通用层给**（`ccm_line::argv` 的 `hosted_word` · `flag`），方言只照着写。
+#[derive(Debug, Clone, Copy)]
+pub struct HostedWords<'a> {
+    /// 名字后面第一个词补这几个（`ls` · `attach`）。
+    pub first: &'a [&'a str],
+    /// 跟在这几个词后面的那一格补这台的托管终端名（`attach` · 它的短写 `a`）。
+    pub takes_name: &'a [&'a str],
+    /// 列托管终端那一下交给 ccm 的词（`--` `--hosts`，即 `cch ls`）：印出的每行第一段是名字、段与段之间两个空格；
+    /// 没有两个空格的那一行（「无托管终端」）不是名字。
+    pub list: &'a [&'a str],
+}
+
 /// 一份启动文件候选：**路径 ＋ 盘上不在时列不列**（「列不列不存在的」是方言的读法，表第一行）。
 ///
 /// 方言**只给路径与列法**，一个字节的盘都不读：在不在、里面是什么由**那台机器的后端**答
@@ -158,6 +170,10 @@ pub trait ShellDialect: Sync {
 
     /// 一条（通用层判过合格的）别名在这个 shell 里的写法：名字 ＋ 预置参数 ＋ 把调用时的参数原样接在 `rest` 那一边。
     fn render_alias(&self, call: Call, name: &str, argv: &[String], rest: RestTo) -> String;
+
+    /// 托管入口的补全（接在别名文件里那几条别名之后）：`names` 那几条（通用层判过：合下来带 `--hosted`）
+    /// 首词补 [`HostedWords::first`]，跟在 [`HostedWords::takes_name`] 后面补这台的托管终端名（现问 ccm）。
+    fn render_hosted_completion(&self, call: Call, names: &[String], words: HostedWords) -> String;
 
     /// 在终端里敲的那一行：按绝对路径叫 `program`（不靠 `PATH`）、带一个词 `word`（通用层判过合格的 `@名`）。
     fn render_start(&self, program: &str, word: &str) -> String;
@@ -298,6 +314,18 @@ const POSIX_FN_HEAD: &str = "() { ";
 const POSIX_ARGS: &str = " \"$@\"";
 const POSIX_FN_TAIL: &str = "; }";
 
+/// 托管入口补全那一段（POSIX）。bash 照 `complete -C` 叫它：`$1` 命令名 · `$2` 正在敲的词 · `$3` 前一个词，印出来的每行是一个候选。
+/// 函数体只用 POSIX sh 的写法（这份文件也可能经 `.profile` 被 dash 读进来）；`complete` 只在 bash 里挂（zsh 不挂）。
+/// 名单那一行按两个空格切、第一段是名字；没有两个空格的那一行（「无托管终端」）不算。
+/// ⚠ 住常量的理由同 [`POSIX_FN_HEAD`]：大括号在同一个字面量里配平。
+const POSIX_HOSTED_COMPLETION: &str = r#"__ccm_hosted_complete() {
+    case "$3" in
+        "$1") for w in {{FIRST}}; do case "$w" in "$2"*) printf '%s\n' "$w" ;; esac; done ;;
+        {{NAMED}}) {{CCM}} {{LIST}} 2>/dev/null | while IFS= read -r l; do case "$l" in *'  '*) n=${l%%'  '*}; case "$n" in "$2"*) printf '%s\n' "$n" ;; esac ;; esac; done ;;
+    esac
+}
+if [ -n "${BASH_VERSION:-}" ]; then complete -C __ccm_hosted_complete {{NAMES}}; fi"#;
+
 /// POSIX 那份别名文件在 home 下的相对路径。从 `account-aliases.sh` 改名而来，旧名不读不写不删。
 /// 值只住契约 crate（monitor 的数据位置页按它列出）。
 const POSIX_ALIAS_FILE_REL: &str = relay_route_core::POSIX_ALIASES_REL;
@@ -389,6 +417,29 @@ impl ShellDialect for Posix {
         out
     }
 
+    /// [`POSIX_HOSTED_COMPLETION`] 填上词：ccm 照别名那样按 `PATH` 叫（别名块让它进 `PATH`）。
+    fn render_hosted_completion(&self, c: Call, names: &[String], w: HostedWords) -> String {
+        let join = |ws: &[&str], sep: &str| {
+            ws.iter()
+                .map(|x| Self::word(x))
+                .collect::<Vec<_>>()
+                .join(sep)
+        };
+        POSIX_HOSTED_COMPLETION
+            .replace("{{FIRST}}", &join(w.first, " "))
+            .replace("{{NAMED}}", &join(w.takes_name, "|"))
+            .replace("{{CCM}}", &Self::word(c.word))
+            .replace("{{LIST}}", &join(w.list, " "))
+            .replace(
+                "{{NAMES}}",
+                &names
+                    .iter()
+                    .map(|n| Self::word(n))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            )
+    }
+
     /// `名字() {` ⇒ `Some("名字")`。
     fn declared_function(&self, l: &str) -> Option<String> {
         let (name, rest) = l.split_once("()")?;
@@ -466,6 +517,18 @@ const PS_BLOCK_CLOSE: &str = "}";
 const PS_TAIL: &str = " $RemainingArgs";
 /// 分隔 claude / ccm 两半的 `--`：写成单引号字面量（裸 `--` 是 PowerShell 自己的「参数到此为止」记号，会被它吃掉）。
 const PS_END: &str = " '--'";
+
+/// 托管入口补全那一段（PowerShell）：挂在每条托管别名的 `RemainingArgs` 上（别名函数那一格，[`PS_PARAM_ARG`]）。
+/// 已敲的词照 `$commandAst` 数（正在敲的那个不算）：0 个 ⇒ 首词；1 个且是 `attach` 那一类 ⇒ 现问 ccm 的名单，每行按两个空格切、第一段是名字
+/// （「无托管终端」那一行切不出两段，不算）。形状在 Win11 上 PowerShell 5.1 的 `TabExpansion2` 实测过（`cch ` ⇒ ls,attach · `cch a ` ⇒ 名字）。
+/// ⚠ 住常量的理由同 [`PS_BLOCK_OPEN`]：大括号在同一个字面量里配平。
+const PS_HOSTED_COMPLETION: &str = r#"Register-ArgumentCompleter -CommandName {{NAMES}} -ParameterName RemainingArgs -ScriptBlock {
+    param($commandName, $parameterName, $wordToComplete, $commandAst, $fakeBoundParameters)
+    $w = @($commandAst.CommandElements | Select-Object -Skip 1 | ForEach-Object { $_.Extent.Text })
+    if ($wordToComplete) { $w = @($w | Select-Object -SkipLast 1) }
+    $out = if ($w.Count -eq 0) { {{FIRST}} } elseif ($w.Count -eq 1 -and $w[0] -in {{NAMED}}) { & {{CCM}} {{LIST}} 2>$null | ForEach-Object { $p = $_ -split '  '; if ($p.Count -gt 1) { $p[0] } } }
+    $out | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
+}"#;
 
 /// **PowerShell 单引号字面量的唯一出口**：`'…'` 包裹，[`PS_QUOTES`] 里每个字符都双写。
 /// 后端生产段凡是把一个值放进 PowerShell 单引号里的都只调它（判据 `shell_home_guard.rs` 零命中）。
@@ -591,6 +654,22 @@ impl ShellDialect for PowerShell {
             PS_BLOCK_CLOSE.to_string(),
         ]
         .join("\n")
+    }
+
+    /// [`PS_HOSTED_COMPLETION`] 填上词：每个词走 [`ps_literal`]（`--` 也得引：裸写会被 PowerShell 吃掉），ccm 照别名那样按落点叫。
+    fn render_hosted_completion(&self, c: Call, names: &[String], w: HostedWords) -> String {
+        let list = |ws: &mut dyn Iterator<Item = &str>, sep: &str| {
+            ws.map(ps_literal).collect::<Vec<_>>().join(sep)
+        };
+        PS_HOSTED_COMPLETION
+            .replace(
+                "{{NAMES}}",
+                &list(&mut names.iter().map(String::as_str), ", "),
+            )
+            .replace("{{FIRST}}", &list(&mut w.first.iter().copied(), ", "))
+            .replace("{{NAMED}}", &list(&mut w.takes_name.iter().copied(), ", "))
+            .replace("{{CCM}}", &Self::invoked(c))
+            .replace("{{LIST}}", &list(&mut w.list.iter().copied(), " "))
     }
 
     fn name_is_valid(&self, name: &str) -> bool {

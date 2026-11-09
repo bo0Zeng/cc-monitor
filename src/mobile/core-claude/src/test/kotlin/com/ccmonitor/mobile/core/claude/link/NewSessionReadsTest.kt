@@ -112,8 +112,8 @@ class NewSessionReadsTest {
                 mapOf(
                     "strategies" to
                         listOf(
-                            mapOf("id" to "night", "description" to "夜里只用 personal\n第二行", "summary" to "夜里只用 personal", "rev" to "r", "inUse" to emptyList<Any>(), "forNew" to false, "tzUnknown" to false, "hand" to false),
-                            mapOf("id" to "spread", "description" to "", "summary" to "", "rev" to "r", "inUse" to emptyList<Any>(), "forNew" to true, "tzUnknown" to false, "hand" to false),
+                            mapOf("id" to "night", "description" to "夜里只用 personal\n第二行", "summary" to "夜里只用 personal", "rev" to "r", "remove" to mapOf("enabled" to true), "forNew" to false, "tzUnknown" to false, "hand" to false),
+                            mapOf("id" to "spread", "description" to "", "summary" to "", "rev" to "r", "remove" to mapOf("enabled" to true), "forNew" to true, "tzUnknown" to false, "hand" to false),
                         ),
                     "forNew" to "spread",
                     "oldScripts" to 0.0,

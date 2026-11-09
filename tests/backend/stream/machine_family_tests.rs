@@ -174,12 +174,12 @@ fn the_machine_family_refuses_what_its_request_types_do_not_have() {
         "该拒在版本的类型上：{:?}",
         f.raw
     );
-    // 还没存的那一台（推公钥测的那一台）照 `Host` 解得出、走到组请求那一步（跳板照表查无 ⇒ `bad_jump`，不是 `bad_args`）。
+    // 表单里那一台照 `Host` 解得出、走过入参那一步：没给私钥也没给 `.pub` ⇒ 找不到要推的那一份（`refused`），不是 `bad_args`。
     let got = run_any(
         "pubkey-push",
         json!({ "machine": { "host": "h", "user": "u", "jump": "hop" } }),
     );
-    assert_eq!(got.err().and_then(|f| f.code), Some("bad_jump".to_string()));
+    assert_eq!(got.err().and_then(|f| f.code), Some("refused".to_string()));
 }
 
 /// 壳读的部署那几条（`deploy-install` · `place-verdict` · `exit-policy-read` · `ccm-probe`）：回包字节照钉的字面量。
@@ -199,7 +199,13 @@ fn the_deploy_replies_the_shell_reads_keep_their_wire_bytes() {
                 why: "w".into()
             }
         ))),
-        r#"{"action":"keep","build":"p9b","os":"Linux","said":"w"}"#
+        serde_json::json!({
+            "action": "keep",
+            "build": "p9b",
+            "os": "Linux",
+            "said": copy_core::copy_text("rsSftp.deploy.keptNotOlder", &[("why", "w")]),
+        })
+        .to_string()
     );
     // 本机那一份放不放：落点不在 ⇒ 放。
     let got = run_any(

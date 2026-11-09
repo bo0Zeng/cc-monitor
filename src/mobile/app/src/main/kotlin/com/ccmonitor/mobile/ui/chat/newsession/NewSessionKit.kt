@@ -140,7 +140,7 @@ internal fun PickRow(
     }
 }
 
-/** 号牌：号色那一格做底、号牌字照那台写好的（[text]）。那台没给这个号 ⇒ 号色第一格、字写「—」。 */
+/** 号牌：号色那一格做底、号牌字照那台写好的（[text]）。那台没给号色 ⇒ 中性底（不猜一格像真的色）；没给这个号 ⇒ 字写「—」。 */
 @Composable
 internal fun AccountBadge(
     text: String?,
@@ -148,7 +148,7 @@ internal fun AccountBadge(
     size: Int = 22,
 ) {
     val acct = LocalAppTokens.current.acct
-    val (bg, ink) = acct[(color ?: 0).mod(acct.size)]
+    val (bg, ink) = color?.let { acct.getOrNull(it) }?.let { it.bg to it.ink } ?: (MaterialTheme.colorScheme.surfaceContainerHighest to MaterialTheme.colorScheme.onSurfaceVariant)
     Box(Modifier.size(size.dp).background(bg, RoundedCornerShape(4.dp)), contentAlignment = Alignment.Center) {
         Text(text ?: copyText("acct.val.none"), color = ink, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center, maxLines = 1)
     }

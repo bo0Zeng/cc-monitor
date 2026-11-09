@@ -167,7 +167,7 @@ pub(crate) fn plan_install(
     match flavor {
         Shell::PowerShell => {
             // 数据目录解不出（`CCM_DATA_DIR` 给了但不是绝对路径 / 找不到家目录）⇒ 拒，不往 `$PROFILE` 里写一个猜的路径。
-            // 这台后端按同一份规则推（`creds_core::store::monitor_data_dir`，常驻后端 hello 回显的那一对也是它推的）：
+            // 这台后端按同一份规则推（`platform::paths::data_home_from`，常驻后端 hello 回显的那一对也是它推的）：
             //   `$PROFILE` 在这台上，`__ccm_bind` 找的也是这台上 monitor 的那个目录。
             let dir = monitor_data_dir(home)
                 .ok_or_else(|| copy_text("rsProfileInstaller.ps.noDataDir", &[]))?;
@@ -178,13 +178,12 @@ pub(crate) fn plan_install(
     }
 }
 
-/// 这台机器上 monitor 的数据目录（`CCM_DATA_DIR` 优先，其次按 `home` 推；规则唯一一份在 `creds_core`）。
+/// 这台机器上 monitor 的数据目录（`CCM_DATA_DIR` 优先，其次按交进来的 `home` 推；推法只在 `platform::paths::data_home_from`）。
 fn monitor_data_dir(home: &str) -> Option<std::path::PathBuf> {
-    use creds_core::store::{monitor_data_dir, DATA_DIR_ENV};
-    monitor_data_dir(
-        std::env::var(DATA_DIR_ENV).ok().as_deref(),
-        Some(std::path::PathBuf::from(home)),
-    )
+    crate::platform::paths::data_home_from(&|k| match k {
+        relay_route_core::DATA_DIR_ENV => std::env::var(k).ok(),
+        _ => Some(home.to_string()),
+    })
 }
 
 /// 纯函数：**卸**完之后这份文件该长什么样。同 [`plan_install`]，POSIX 那一臂借远端那一份。

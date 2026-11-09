@@ -3,3 +3,4 @@
 glib RUSTSEC-2024-0429 VariantStrIter 本仓不用；glib 0.18 是 Tauri Linux 那一支（gtk-rs 0.18）带的，只能随 Tauri 换到 gtk 0.20+ 再升
 quick-xml RUSTSEC-2026-0194 只经 plist 进来：tauri-utils 那条只在构建时读自家配置，syntect 那条（文件窗口的高亮）只用内置的二进制语法包、不解 plist；读的都不是外来 XML。0.41 要等 plist 升
 quick-xml RUSTSEC-2026-0195 同上
+rsa RUSTSEC-2023-0071 只经 russh 进来：russh 0.65.x（含最新 0.65.1）把 rsa 钉在 =0.10.0-rc.18，升不动；本仓只在 ssh 连远端、且用户的登录密钥是 RSA 时签一次名做认证（客户端一侧，每条连接一次），对端隔着网络量不出 Marvin 要的那么多次私钥运算的时差；5.1.3 已带同一版。russh 换到 rsa 0.10.0 就升、删这行

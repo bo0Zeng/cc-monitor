@@ -1389,8 +1389,9 @@ fn a_pasted_text_waits_before_enter_and_a_typed_line_does_not() {
 /// 这里把「同量级」写成相差不超过 4 倍 —— 那是个约定，不是实测阈值。monitor 那一处不在后端够得着的包里，读它的源码比。
 #[test]
 fn the_field_cap_stays_in_the_same_range_as_the_monitor_command_cap() {
-    let shell =
-        guard_core::production_code(include_str!("../../../src/frontend/shell/src/launch.rs"));
+    let shell = guard_core::production_code(include_str!(
+        "../../../src/frontend/shell/src/platform/terminal.rs"
+    ));
     let at = shell
         .find("const MAX_REMOTE_CMD: cap_core::Cap = cap_core::Cap {")
         .expect("monitor 那一侧的命令串上限认不出了（改了写法就把这里一起改）");

@@ -28,7 +28,8 @@ fn answer_set_at(own: &Own, args: &Value) -> FileFaceAnswer {
 
 /// 那份文件在临时「家目录」下的位置（与生产同一个落点：`<家>/.cc-monitor/<FILE_NAME>`，期望手写）。
 fn file_in(home: &Path) -> PathBuf {
-    home.join(".cc-monitor").join(store::FILE_NAME)
+    home.join(".cc-monitor")
+        .join(super::super::creds::APIKEY_FILE_NAME)
 }
 
 /// 夹具 key：**结构样本**，不是任何真 key。
@@ -303,7 +304,11 @@ fn rows_that_cannot_be_a_route_segment_are_not_reported() {
 
 /// 写口的临时文件名是确定的（`<FILE_NAME>.<pid>.tmp`）⇒ 直接问那一个名字在不在，不遍历目录。
 fn assert_no_residue(dir: &Path) {
-    let tmp = dir.join(format!("{}.{}.tmp", store::FILE_NAME, std::process::id()));
+    let tmp = dir.join(format!(
+        "{}.{}.tmp",
+        super::super::creds::APIKEY_FILE_NAME,
+        std::process::id()
+    ));
     assert!(!tmp.exists(), "留下了临时文件：{}", tmp.display());
 }
 

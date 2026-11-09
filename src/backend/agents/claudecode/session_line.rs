@@ -1,10 +1,12 @@
 //! Claude 会话记录的一行里，通用层要的那几格怎么读（注册表 `TextFace.line` · `TextFace.line_of` · `TextFace.shape`）：
-//! - 会话级那几格（[`SessionLine`]：是谁说的一句 · 标题 · 后台会话 · 时刻 · cwd · 分叉来源）—— 历史清单那一行与全文搜索索引同一份读法；
-//! - 正文的形状（[`BodyShape`]：正文几段 · 折叠单元几个）—— 骨架索引按它粗估高度。
+//! - 会话级那几格（[`SessionLine`]：是谁说的一句 · 标题与谁起的 · 后台会话 · 时刻 · 消息 id · cwd · 分叉来源）—— 历史清单那一行与全文搜索索引同一份读法；
+//! - 正文的形状（[`BodyShape`]：正文几段 · 折叠单元几个）—— 骨架索引按它粗估高度；
+//! - 正文 · 工具内容住哪一格（注册表 `TextFace.main` · `TextFace.tool`）—— 全文搜索与会话内查找交整条记录过来取。
 //!
-//! 字段名（`type` · `sessionKind` · `aiTitle` · `forkedFrom` · `message.content` 的块类型）只住这里；
+//! 字段名（`type` · `uuid` · `timestamp` · `sessionKind` · `aiTitle` · `customTitle` · `forkedFrom` · `message.content` 的块类型）只住这里；
 //! 通用层的扫描器（`history::listing_scan::SessionScan`）只拿翻好的那一行累计，不认这一家的格式。
 
+use crate::agents::record::TitleBy;
 use crate::agents::{BodyShape, LineRole, SessionLine};
 use serde_json::Value;
 use std::borrow::Cow;
@@ -27,6 +29,25 @@ pub(crate) fn line_of(text: &str) -> Option<SessionLine> {
 /// 已解析好的一条 ⇒ 同 [`line_of`] 那几格（全文搜索那一路本来就整条解开了）。
 pub(crate) fn line_of_value(v: &Value) -> SessionLine {
     Head::of(v).line()
+}
+
+/// 一条记录的正文文本块（注册表 `TextFace.main`）：正文住 `message.content`。没有那一格 ⇒ 空串。
+pub(crate) fn main_of(v: &Value) -> String {
+    body_of(v)
+        .map(super::text::extract_text_blocks)
+        .unwrap_or_default()
+}
+
+/// 一条记录的工具内容（注册表 `TextFace.tool`）：同住 `message.content`。没有那一格 ⇒ 空串。
+pub(crate) fn tool_of(v: &Value, is_assistant: bool) -> String {
+    body_of(v)
+        .map(|c| super::text::extract_tool_text(c, is_assistant))
+        .unwrap_or_default()
+}
+
+/// 人说的 / 回话那两类记录的正文那一格。
+fn body_of(v: &Value) -> Option<&Value> {
+    v.get("message").and_then(|m| m.get("content"))
 }
 
 /// 一条记录正文的形状：`user` / `assistant` 在 `message.content`（串或块数组），`system` 在顶层 `content`。
@@ -69,9 +90,13 @@ struct Head<'a> {
     #[serde(borrow, default)]
     timestamp: LooseStr<'a>,
     #[serde(borrow, default)]
+    uuid: LooseStr<'a>,
+    #[serde(borrow, default)]
     cwd: LooseStr<'a>,
     #[serde(rename = "aiTitle", borrow, default)]
     ai_title: LooseStr<'a>,
+    #[serde(rename = "customTitle", borrow, default)]
+    custom_title: LooseStr<'a>,
     #[serde(rename = "forkedFrom", default)]
     forked_from: Option<Value>,
 }
@@ -84,13 +109,16 @@ impl<'a> Head<'a> {
             kind: s("type"),
             session_kind: s("sessionKind"),
             timestamp: s("timestamp"),
+            uuid: s("uuid"),
             cwd: s("cwd"),
             ai_title: s("aiTitle"),
+            custom_title: s("customTitle"),
             forked_from: v.get("forkedFrom").cloned(),
         }
     }
 
-    /// 翻成通用的那一行：时刻与分叉来源只认人说的 / 回话那两类记录；标题只认 agent 起的 `ai-title`：`custom-title` 是人在 Claude 里 `/rename` 写的，改名只认 monitor 那一格。
+    /// 翻成通用的那一行：时刻 · 消息 id · 分叉来源只认人说的 / 回话那两类记录；两种标题记录照实报、带上是谁起的
+    /// （`ai-title` 是 agent 起的，`custom-title` 是人在 Claude 里 `/rename` 写的；收不收是通用层的事）。
     fn line(self) -> SessionLine {
         let role = match self.kind.0.as_deref() {
             Some("user") => Some(LineRole::Said),
@@ -98,15 +126,14 @@ impl<'a> Head<'a> {
             _ => None,
         };
         let title = match self.kind.0.as_deref() {
-            Some("ai-title") => self.ai_title.0,
-            // 人在 Claude 里 `/rename` 写的那一条：不是这一行的标题（改名只认 monitor 那一格）。
-            Some("custom-title") => None,
+            Some("ai-title") => self.ai_title.0.map(|t| (t, TitleBy::Agent)),
+            Some("custom-title") => self.custom_title.0.map(|t| (t, TitleBy::User)),
             _ => None,
         };
         let talk = role.is_some();
         SessionLine {
             role,
-            title: title.map(Cow::into_owned),
+            title: title.map(|(t, by)| (t.into_owned(), by)),
             bg: self.session_kind.is("bg"),
             at_ms: self
                 .timestamp
@@ -114,6 +141,11 @@ impl<'a> Head<'a> {
                 .as_deref()
                 .filter(|_| talk)
                 .and_then(crate::common::time::parse_iso8601_ms),
+            id: self
+                .uuid
+                .0
+                .filter(|u| talk && !u.is_empty())
+                .map(Cow::into_owned),
             cwd: self.cwd.0.map(Cow::into_owned).filter(|c| !c.is_empty()),
             forked: self
                 .forked_from

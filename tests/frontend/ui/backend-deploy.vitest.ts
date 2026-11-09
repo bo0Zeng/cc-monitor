@@ -13,19 +13,27 @@ vi.mock("../../../src/frontend/ui/settings/interrupts", () => ({
 }));
 vi.mock("../../../src/frontend/ui/kit/dialog", () => ({ confirmDialog: vi.fn() }));
 vi.mock("../../../src/frontend/ui/ipc/commands", () => ({
-  commands: { deploy_remote_backend: vi.fn(), backend_stop: vi.fn(), backend_start: vi.fn() },
+  commands: { backend_stop: vi.fn(), backend_start: vi.fn() },
 }));
+vi.mock("../../../src/frontend/ui/ipc/chan-caller", async (orig) => {
+  const real = await orig<typeof import("../../../src/frontend/ui/ipc/chan-caller")>();
+  return { ...real, callTyped: vi.fn() };
+});
 vi.mock("../../../src/frontend/ui/remote-config", async (orig) => {
   const real = await orig<typeof import("../../../src/frontend/ui/remote-config")>();
   return { ...real, resolveRemoteConfigByOrigin: vi.fn() };
 });
 
-import { updateBackend, updateBackendOf } from "../../../src/frontend/ui/backend-deploy";
+import { uninstallBackend, updateBackend, updateBackendOf } from "../../../src/frontend/ui/backend-deploy";
+import { callTyped } from "../../../src/frontend/ui/ipc/chan-caller";
 import { askInterrupts, interruptRows } from "../../../src/frontend/ui/settings/interrupts";
 import { confirmDialog } from "../../../src/frontend/ui/kit/dialog";
 import { commands } from "../../../src/frontend/ui/ipc/commands";
 import { resolveRemoteConfigByOrigin } from "../../../src/frontend/ui/remote-config";
 import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
+
+/** 经通道问出去的那几问（问谁 · 帧命令 · 入参；期限不比）。 */
+const installs = () => vi.mocked(callTyped).mock.calls.map((c) => c.slice(0, 3));
 
 const CFG = { host: "192.0.2.9", user: "u", label: "devbox" } as unknown as Host;
 const ROW = { text: "1 个会话会断" } as never;
@@ -34,7 +42,7 @@ describe("backend-deploy：把这一版换到那台", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(askInterrupts).mockResolvedValue({} as never);
-    vi.mocked(commands.deploy_remote_backend).mockResolvedValue("已部署");
+    vi.mocked(callTyped).mockResolvedValue({ action: "deploy", said: "已部署", build: "b", os: "Linux" } as never);
   });
 
   it("什么都不会断 ⇒ 不弹框、直接部署，回那句结果；开工前叫 onStart", async () => {
@@ -43,7 +51,7 @@ describe("backend-deploy：把这一版换到那台", () => {
     expect(await updateBackend("devbox", "devbox", started)).toBe("已部署");
     expect(vi.mocked(askInterrupts).mock.calls).toEqual([["devbox"]]);
     expect(confirmDialog).not.toHaveBeenCalled();
-    expect(vi.mocked(commands.deploy_remote_backend).mock.calls).toEqual([[{ origin: "devbox" }]]);
+    expect(installs()).toEqual([[LOCAL, "deploy-install", { machine: "devbox" }]]);
     expect(started).toHaveBeenCalledTimes(1);
   });
 
@@ -52,7 +60,7 @@ describe("backend-deploy：把这一版换到那台", () => {
     vi.mocked(confirmDialog).mockResolvedValueOnce(false);
     const started = vi.fn();
     expect(await updateBackend("devbox", "devbox", started)).toBeNull();
-    expect(commands.deploy_remote_backend).not.toHaveBeenCalled();
+    expect(callTyped).not.toHaveBeenCalled();
     expect(started).not.toHaveBeenCalled();
     vi.mocked(confirmDialog).mockResolvedValueOnce(true);
     expect(await updateBackend("devbox", "devbox")).toBe("已部署");
@@ -61,7 +69,7 @@ describe("backend-deploy：把这一版换到那台", () => {
 
   it("部署失败 ⇒ 原样抛给调用方（各自在原处说）", async () => {
     vi.mocked(interruptRows).mockReturnValue([]);
-    vi.mocked(commands.deploy_remote_backend).mockRejectedValue(new Error("上传失败"));
+    vi.mocked(callTyped).mockRejectedValue(new Error("上传失败"));
     await expect(updateBackend("devbox", "devbox")).rejects.toThrow("上传失败");
   });
 
@@ -69,10 +77,10 @@ describe("backend-deploy：把这一版换到那台", () => {
     vi.mocked(interruptRows).mockReturnValue([]);
     vi.mocked(resolveRemoteConfigByOrigin).mockResolvedValueOnce({ name: "devbox", host: CFG });
     expect(await updateBackendOf("devbox", "devbox")).toBe("已部署");
-    expect(vi.mocked(commands.deploy_remote_backend).mock.calls).toEqual([[{ origin: "devbox" }]]);
+    expect(installs()).toEqual([[LOCAL, "deploy-install", { machine: "devbox" }]]);
     vi.mocked(resolveRemoteConfigByOrigin).mockResolvedValueOnce(null);
     await expect(updateBackendOf("gone", "gone")).rejects.toThrow();
-    expect(commands.deploy_remote_backend).toHaveBeenCalledTimes(1);
+    expect(callTyped).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -102,7 +110,7 @@ describe("backend-deploy：本机口上是上一版 ⇒ 停掉它、起这一版
     expect(vi.mocked(confirmDialog).mock.calls[0][0].rows).toEqual([ROW]);
     expect(order).toEqual([`stop ${LOCAL}`, `start ${LOCAL}`]);
     expect(started).toHaveBeenCalledTimes(1);
-    expect(commands.deploy_remote_backend).not.toHaveBeenCalled();
+    expect(callTyped).not.toHaveBeenCalled();
     expect(resolveRemoteConfigByOrigin).not.toHaveBeenCalled();
   });
 
@@ -116,5 +124,15 @@ describe("backend-deploy：本机口上是上一版 ⇒ 停掉它、起这一版
     vi.mocked(commands.backend_stop).mockRejectedValueOnce(new Error("没停掉"));
     await expect(updateBackend(LOCAL, "this-box")).rejects.toThrow("没停掉");
     expect(commands.backend_start).not.toHaveBeenCalled();
+  });
+});
+
+describe("backend-deploy：卸掉那台的后端", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("经通道问本机后端 `deploy-uninstall {machine}`，回后端写的那一句", async () => {
+    vi.mocked(callTyped).mockResolvedValue({ removed: true, said: "uninstalled-said" } as never);
+    expect(await uninstallBackend("devbox")).toBe("uninstalled-said");
+    expect(installs()).toEqual([[LOCAL, "deploy-uninstall", { machine: "devbox" }]]);
   });
 });

@@ -214,6 +214,9 @@ const CHANNELED: &[(&str, &str)] = &[
 /// 操作名集合要把它们算进来：下面那条两向判据的「前端那一侧」== [`CHANNELED`] ⊔ 本表。
 /// 每一条还要**真的**是后端登记的帧命令（从后端 `stream/inbound/` 生产段数，异源）、monitor 生产段里**零**字面量。
 const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
+    // 远端后端的装 · 卸（`src/frontend/ui/backend-deploy.ts`）：整趟在本机后端，界面只交那台的名字。
+    ("deploy-install", "取代壳那条 Tauri 命令（壳转交它带着的槽、拼 Keep 那一句）"),
+    ("deploy-uninstall", "取代壳那条 Tauri 命令（壳转交它带着的槽）"),
     // 别名页最上那一句（`src/frontend/ui/alias-reads.ts::readCcmOnPath`）：终端里敲 ccm 走到哪由那台后端现问、判、出句子。
     ("ccm-probe", "取代本机那条 Tauri 命令（壳自己起登录 shell 探 PATH、判、写那句话）；本机远端同一问"),
     ("ccm-user-path", "取代本机那三条 Tauri 命令（壳自己起 PowerShell 读 / 改用户级 PATH、拼那句话）"),
@@ -370,12 +373,6 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "开终端那一行（`ssh -t …` 外壳 ＋ PowerShell 载荷）：本机后端 `dial/terminal.rs` 渲（组请求走 `ssh-dial/machine.rs::request`）；\
          前端 `src/frontend/ui/terminal-open.ts` 与文件窗口 `filewin/shell.rs::open_terminal_here` 问，monitor 那一侧只开窗",
     ),
-    // ↗ 那一问：会话在这台电脑上的哪儿（本机会话与远端会话同一问）。
-    (
-        "session-window",
-        "窗口标签 · 进程链或原因：本机后端 `faces/session_window_face.rs` 答（远端会话它自己问那台）；前端 `src/frontend/ui/tab-session-actions.ts` 问，\
-         monitor 那一侧只照答找窗口、拉前",
-    ),
     // 端口转发三条：monitor 那三条 Tauri 命令与它手里的转发账退役，账住本机常驻后端。
     (
         "forward-list",
@@ -470,10 +467,10 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 钩子诊断：本机远端两条 Tauri 命令合成一条帧命令，界面直接问那台。
     (
         "hooks-diag",
-        "后端出成品 `{diagnosis, snippet, source}`（`observe/cc_bus_hooks.rs`，读那台自己的 `settings.json` ＋ stat，只读）；\
+        "后端出成品 `{diagnosis, snippet, source}`（`assets/cc_bus_hooks.rs`，读那台自己的 `settings.json` ＋ stat，只读）；\
          前端 `src/frontend/ui/cc-bus-hooks-reads.ts::fetchHooksReport` 问（扩展页 cc-bus 那一行每台一问）、`decodeHooksReport` 按恰好的键集合收，monitor 这一侧零发送点",
     ),
-    // 〔⑬「monitor 零 SSH」〕公钥推送：本机后端读 `.pub` · 组请求 · 经那台后端写或一次 exec，界面直接问本机。
+    // 〔⑬「monitor 零 SSH」〕公钥推送：本机后端读 `.pub` · 按名字找那台 · 一律问那台后端写（不在就没成），界面直接问本机。
     (
         "pubkey-push",
         "后端出成品 `{said}`（`assets/pubkey.rs`，金样 `pubkey-push.golden.json`）；前端 `src/frontend/ui/pubkey-push.ts::pushPublicKey` 问、原样交出\
@@ -672,7 +669,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // `session.tasks`。
     (
         "tasks-list",
-        "后端出成品 `{tasks}`（字段语义挪进后端 `tasks_query.rs::task_entry`），界面 `tasks-panel.ts::decodeTasks` 按形状收；\
+        "后端出成品 `{tasks}`（字段怎么读住适配层 `agents/claudecode/tasks.rs`，成品句住 `tasks_query.rs`），界面 `tasks-panel.ts::decodeTasks` 按形状收；\
          monitor 那条命令（`get_session_tasks`）与行解释（`parse_task_lines`）删了。\
 推送那一路也不经 monitor 问了：后端 `changed {tasks}` 帧 ⇒ 通道 `changed/tasks`，界面收到自己重问",
     ),
@@ -809,9 +806,9 @@ const SENT_BY_MONITOR_ONLY: &[(&str, usize, &str)] = &[
     ),
     (
         "files-stage-chunk",
-        1,
-        "分块传那一圈只在 `chunk_core::stage`（`cmd_wire::files::FilesStageChunkReq`）：文件窗口存盘与非标准起始目录上传 · \
-         聊天附件（`attach_stage.rs`，壳替界面走）都经它逐块送；界面只交字节，不说这一条",
+        2,
+        "分块传那一圈只在 `chunk_core::stage`（`cmd_wire::files::FilesStageChunkReq`）：文件窗口存盘与非标准起始目录上传（`chunk_upload.rs`）· \
+         聊天附件（`attach_stage.rs`，壳替界面走）两处各从类型取命令名交它逐块送；界面只交字节，不说这一条",
     ),
 ];
 
@@ -856,13 +853,14 @@ const HELD_BACK: &[(&str, &str)] = &[
 ];
 
 /// monitor 生产段（`src/frontend/shell/src/**/*.rs`，剥注释与 `#[cfg(test)]`）里，一条帧命令被点名几次：
-/// 它的字面量，加上照类型问时造它入参的那几处（`cmd_wire::Call` 那张表里名字是它的入参类型 `<类型> {` 那一形）。
+/// 它的字面量，加上照类型问时造它入参的那几处（`cmd_wire::Call` 那张表里名字是它的入参类型 `<类型> {` 那一形），
+/// 再加上从类型取命令名交给共用零件去发的那几处（`<类型 as cmd_wire::Call>::NAME`，如附件分块传交 `chunk_core::stage`）。
 fn monitor_literal_count(op: &str) -> usize {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let needle = format!("\"{op}\"");
     let built: Vec<String> = guard_core::call_reqs_named(op)
         .into_iter()
-        .map(|r| format!("{r} {{"))
+        .flat_map(|r| [format!("{r} {{"), format!("{r} as cmd_wire::Call>::NAME")])
         .collect();
     guard_core::scan_tree!(&dir, &["rs"])
         .into_iter()
@@ -1429,6 +1427,12 @@ const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
         "machine_names",
         1,
         "开文件窗口那一刻：问一次本机后端各台此刻的成品（「复制到另一台」那一列，一问，5 秒）",
+    ),
+    (
+        "lib.rs",
+        "bring_terminal_to_front",
+        1,
+        "↗ 拉前会话的终端窗口：问本机后端一次这条会话在这台电脑上的哪儿（`session-window`，一问，15 秒）",
     ),
     (
         "backend_control.rs",

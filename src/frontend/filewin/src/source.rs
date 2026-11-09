@@ -14,6 +14,8 @@
 //! 一屏的先后（四列 · 目录在前 · 反过来只反那一列）由 `files-ls` 的 `sort` 排好送来，窗口照摆、不重排。
 
 use copy_core::copy_text;
+/// 本机时区（偏移读不出 ⇒ 按 UTC 排）：后端与壳同一份。
+use platform_core::tz;
 
 /// 文件列表里的一行。**故意比 `SftpEntry` 窄** —— 列表只画得下这些。
 ///
@@ -156,7 +158,7 @@ impl std::ops::Deref for Listed {
 /// 变成永远走不到的死支 —— 而**死支上的错误文案与一条真判据长得一模一样**
 /// （本仓那条「判据不在执行链上就等于不存在」的同形）。走 ②，
 /// 「窗口看着本机」这句话**连写都写不出来**：编译器兜着，不靠任何一条判据兜。
-/// 形状上的先例逐字住 `src/frontend/shell/Cargo.toml`（`creds-core` 那条 `harden` feature）：
+/// 形状上的先例：凭据写半边只在后端链 `creds-core` 的 `harden`（壳不链它）：
 /// 「『backend 写不了这份文件』是**编译器**兜的，不是一条判据兜的」。
 ///
 /// 它装的是那台机器**寻址用的名字**（本机后端机器表里算好的那个名字，monitor 开窗时随种子交来）。
@@ -393,8 +395,6 @@ pub fn mtime_text_at(secs: u64, offset: i64, today: (i64, i64, i64)) -> MtimeTex
     }
 }
 
-use host_core::local_offset_at;
-
 /// 按**本机**的本地时间画 —— 只给**这台自己的事**用：窗口自己记下的时刻（保存于 · 断线于 · 一件传输收尾于）
 /// 与这台盘上的文件（上传撞名那张表「这台」那一格）。
 ///
@@ -404,8 +404,9 @@ pub fn mtime_text(secs: u64) -> MtimeText {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs() as i64);
-    let today = copy_core::civil_from_days((now + local_offset_at(now)).div_euclid(86_400));
-    mtime_text_at(secs, local_offset_at(secs as i64), today)
+    let today =
+        copy_core::civil_from_days((now + tz::offset_secs(now).unwrap_or(0)).div_euclid(86_400));
+    mtime_text_at(secs, tz::offset_secs(secs as i64).unwrap_or(0), today)
 }
 
 /// 那台机器答出来的 home 能不能当**起点**用。
@@ -752,7 +753,7 @@ fn now_stamp() -> String {
     let t = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX));
-    copy_core::detail::stamp(t, local_offset_at(t))
+    copy_core::detail::stamp(t, tz::offset_secs(t).unwrap_or(0))
 }
 
 /// 一趟 `call` 没成的复制详情：对端拒了、那台写了详情 ⇒ 原样（远端时「本机」那一行 monitor 的通道宿主已补）；

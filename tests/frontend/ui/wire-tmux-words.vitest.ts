@@ -30,9 +30,7 @@ const TMUX_ONLY: Record<string, string> = {
   "OpenField.ts:tmuxName": "起会话框上 tmux 会话名那一格",
   "ResumeWhere.ts:tmux": "恢复时放在哪的一形：tmux",
   "DataReport.ts:tmux": "这台装没装 tmux（数据页）",
-  "SessionWindow.ts:tmux": "↗ 切窗口要不要切 tmux 窗格",
   "Showing.ts:tmux": "会话在不在 tmux 里（出口据它给不给［在终端里打开］）",
-  "ProfileAccountShape.ts:tmux": "账号那一形的一形：tmux 里起",
   "ProfileForm.ts:ProfileTmuxPick": "启动配置里的 tmux 那一格",
   "ProfileForm.ts:tmux": "启动配置里的 tmux 那一格",
   "ProfileForm.ts:tmuxSize": "启动配置里新建 tmux 会话的尺寸",
@@ -49,9 +47,7 @@ const TMUX_ONLY: Record<string, string> = {
 };
 
 /** 命令说明串里许提 tmux 的：命令说明里的那一段 ⇒ 为什么。 */
-const TMUX_ONLY_SAID: Record<string, string> = {
-  "tmux 那一形": "订画面在 tmux 那一形多一个只读客户端，会触发用户自己的钩子（托管那一形没有）",
-};
+const TMUX_ONLY_SAID: Record<string, string> = {};
 
 const words = (s: string): string[] => [...new Set(s.match(/[A-Za-z0-9_-]*tmux[A-Za-z0-9_-]*/gi) ?? [])];
 

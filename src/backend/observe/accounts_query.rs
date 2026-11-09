@@ -21,23 +21,6 @@ pub(crate) fn is_safe_config_dir(p: &str) -> bool {
     acct_core::config_dir_ok(p)
 }
 
-// 宣告会话时判号与 watcher 盯账号库那几样：watcher 经这里拿（判号的本体住 `accounts::manage::library`）。
-pub(crate) use crate::accounts::manage::library::account_of_process;
-pub(crate) const CREDENTIALS_FILE: &str = acct_core::CREDENTIALS_NAME;
-
-/// 这台机器上的账号库目录：`$HOME/.cc-monitor/accounts`（契约常量 `relay_route_core::ACCOUNTS_DIR_REL`）。
-pub(crate) fn default_accts_dir() -> PathBuf {
-    match crate::platform::paths::home_dir() {
-        Some(h) => crate::platform::paths::home_join(&h, relay_route_core::ACCOUNTS_DIR_REL),
-        None => PathBuf::from(relay_route_core::ACCOUNTS_DIR_REL),
-    }
-}
-
-/// 这台那份账号清单在哪；watcher 盯着它、变了发 `changed {accounts}`。
-pub(crate) fn default_manifest_path() -> PathBuf {
-    default_accts_dir().join(relay_route_core::ACCOUNTS_MANIFEST_NAME)
-}
-
 /// 这台活会话里那一家说断开的一个 MCP 服务器（[`live_mcp_failed`] 的一项）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LiveMcpFailed {

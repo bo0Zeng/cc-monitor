@@ -1,18 +1,13 @@
 //! **会话的任务列表** —— `tasks-list` 那条帧命令的本体。
 //!
-//! # 它补的是哪一格
-//!
-//! monitor 那头的任务面板（`tasks-panel.ts`）此前只读**本机** `tasks/<sid>/*.json`
-//! 而远端会话的任务在远端机器上，
-//! 远端 tab 永远拿不到。⇒ 读这件事搬进后端：**本机后端与远端后端是同一个二进制**，
-//! monitor 按 origin 问那一台，本机也走这里（monitor 里那份读实现随之退役）。
+//! 任务住在会话所在那台机器上：界面（`tasks-panel.ts`）按 origin 问那一台的后端，本机也走这里。
 //!
 //! # 本层**不懂任务的字段**
 //!
-//! 只做四件事：走 `<tasks>/<sid>/`、只认 `<数字>.json`、剥 BOM、解成 **JSON 对象**
+//! 读那一层只做四件事：走 `<tasks>/<sid>/`、只认 `<数字>.json`、剥 BOM、解成 **JSON 对象**
 //! —— 然后按那个数字升序（= 创建顺序 = 终端里看到的顺序），把对象**原样**压成一行一个。
-//! 字段怎么读（`subject` / `status` / `blockedBy` …）只在 monitor 的 `TaskEntry` 一处：
-//! 后端再抄一份字段表，就是两份会各自漂的真相。
+//! 字段怎么读（`subject` / `status` / `activeForm` …）只在那一家的适配层一处（注册表 `LocalFace.tasks`，
+//! Claude 的在 `agents/claudecode/tasks.rs`）；本层照它交回的码写状态字与计数。
 //!
 //! # 跳过谁、为什么
 //!
@@ -40,26 +35,23 @@ pub(crate) const TASK_FILE_CAP: Cap = Cap {
     over: Over::SkipAndSay,
 };
 
-/// 任务列表的根：后端盯着的那一家（注册表 `LocalFace.tasks_dir`）。那一家没有任务列表 ⇒ 家目录下一个不会有任务的位置（读出零条）。
+/// 后端盯着的那一家的任务列表那一面（注册表 `LocalFace.tasks`）；那一家没有任务列表 ⇒ `None`。
+fn tasks_face() -> Option<crate::agents::TasksFace> {
+    crate::agents::tree_local_face().and_then(|f| f.tasks)
+}
+
+/// 任务列表的根：后端盯着的那一家的。那一家没有任务列表 ⇒ 家目录下一个不会有任务的位置（读出零条）。
 pub fn tasks_root(home: &Path) -> std::path::PathBuf {
-    crate::agents::tree_local_face()
-        .and_then(|f| f.tasks_dir)
-        .map_or_else(|| home.join(NO_TASKS), |f| f(home))
+    tasks_face().map_or_else(|| home.join(NO_TASKS), |f| (f.dir)(home))
 }
 
 /// 注册表里没有任务列表那一家时 [`tasks_root`] 指的那个名字（不建、不写，只读出零条）。
 const NO_TASKS: &str = ".no-task-dir";
 
-/// `sid` 只许是**一段**普通路径名 —— 它要被拼进 `<tasks>/<sid>/`，
-/// 空串 / 含分隔符 / `.` / `..` 都会让那一拼走出任务根。
+/// `sid` 只许是一个会话 id（[`shell_quote_core::session_id_ok`]：字母数字打头、只含字母数字与 `-`）——
+/// 它要被拼进 `<tasks>/<sid>/`，分隔符 · `.` · `..` 都会让那一拼走出任务根。
 fn check_sid(sid: &str) -> Result<(), Said> {
-    let bad = sid.is_empty()
-        || sid == "."
-        || sid == ".."
-        || sid.contains('/')
-        || sid.contains('\\')
-        || sid.contains('\0');
-    if bad {
+    if !shell_quote_core::session_id_ok(sid) {
         return Err(Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!("`sid` is not a session id: {sid:?}")),
@@ -133,37 +125,15 @@ pub(crate) fn session_task_lines(home: &Path, sid: &str) -> Result<Vec<String>, 
     Ok(out.into_iter().map(|(_, l)| l).collect())
 }
 
-/// `tasks-list` 回包 `tasks[]` 里的一格（线上形住 cmd-wire；字段语义只住这里，[`task_entry`] 从原文对象收）。
-pub(crate) use cmd_wire::tasks::{Task, TasksList};
+/// `tasks-list` 回包 `tasks[]` 里的一格（线上形住 cmd-wire；字段怎么读住那一家的适配层，注册表 `LocalFace.tasks`）。
+pub(crate) use cmd_wire::tasks::{Task, TaskStatus, TasksList};
 
-/// 一个任务对象 → **成品**（`tasks-list` 的 `tasks` 里的一格）；解不成任务 ⇒ `None`。**纯函数**。
+/// 一个任务对象 → **成品**（`tasks-list` 的 `tasks` 里的一格）：那一家读成码（`TasksFace::task`），状态字在这里照码写（[`status_text`]）；
+/// 那一家没有任务列表 · 解不成任务 ⇒ `None`。
 pub(crate) fn task_entry(v: &serde_json::Value) -> Option<Task> {
-    use serde_json::Value;
-    let s = |k: &str| v.get(k).and_then(Value::as_str).map(str::to_string);
-    let (id, subject, status) = (s("id")?, s("subject")?, s("status")?);
-    let opt = |k: &str| -> Option<Option<String>> {
-        match v.get(k) {
-            None | Some(Value::Null) => Some(None),
-            Some(Value::String(x)) => Some(Some(x.clone())),
-            Some(_) => None,
-        }
-    };
-    let list = |k: &str| -> Option<Vec<String>> {
-        match v.get(k) {
-            None => Some(Vec::new()),
-            Some(Value::Array(a)) => a.iter().map(|x| x.as_str().map(str::to_string)).collect(),
-            Some(_) => None,
-        }
-    };
-    Some(Task {
-        id,
-        subject,
-        status_text: status_text(&status),
-        status,
-        description: opt("description")?,
-        active_form: opt("activeForm")?,
-        blocks: list("blocks")?,
-    })
+    let mut t = (tasks_face()?.task)(v)?;
+    t.status_text = status_text(t.status);
+    Some(t)
 }
 
 /// 一个会话的任务**成品**：[`session_task_lines`] 读出的每个对象过 [`task_entry`]，解不成任务的跳过（`trace!`），
@@ -182,21 +152,21 @@ pub fn session_tasks(home: &Path, sid: &str) -> Result<Vec<Task>, Said> {
         .collect())
 }
 
-/// 一格任务的状态字（`Task::status_text`）：已知的四种各一句，别的值照「其他」。
-fn status_text(status: &str) -> String {
+/// 一格任务的状态字（`Task::status_text`）：已知的四种各一句，别的照「其他」。
+fn status_text(status: TaskStatus) -> String {
     match status {
-        "pending" => copy_text("tasksPanel.status.pending", &[]),
-        "in_progress" => copy_text("tasksPanel.status.inProgress", &[]),
-        "completed" => copy_text("runs.state.done", &[]),
-        "deleted" => copy_text("tasksPanel.status.failed", &[]),
-        _ => copy_text("tasksPanel.status.other", &[]),
+        TaskStatus::Pending => copy_text("tasksPanel.status.pending", &[]),
+        TaskStatus::InProgress => copy_text("tasksPanel.status.inProgress", &[]),
+        TaskStatus::Completed => copy_text("runs.state.done", &[]),
+        TaskStatus::Deleted => copy_text("tasksPanel.status.failed", &[]),
+        TaskStatus::Other => copy_text("tasksPanel.status.other", &[]),
     }
 }
 
 /// 一个会话的任务成品 → `tasks-list` 的回包：数各状态，写好 `chip`（完成数 / 总数）与 `hint`（完成 · 进行 · 未开始，未开始含别的值）；空清单 ⇒ 两句都空。
 pub fn tasks_list(tasks: Vec<Task>) -> TasksList {
-    let count = |s: &str| tasks.iter().filter(|t| t.status == s).count();
-    let (done, active) = (count("completed"), count("in_progress"));
+    let count = |s: TaskStatus| tasks.iter().filter(|t| t.status == s).count();
+    let (done, active) = (count(TaskStatus::Completed), count(TaskStatus::InProgress));
     let total = tasks.len();
     let (chip, hint) = if total == 0 {
         (String::new(), String::new())

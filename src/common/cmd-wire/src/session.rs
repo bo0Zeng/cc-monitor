@@ -635,6 +635,10 @@ pub struct Opened {
     #[serde(skip)]
     #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub host: Option<crate::frame::TerminalHost>,
+    /// 接上的是哪个终端（那台照宿主写好：「tmux 会话「名」」·「托管终端「名」」）；没落在终端里 ⇒ 缺。出口照摆、不按宿主挑字。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub at: Option<crate::cells::Words>,
     /// 要开终端跑的那一行（那台渲好的）：`window` ⇒ 起会话那一行（不跑就没起）或进目录那一行；其余 ⇒ 接进那个 tmux 会话那一行。
     pub line: Option<String>,
     /// 恢复 / 接回 ⇒ 那一条；新起 ⇒ 先定好的 sid（那一家不认先定 ⇒ `null`）。
@@ -1221,6 +1225,59 @@ pub struct HistoryTail<R = serde_json::Value> {
     pub eof: bool,
     /// 读到 `end` 之后存的那一份（下一次原样交回）。
     pub held: Held,
+}
+
+/// `session-window` 的入参：这条会话在这台电脑上的哪儿（点 ↗ 时壳问本机后端一次）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct SessionWindowReq {
+    /// 会话所在那台（本机 ⇒ `<local>`）。
+    pub machine: crate::Machine,
+    /// 会话 id。
+    pub sid: crate::Sid,
+}
+
+/// 进程链的一级（自下而上：开着那条连接 / 显示会话的那个进程在前）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct ChainLink {
+    /// 进程号。
+    pub pid: u32,
+    /// 进程名。
+    pub name: String,
+    /// 启动时刻（系统原值；拿不到 ⇒ 0）。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub start: u64,
+}
+
+/// `session-window` 的回包：显示它的终端带的窗口标签 · 往上的进程链，或写好的那一张（为什么没有链）；
+/// 另带壳窗口那一跳没成时每一种结局码的那一张（`missed`），壳照自己的结局码挑一张、不写字。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct SessionWindow {
+    /// 显示它的终端带的窗口标签（`<shell 进程号>-<起始时刻>`），最近动静在前；没带 ⇒ 空。
+    pub labels: Vec<String>,
+    /// 这台上显示它的那个终端进程往上的进程链（自下而上）；空 ⇔ 有 `face`。
+    pub chain: Vec<ChainLink>,
+    /// 链为什么是空的：写好的那一张（壳按标签也没找到窗口时摆它）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub face: Option<crate::front::FrontFace>,
+    /// 壳窗口那一跳没成的每一种结局码 ⇒ 写好的那一张（每个码恰好一张）。
+    pub missed: Vec<crate::front::MissedFace>,
 }
 
 #[cfg(test)]

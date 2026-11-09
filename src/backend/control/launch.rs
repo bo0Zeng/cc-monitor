@@ -51,7 +51,7 @@
 use crate::platform::child::Child;
 use copy_core::copy_text;
 
-/// 载荷 / 名字 / cwd 的长度上限。取值同 monitor 侧 `launch.rs::MAX_REMOTE_CMD` 的量级 ——
+/// 载荷 / 名字 / cwd 的长度上限。取值同 monitor 侧 `platform/terminal.rs::MAX_REMOTE_CMD` 的量级 ——
 /// 那是「一条人能读的启动命令」的宽松上界，不是安全阈值。
 const MAX_FIELD_BYTES: cap_core::Cap = cap_core::Cap {
     bytes: 8 * 1024,
@@ -152,20 +152,8 @@ pub struct LaunchOutcome {
 /// 失败：码 ＋ 那一句 ＋ 下层原话（tmux 的 stderr · 起不来时的系统报错，进复制详情）。
 use crate::common::said::Said;
 
-/// `=name:` —— tmux 的**精确匹配**目标形式。
-///
-/// # 别把尾冒号「简化」掉
-///
-/// 裸 `-t <名>` 不是精确匹配：tmux 依次按「精确名 → 名字**开头** → glob」解析。
-/// 本仓踩过（`pickFreshTmuxName` 刻意造 `cc-<sid8>-2/-3`）：只有 `sib-2` 存在时
-/// `kill-session -t sib` **杀掉 `sib-2` 且 rc=0**。
-/// 而 `=` 前缀只在 target-**session** 解析路径上被识别；`send-keys` 收的是 target-**pane**，
-/// `=name` 会直接 `can't find pane`。尾冒号把串强制成 `session:` 形态，`=` 才落对位置。
-///
-/// argv 直传，**不引号化**（引号化了就成了名字的一部分）。精确匹配形只住这里（判据 `exact_target_is_the_exact_match_shape`）。
-pub(crate) fn exact_target(name: &str) -> String {
-    format!("={name}:")
-}
+// `=name:` 精确目标只一处拼法（`INVARIANTS §31a`）：住 `common::tmux_utf8`。
+use crate::common::tmux_utf8::exact_target;
 
 /// 已按类型解好的入参 ⇒ **形状校验**（值域）。见模块头注：这不是安全边界。
 /// 帧面（typed 分派解入参）与 `ccm --tmux` 那条路（[`super::ccm`] 直接造 [`LaunchReq`]）都过这一道。
@@ -181,7 +169,7 @@ pub fn parse_request(req: LaunchReq) -> Result<LaunchRequest, Said> {
         height,
         client,
     } = req;
-    // 〔DUP3 §5 ⑦〕Gate 1 与结束 · 抓屏同一份（`kill::admit_existing_name` → `gate_rules`）；长度照旧。
+    // 〔DUP3 §5 ⑦〕Gate 1 与 `ccm --attach` 同一份（`kill::admit_existing_name` → `gate_rules`）；长度照旧。
     super::kill::admit_existing_name(&name)?;
     check_len("name", &name)?;
 
@@ -402,12 +390,7 @@ pub(crate) fn ran(cmd: Child, args: &[&str]) -> Result<Ran, Said> {
             ok: out.status.success(),
             stderr: said_of(&out.stderr),
         }),
-        Err(e) => {
-            let (code, said) = e.into_cmd_said("no_tmux", |why| {
-                copy_text("reason.tmux.startFailed", &[("why", why)])
-            });
-            Err(crate::wire::spec::fail(code, said))
-        }
+        Err(e) => Err(crate::host::tmux::tmux_unavailable(e)),
     }
 }
 

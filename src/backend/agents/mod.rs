@@ -244,12 +244,65 @@ pub struct AskIn {
     pub input: serde_json::Value,
 }
 
-/// 「允许，且以后不再问」那一条建议。
+/// 「允许，且以后不再问」那一条建议：适配层认出的码 ＋ 那一家的原样（答的时候原样交回）。写成人话只在 [`AskSuggestion::said`]。
 #[derive(Debug, Clone, PartialEq)]
 pub struct AskSuggestion {
-    /// 写成人话的那一段（「本次会话里允许访问 /a/b」）。
-    pub text: String,
+    /// 记在哪一层。
+    pub scope: SuggestScope,
+    /// 放宽的是什么。
+    pub rule: SuggestRule,
     pub raw: serde_json::Value,
+}
+
+/// 「以后不再问」记在哪一层。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SuggestScope {
+    /// 只这一次会话。
+    Session,
+    /// 本机这个项目（不进仓的那一份设置）。
+    Local,
+    /// 这个项目。
+    Project,
+    /// 这个用户。
+    User,
+}
+
+/// 「以后不再问」放宽的是什么（只这几种放宽的；删规则 · 删目录那种不给）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SuggestRule {
+    /// 允许访问这几个目录（原样）。
+    Dirs(Vec<String>),
+    /// 切到自动接受编辑。
+    AcceptEdits,
+    /// 切到别的那一档（档名原样）。
+    Mode(String),
+    /// 允许这几条工具规则（`工具(内容)` 原样）。
+    Allow(Vec<String>),
+}
+
+impl AskSuggestion {
+    /// ★ 写成人话的那一段（唯一一处，「本次会话里允许访问 /a/b」）：答题块「以后不再问」那一颗照它写。
+    pub fn said(&self) -> String {
+        use copy_core::copy_text;
+        let scope = match self.scope {
+            SuggestScope::Session => copy_text("beAsk.scope.session", &[]),
+            SuggestScope::Local => copy_text("beAsk.scope.local", &[]),
+            SuggestScope::Project => copy_text("beSessionCommands.scope.project", &[]),
+            SuggestScope::User => copy_text("beAsk.scope.user", &[]),
+        };
+        match &self.rule {
+            SuggestRule::Dirs(dirs) => copy_text(
+                "beAsk.rule.dirs",
+                &[("dirs", &dirs.join(", ")), ("scope", &scope)],
+            ),
+            SuggestRule::AcceptEdits => copy_text("beAsk.rule.acceptEdits", &[("scope", &scope)]),
+            SuggestRule::Mode(m) => copy_text("beAsk.rule.mode", &[("mode", m), ("scope", &scope)]),
+            SuggestRule::Allow(rules) => copy_text(
+                "beAsk.rule.rules",
+                &[("rules", &rules.join(", ")), ("scope", &scope)],
+            ),
+        }
+    }
 }
 
 /// 人的答案（通用形，适配层翻成那一家的决定）。
@@ -845,10 +898,19 @@ pub struct LocalFace {
     pub pidfile_dir: fn(&Path) -> PathBuf,
     /// 小写后的 cmdline 说这个进程是不是这一家的一条会话（判活那一判，[`CmdlineSays`]；怎么用见 `history::live_table::add_time_verdict`）。
     pub cmdline_may_be_agent: fn(&str) -> CmdlineSays,
-    /// 家目录 ⇒ 任务列表的根（其下每个会话一个目录）。`None` ＝ 这一家没有任务列表。
-    pub tasks_dir: Option<fn(&Path) -> PathBuf>,
+    /// 任务列表那一面（[`TasksFace`]）。`None` ＝ 这一家没有任务列表。
+    pub tasks: Option<TasksFace>,
     /// 进程状态文件（已解析）⇒ 它说的那一份事实（[`ProcFact`]）。通用层只读这一份，不认那一家的字段名。
     pub(crate) proc_of: fn(&serde_json::Value) -> ProcFact,
+}
+
+/// 一家的任务列表：住在哪 · 一个任务文件（已解析的对象）怎么读。通用层只走目录、照码写字，不认那一家的字段名。
+#[derive(Clone, Copy)]
+pub struct TasksFace {
+    /// 家目录 ⇒ 任务列表的根（其下每个会话一个目录）。
+    pub dir: fn(&Path) -> PathBuf,
+    /// 一个任务对象 ⇒ 一格任务（`status_text` 留空，核心照 `status` 写）；解不成任务 ⇒ `None`。
+    pub task: fn(&serde_json::Value) -> Option<cmd_wire::tasks::Task>,
 }
 
 /// 一个进程的 cmdline 说它是不是这一家的一条会话（[`LocalFace::cmdline_may_be_agent`] 答）。
@@ -1001,78 +1063,6 @@ impl PlanTitleExt for PlanTitle {
             approved: Words(copy_core::copy_text("interactive.plan.approved", &[])),
             kept: Words(copy_core::copy_text("interactive.plan.kept", &[])),
         }
-    }
-}
-
-/// 过程一步的结果那一句（形状在 `cmd-wire`，写字在这里）。
-pub trait StepResultExt {
-    /// ★ 右侧那一句（唯一一处）。`read` ＝ 这是读文件那一类的结果（`lines` 才说成「读了几行」；命令输出几行 · 搜索命中几行不说）。
-    fn written(self, read: bool) -> Self;
-    /// ★ 配上调用时刻之后那一句（唯一一处）：带耗时的只有两形 —— 失败（`text` 还是「失败」那一句）⇒ 「失败 · 用时」，
-    /// 都说不上（`text` 空）⇒ 只写用时；配不上（`None`）· 别的那几形 ⇒ 不动（读不到就不写，不猜）。
-    fn timed_by(self, ms: Option<u64>) -> Self;
-}
-
-impl StepResultExt for StepResult {
-    fn written(mut self, read: bool) -> Self {
-        // 结果块抬头的尾巴：失败了（没批准的不算）⇒ 有退出码写退出码，否则「出错」。
-        self.error = (!self.ok && !self.rejected).then(|| {
-            crate::common::cells::Words(match self.exit_code {
-                Some(code) => {
-                    copy_core::copy_text("stream.result.exitCode", &[("n", &code.to_string())])
-                }
-                None => copy_core::copy_text("stream.result.error", &[]),
-            })
-        });
-        let text = if self.rejected {
-            copy_core::copy_text("stream.step.rejected", &[])
-        } else if !self.ok {
-            copy_core::copy_text("runs.state.failed", &[])
-        } else if let Some(a) = &self.answer {
-            // 提问 / 计划答了什么（卡片底行那一句）。
-            match a {
-                Answer::Approved => copy_core::copy_text("interactive.done.approved", &[]),
-                Answer::Picked { options } => copy_core::copy_text(
-                    "interactive.done.picked",
-                    &[("option", &options.join(" / "))],
-                ),
-            }
-        } else {
-            let diff: Vec<String> = [
-                self.added.filter(|n| *n > 0).map(|n| format!("+{n}")),
-                self.removed.filter(|n| *n > 0).map(|n| format!("−{n}")),
-            ]
-            .into_iter()
-            .flatten()
-            .collect();
-            if !diff.is_empty() {
-                diff.join(" ")
-            } else if let Some(n) = self.lines.filter(|_| read) {
-                copy_core::copy_text("stream.step.lines", &[("n", &n.to_string())])
-            } else if let Some(n) = self.files {
-                copy_core::copy_text("stream.step.files", &[("n", &n.to_string())])
-            } else {
-                String::new()
-            }
-        };
-        self.text = crate::common::cells::Words(text);
-        self
-    }
-
-    fn timed_by(mut self, ms: Option<u64>) -> Self {
-        let Some(ms) = ms else { return self };
-        let dur = copy_core::short_duration(ms);
-        let text = if self.rejected {
-            return self;
-        } else if !self.ok && self.text.0 == copy_core::copy_text("runs.state.failed", &[]) {
-            copy_core::copy_text("stream.step.failedFor", &[("dur", &dur)])
-        } else if self.ok && self.text.0.is_empty() {
-            dur
-        } else {
-            return self;
-        };
-        self.text = crate::common::cells::Words(text);
-        self
     }
 }
 
@@ -1269,7 +1259,7 @@ pub fn run_of_record(kind: &str, v: &serde_json::Value) -> Option<RunMark> {
 /// 通用层（全局搜索 · 会话内查找 · 历史摘录 · 用户输入列表 · 骨架索引）经 [`main_text`] · [`tool_text`] · [`user_text_of`] · [`human_speech`] 够它，不按名字够。
 #[derive(Clone, Copy)]
 pub(crate) struct TextFace {
-    /// 一条记录的 `message.content` ⇒ 正文文本块。
+    /// 一条已解析的记录 ⇒ 正文文本块（正文住哪一格是那一家的格式知识）。
     pub(crate) main: fn(&serde_json::Value) -> String,
     /// 同上 ⇒ 工具内容（`is_assistant`：工具入参 · 思考；否则：工具结果）。
     pub(crate) tool: fn(&serde_json::Value, bool) -> String,
@@ -1290,12 +1280,14 @@ pub(crate) struct TextFace {
 pub struct SessionLine {
     /// 这一条是人那一侧的一句 / 回话；别的记录（标题 · 元数据）⇒ `None`。
     pub role: Option<LineRole>,
-    /// 它是一条标题记录 ⇒ 那个标题。
-    pub title: Option<String>,
+    /// 它是一条标题记录 ⇒ 那个标题与谁起的（收不收由通用层 `history::search_rules::names_session` 一处判）。
+    pub title: Option<(String, record::TitleBy)>,
     /// 它说这是后台分身会话。
     pub bg: bool,
     /// 记录时刻（毫秒；只有人说的 / 回话那两类才给）。
     pub at_ms: Option<i64>,
+    /// 这一条的消息 id（只有人说的 / 回话那两类才给；空串当没有）。搜索命中 · 会话内查找的落点照它跳。
+    pub id: Option<String>,
     /// 它写着的工作目录（空串当没有）。
     pub cwd: Option<String>,
     /// 分叉来源（源会话 id, 分叉处的消息 id；只有人说的 / 回话那两类才给）。
@@ -1347,14 +1339,14 @@ fn text_face(kind: &str) -> Option<TextFace> {
     record_face(kind).and_then(|r| r.text)
 }
 
-/// `kind` 那一家怎么抽正文 —— 通用层够它的唯一入口。那一家答不了 ⇒ 空串（不搜、不摘）。
-pub fn main_text(kind: &str, content: &serde_json::Value) -> String {
-    text_face(kind).map_or_else(String::new, |t| (t.main)(content))
+/// `kind` 那一家怎么抽一条记录的正文 —— 通用层够它的唯一入口。那一家答不了 ⇒ 空串（不搜、不摘）。
+pub fn main_text(kind: &str, v: &serde_json::Value) -> String {
+    text_face(kind).map_or_else(String::new, |t| (t.main)(v))
 }
 
-/// `kind` 那一家怎么抽工具内容。那一家答不了 ⇒ 空串。
-pub fn tool_text(kind: &str, content: &serde_json::Value, is_assistant: bool) -> String {
-    text_face(kind).map_or_else(String::new, |t| (t.tool)(content, is_assistant))
+/// `kind` 那一家怎么抽一条记录的工具内容。那一家答不了 ⇒ 空串。
+pub fn tool_text(kind: &str, v: &serde_json::Value, is_assistant: bool) -> String {
+    text_face(kind).map_or_else(String::new, |t| (t.tool)(v, is_assistant))
 }
 
 /// `kind` 那一家判这条记录是谁说的。那一家答不了 ⇒ `None`。
@@ -1673,6 +1665,11 @@ pub(crate) fn record_kind_among(registry: &[Adapter], path: &Path) -> Option<&'s
         .or_else(|| record_tree_kind_among(registry))
 }
 
+/// 一份会话记录的 sid：照它归的那一家（[`record_kind_of`]）的文件命名（[`RecordFace::sid`]）。通用层拿 sid 只经它。
+pub fn sid_of(path: &Path) -> Option<String> {
+    record_face_of(path).and_then(|r| (r.sid)(path))
+}
+
 /// 这份会话记录归的那一家的记录解释面（[`record_kind_of`]）。
 pub fn record_face_of(path: &Path) -> Option<RecordFace> {
     record_face_among(REGISTRY, path)
@@ -1757,7 +1754,7 @@ pub(crate) fn followed_among(registry: &[Adapter], tree_home: &Path) -> Vec<Foll
 }
 
 /// 找项目目录时记录开头至多读多少字节。带它的那一条实测在前一 KiB 内；上界是给几百 MB 的大会话的：不整读。
-pub(crate) const HEAD_CAP: cap_core::Cap = cap_core::Cap {
+pub const HEAD_CAP: cap_core::Cap = cap_core::Cap {
     bytes: 1 << 20,
     over: cap_core::Over::SkipAndSay,
 };
@@ -1832,6 +1829,11 @@ pub struct FootprintFace {
     pub env: &'static [footprint_decl::UnmanagedEnv],
     pub under_agent_home: fn(&str) -> Option<&str>,
     pub user_settings: fn(&Path) -> [PathBuf; 2],
+    /// 用户级设置文件里「会话停下时」那一种钩子：解析出来的那一份 ⇒ 登记在下面的每条命令（cc-bus 钩子诊断按它认装没装）。
+    pub stop_hook_commands: fn(&serde_json::Value) -> Vec<String>,
+    /// 一条命令 ⇒ 要并进那份文件的（键路径, 那一项），并法是往那条路径上的数组末尾加一项
+    /// （只算不写：诊断给的要加的内容 · 待办的 diff 都照它）。
+    pub stop_hook_slots: fn(&str) -> Vec<(Vec<&'static str>, serde_json::Value)>,
 }
 
 /// 一份身份文件的原生根：没设账号环境变量时它住哪。
@@ -1919,12 +1921,15 @@ pub fn accounts_face_among(registry: &[Adapter], kind: &str) -> Option<AccountsF
 
 /// `kind` 那一家家目录 `agent_home` 下用户级的那份设置文件（足迹面 `user_settings` 的第一份）。那一家没有足迹面 ⇒ `None`。
 pub fn user_settings_of(kind: &str, agent_home: &Path) -> Option<PathBuf> {
-    adapter_among(REGISTRY, kind)
-        .and_then(|a| a.footprint)
-        .map(|f| {
-            let [user, _] = (f.user_settings)(agent_home);
-            user
-        })
+    footprint_face(kind).map(|f| {
+        let [user, _] = (f.user_settings)(agent_home);
+        user
+    })
+}
+
+/// 一家的足迹面（没有 ⇒ `None`）。
+pub fn footprint_face(kind: &str) -> Option<FootprintFace> {
+    adapter_among(REGISTRY, kind).and_then(|a| a.footprint)
 }
 
 /// 注册表里带足迹面的那几家（按注册表顺序）。

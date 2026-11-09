@@ -56,7 +56,10 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
       report.asked.push(a);
       return report.fail ? Promise.reject(report.fail) : Promise.resolve(report.value);
     },
-    open_log_dir: () => Promise.resolve(),
+    os_open: (w: { kind: string; path?: string }) => {
+      if (w.kind === "path") opened(w.path);
+      return Promise.resolve();
+    },
     clipboard_write: async (a: { text: string }) => (await import("../../../test-support/clipboard-fake")).viaFake(a),
   },
 }));
@@ -69,7 +72,6 @@ vi.mock("../../../../src/frontend/ui/ipc/chan-caller", async (importOriginal) =>
   },
 }));
 vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
-vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: opened }));
 
 import { DiagnosticsSection } from "../../../../src/frontend/ui/settings/diagnostics-section";
 import { restartReasons, __resetRestartNoticeForTests } from "../../../../src/frontend/ui/settings/restart-notice";

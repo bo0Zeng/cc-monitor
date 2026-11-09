@@ -40,7 +40,7 @@ import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { RotationStrategiesReply } from "../../../src/frontend/ui/generated/RotationStrategiesReply";
 import type { RotationViewReply } from "../../../src/frontend/ui/generated/RotationViewReply";
 
-const LIST: RotationStrategiesReply = { strategies: [{ id: "按权重轮换", description: "第一句说明\n后面还有一段", summary: "第一句说明", rev: "h:1", inUse: [], forNew: true, tzUnknown: false, hand: false }], forNew: "按权重轮换", oldScripts: 0 };
+const LIST: RotationStrategiesReply = { strategies: [{ id: "按权重轮换", description: "第一句说明\n后面还有一段", summary: "第一句说明", rev: "h:1", remove: { enabled: false, why: "夹具·新会话在用这份" }, forNew: true, tzUnknown: false, hand: false }], forNew: "按权重轮换", oldScripts: 0 };
 const VIEW: RotationViewReply = {
   now: 1,
   nowText: "00:00",
@@ -154,7 +154,7 @@ describe("整屏：提示 · 策略一行 · 顺序（与设置页拆开）", ()
 });
 
 describe("顺序：命令与回包", () => {
-  it("★ 勾 ⇒ rotation-temp off；拖到第一格 ⇒ move 到第 0 格，碰上用不了（unusable）⇒ 滑回，顺序上方写那一句（为什么照后端写的）", async () => {
+  it("★ 勾 ⇒ rotation-temp off；拖到第一格 ⇒ move 到第 0 格，碰上用不了（unusable）⇒ 滑回，顺序上方写那一句（整句是后端写的）", async () => {
     const m = mountSessionRotation("<local>", "s1");
     document.body.replaceChildren(m.root);
     await m.refresh();
@@ -168,7 +168,7 @@ describe("顺序：命令与回包", () => {
     document.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 10, clientY: 10 }));
     await settle();
     expect(calls.filter((c) => c.name === "rotation-temp").at(-1)?.req).toEqual({ sid: "s1", op: { move: { account: "work", to: 0 } } });
-    expect(m.root.querySelector('[data-rot-order] [role="status"]')?.textContent).toBe(copyText("rot.acct.refused", { account: "work", why: "后端写的那一句" }));
+    expect(m.root.querySelector('[data-rot-order] [role="status"]')?.textContent, "被拒那一句照回包 said 原样摆").toBe("那台说：unusable");
   });
 
   it("★ 拿着一行时来推送 ⇒ 先不读；放下回包成了 ⇒ 读一次、照后端画", async () => {

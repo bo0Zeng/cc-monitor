@@ -63,9 +63,16 @@ pub enum AttachReply {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         deflate: bool,
     },
-    /// 拒了：原因是闭集的常量（后端 `wire/listen.rs`）。
+    /// 拒了：原因是闭集的常量（[`REFUSE_MALFORMED`] · [`REFUSE_ABSENT`] · [`REFUSE_UNREACHABLE`]）。
     Refused { reason: String },
 }
+
+/// 拒绝的理由（闭集，后端写 · 两端读同一份）：常驻后端认不得 attach 行（比这一形早 ⇒ 客户端当旧）。
+pub const REFUSE_MALFORMED: &str = "malformed-attach";
+/// 小中继（`--resident-attach`）断开：没人在听（刚起的还没绑上 / 起来就退了）⇒ 客户端去 `--resident-ensure`。
+pub const REFUSE_ABSENT: &str = "absent";
+/// 小中继断开：别的原因（不归本人 · 路径坏了）。再接也一样。
+pub const REFUSE_UNREACHABLE: &str = "unreachable";
 
 impl AttachReply {
     /// 一整行（带换行）。

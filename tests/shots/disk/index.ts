@@ -8,7 +8,7 @@
 
 export const HOME = "/home/user";
 const ACCTS = ".cc-monitor/accounts";
-/** 按量号那几把 key 落的那份（`creds_core::store::FILE_NAME`，数据目录下）。 */
+/** 按量号那几把 key 落的那份（声明表 `relay_route_core::APIKEY_CREDENTIALS_FILE`，数据目录下）。 */
 export const CREDS = ".cc-monitor/apikey-credentials.json";
 
 /**

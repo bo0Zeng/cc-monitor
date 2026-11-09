@@ -89,14 +89,6 @@ fn dir_key(d: &str, home: Option<&std::path::Path>) -> String {
     }
 }
 
-/// 目录末一段（组名缺省用它分开同一条别名的几行）。
-fn last_seg(d: &str) -> &str {
-    d.trim_end_matches(['/', '\\'])
-        .rsplit(['/', '\\'])
-        .next()
-        .unwrap_or(d)
-}
-
 /// 别名合下来的标签页分组名（`--tab-group`）；没写 · 合不下来 ⇒ `None`。
 fn alias_group(book: &Book, alias: &str) -> Option<String> {
     match profile::resolve(book, alias, &[]).ok()?.parsed {
@@ -114,7 +106,13 @@ fn group_of(r: &RowEdit, rows: &[RowEdit], book: &Book) -> String {
     if rows.iter().filter(|o| o.alias == r.alias).count() > 1 {
         copy_text(
             "beSessionSet.group.withDir",
-            &[("group", &base), ("dir", last_seg(&r.cwd))],
+            &[
+                ("group", &base),
+                (
+                    "dir",
+                    plain_path_core::last_segment(&r.cwd).unwrap_or_default(),
+                ),
+            ],
         )
     } else {
         base

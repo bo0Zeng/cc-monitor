@@ -508,3 +508,49 @@ pub fn mcp_look(kind: &str) -> crate::agents::McpLook {
     let now_ms = crate::common::time::now_ms();
     crate::agents::McpLook { homes, now_ms }
 }
+
+/// 一个要登录的 MCP 服务器：名字 · 哪一段（user / project / local）· 在哪几个号里（没设账号的那一份不出名字）·
+/// 项目级 · 本地级那一条所在的项目目录（用户级 ⇒ `None`）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpNeed {
+    pub name: String,
+    pub scope: &'static str,
+    pub login_in: Vec<String>,
+    pub project: Option<String>,
+}
+
+/// ★ MCP 需登录只在这一处判（待办 · 需手动都照它，各自成行）：几份读面 —— 用户级一份（`None`）＋ 活会话所在项目各一份（`Some(目录)`）
+/// ⇒ 要登录的那几条。项目那一份里的用户级不重复算（用户级那一份已经说了）；项目级 · 本地级那一条带上它所在的项目。
+pub fn needs_login_of(reads: &[(Option<String>, crate::agents::McpRead)]) -> Vec<McpNeed> {
+    reads
+        .iter()
+        .flat_map(|(dir, read)| {
+            read.entries
+                .iter()
+                .filter(move |e| {
+                    e.status == crate::agents::McpStatus::NeedsLogin
+                        && !(dir.is_some() && e.scope == "user")
+                })
+                .map(move |e| McpNeed {
+                    name: e.name.clone(),
+                    scope: e.scope,
+                    login_in: e.login_in.clone(),
+                    project: dir.clone(),
+                })
+        })
+        .collect()
+}
+
+/// 这台 `kind` 那一家要登录的 MCP（[`needs_login_of`] 的口径）：`projects` 是这台此刻活着的会话所在的项目（宿主递进来：
+/// 判活住 history，accounts 不认识它）。那一家不认得 MCP ⇒ 空。
+pub fn needs_login(kind: &str, projects: &[String]) -> Vec<McpNeed> {
+    let look = mcp_look(kind);
+    let dirs = std::iter::once(None).chain(projects.iter().cloned().map(Some));
+    let reads: Vec<(Option<String>, crate::agents::McpRead)> = dirs
+        .filter_map(|dir| {
+            let read = crate::agents::mcp_read(kind, dir.as_deref().map(Path::new), &look)?;
+            Some((dir, read))
+        })
+        .collect();
+    needs_login_of(&reads)
+}

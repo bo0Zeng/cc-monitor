@@ -18,27 +18,26 @@ pub fn host_relay(tap: std::sync::Arc<dyn crate::relay::TapPort>, own: Own) -> S
     crate::accounts::upstream_select::host_relay(
         books(),
         crate::accounts::quota::adoptions_at(),
+        history_ports(),
         tap,
         own,
     )
 }
 
-/// 交给登录盯防的那一份：账号库里每个号的配置目录（`accounts::quota::nodes::watch_logins_here` 起时递进去）。
-pub fn account_dirs() -> crate::accounts::quota::nodes::AccountDirs {
-    std::sync::Arc::new(|home| {
-        crate::accounts::manage::scan::book_at(home)
-            .map(|b| {
-                b.named()
-                    .filter_map(|a| a.config_dir.clone())
-                    .map(Into::into)
-                    .collect()
-            })
-            .unwrap_or_default()
-    })
+/// 交给换号的 history 那两口（生产那一份，唯一一处）：判活照活会话表（pidfile 里的会话 id ＋ 进程还是同一个）· 需手动的铃。
+pub(crate) fn history_ports() -> crate::accounts::upstream_select::rotate::HistoryPorts {
+    crate::accounts::upstream_select::rotate::HistoryPorts {
+        live: std::sync::Arc::new(crate::history::live_table::live_here),
+        ring: std::sync::Arc::new(crate::history::needs_changed::ring),
+    }
 }
 
-use crate::accounts::quota::ledger::{self, Ledger};
-use crate::accounts::quota::rotation::{self, RotationStore};
+/// 交给登录盯防的那一份：账号库里每个号的配置目录（`accounts::quota::nodes::watch_logins_here` 起时递进去）。
+pub fn account_dirs() -> crate::accounts::quota::nodes::AccountDirs {
+    std::sync::Arc::new(crate::accounts::manage::scan::config_dirs)
+}
+
+use crate::accounts::quota::ledger;
 use crate::accounts::quota::setup::uses::Setup;
 use crate::accounts::quota::show;
 use crate::accounts::upstream_select::rotate::Hop;
@@ -57,29 +56,20 @@ pub(crate) struct Ctx {
 }
 
 impl Ctx {
-    /// 这台的生产那一份：账本 · 额度账（现读盘）· 家 · 账号库 · key 表都从真环境取。
+    /// 这台的生产那一份：账本 · 额度账（现读盘，住数据目录）· 家 · 账号库 · key 表都从真环境取。
+    /// 只读那几问也用它，不拿写句柄：数据目录照读那一侧的推法（`platform::paths::data_home`，与启动时造写句柄同一个出处）。
     pub(crate) fn here() -> Self {
-        let get = |k: &str| std::env::var(k).ok();
-        let quota = Arc::new(Ledger::at(ledger::path_from(&get)));
-        let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into));
         let rows = crate::accounts::upstream_select::file_face::machine_rows();
-        let store = Arc::new(RotationStore::at(rotation::path_now()));
-        let setup = Arc::new(Setup::of(Arc::clone(&store)));
-        let adoptions: crate::accounts::quota::rules::AdoptionsAt = {
-            let s = Arc::clone(&setup);
-            Arc::new(move |_| Arc::clone(&s) as Arc<dyn crate::accounts::quota::rules::Adoptions>)
-        };
+        let hop = Hop::here(
+            crate::platform::paths::data_home().as_deref(),
+            crate::platform::paths::home_dir(),
+            books(),
+            &crate::accounts::quota::adoptions_at(),
+            history_ports(),
+        );
         Self {
-            setup,
-            hop: Hop::new(
-                store,
-                &adoptions,
-                quota,
-                home,
-                books(),
-                Arc::new(crate::history::live_table::live_here),
-                None,
-            ),
+            setup: Arc::new(Setup::of(Arc::clone(&hop.store))),
+            hop,
             rows: Box::new(move |agent, a| {
                 (agent == crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT
                     && rows.iter().any(|r| r == a))

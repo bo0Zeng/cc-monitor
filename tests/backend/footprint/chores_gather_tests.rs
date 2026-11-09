@@ -114,7 +114,10 @@ fn 待办里的钥匙只有只许直通那一把() {
                 installed: false,
                 path: file.display().to_string(),
                 text: settings.clone(),
-                items: vec![("Stop".into(), serde_json::json!({"hooks": []}))],
+                items: vec![(
+                    vec!["hooks".into(), "Stop".into()],
+                    serde_json::json!({"hooks": []}),
+                )],
             }),
             mcp_login: vec![],
             sshd: None,

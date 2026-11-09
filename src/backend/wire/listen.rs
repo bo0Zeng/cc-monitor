@@ -26,7 +26,7 @@
 
 use crate::platform::child_env::RESIDENT;
 use cap_core::{Cap, Over};
-use cmd_wire::attach::{AttachLine, AttachReply};
+use cmd_wire::attach::{AttachLine, AttachReply, REFUSE_MALFORMED};
 
 /// 目录独占锁抢不到（已有一个常驻后端在听）的退出码。**与「起不来」区分开**：
 /// 宿主看到它就知道「已经有人在听了」，该去连而不是再起一个。
@@ -42,15 +42,6 @@ pub const ATTACH_LINE: Cap = Cap {
     bytes: 8 * 1024,
     over: Over::Reject,
 };
-
-/// 拒绝的理由（闭集）：`refusal_line` 只拼这里的常量，没有任何一段外来字节
-/// 会进到那行 JSON 里（由 `refusal_reasons_are_a_closed_set` 钉住）。
-/// 常驻后端自己只发这一个：attach 行形状不对。
-pub const REFUSE_MALFORMED: &str = "malformed-attach";
-/// 小中继（`--resident-attach`）断开：没人在听（刚起的还没绑上 / 起来就退了）。monitor 隔一会儿再接。
-pub const REFUSE_ABSENT: &str = "absent";
-/// 小中继断开：别的原因（不归本人 · 路径坏了）。再接也一样。
-pub const REFUSE_UNREACHABLE: &str = "unreachable";
 
 /// `--resident-call` 那一行 stdin：问哪条帧命令 ＋ 它的入参。发的一方（`remote_ask::ask_resident`）与收的一方（`control/resident.rs::call`）同一个类型。
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -108,7 +99,7 @@ pub fn mode_from(get: &dyn Fn(&str) -> Option<String>) -> Result<Mode, String> {
     }
 }
 
-/// 拒绝那一行。`reason` 只许是本模块的常量。
+/// 拒绝那一行。`reason` 只许是 `cmd_wire::attach` 那三个理由常量：没有任何一段外来字节会进到那行 JSON 里（由 `refusal_reasons_are_a_closed_set` 钉住）。
 pub fn refusal_line(reason: &'static str) -> String {
     AttachReply::Refused {
         reason: reason.to_string(),

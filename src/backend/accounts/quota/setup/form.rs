@@ -489,8 +489,10 @@ pub fn apply(
             let c = segments_cell(form, key)?;
             let (mut now, _) = day_of(c, settings, *row, window);
             if let Some(i) = at {
-                let &(a, b, _) = now.get(*i).ok_or_else(|| format!("no segment {i}"))?;
-                now = day_paint(&now, a, b, None);
+                if *i >= now.len() {
+                    return Err(format!("no segment {i}"));
+                }
+                now.remove(*i);
             }
             if let Some(g) = seg {
                 let (from, to) = match (day_minute(&g.from), day_minute(&g.to)) {
@@ -502,7 +504,10 @@ pub fn apply(
                         ))
                     }
                 };
-                now = day_paint(&now, from, to, Some(g.v));
+                now = match at {
+                    Some(_) => day_cut_in(&now, from, to, g.v),
+                    None => day_paint(&now, from, to, g.v),
+                };
             }
             put_window(top, key, *row, window, &now)?;
         }
@@ -562,43 +567,52 @@ pub fn apply(
     Ok(out)
 }
 
-/// 分段上刷一截（[`RotEdit::Seg`] 用）：在 `segs` 上把 `[from, to)` 刷成 `v`（`null` ⇒ 删掉那一截）；`from > to` ⇒ 跨午夜，刷两截。
-/// 回照先后排好、连着一样的并成一段的新分段。只是分段的算术，不是换号的想法。
+/// 分段上放进一截 `[from, to)` 值 `v`（[`RotEdit::Seg`] 带 `at` 改第 at 段用；不带 `at` 的经 [`day_paint`] 再并）：
+/// 别的段让出那一截（`from > to` ⇒ 跨午夜，两截），其余边界原样留着、跟新值一样的邻段也不并：段数照旧，往下照号改得到。
+/// 回照先后排好、互不重叠的新分段。
+pub(crate) fn day_cut_in(
+    segs: &[(u64, u64, f64)],
+    from: u64,
+    to: u64,
+    v: f64,
+) -> Vec<(u64, u64, f64)> {
+    let (from, to) = (from.min(DAY_MIN), to.min(DAY_MIN));
+    let new: Vec<(u64, u64)> = if from <= to {
+        vec![(from, to)]
+    } else {
+        vec![(0, to), (from, DAY_MIN)]
+    };
+    let new: Vec<(u64, u64)> = new.into_iter().filter(|(a, b)| a < b).collect();
+    let mut out: Vec<(u64, u64, f64)> = new.iter().map(|&(a, b)| (a, b, v)).collect();
+    for &(a, b, x) in segs {
+        let mut left = vec![(a, b)];
+        for &(c, d) in &new {
+            left = left
+                .into_iter()
+                .flat_map(|(a, b)| [(a, b.min(c)), (a.max(d), b)])
+                .filter(|(a, b)| a < b)
+                .collect();
+        }
+        out.extend(left.into_iter().map(|(a, b)| (a, b, x)));
+    }
+    out.sort_by_key(|s| s.0);
+    out
+}
+
+/// 分段上刷一截（[`RotEdit::Seg`] 不带 `at` 用）：照 [`day_cut_in`] 放进去，再把连着一样的并成一段。
+/// 只是分段的算术，不是换号的想法。
 pub(crate) fn day_paint(
     segs: &[(u64, u64, f64)],
     from: u64,
     to: u64,
-    v: Option<f64>,
+    v: f64,
 ) -> Vec<(u64, u64, f64)> {
-    let n = DAY_MIN as usize;
-    let mut day: Vec<Option<f64>> = vec![None; n];
-    for &(a, b, x) in segs {
-        let (a, b) = (a.min(DAY_MIN) as usize, b.min(DAY_MIN) as usize);
-        if a < b {
-            day[a..b].iter_mut().for_each(|m| *m = Some(x));
-        }
-    }
-    let (from, to) = (from.min(DAY_MIN) as usize, to.min(DAY_MIN) as usize);
-    let mut paint = |a: usize, b: usize| day[a..b].iter_mut().for_each(|m| *m = v);
-    if from <= to {
-        paint(from, to);
-    } else {
-        paint(from, n);
-        paint(0, to);
-    }
     let mut out: Vec<(u64, u64, f64)> = Vec::new();
-    let mut i = 0;
-    while i < n {
-        let Some(x) = day[i] else {
-            i += 1;
-            continue;
-        };
-        let mut j = i + 1;
-        while j < n && day[j] == Some(x) {
-            j += 1;
+    for s in day_cut_in(segs, from, to, v) {
+        match out.last_mut() {
+            Some(l) if l.1 == s.0 && l.2 == s.2 => l.1 = s.1,
+            _ => out.push(s),
         }
-        out.push((i as u64, j as u64, x));
-        i = j;
     }
     out
 }

@@ -48,13 +48,9 @@ pub fn new_session_id() -> String {
 
 // ── 落盘 ─────────────────────────────────────────────────────────────────
 
-/// 这台的落点：`<家>/rotation.json`（家同额度账）。
-pub(crate) fn path_from(get: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
-    super::ledger::path_from(get).map(|p| p.with_file_name(FILE_NAME))
-}
-
-pub fn path_now() -> Option<PathBuf> {
-    path_from(&|k| std::env::var(k).ok())
+/// 落点：数据目录 `data` 底下的 `rotation.json`（同额度账那一层；文件名只在这里拼）。
+pub fn path_under(data: &Path) -> PathBuf {
+    data.join(FILE_NAME)
 }
 
 /// 本进程最后见过的盘上那一份（按路径）。别的进程写了 ⇒ 戳对不上 ⇒ 重扫时比对它发节点。

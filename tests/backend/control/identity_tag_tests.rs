@@ -73,26 +73,7 @@ fn a_sid_outside_the_session_id_domain_is_rejected() {
     }
 }
 
-/// ★ 空 pane 目标必须挡住 —— 实测 `-t ''` 会静默解析成「某个会话」。
-#[test]
-fn an_empty_pane_target_is_rejected() {
-    assert!(
-        !pane_is_safe(""),
-        "空目标放行 ⇒ sid 会被打到一个碰巧的会话上"
-    );
-    assert!(!pane_is_safe("%"), "只有 % 没有数字也不是 pane id");
-}
-
-#[test]
-fn only_percent_digits_is_a_pane_id() {
-    assert!(pane_is_safe("%0"));
-    assert!(pane_is_safe("%12"));
-    for bad in ["0", "$0", "@0", "%a", "%1x", " %1", "%1 "] {
-        assert!(!pane_is_safe(bad), "{bad:?} 不该被当成 pane id");
-    }
-}
-
-/// 一个读不到环境的 pid ⇒ 结局是 `PaneUnknown`，一次 tmux 都不起（`pane_of` 在 `gate::probe` 之前就给出结局；录下的调用为零）。
+/// 一个读不到环境的 pid ⇒ 结局是 `PaneUnknown`，一次 tmux 都不起（`pane_of` 在 `gate::probe_with` 之前就给出结局；录下的调用为零）。
 /// 读不到 ≠ 不在 tmux 里：容器那一格（`session_added.container`）不许把它报成 `"none"`。
 #[test]
 fn a_pid_without_tmux_pane_never_reaches_tmux() {

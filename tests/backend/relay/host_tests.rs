@@ -120,6 +120,10 @@ fn rotating(creds: &std::path::Path) -> crate::accounts::upstream_select::Rotati
         std::sync::Arc::new(|_| Default::default()),
         own_of(creds),
         crate::accounts::quota::adoptions_at(),
+        crate::accounts::upstream_select::rotate::HistoryPorts {
+            live: std::sync::Arc::new(std::collections::BTreeSet::new),
+            ring: std::sync::Arc::new(|| {}),
+        },
     )
 }
 

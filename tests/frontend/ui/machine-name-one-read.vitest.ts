@@ -60,7 +60,7 @@ beforeAll(() => {
 });
 
 function headText(t: Tab): string {
-  const host = { active: () => t, openCwd: vi.fn(), terminal: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), reconnect: vi.fn(), planMark: () => null, menuItem: () => null, displayItems: () => [], tabOf: () => null, switchTo: vi.fn(), switching: NO_SWITCHING };
+  const host = { active: () => t, openCwd: vi.fn(), front: vi.fn(), view: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), reconnect: vi.fn(), planMark: () => null, menuItem: () => null, displayItems: () => [], tabOf: () => null, switchTo: vi.fn(), switching: NO_SWITCHING };
   const h = new SessionHead(host);
   document.body.appendChild(h.el);
   h.render(NOW);

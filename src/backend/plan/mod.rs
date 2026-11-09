@@ -36,13 +36,12 @@
     )
 )]
 
-// 包里照旧写 `crate::plan::…` · `crate::observe::…` · `crate::history::…` · `crate::agents::…` ·
+// 包里照旧写 `crate::plan::…` · `crate::history::…` · `crate::agents::…` ·
 // `crate::plugin::…` · `crate::wire::…` · `crate::common::…` · `crate::platform::…`。
 extern crate self as plan;
 use backend_agents as agents;
 use backend_common as common;
 use backend_history as history;
-use backend_observe as observe;
 use backend_platform as platform;
 use backend_plugin as plugin;
 use backend_wire as wire;

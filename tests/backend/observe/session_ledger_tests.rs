@@ -617,12 +617,12 @@ fn a_reconnectable_announced_as_unattachable_cannot_be_attached() {
     for f in l.on_tmux(&both, None) {
         if let Frame::SessionLeft(s) = f {
             assert_eq!(s.face.life, WireLife::Reconnectable, "{}", s.sid);
-            attach.insert(s.sid.clone(), s.face.can.terminal.far.clone());
+            attach.insert(s.sid.clone(), s.face.can.view.clone());
         }
     }
     assert_eq!(
         attach.get("a"),
-        Some(&crate::wire::TermWay::No {
+        Some(&crate::wire::CanView::No {
             why: crate::common::cells::Words(copy_core::copy_text(
                 "sessionState.unattachable.why",
                 &[]
@@ -632,7 +632,7 @@ fn a_reconnectable_announced_as_unattachable_cannot_be_attached() {
     assert!(
         matches!(
             attach.get("b"),
-            Some(crate::wire::TermWay::Here {
+            Some(crate::wire::CanView::Yes {
                 open: crate::wire::TermOpen::Attach { .. },
                 ..
             })

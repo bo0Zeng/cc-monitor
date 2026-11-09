@@ -1479,7 +1479,7 @@ fn the_closed_set_declares_a_ccm_landing_site_on_this_machine_too() {
     );
     assert!(
         !remote.is_empty(),
-        "远端那条 `ccm` 落点没了 —— 那是 `sftp::deploy_remote_backend` 推过去的那份，\n\
+        "远端那条 `ccm` 落点没了 —— 那是本机后端 `deploy-install` 推过去的那份，\n\
              这里只**加**本机那条，不许把远端那条顺手弄丢（实得本机 {local:?}）"
     );
     // 两条不许是同一个路径：同一个串出现两次说明有人把 host 抄错了，
@@ -1602,7 +1602,8 @@ struct Claim {
 
 /// **唯一一份**对拍表。覆盖由下面那条性质的第 ① 步钉死（多一条少一条都红）。
 fn claims() -> Vec<Claim> {
-    const DEPLOY: &str = include_str!("../../../src/frontend/shell/src/deploy.rs");
+    // 远端后端的装 · 卸整趟在本机后端（界面直接问 `<local>` 的 `deploy-install` · `deploy-uninstall`）：口住 `src/backend/control/deploy_plan.rs`。
+    const DEPLOY: &str = include_str!("../../../src/backend/control/deploy_plan.rs");
     // 别名块（`ccm` 的装 / 卸口）进了那台后端：`src/backend/assets/aliases/block.rs`。
     const PROFILE_INSTALLER: &str = include_str!("../../../src/backend/assets/aliases/block.rs");
     // 项目 `.mcp.json` 的写进了那台后端（D 组收进后端）：装 / 卸口住 `src/backend/assets/mcp_edit.rs`。
@@ -1617,7 +1618,7 @@ fn claims() -> Vec<Claim> {
     // 用户级 `PATH` 那一段：加 · 撤两段脚本住 `src/backend/platform/shell/powershell.rs`（`ccm-user-path` 跑它们）。
     const USER_PATH: &str = include_str!("../../../src/backend/platform/shell/powershell.rs");
     let deploy = || ImplHome {
-        addr: "deploy.rs",
+        addr: "control/deploy_plan.rs",
         text: DEPLOY,
     };
     let profile = || ImplHome {
@@ -1677,12 +1678,12 @@ fn claims() -> Vec<Claim> {
             tool: "backend",
             home: Some(deploy()),
             install: Some(ImplSite {
-                addr: "deploy.rs::deploy_remote_backend",
-                definition: "pub async fn deploy_remote_backend(origin: String) -> Result<String, cmd_wire::failed::Failed> {",
+                addr: "control/deploy_plan.rs::install",
+                definition: "pub(crate) async fn install(\n    req: &DeployInstallReq,\n    home: &std::path::Path,\n    host: &dyn deploy::Place,\n    on: &(dyn Fn(deploy::Step) + Send + Sync),\n) -> Result<Installed, Said> {",
             }),
             uninstall: Some(ImplSite {
-                addr: "deploy.rs::uninstall_remote_backend",
-                definition: "pub async fn uninstall_remote_backend(origin: String) -> Result<String, cmd_wire::failed::Failed> {",
+                addr: "control/deploy_plan.rs::uninstall",
+                definition: "pub(crate) async fn uninstall(\n    req: &DeployUninstallReq,\n    home: &std::path::Path,\n    host: &dyn deploy::Place,\n) -> Result<Uninstalled, Said> {",
             }),
         },
         Claim {
@@ -1786,8 +1787,8 @@ fn fn_name_of(definition: &str) -> &str {
 /// **两个方向都判**：
 ///   · 多报（声明可装 / 可卸而实现不在）⇒ 右边 `false`、左边 `true` ⇒ 红；
 ///   · 少报（实现在而字段写着不行）⇒ 反过来 ⇒ 红。
-///     少报**不是假想** —— 本条落地当场逮到 `remote-daemon`：`uninstall_remote_backend`
-///     是设置面板上的按钮，而字段写着 `uninstallable: false`。
+///     少报**不是假想** —— 本条落地当场逮到 `remote-daemon`：「卸载后端」是设置面板上的按钮，
+///     而字段写着 `uninstallable: false`。
 ///
 /// **`None` 那一侧靠负向扫描兜底**（不然「今天没有卸口」这句话永远没人核）：
 /// 那个工具的家里出现一个**没人认领**的 `fn uninstall… / remove… / strip… / purge…`
@@ -1821,10 +1822,10 @@ fn every_tool_declares_install_and_uninstall_as_the_implementations_really_are()
     // ②b 反向自检：负向扫描在**真树**上不是零命中的（零命中 ⇒ 那一半是空真）。
     assert!(
         guard_core::fn_names_starting_with(
-            include_str!("../../../src/frontend/shell/src/deploy.rs"),
+            include_str!("../../../src/backend/control/deploy_plan.rs"),
             &["uninstall"]
         )
-        .contains(&"uninstall_remote_backend".to_string()),
+        .contains(&"uninstall".to_string()),
         "负向扫描在真树上零命中 —— 它此刻无效，先查剥法别改断言"
     );
 

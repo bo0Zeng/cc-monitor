@@ -1,6 +1,6 @@
 //! 请求信封里的 `view`（出口的声明）：登记处统一解、统一拒、统一投影。帧面与 CLI 面同一处。
 //!
-//! 每条命令的应答里**哪几处住着哪件成品**登记在 [`PLACES`]（与 [`super::caps`] 的总期限表同一种「按命令名一张表」）；
+//! 每条命令的应答里**哪几处住着哪件成品**写在它的登记行上（`CommandSpec::places`）；
 //! 声明点了这条命令不出的成品 ⇒ `bad_args`（不静默当没说）。没登记的命令带 `view` 一样拒。
 //! 挑格去格的本体在 `faces/project.rs`（只那一处）。
 
@@ -9,28 +9,9 @@ use crate::faces::project::{parse_view, project_reply, View};
 use crate::wire::Request;
 use serde_json::Value;
 
-/// 命令 → 应答里成品住的那几处 `(路径, 成品名)`（外层的成品排在它里面那件之前）。路径写法同格目录，空串 ＝ 整份应答。
-pub(crate) const PLACES: &[(&str, &[(&str, &str)])] = &[
-    (
-        "history-read",
-        &[("rows[]", "read_row"), ("rows[].record", "record")],
-    ),
-    (
-        "history-tail",
-        &[("rows[]", "read_row"), ("rows[].record", "record")],
-    ),
-    ("history-page", &[("lines[].record", "record")]),
-    ("history-lines", &[("lines[].record", "record")]),
-    ("history-run", &[("rows[].record", "record")]),
-    ("history-facts", &[("", "facts")]),
-];
-
-/// 这条命令的应答里成品住的那几处（没登记 ⇒ 空）。
-pub(crate) fn places_of(cmd: &str) -> &'static [(&'static str, &'static str)] {
-    PLACES
-        .iter()
-        .find(|(name, _)| *name == cmd)
-        .map_or(&[], |(_, p)| p)
+/// 这条命令的应答里成品住的那几处：它登记行上的 `places`（不认得的命令 ⇒ 空）。
+fn places_of(cmd: &str) -> &'static [(&'static str, &'static str)] {
+    super::lookup(cmd).map_or(&[], |s| s.places)
 }
 
 /// 一条请求的投影：校验过的声明 ＋ 这条命令的那几处。没带声明 ⇒ 原样。
@@ -95,7 +76,7 @@ pub(crate) fn plan_for(cmd: &str, view: &Value) -> Result<Plan, Said> {
     })
 }
 
-/// 推送帧 kind → 帧里成品住的那几处（同 [`PLACES`] 的写法；空串 ＝ 整帧就是那件成品）。这条流的声明只许点这几件。
+/// 推送帧 kind → 帧里成品住的那几处（同登记行上 `places` 的写法；空串 ＝ 整帧就是那件成品）。这条流的声明只许点这几件。
 pub(crate) const STREAM_PLACES: &[(&str, &[(&str, &str)])] = &[
     ("line", &[("record", "record")]),
     ("session_added", &[("", "session_added")]),

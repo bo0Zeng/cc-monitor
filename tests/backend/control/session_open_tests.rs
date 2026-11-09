@@ -560,6 +560,14 @@ fn look_attaches_without_starting_anything() {
         (Landed::Idle, Some("idle"), None)
     );
     assert!(o.line.unwrap().ends_with("--attach idle"));
+    assert_eq!(
+        o.at.map(|w| w.0),
+        Some(copy_core::copy_text(
+            "sessionOpen.at.tmux",
+            &[("name", "idle")]
+        )),
+        "接上的那个终端照宿主写好：tmux 会话"
+    );
     let o = rig
         .open(json!({ "what": { "kind": "look", "session": "x" } }))
         .unwrap();
@@ -597,6 +605,13 @@ fn look_attaches_a_hosted_terminal_by_handle() {
         );
         let line = o.line.unwrap();
         assert!(line.ends_with("-- --attach h-1"), "{line}");
+        let at = o.at.map(|w| w.0).unwrap_or_default();
+        assert_eq!(
+            at,
+            copy_core::copy_text("sessionOpen.at.managed", &[("name", "box-cc")]),
+            "接上的是托管终端：照宿主写，不说 tmux"
+        );
+        assert!(!at.contains("tmux"), "{at}");
         let o = rig
             .open(json!({ "what": { "kind": "look", "session": "box-cc" } }))
             .unwrap();

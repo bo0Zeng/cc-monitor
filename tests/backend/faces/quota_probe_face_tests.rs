@@ -79,7 +79,10 @@ impl Home {
                 Arc::new(Ledger::at(Some(self.root.join(ledger::FILE_NAME)))),
                 Some(self.root.clone()),
                 library,
-                Arc::new(std::collections::BTreeSet::new),
+                crate::accounts::upstream_select::rotate::HistoryPorts {
+                    live: Arc::new(std::collections::BTreeSet::new),
+                    ring: Arc::new(|| {}),
+                },
                 None,
             ),
             rows: Box::new(|_, a| (a == "api").then_some(true)),

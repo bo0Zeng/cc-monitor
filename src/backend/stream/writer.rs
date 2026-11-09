@@ -139,7 +139,7 @@ async fn flush_out<W: tokio::io::AsyncWrite + Unpin>(out: &mut W) -> bool {
 
 /// Serialize one frame to its wire line and write it (no flush).
 /// 回：写了几个字节。
-/// 复制详情里那一行时刻的空位按这条流看的那一台的时区填好（应答 · 推送都过这里；`stamp_detail_slots`）；
+/// 复制详情里那一行时刻的空位按这条流看的那一台的时区填好（应答 · 推送都过这里；`common::time::fill_at`）；
 /// 推送帧照这条流的出口声明裁格（`view`；应答的 kind 不在声明的住处表里，原样）。
 async fn write_frame<W: tokio::io::AsyncWrite + Unpin>(
     out: &mut W,
@@ -149,7 +149,7 @@ async fn write_frame<W: tokio::io::AsyncWrite + Unpin>(
 ) -> std::io::Result<usize> {
     let line = to_line_viewed(frame, view)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-    let line = crate::stamp_detail_slots(&line, tz);
+    let line = crate::common::time::fill_at(&line, tz);
     out.write_all(line.as_bytes()).await?;
     Ok(line.len())
 }

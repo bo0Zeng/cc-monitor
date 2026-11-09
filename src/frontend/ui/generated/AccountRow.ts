@@ -76,6 +76,6 @@ authKind: string, authReady: boolean,
  */
 selectable: boolean, 
 /**
- * 号色（`--acct-c0..c7` 第几格，账号库里的事实），界面只画它。
+ * 号色（`--acct-c0..c7` 第几格，账号库里的事实），界面只画它；库里没给 ⇒ 缺（画中性）。
  */
-color: number, };
+color?: number, };

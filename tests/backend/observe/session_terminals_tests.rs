@@ -384,6 +384,42 @@ fn a_hosted_session_is_shown_only_by_the_terminals_attached_to_it() {
     );
 }
 
+/// 本机那一问（`session-window`，拉前）对托管终端里的会话：显示它的是附着上来的那几扇（链从它们起），不是 claude 自己
+/// （它挂在托管口的伪终端上，往上没有窗口）。读不出那个终端的环境（Windows 读不到别的进程的环境）⇒ 照样交它的进程号、终端那几格空着，
+/// 壳沿链找窗口；交不出进程号的那一端 ⇒ 不算；一个都没有 ⇒ 没终端连着（本机照它给［在终端里打开］）；问托管口没问成 ⇒ `failed`。
+#[test]
+fn locally_a_hosted_session_is_shown_by_the_terminals_attached_to_it() {
+    let read = |pid: u32, at: u64| {
+        (pid != 99).then(|| Terminal {
+            ssh: Some(SshConnection {
+                client_addr: "192.0.2.5".into(),
+                client_port: u16::try_from(pid).unwrap(),
+                server_addr: "192.0.2.9".into(),
+                server_port: 22,
+            }),
+            activity: Some(at),
+            window: None,
+        })
+    };
+    let blank = |at: u64| Terminal {
+        ssh: None,
+        activity: Some(at),
+        window: None,
+    };
+    assert_eq!(
+        hosted_here(Ok(vec![(Some(5001), 8), (None, 7), (Some(99), 6)]), read),
+        Ok(Here::By {
+            seen: vec![(5001, read(5001, 8).unwrap()), (99, blank(6))],
+            tmux: false,
+        }),
+        "附着端的进程号按交来的先后（最近动静在前）"
+    );
+    assert_eq!(hosted_here(Ok(vec![]), read), Ok(Here::Detached));
+    assert_eq!(hosted_here(Ok(vec![(None, 7)]), read), Ok(Here::Detached));
+    let failed = hosted_here(Err(std::io::Error::other("托管口没答")), read).unwrap_err();
+    assert_eq!(failed.code.as_deref(), Some("failed"));
+}
+
 /// 窗口标签（`WindowLabel`）：`<进程号>-<起始时刻>` 解一次成两个数，线上写回同一串；`Terminal.window` 上形状不对 ⇒ 不带。
 #[test]
 fn a_window_label_is_a_pid_and_a_start_or_nothing() {

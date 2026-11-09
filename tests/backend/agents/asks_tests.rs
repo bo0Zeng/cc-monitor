@@ -1,7 +1,7 @@
 //! 待答请求的成品：每一种的选项按什么序 · 带不带附言 · 题目与选项的编号；答题 hook 没挂上的原因码往返与那一句；
 //! 插件目录清单的拼法。夹具全是合成的（`AskIn` 手搭）。
 use super::*;
-use crate::agents::{AskOption, AskQuestion, AskSuggestion};
+use crate::agents::{AskOption, AskQuestion, AskSuggestion, SuggestRule, SuggestScope};
 
 fn ask_in(kind: AskKind) -> AskIn {
     AskIn {
@@ -145,10 +145,7 @@ fn each_choice_carries_the_row_it_goes_in() {
     use ChoiceRow::{Hold, Main, Release};
     let mut a = ask_in(AskKind::Approve);
     a.blocks_terminal = true;
-    a.suggestions = vec![AskSuggestion {
-        text: "r".into(),
-        raw: Value::Null,
-    }];
+    a.suggestions = vec![allow_dirs(&["/r"])];
     assert_eq!(
         rows(&product_of("a", &a, None, 1)),
         [
@@ -184,16 +181,7 @@ fn each_choice_carries_the_row_it_goes_in() {
 #[test]
 fn approve_puts_allow_first_then_the_suggestions_then_the_denials() {
     let mut a = ask_in(AskKind::Approve);
-    a.suggestions = vec![
-        AskSuggestion {
-            text: "rule-a".into(),
-            raw: Value::Null,
-        },
-        AskSuggestion {
-            text: "rule-b".into(),
-            raw: Value::Null,
-        },
-    ];
+    a.suggestions = vec![allow_dirs(&["/a"]), allow_dirs(&["/b"])];
     let p = product_of("ask-9", &a, None, 42);
     assert_eq!(
         ids(&p),
@@ -208,7 +196,10 @@ fn approve_puts_allow_first_then_the_suggestions_then_the_denials() {
     );
     assert_eq!(
         p.choices[2].text.0,
-        copy_text("beAsk.choice.allowAlways", &[("rule", "rule-b")])
+        copy_text(
+            "beAsk.choice.allowAlways",
+            &[("rule", &allow_dirs(&["/b"]).said())]
+        )
     );
     let notes: Vec<_> = p.choices.iter().map(|c| (c.id.as_str(), c.note)).collect();
     for (id, n) in notes {
@@ -414,5 +405,45 @@ fn plugin_dir_list_appends_once_and_matches_whole_entries() {
     assert_eq!(
         std::path::Path::new(&d),
         std::path::Path::new("/h").join(relay_route_core::ANSWER_PLUGIN_DIR_REL)
+    );
+}
+
+/// 一条「这次会话里允许访问这几个目录」的建议（码 ＋ 空原样）。
+fn allow_dirs(dirs: &[&str]) -> AskSuggestion {
+    AskSuggestion {
+        scope: SuggestScope::Session,
+        rule: SuggestRule::Dirs(dirs.iter().map(|d| d.to_string()).collect()),
+        raw: Value::Null,
+    }
+}
+
+/// ★ 「以后不再问」那一段只在核心写（`AskSuggestion::said`）：带上记在哪一层与放宽的东西。
+#[test]
+fn a_suggestion_is_said_by_the_core_from_its_codes() {
+    let s = allow_dirs(&["/a", "/b"]);
+    assert_eq!(
+        s.said(),
+        copy_text(
+            "beAsk.rule.dirs",
+            &[
+                ("dirs", "/a, /b"),
+                ("scope", &copy_text("beAsk.scope.session", &[]))
+            ]
+        )
+    );
+    let m = AskSuggestion {
+        scope: SuggestScope::User,
+        rule: SuggestRule::Allow(vec!["Bash(ls)".into()]),
+        raw: Value::Null,
+    };
+    assert_eq!(
+        m.said(),
+        copy_text(
+            "beAsk.rule.rules",
+            &[
+                ("rules", "Bash(ls)"),
+                ("scope", &copy_text("beAsk.scope.user", &[]))
+            ]
+        )
     );
 }

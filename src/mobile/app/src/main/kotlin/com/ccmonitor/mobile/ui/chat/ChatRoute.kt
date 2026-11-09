@@ -43,9 +43,9 @@ import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.core.wire.gen.CanView
 import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.TermOpen
-import com.ccmonitor.mobile.core.wire.gen.TermWay
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ui.agents.agentsEntry
 import com.ccmonitor.mobile.ui.chat.attach.AttachStore
@@ -291,14 +291,14 @@ private fun rememberChatHost(hostId: String): ChatHost? {
 }
 
 /**
- * 顶栏常驻的「终端」那一颗：照脸上 `can.terminal.far` 画（手机从不在会话住的那台上看，挑 `far`）——点得了 ⇒ 开终端屏；
+ * 顶栏常驻的「终端」那一颗：照脸上「看它的终端」那一格（`can.view`）画（手机拉不了窗，只看）——点得了 ⇒ 开终端屏；
  * 做不了（或还没收到脸）⇒ 灰着。长按出那台写好的那一句（悬停那一句 · 做不了的原因）。不异步长出来、不问那台在哪。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun TerminalButton(
     sid: String,
-    way: TermWay?,
+    way: CanView?,
     onTerminal: (SessionTabManager.TabTarget.Terminal) -> Unit,
 ) {
     val target = terminalTarget(way, sid)
@@ -321,24 +321,23 @@ private fun TerminalButton(
 
 /** 点「终端」开哪个（纯函数，判据读）：接进它住的那个终端（那台写在脸上的句柄）· 先恢复再附着；做不了 · 句柄判不出 · 还没收到脸 ⇒ `null`（灰着）。 */
 internal fun terminalTarget(
-    way: TermWay?,
+    way: CanView?,
     sid: String,
 ): SessionTabManager.TabTarget.Terminal? =
     when (way) {
-        is TermWay.Here ->
+        is CanView.Yes ->
             when (val open = way.open) {
                 is TermOpen.Attach -> open.terminal?.let { SessionTabManager.TabTarget.Terminal(tmuxSession = it) }
                 TermOpen.Resume -> SessionTabManager.TabTarget.Terminal(resume = sid)
             }
-        is TermWay.Front, is TermWay.No, null -> null
+        is CanView.No, null -> null
     }
 
 /** 长按出的那一句（那台写好的）：做得了 ⇒ 去做什么；做不了 ⇒ 为什么。 */
-internal fun terminalSaid(way: TermWay?): String? =
+internal fun terminalSaid(way: CanView?): String? =
     when (way) {
-        is TermWay.Front -> way.said
-        is TermWay.Here -> way.said
-        is TermWay.No -> way.why
+        is CanView.Yes -> way.said
+        is CanView.No -> way.why
         null -> null
     }
 
@@ -377,8 +376,8 @@ private fun ChatTopBar(
     onTitle: () -> Unit,
     onOpenDrawer: () -> Unit,
     sid: String?,
-    /** 脸上「终端」那一格（`can.terminal.far`）；还没收到脸 ⇒ `null`（那一颗照画、灰着）。 */
-    terminal: TermWay?,
+    /** 脸上「看它的终端」那一格（`can.view`）；还没收到脸 ⇒ `null`（那一颗照画、灰着）。 */
+    terminal: CanView?,
     onTerminal: (SessionTabManager.TabTarget.Terminal) -> Unit,
     onRotation: (String) -> Unit,
     /** ⋯「打开工作目录」；这条会话的目录还不知道 ⇒ `null`、不出这一项。 */

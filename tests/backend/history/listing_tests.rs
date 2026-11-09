@@ -14,6 +14,16 @@ pub(super) fn tally_read(p: &Path, n: u64) {
     *t.entry(p.to_path_buf()).or_default() += n;
 }
 
+/// 清单行照它的序列化形看（清单缓存落盘那一形），盖住 `super::*` 里的同名口。
+fn analyze_session(p: &Path) -> serde_json::Value {
+    serde_json::to_value(super::analyze_session(p)).unwrap()
+}
+
+/// 同上，走清单缓存那一条。
+fn analyze_session_cached(p: &Path) -> serde_json::Value {
+    serde_json::to_value(super::analyze_session_cached(p)).unwrap()
+}
+
 fn fixture_project(root: &Path, dir_name: &str) -> PathBuf {
     let dir = root.join("projects").join(dir_name);
     std::fs::create_dir_all(&dir).unwrap();
@@ -24,6 +34,26 @@ fn write_jsonl(dir: &Path, name: &str, lines: &[&str]) -> PathBuf {
     let p = dir.join(name);
     std::fs::write(&p, lines.join("\n")).unwrap();
     p
+}
+
+/// 清单行的项目目录就是扫整份时取到的第一个工作目录：写着它的那一行落在开头上限（`agents::HEAD_CAP`）之后也认，
+/// 不另读一遍开头。
+#[test]
+fn the_rows_cwd_is_the_one_the_scan_saw_even_past_the_head_cap() {
+    let tmp = std::env::temp_dir().join(format!("ccm-hq-cwd-late-{}", std::process::id()));
+    let dir = fixture_project(&tmp, "proj-late");
+    let filler = "x".repeat(usize::try_from(crate::agents::HEAD_CAP.bytes).unwrap() + 16);
+    let first = format!(r#"{{"type":"system","content":"{filler}"}}"#);
+    let p = write_jsonl(
+        &dir,
+        "late.jsonl",
+        &[
+            &first,
+            r#"{"type":"user","cwd":"/w/late","message":{"role":"user","content":"晚到的目录"}}"#,
+        ],
+    );
+    assert_eq!(analyze_session(&p)["cwd"], "/w/late");
+    let _ = std::fs::remove_dir_all(&tmp);
 }
 
 #[test]
@@ -207,9 +237,7 @@ fn c4d_the_row_has_exactly_these_keys() {
 fn a_machine_without_a_projects_dir_lists_nothing_and_an_unreadable_one_says_so_plainly() {
     let tmp = std::env::temp_dir().join(format!("ccm-hq-noproj-{}", std::process::id()));
     std::fs::create_dir_all(&tmp).unwrap();
-    let mut out = Vec::new();
-    assert_eq!(list_projects_into(&tmp, &mut out), Ok(false));
-    assert!(out.is_empty(), "没有记录树却列出了东西");
+    assert_eq!(list_projects(&tmp), Ok(None), "没有记录树却列出了东西");
     // 平铺清单当零个项目（不失败）。
     assert_eq!(sessions_by_dir(&tmp), Ok(None));
     #[cfg(unix)]
@@ -220,7 +248,7 @@ fn a_machine_without_a_projects_dir_lists_nothing_and_an_unreadable_one_says_so_
         std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o000)).unwrap();
         // root 跑测试时权限位拦不住读 —— 那一格判不了，如实跳过而不是假绿（同 `tasks_query_tests`）。
         let perms_bite = std::fs::File::open(&root).is_err();
-        let got = list_projects_into(&tmp, &mut out);
+        let got = list_projects(&tmp);
         std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o755)).unwrap();
         if perms_bite {
             let e = got.expect_err("读不了的记录树却列成功了");
@@ -600,7 +628,7 @@ fn a_restart_takes_the_listing_from_disk() {
         tmp.to_string_lossy().into_owned(),
     );
     let own = crate::platform::fs::Own::issue_with(&|k| match k {
-        creds_core::store::DATA_DIR_ENV => Some(data.clone()),
+        relay_route_core::DATA_DIR_ENV => Some(data.clone()),
         "HOME" => Some(home.clone()),
         _ => None,
     });

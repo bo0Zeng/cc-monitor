@@ -102,6 +102,40 @@ mod byte_table; // 全仓唯一的取字节口：一台机器要哪一份可执�
 mod contract_crate_guard;
 /// 这一版的产品版本号（全产品一个源：monitor 那个包的版本，与安装包 · 界面同一个号）。
 pub(crate) const PRODUCT_VERSION: &str = env!("CARGO_PKG_VERSION");
+/// 新开窗口的底色：令牌表 `--bg`（`#rrggbb`）编译期解出 —— 合成间隙露底是主题深色、不是 WebView2 默认白，与网页那一层同一格。
+const WINDOW_BG: tauri::window::Color =
+    theme_bg(include_str!("../../../shared/theme/tokens.css").as_bytes());
+
+/// 在令牌表里找 `--bg: #rrggbb`，解成不透明的一格（找不到 · 不是六位十六进制 ⇒ 编译失败）。
+const fn theme_bg(css: &[u8]) -> tauri::window::Color {
+    const NEEDLE: &[u8] = b"--bg: #";
+    let mut i = 0;
+    while i + NEEDLE.len() + 6 <= css.len() {
+        let mut j = 0;
+        while j < NEEDLE.len() && css[i + j] == NEEDLE[j] {
+            j += 1;
+        }
+        if j == NEEDLE.len() {
+            let h = i + j;
+            return tauri::window::Color(hex2(css, h), hex2(css, h + 2), hex2(css, h + 4), u8::MAX);
+        }
+        i += 1;
+    }
+    panic!("tokens.css 里没有 `--bg: #rrggbb`")
+}
+
+/// 两位十六进制 ⇒ 一个字节（编译期）。
+const fn hex2(css: &[u8], at: usize) -> u8 {
+    const fn nib(c: u8) -> u8 {
+        match c {
+            b'0'..=b'9' => c - b'0',
+            b'a'..=b'f' => c - b'a' + 10,
+            b'A'..=b'F' => c - b'A' + 10,
+            _ => panic!("tokens.css 的 `--bg` 不是六位十六进制"),
+        }
+    }
+    nib(css[at]) * 16 + nib(css[at + 1])
+}
 pub(crate) mod detail; // 壳这一端写的「复制详情」那几行 ＋ 壳命令失败的那一形 `Said`
 
 // 截图台架那个无头壳只在台架编译时有（发版构建不带）：判据 · 本体。
@@ -363,7 +397,7 @@ pub fn run() {
     // logging 模块内部把所有复杂度（rolling file appender / non_blocking writer /
     // ErrorEmitterLayer / EnvFilter reload）封死，对外只暴露 init + state。
     //
-    // **monitor_data_dir 必须能解析**：家目录按两侧同一条规矩（`creds_core::store::home_dir`）推，不依赖任何
+    // **monitor_data_dir 必须能解析**：家目录按两侧同一条规矩（`relay_route_core::home_dir`）推，不依赖任何
     // 配置（避免 log 初始化跟 config 初始化循环依赖）；推不出退到临时目录。
     let monitor_data_dir = config::resolve_monitor_data_dir()
         .unwrap_or_else(|| std::env::temp_dir().join("cc-monitor-fallback"));
@@ -454,7 +488,6 @@ pub fn run() {
     });
 
     builder
-        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
             // **重放缓冲与本机内容消费者先于本机后端就位**：本机会话内容是本机后端的 `line` 帧（`local_lines` 头注），
@@ -631,10 +664,8 @@ pub fn run() {
             open_terminal_in_new_window,
             // 设置独立窗口
             open_settings_window,
-            // ↗ 拉前会话的终端窗口（本机后端答过它在这台电脑上的哪儿，界面原样交来）
+            // ↗ 拉前会话的终端窗口（壳问本机后端它在这台电脑上的哪儿，照结局码挑后端写好的那一张）
             bring_terminal_to_front,
-            // ↗ 出口那一跳没成（本机后端那一问没答成 · 壳那一跳没回 · 回的认不出）的那一张
-            front_missed,
             // issue #23: 红绿灯快照（启动/F5 初始收敛；增量走 activity 格 事件）
             // v2.4 issue #2: 用户在终端输入时可选拉前 monitor 自身
             bring_monitor_to_front,
@@ -645,8 +676,7 @@ pub fn run() {
             get_diagnostics_config,
             set_diagnostics_config,
             get_log_file_info,
-            open_log_file,
-            open_log_dir,
+            os_open,
             // 历史清单住本机常驻后端（`history-list`，远端那一支代问）；注解跟着会话住在那台（`history-annotate` 问那台；会话的号问那台的 `session-account`），
             //   界面经通道问（`history-list-reads.ts` · `history-reads.ts`）。
             // 会话正文四条（整份读 · 子 agent · 按偏移 · 按行号）退役：那台后端出记录行，
@@ -655,8 +685,6 @@ pub fn run() {
             // 远端装 / 卸别名块那两条命令并进上面 `aliases_block_install` / `_remove`（带 `origin`），删。
             // F08c：部署 / 卸载远端后端（SFTP 写 ~/.cc-monitor/bin，SS-G 部署写豁免）。
             // 部署那一条同时放 `ccm` 入口 —— 「部署后端」只有一个动作。
-            deploy::deploy_remote_backend,
-            deploy::uninstall_remote_backend,
             // 本机 / 远端各两条合成两条带 origin 的。
             // `probe_session_record`（resume 之前问记录还在不在）退役：界面经通道问 `history-record`。
             // 本机起会话三条（resume · 新起 · 接回那一句）退役：计划与渲染问本机后端 `session-open`。
@@ -985,9 +1013,7 @@ async fn open_session_in_new_window(
             })
             .inner_size(900.0, 720.0)
             .min_inner_size(480.0, 360.0)
-            // Batch7-F23B：与主窗口 backgroundColor 一致——合成间隙露底为主题深色
-            // 而非 WebView2 默认白（tauri.conf.json 主窗口同款 #2b2a27）
-            .background_color(tauri::window::Color(0x2b, 0x2a, 0x27, 0xff));
+            .background_color(WINDOW_BG);
         // 落点定位：仅当 x/y 都给出时按逻辑坐标摆放（Tauri 2 builder 取 LogicalPosition）。
         let at = match (x, y) {
             (Some(x), Some(y)) => Some((x, y)),
@@ -1059,7 +1085,7 @@ async fn open_terminal_in_new_window(
             })
             .inner_size(980.0, 700.0)
             .min_inner_size(480.0, 320.0)
-            .background_color(tauri::window::Color(0x2b, 0x2a, 0x27, 0xff));
+            .background_color(WINDOW_BG);
         if let Some((x, y)) = agent_window_spot(&window, open) {
             builder = builder.position(x, y);
         }
@@ -1170,7 +1196,7 @@ async fn open_settings_window(
             .title(&copy_text("rsLib.settings.windowTitle", &[]))
             .inner_size(960.0, 740.0)
             .min_inner_size(640.0, 480.0)
-            .background_color(tauri::window::Color(0x2b, 0x2a, 0x27, 0xff));
+            .background_color(WINDOW_BG);
         if let Some(t) = target {
             let lit = serde_json::to_string(&t).map_err(Said::crashed)?;
             builder =
@@ -1208,42 +1234,52 @@ async fn bring_monitor_to_front(app: tauri::AppHandle) -> Result<(), cmd_wire::f
     r.map_err(|s| s.named("bring_monitor_to_front"))
 }
 
-/// ↗ 拉会话的终端窗口（本机会话与远端会话同一条）：本机后端 `session-window` 答的窗口标签 · 进程链原样交来 ⇒
-/// 先按标签、再沿链每一级先问它显示在哪个窗口（Windows 问控制台 · Linux 查握手表）、再看属主的窗口，校验、拉前
-/// （`bind::bring_session_window`），回切过去了或写好的那一张（`face_core::front::FrontOutcome::told`；`tmux` 是 `session-window` 带来的那一格，
-/// 窗口关了时才给［在终端里打开］）。标签没对上、链又空 ⇒ `None`（界面摆后端那一张）。
+/// ↗ 本机后端那一问（`session-window`）的期限：远端会话它要经那台问一次（读 `/proc` ＋ 问一次 tmux）、再读一次这台的连接表与进程表。
+const FRONT_ASK: std::time::Duration = std::time::Duration::from_secs(15);
+/// ↗ 窗口那一跳的期限（极端情况下 Win32 调用卡住）：到了 ⇒ 结局码 `timed-out` 那一张。
+const FRONT_HOP: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// ↗ 拉会话的终端窗口（本机会话与远端会话同一条）：问本机后端一次这条会话在这台电脑上的哪儿（`session-window`：窗口标签 · 进程链，
+/// 或写好的那一张，连同窗口那一跳没成时每一种结局码的那一张）⇒ 先按标签、再沿链每一级先问它显示在哪个窗口（Windows 问控制台 ·
+/// Linux 查握手表）、再看属主的窗口，校验、拉前（`bind::bring_session_window`）⇒ 切过去了，或照结局码在回包里挑的那一张
+/// （`bind::told`）；标签没对上、链又空 ⇒ 回包的那一张。壳不写字。问本机后端没问成 ⇒ 那一份失败原样（连接层写的那一句）。
 ///
 /// **必须 async + spawn_blocking** 隔离 Win32 sync 调用（v1.6.5 的教训）。
 #[tauri::command]
 async fn bring_terminal_to_front(
-    labels: Vec<String>,
-    chain: Vec<bind::ChainLink>,
-    tmux: bool,
+    origin: crate::origin::Origin,
+    sid: cmd_wire::Sid,
     app: tauri::AppHandle,
-) -> Result<Option<cmd_wire::front::FrontTold>, cmd_wire::failed::Failed> {
+) -> Result<cmd_wire::front::FrontTold, cmd_wire::failed::Failed> {
     // 状态经 `AppHandle` 取、不收 `tauri::State<'_, …>` 参数：带引用参数的 async 命令，`#[tauri::command]` 的展开里
     //   有一句丢结果的 `let _`（核返回类型是不是 `Result`），落在本函数的返回类型上，吞结果那条 lint 报在这里。下面两条同。
     let bind = app.state::<Arc<bind::BindRegistry>>().inner().clone();
-    let r: Result<Option<cmd_wire::front::FrontTold>, Said> = async move {
-        let outcome =
-            tokio::task::spawn_blocking(move || bind::bring_session_window(&labels, &chain, &bind))
-                .await
-                .map_err(Said::crashed)?;
-        Ok(outcome.map(|o| o.told(tmux)))
+    origin
+        .route("bring_terminal_to_front")
+        .map_err(|b| Said::from(chan::said::blank_origin(&b)).named("bring_terminal_to_front"))?;
+    let req = cmd_wire::session::SessionWindowReq {
+        machine: origin,
+        sid,
+    };
+    let deadline = crate::frame_query::Deadline::within(FRONT_ASK);
+    let window =
+        crate::frame_query::ask(&crate::origin::Origin::local(), &req, None, deadline).await?;
+    let r: Result<cmd_wire::front::FrontTold, Said> = async move {
+        let (labels, chain) = (window.labels.clone(), window.chain.clone());
+        let hop =
+            tokio::task::spawn_blocking(move || bind::bring_session_window(&labels, &chain, &bind));
+        let outcome = match tokio::time::timeout(FRONT_HOP, hop).await {
+            Ok(joined) => joined.map_err(Said::crashed)?,
+            Err(_) => Some(bind::FrontOutcome::TimedOut),
+        };
+        bind::told(&window, outcome).ok_or_else(|| {
+            Said::from(copy_core::reply_unreadable(&crate::chan::said::machine(
+                &crate::origin::Origin::local(),
+            )))
+        })
     }
     .await;
     r.map_err(|s| s.named("bring_terminal_to_front"))
-}
-
-/// ↗ 出口那一跳没成（界面照它看得见的事实挑一种：本机后端不认 · 期限到 · 没问到 · 出错 · 认不出）⇒ 浮层那一张，
-/// 照 `face_core::front` 写（与本机后端问那台没问成的那几张同一张表）。`machine` 是会话那台给人看的名字。只写字，不碰后端、不阻塞
-/// （照 `INVARIANTS §10` 的默认写成 async，不进同步白名单）。
-#[tauri::command]
-async fn front_missed(
-    machine: String,
-    miss: cmd_wire::front::FrontMiss,
-) -> cmd_wire::front::FrontFace {
-    face_core::front::Unplaced::from(miss).face(&machine)
 }
 
 /// Batch13-F40:前端 perf 仪表落盘。webview 无 devtools(生产/CCM_NO_DEVTOOLS)时
@@ -1315,60 +1351,90 @@ fn get_log_file_info(
     r.map_err(|s| s.named("get_log_file_info"))
 }
 
-/// 用系统默认编辑器打开当前 log 文件（rolling::daily 写入的 mtime 最新那个）。
-/// 失败常见原因：log_enabled=false 还没生成过 log 文件 → Err 让前端 alert 提示。
+/// 「用系统程序打开 / 在文件夹中显示」交给壳的那一样（界面经 `commands.os_open`）。日志那两样只交名字：日志在哪只壳知道。
+#[derive(serde::Deserialize, Debug)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
+enum OsOpen {
+    /// 用关联程序打开本机一条绝对路径（文件或目录）。
+    Path { path: String },
+    /// 在系统文件管理器里显示本机一条绝对路径（选中它）。
+    Reveal { path: String },
+    /// 用系统浏览器 / 邮件程序打开一个网址（只认 http · https · mailto）。
+    Url { url: String },
+    /// monitor 此刻在写的那份日志（`rolling::daily` 写入的 mtime 最新那个）。
+    LogFile,
+    /// monitor 的日志目录（还没有就先建）。
+    LogDir,
+}
+
+/// 壳起本机程序「打开 / 在文件夹中显示」的唯一一门：界面不拿 opener 插件，打开路径 · 网址 · 日志都经这里；挑程序住 `platform/proc.rs`。
 #[tauri::command]
-async fn open_log_file(app: tauri::AppHandle) -> Result<(), cmd_wire::failed::Failed> {
-    let state = app.state::<Arc<logging::LoggingState>>().inner().clone();
+async fn os_open(app: tauri::AppHandle, what: OsOpen) -> Result<(), cmd_wire::failed::Failed> {
     let r: Result<(), Said> = async move {
-        let path = state
-            .current_log_file()
-            .ok_or_else(|| Said::of("rsLib.log.none", &[]))?;
-        let path_str = path.to_string_lossy().into_owned();
-        Ok(tokio::task::spawn_blocking(move || open_with_os(&path_str))
-            .await
-            .map_err(Said::crashed)??)
+        let local = |p: &str| -> Result<String, Said> {
+            if std::path::Path::new(p).is_absolute() {
+                Ok(p.to_string())
+            } else {
+                Err(Said::crashed(format!(
+                    "os_open takes an absolute local path: {p:?}"
+                )))
+            }
+        };
+        let (reveal, target) = match what {
+            OsOpen::Path { path } => (false, local(&path)?),
+            OsOpen::Reveal { path } => (true, local(&path)?),
+            OsOpen::Url { url } if platform::proc::openable_url(&url) => (false, url),
+            OsOpen::Url { url } => {
+                return Err(Said::crashed(format!(
+                    "os_open opens only http, https and mailto URLs: {url:?}"
+                )))
+            }
+            OsOpen::LogFile => {
+                let state = app.state::<Arc<logging::LoggingState>>().inner().clone();
+                let path = state
+                    .current_log_file()
+                    .ok_or_else(|| Said::of("rsLib.log.none", &[]))?;
+                (false, path.to_string_lossy().into_owned())
+            }
+            OsOpen::LogDir => {
+                let state = app.state::<Arc<logging::LoggingState>>().inner().clone();
+                let dir = state.log_dir();
+                // 目录可能还不存在（log_enabled=false 时不创建）
+                if !dir.exists() {
+                    platform::own_fs::log_dir(&dir).map_err(|e| {
+                        Said::with_raw(
+                            copy_text(
+                                "rsShellCmd.logDir.createFailed",
+                                &[("why", &copy_core::reason::io_reason(e.kind()))],
+                            ),
+                            format!("{}\n{e}", dir.display()),
+                        )
+                    })?;
+                }
+                (false, dir.to_string_lossy().into_owned())
+            }
+        };
+        Ok(tokio::task::spawn_blocking(move || {
+            if reveal {
+                if platform::proc::reveal_on_bus(&target) {
+                    return Ok(());
+                }
+                let (bin, args) = platform::proc::os_revealer(&target);
+                return open_with(bin, &args);
+            }
+            let (bin, args) = platform::proc::os_opener(&target);
+            open_with(bin, &args)
+        })
+        .await
+        .map_err(Said::crashed)??)
     }
     .await;
-    r.map_err(|s| s.named("open_log_file"))
+    r.map_err(|s| s.named("os_open"))
 }
 
-/// 用资源管理器打开 log 目录。
-#[tauri::command]
-async fn open_log_dir(app: tauri::AppHandle) -> Result<(), cmd_wire::failed::Failed> {
-    let state = app.state::<Arc<logging::LoggingState>>().inner().clone();
-    let r: Result<(), Said> = async move {
-        let dir = state.log_dir();
-        // 目录可能还不存在（log_enabled=false 时不创建）
-        if !dir.exists() {
-            platform::own_fs::log_dir(&dir).map_err(|e| {
-                Said::with_raw(
-                    copy_text(
-                        "rsShellCmd.logDir.createFailed",
-                        &[("why", &copy_core::reason::io_reason(e.kind()))],
-                    ),
-                    format!("{}\n{e}", dir.display()),
-                )
-            })?;
-        }
-        let dir_str = dir.to_string_lossy().into_owned();
-        Ok(tokio::task::spawn_blocking(move || open_with_os(&dir_str))
-            .await
-            .map_err(Said::crashed)??)
-    }
-    .await;
-    r.map_err(|s| s.named("open_log_dir"))
-}
-
-/// 跨平台调系统默认 opener。Windows 用 `cmd /C start ""` 兜 path 中的空格。
-/// 复用 tauri-plugin-opener 也行（前端就是走它），但这里在 Rust 端直接调更直接。
-fn open_with_os(path_or_dir: &str) -> Result<(), Said> {
-    // 「用哪个程序打开」按平台选（`cmd /C start ""` · `open` · `xdg-open`）住 `platform/proc.rs::os_opener`。
-    let (bin, args) = crate::platform::proc::os_opener(path_or_dir);
-    open_with(bin, &args)
-}
-
-/// [`open_with_os`] 挑完程序之后那一下（程序是入参：判据喂一个不存在的程序，量失败那一句）。起不来 ⇒ 原因词进句子，原话进详情。
+/// [`os_open`] 挑完程序之后那一下（程序是入参：判据喂一个不存在的程序，量失败那一句）。起不来 ⇒ 原因词进句子，原话进详情。
 fn open_with(bin: &str, args: &[String]) -> Result<(), Said> {
     use crate::spawn_managed::{spawn_managed, ConsolePolicy, Lifetime, StderrSink};
     // 「怎么起它」三条策略走唯一出口。走的是 `spawn_managed(bin, args, …)` 那个**五参数形态**，而不是它的内层

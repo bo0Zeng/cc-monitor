@@ -134,7 +134,7 @@ impl OwnState {
     #[cfg(test)]
     pub(crate) fn issue_with(get: &dyn Fn(&str) -> Option<std::ffi::OsString>) -> Option<OwnState> {
         let data = get(crate::config::DATA_DIR_ENV).and_then(|v| v.into_string().ok());
-        crate::config::monitor_data_dir_from(data.as_deref(), creds_core::store::home_dir_from(get))
+        crate::config::monitor_data_dir_from(data.as_deref(), relay_route_core::home_dir_from(get))
             .map(OwnState::at)
     }
 
@@ -197,7 +197,7 @@ impl OwnBin {
     /// 同 [`OwnBin::issue`]，家目录由 `get` 答：判据在临时目录上造句柄用。
     #[cfg(test)]
     pub(crate) fn issue_with(get: &dyn Fn(&str) -> Option<std::ffi::OsString>) -> Option<OwnBin> {
-        creds_core::store::home_dir_from(get).and_then(OwnBin::under_home)
+        relay_route_core::home_dir_from(get).and_then(OwnBin::under_home)
     }
 
     fn under_home(home: PathBuf) -> Option<OwnBin> {

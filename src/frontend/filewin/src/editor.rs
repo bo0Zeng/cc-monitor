@@ -32,7 +32,7 @@ pub const SAVE_LINE_CAP: host_core::Cap = host_core::Cap {
 };
 
 /// 一行写里内容与路径以外那一圈（`id` · 命令名 · 字段名 · 摘要 · 期限 · 时区）留多少字节。
-/// 真用的不到四百（最长的 `id` 75 · 时区 [`host_core::TZ_ROOM`] · 摘要 64 · 期限 20 位），这里宽留，不逐字节量。
+/// 真用的不到四百（最长的 `id` 75 · 时区 [`platform_core::tz::TZ_ROOM`] · 摘要 64 · 期限 20 位），这里宽留，不逐字节量。
 const LINE_ENVELOPE_ROOM: usize = 1024;
 
 /// 一个字节放进 JSON 字符串最多占几个字节（`\u00XX`）。

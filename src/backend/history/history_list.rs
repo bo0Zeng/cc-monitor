@@ -27,6 +27,7 @@ pub(crate) use cmd_wire::listing::{
 use cmd_wire::sync::{Head, Held, Patch, Range};
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::history::listing_scan::SessionRow;
 use copy_core::copy_text;
 use serde_json::Value;
 
@@ -79,20 +80,13 @@ pub(crate) fn listing_annotations(listing: &Listing) -> Result<Table, String> {
     Ok(listing.annotations.clone().unwrap_or_default())
 }
 
-/// 路径最后一段（`/` 与 `\` 都认）；空 ⇒ `None`。
-fn last_segment(p: &str) -> Option<&str> {
-    p.rsplit(['/', '\\']).next().filter(|s| !s.is_empty())
-}
-
 /// 记录树里的一行（会话清单那一形）＋ 判活 ⇒ 清单的一行（注解格先按没有填，并注解在 [`answer_from`]）。
-/// 没有 `sessionId` ⇒ `None`。
+/// 没有 sid ⇒ `None`。
 fn session_row(
-    v: &Value,
+    r: &SessionRow,
     project_dir: &str,
     live: &crate::history::live_table::LiveTable,
 ) -> Option<RawRow> {
-    let r =
-        <crate::history::listing_scan::SessionRow as serde::Deserialize>::deserialize(v).ok()?;
     if r.session_id.is_empty() {
         return None;
     }
@@ -112,7 +106,9 @@ fn session_row(
         agent: agent.into(),
         session_id: sid.to_string(),
         project_path: cwd.to_string(),
-        project_name: last_segment(cwd).unwrap_or(project_dir).to_string(),
+        project_name: plain_path_core::last_segment(cwd)
+            .unwrap_or(project_dir)
+            .to_string(),
         title: label_of(None, r.ai_title.as_deref(), &r.first_user_excerpt, cwd),
         ai_title: r.ai_title.clone(),
         first_user_excerpt: r.first_user_excerpt.clone(),
@@ -134,7 +130,8 @@ fn session_row(
 
 /// 合成历史的一条会话 ⇒ 清单的一行（判不了活 ⇒ `isLive: null`）。
 fn synth_row(kind: &str, s: &crate::agents::SynthSession, excerpt: String) -> RawRow {
-    let name = last_segment(&s.cwd).map_or_else(|| format!("({kind})"), str::to_string);
+    let name =
+        plain_path_core::last_segment(&s.cwd).map_or_else(|| format!("({kind})"), str::to_string);
     let title = label_of(None, None, &excerpt, &s.cwd);
     RawRow {
         agent: kind.into(),
@@ -214,7 +211,7 @@ fn machine_listing_for(
 }
 
 /// 记录树分好的目录：每个目录一项（目录名 · 那一目录的会话行，读不了 ⇒ 为什么）。
-pub(crate) type Tree = Vec<(String, Result<Vec<Value>, String>)>;
+pub(crate) type Tree = Vec<(String, Result<Vec<SessionRow>, String>)>;
 
 /// 一家的合成历史：那一家叫什么 · 它的会话 · 第一句怎么取。
 pub(crate) type Synth = (
@@ -234,8 +231,8 @@ pub(crate) fn tree_for(home: &std::path::Path, only: Option<&str>) -> Result<Opt
         .iter()
         .filter_map(|(_, r)| r.as_ref().ok())
         .flatten()
-        .find(|v| v["sessionId"] == sid)
-        .and_then(|v| v["forkedFromSessionId"].as_str())
+        .find(|r| r.session_id == sid)
+        .and_then(|r| r.forked_from_session_id.as_deref())
         .map(str::to_string);
     let Some(p) = parent.filter(|p| p != sid) else {
         return Ok(Some(tree));
@@ -246,8 +243,8 @@ pub(crate) fn tree_for(home: &std::path::Path, only: Option<&str>) -> Result<Opt
         let Some(Ok(got)) = full.iter().find(|(d, _)| d == dir).map(|(_, r)| r) else {
             continue;
         };
-        for v in rows.iter_mut().filter(|v| v["sessionId"] == p.as_str()) {
-            if let Some(w) = got.iter().find(|w| w["sessionId"] == p.as_str()) {
+        for v in rows.iter_mut().filter(|r| r.session_id == p) {
+            if let Some(w) = got.iter().find(|w| w.session_id == p) {
                 *v = w.clone();
             }
         }
@@ -285,7 +282,11 @@ pub(crate) fn listing_from(
     }
     for (kind, sessions, excerpt) in synth {
         for s in sessions {
-            rows.push(synth_row(kind, s, excerpt(&s.path)));
+            rows.push(synth_row(
+                kind,
+                s,
+                crate::history::search_rules::excerpt_of(&excerpt(&s.path)),
+            ));
         }
     }
     for r in &mut rows {

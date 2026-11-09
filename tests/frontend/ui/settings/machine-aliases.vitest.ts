@@ -26,6 +26,8 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
   let policyAfter: ExecPolicy | null;
   let onPathSaid: string;
   let readFails: boolean;
+  /** 壳命令 `os_open` 收到的每一样（「用系统编辑器打开」那一键）。 */
+  const osOpen = vi.fn((_what: unknown) => Promise.resolve());
 
   // 显示形是那台写好的（`/h` 底下 ⇒ `~/…`）；界面照抄，不拿家目录自己缩。
   const cand = (path: string, over: { exists?: boolean; policy?: ExecPolicy | null } = {}) => ({
@@ -61,7 +63,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
       toast: (title: string, body: string) => toasted.push(`${title}|${body}`),
       failToast: (title: string, e: unknown, o?: { fact?: string }) => toasted.push(`${title}|${String(e)}|${o?.fact ?? ""}`),
     }));
-    vi.doMock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn() }));
+    osOpen.mockClear();
     vi.doMock("../../../../src/comms/inward/chan", () => ({
       ChanError: class ChanError extends Error {},
       chan: {
@@ -138,6 +140,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     });
     vi.doMock("../../../../src/frontend/ui/ipc/commands", () => ({
       commands: {
+        os_open: (what: unknown) => osOpen(what),
         cc_get_auto_launch: () => {
           seen.push({ cmd: "cc_get_auto_launch" });
           if (autoLaunchFail !== null) return Promise.reject(autoLaunchFail);
@@ -463,15 +466,13 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
   });
 
   it("本机才有「用系统编辑器打开」：打开选中的那份；打不开 ⇒ 出声", async () => {
-    const opener = await import("@tauri-apps/plugin-opener");
-    const openPath = opener.openPath as unknown as ReturnType<typeof vi.fn>;
     const el = await mount();
     await open(el);
     clickText(el, copyText("machineAliases.access.choose"));
     clickText(el, copyText("machineAliases.rc.open"));
     await flush();
-    expect(openPath.mock.calls).toEqual([["/h/rc-a"]]);
-    openPath.mockRejectedValueOnce(new Error("没有关联程序"));
+    expect(osOpen.mock.calls).toEqual([[{ kind: "path", path: "/h/rc-a" }]]);
+    osOpen.mockRejectedValueOnce(new Error("没有关联程序"));
     clickText(el, copyText("machineAliases.rc.open"));
     await flush();
     // 交给失败 toast：那次失败（带详情 ⇒ 换成那一句）＋ 灰字一格事实（那份的路径）。

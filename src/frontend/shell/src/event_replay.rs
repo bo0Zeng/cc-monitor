@@ -1185,7 +1185,7 @@ impl EventReplay {
     /// 交给订了那台机器 `session-live-card` 的每一条订阅 —— 一段字只换了一张卡的尾巴 ⇒ 交尾巴（前几块不变 ＋ 新的一两块），
     /// 别的交那一处整份。有 credit 当场交；没有 ⇒ 丢、位置照占、下一次交之前原位 `Gap`（与会话行实时那一份同一个 [`plan_live`]）。
     /// **不等 credit、不攒**：一条订阅丢过某一处的格 ⇒ 那一处下一格交整份（界面从不在缺了一格的底子上接尾巴）。
-    /// 对账 · 缺口 · 覆盖都在后端（`stream/live.rs`），界面只照画。
+    /// 对账 · 缺口 · 覆盖都在后端（`observe/live.rs`），界面只照画。
     pub fn on_live_card(&self, origin: &crate::origin::Origin, card: cmd_wire::live::LiveCard) {
         use face_core::live::LiveChange;
         let origin_s = origin.to_string();

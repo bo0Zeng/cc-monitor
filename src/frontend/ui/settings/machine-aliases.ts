@@ -38,7 +38,6 @@ import { allowLocalScripts, installAliasBlock, readAliases, readCcmOnPath, remov
 import type { UserPathOp } from "../generated/UserPathOp";
 import { buildProfilesList, type ProfileClash } from "./profiles-list";
 import type { Machine } from "../generated/Machine";
-import { openPath } from "@tauri-apps/plugin-opener";
 import { cfgRow, type CfgDot, type CfgRow } from "./cfg-row";
 import { copyText } from "../copy-table";
 import { sayFailure, sayWithDetail } from "../kit/detail";
@@ -575,7 +574,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
     const path = target()?.path;
     if (!path) return;
     try {
-      await openPath(path);
+      await commands.os_open({ kind: "path", path });
     } catch (e) {
       failToast(copyText("machineAliases.openRc.failed"), e, { fact: path });
     }

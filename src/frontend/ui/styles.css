@@ -482,6 +482,7 @@
 }
 
 .tab-close,
+.tab-focus,
 .tab-more {
   display: inline-grid;
   place-items: center;
@@ -494,9 +495,21 @@
 }
 
 .tab-close:hover,
+.tab-focus:hover,
 .tab-more:hover {
   background: var(--state-hover);
   color: var(--text);
+}
+
+/* ↗ 拉前一直在，做不了灰着（悬停说为什么）。 */
+.tab-focus[aria-disabled="true"] {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.tab-focus[aria-disabled="true"]:hover {
+  background: none;
+  color: var(--text-2);
 }
 
 /* × 只给已结束 / 记录已不在（其余由「更多」占那一格）。 */
@@ -613,7 +626,7 @@
   overflow: hidden;
 }
 
-/* 切 Tab：所有 .stream 用 absolute inset:0 叠在 #message-stream 里，当前那个 `.active`。
+/* 切 Tab：所有 .stream 用 absolute 叠在 #message-stream 里（下沿让出输入框与答题块），当前那个 `.active`。
    收起的用 `content-visibility: hidden`：浏览器跳过它整棵子树的样式 / 布局 / 绘制 / 命中测试，
    切回来沿用收起前的渲染状态（滚动位置也留着）。
    - 不用 display:none：切回 display:block 要整棵子树重建布局（长会话 100-500ms）。
@@ -626,6 +639,10 @@
 .stream {
   position: absolute;
   inset: 0;
+  /* 下沿止于输入框（`composer.ts` 量了写 `--composer-room`）与答题块（`answer-block.ts` 写 `--answer-room`，连块下那道缝）上沿：
+     视口连滚动条整个露在它们上面，不是盒子一直到窗底、拿内容的 padding 垫高。两格一变盒子跟着变 ⇒
+     `stream.ts` 观察的容器那根轴响，粘底时照旧贴回底。判据 tests/frontend/ui/stream-viewport.vitest.ts。 */
+  bottom: calc(var(--answer-room, 0px) + var(--composer-room, 0px));
   /* 消息列的宿主是一个**尺寸容器**（名字 `stream`，只量行内方向）。
      卡片的排版取决于「它所在那一列多宽」，不是「窗口多宽」—— 媒体查询只知道窗口，
      `@container stream (…)` 才知道列。`src/frontend/ui/height-estimate.ts` 的 `COL_W` 也改成在这个容器里实测
@@ -635,7 +652,7 @@
      而 fixed 浮层按 `INVARIANTS` §13 一律挂 `document.body`（`invariants-frontend-guard` ② 机检），
      流里没有 fixed 后代 ⇒ 前者不改变任何一格；后者把流里的 z-index 关在流里 —— 正是
 「流里的浮层关在流里」要的方向，但**视觉上没有目视过**。
-     行内尺寸包含不改变它的宽：它是 `inset: 0` 的绝对定位，宽本来就由包含块给，不由内容撑。 */
+     行内尺寸包含不改变它的宽：它是左右贴边的绝对定位，宽本来就由包含块给，不由内容撑。 */
   container: stream / inline-size;
   overflow-y: auto;
   /* 保留浏览器原生 overflow-anchor（默认 auto）。启动重放往视口上方插旧消息时，
@@ -644,8 +661,7 @@
      每帧不同会造成整块内容 ±0.5px 高频抖动。 */
   /* 宽内容(表格/公式/代码)各自局部滚动,流本身永不横滚 */
   overflow-x: hidden;
-  /* 底下让出输入框（`composer.ts` 量了写 `--composer-room`）与答题块（`answer-block.ts` 写 `--answer-room`）那么高：贴着底时最后那一行在它们上面。 */
-  padding: 24px 24px calc(48px + var(--answer-room, 0px) + var(--composer-room, 0px));
+  padding: 24px 24px 48px;
   content-visibility: hidden;
 }
 
@@ -1228,7 +1244,7 @@
   font-size: var(--font-size-small);
 }
 
-/* 报错卡上去它的终端那一颗：只在所在消息流根上标了能用时出（标记由宿主按会话头那一道设）。 */
+/* 报错卡上去它的终端那两颗（拉前 · 在终端里打开）：各在所在消息流根上标了能用时出（标记由宿主照脸上那两格设）。 */
 .api-error-acts {
   margin-left: 8px;
 }
@@ -1237,7 +1253,8 @@
   display: none;
 }
 
-[data-can-terminal="1"] .api-error-acts > [data-act="terminal"] {
+[data-can-front="1"] .api-error-acts > [data-act="front"],
+[data-can-attach="1"] .api-error-acts > [data-act="attach"] {
   display: inline-flex;
 }
 

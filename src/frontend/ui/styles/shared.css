@@ -52,7 +52,9 @@
 }
 
 /* A3：tab 行账号徽章（该会话属于哪个账号；未知 .unknown 显 —，弱化） */
-/* 账号头像（account-ux U4/U5）：圆角方块 + 缩写，不透明填充 + 双 hairline 兜任一主题的分隔。 */
+/* 账号头像（account-ux U4/U5）：圆角方块 + 缩写，不透明填充 + 双 hairline 兜任一主题的分隔。
+   号色那一格由 `account-color.ts` 现设 `--acct` / `--acct-ink`（取 tokens.css 的 `--acct-c<格>` / `--acct-ink<格>`）；
+   没设（那台没给号色）⇒ 两条声明都落空：底透明、字随父 —— 中性头像。 */
 .acct-avatar {
   display: inline-flex;
   align-items: center;
@@ -60,6 +62,8 @@
   width: 16px;
   height: 16px;
   border-radius: var(--radius-s);
+  background: var(--acct);
+  color: var(--acct-ink);
   font-size: 9px; /* 16px 方块装不下 11px 的缩写字母：令牌之外唯一登记的字号 */
   font-weight: 600;
   font-variant: small-caps;
@@ -70,87 +74,11 @@
     inset 0 0 0 1px rgb(255 255 255 / 10%);
 }
 
-/* 幽灵态（U5：lastAccount 软来源）——淡填充 + 描边，弱于实心 live。 */
+/* 幽灵态（U5：lastAccount 软来源）——淡填充 + 描边，弱于实心 live；描边取该号的填充色（用 color 承载，box-shadow currentColor 引用），没有号色 ⇒ 次要字色。 */
 .acct-avatar.ghost {
-  /* S21 步 8：这一族原本 10 处 `!important` 已全摘 —— `.acct-avatar.ghost` 是
-     (0,2,0)、`.acct-avatar.ghost.acct-cN` 是 (0,3,0)，而被压的 `.acct-cN` 只有 (0,1,0)，
-     **按特异度本来就该赢**，与源码顺序无关。死值验读数同上。 */
   background: transparent;
-  color: var(--text-2);
+  color: var(--acct, var(--text-2));
   box-shadow: inset 0 0 0 1px currentColor;
   opacity: 0.72;
-}
-
-.acct-c0 {
-  background: var(--acct-c0);
-  color: var(--acct-ink0);
-}
-
-.acct-c1 {
-  background: var(--acct-c1);
-  color: var(--acct-ink1);
-}
-
-.acct-c2 {
-  background: var(--acct-c2);
-  color: var(--acct-ink2);
-}
-
-.acct-c3 {
-  background: var(--acct-c3);
-  color: var(--acct-ink3);
-}
-
-.acct-c4 {
-  background: var(--acct-c4);
-  color: var(--acct-ink4);
-}
-
-.acct-c5 {
-  background: var(--acct-c5);
-  color: var(--acct-ink5);
-}
-
-.acct-c6 {
-  background: var(--acct-c6);
-  color: var(--acct-ink6);
-}
-
-.acct-c7 {
-  background: var(--acct-c7);
-  color: var(--acct-ink7);
-}
-
-/* 幽灵态描边取该 slot 的填充色（用 color 承载，box-shadow currentColor 引用）。 */
-.acct-avatar.ghost.acct-c0 {
-  color: var(--acct-c0);
-}
-
-.acct-avatar.ghost.acct-c1 {
-  color: var(--acct-c1);
-}
-
-.acct-avatar.ghost.acct-c2 {
-  color: var(--acct-c2);
-}
-
-.acct-avatar.ghost.acct-c3 {
-  color: var(--acct-c3);
-}
-
-.acct-avatar.ghost.acct-c4 {
-  color: var(--acct-c4);
-}
-
-.acct-avatar.ghost.acct-c5 {
-  color: var(--acct-c5);
-}
-
-.acct-avatar.ghost.acct-c6 {
-  color: var(--acct-c6);
-}
-
-.acct-avatar.ghost.acct-c7 {
-  color: var(--acct-c7);
 }
 }

@@ -28,6 +28,12 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
     load_config: () => Promise.resolve(structuredClone(disk.cfg)),
     footprint_client_facts: () => Promise.resolve({ home: "/h", path: null }),
     clipboard_write: async (a: { text: string }) => (await import("../../../test-support/clipboard-fake")).viaFake(a),
+    os_open: (w: { kind: string; path?: string; url?: string }) => {
+      if (w.kind === "url") opened(w.url);
+      else if (w.kind === "path") localOpened.push(w.path ?? "");
+      else if (w.kind === "reveal") localRevealed.push(w.path ?? "");
+      return Promise.resolve();
+    },
   },
 }));
 vi.mock("../../../../src/comms/inward/chan", () => ({
@@ -85,11 +91,6 @@ vi.mock("../../../../src/comms/inward/chan", () => ({
 // 各台「恢复到 tmux 里」那一格住那台后端（`prefs-read`）：桩成都开着。
 vi.mock("../../../../src/frontend/ui/machine-prefs", () => ({
   readPrefs: async () => ({ state: "ok", reason: null, detail: null, path: null, prefs: { launchers: {}, resumeWhere: "tmux", models: {}, permissionModes: {}, contextLimits: {} } }),
-}));
-vi.mock("@tauri-apps/plugin-opener", () => ({
-  openUrl: opened,
-  openPath: (p: string) => (localOpened.push(p), Promise.resolve()),
-  revealItemInDir: (p: string) => (localRevealed.push(p), Promise.resolve()),
 }));
 vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 vi.mock("../../../../src/frontend/ui/file-window", () => ({ openOnMachine: (host: unknown, at: unknown) => (fileWin.push({ host, at }), Promise.resolve()) }));

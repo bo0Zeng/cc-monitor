@@ -2,7 +2,7 @@
 import type { Allow } from "./Allow";
 import type { CanClose } from "./CanClose";
 import type { CanSay } from "./CanSay";
-import type { CanTerminal } from "./CanTerminal";
+import type { CanView } from "./CanView";
 
 /**
  * 这条会话此刻能做什么（界面照 `can` 灰不灰、照 `why` 写跳过的理由，不自己判）。
@@ -17,9 +17,18 @@ close: CanClose,
  */
 resume: Allow, 
 /**
- * 「终端」那一颗（拉它的外部窗口 · 在这一端开它的终端 · 做不了，见 [`CanTerminal`]）。
+ * 拉前：把它住的那个外部终端窗口拉到前面（tab 行尾 ↗ · 右键 · 会话头 · 快捷键）。活着 · 读记录中 · 程序退了 tmux 会话还在 ⇒ 能，
+ * 宿主是哪种都一样（本机会话与远端会话同一条：远端的窗口是看的这台上开着 ssh 的那个终端）；看的这一端的壳拉不拉得了窗由那一端自己判，不写在这里。
  */
-terminal: CanTerminal, 
+front: Allow, 
+/**
+ * 在终端里打开：另开一个终端窗口接进它住的那个终端（tmux 会话 · 托管终端）。不在宿主里 · 已结束 · pidfile 说接不进 ⇒ 不能。
+ */
+attach: Allow, 
+/**
+ * 看它的终端：在看的这一端开它的终端页（桌面底部抽屉 · 手机终端屏），见 [`CanView`]。
+ */
+view: CanView, 
 /**
  * 程序退了、tmux 会话还在 ⇒ 接回。
  */

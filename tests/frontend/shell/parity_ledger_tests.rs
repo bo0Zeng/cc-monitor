@@ -8,12 +8,12 @@ pub(crate) enum Side {
     Both,
 }
 
-/// monitor 自己的事分几类。`may_touch` 那三类碰后端是本分；其余碰了就是没迁干净（`command_home_registry` 判）。
+/// monitor 自己的事分几类。`may_touch` 那四类碰后端是本分；其余碰了就是没迁干净（`command_home_registry` 判）。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum Own {
     /// 开窗 / 拉前 monitor 自己的窗口。
     Window,
-    /// 拉前 · 绑窗口（把用户桌面上那个终端窗口拉到前面）。
+    /// 拉前 · 绑窗口（把用户桌面上那个终端窗口拉到前面）：要先问本机后端那个会话在这台电脑上的哪儿（`session-window`），碰后端是本分。
     Front,
     /// 本机 monitor 配置（`config.json` · `auto-launch.json` · 机器表）。
     Config,
@@ -25,15 +25,13 @@ pub(crate) enum Own {
     Lifecycle,
     /// 通信层面 A 客户端本身。
     Channel,
-    /// 放字节：照那台后端判好的计划往那台放 / 删 monitor 带着的字节。
-    Place,
     /// 足迹里 monitor 自己那台那几行的事实（判定在后端）。
     Footprint,
 }
 
 impl Own {
     pub(crate) fn may_touch(self) -> bool {
-        matches!(self, Own::Lifecycle | Own::Channel | Own::Place)
+        matches!(self, Own::Lifecycle | Own::Channel | Own::Front)
     }
 }
 
@@ -121,11 +119,12 @@ pub(crate) const LEDGER: &[(&str, &str, Side, Own, &str)] = &[
          ＋ 界面交来的记录账 ＋ 日志位置，只读、不经后端发东西",
     ),
     (
-        "open_log_file",
-        "app.logs",
+        "os_open",
+        "app.window.self",
         Side::Both,
-        Own::Log,
-        "日志",
+        Own::Window,
+        "用系统程序打开 / 在文件夹中显示（本机路径 · 网址 · 日志文件与目录）：起的是 monitor 面前这台桌面的程序，\
+         挑程序住 `platform/proc.rs`，不经后端",
     ),
     (
         "restart_app",
@@ -154,13 +153,6 @@ pub(crate) const LEDGER: &[(&str, &str, Side, Own, &str)] = &[
         Side::Both,
         Own::Window,
         "读系统剪贴板（登录抽屉［粘贴］）：剪贴板是 monitor 面前这台桌面的，经系统接口读（`clipboard.rs`）",
-    ),
-    (
-        "open_log_dir",
-        "app.logs",
-        Side::Both,
-        Own::Log,
-        "日志",
     ),
     (
         "backend_status",
@@ -216,14 +208,7 @@ pub(crate) const LEDGER: &[(&str, &str, Side, Own, &str)] = &[
         "terminal.focus",
         Side::Both,
         Own::Front,
-        "拉前会话的终端窗口（本机后端答过它在这台电脑上的哪儿）",
-    ),
-    (
-        "front_missed",
-        "terminal.focus",
-        Side::Both,
-        Own::Front,
-        "↗ 出口那一跳没成的那一张，照 face_core::front 写（只写字，不碰后端）",
+        "拉前会话的终端窗口（先问本机后端它在这台电脑上的哪儿，照结局码挑后端写好的那一张）",
     ),
     (
         "open_terminal_window",
@@ -252,20 +237,6 @@ pub(crate) const LEDGER: &[(&str, &str, Side, Own, &str)] = &[
         Side::Remote,
         Own::Channel,
         "起文件窗口进程、把它的 stdin / stdout 接进通道（窗口的 call 经通道到后端）、读它那一行就绪 / 原话（第一屏由窗口进程经通道自己列）",
-    ),
-    (
-        "deploy_remote_backend",
-        "backend.deploy",
-        Side::Remote,
-        Own::Place,
-        "把 monitor 带着的那几格后端字节交本机后端 `deploy-install`（判定 · 放字节 · 换进落点都在后端）",
-    ),
-    (
-        "uninstall_remote_backend",
-        "backend.deploy",
-        Side::Remote,
-        Own::Place,
-        "删落点那一份后端字节（交本机后端 `deploy-uninstall`）",
     ),
     (
         "chan_call",
@@ -334,7 +305,6 @@ pub(crate) const LEDGER: &[(&str, &str, Side, Own, &str)] = &[
 
 /// **不对称能力的理由**：每一条都是天然不对称（本地不需要这项能力，不是欠账）。键集合必须**恰好等于**从 `LEDGER` 算出来的不对称集合。
 const ASYMMETRY_REASONS: &[(&str, &str)] = &[
-    ("backend.deploy", "本机也要后端（入方向通道、每台机开关、tmux 帧都靠它），而且会自部署 —— `local_backend.rs::extract_embedded_to`（exe 旁没有本机后端就把内嵌那份释放到 `~/.cc-monitor/bin`）。不对称只在一格：**本机那次释放不经一条 IPC 命令**，是宿主启动时自己做的（`lib.rs` 的启动段），所以命令面上没有本机对侧。天然不对称说的是「不需要一条命令」，不是「不需要后端」。"),
     ("sftp.file-panel", "§40 天然不对称白名单第 1 条：本地有操作系统的文件管理器，不需要它。"),
     ("audit.monitor-own", "足迹里 **monitor 自己那台**那几行（`HostScope::Client`：本机 `ccm` 入口 · 终端 · shell profile …）的事实：monitor 只在一台机器上跑，远端那台没有 monitor，也就没有「它自己那几行」可答 —— 远端那一栏由那台后端自己答（`data-report` 不带 `client`，那一族不进人群）。不是欠一条对侧命令。"),
 ];
@@ -552,6 +522,11 @@ const ORIGIN_TAKING_BOTH: &[(&str, &str)] = &[
              本机 `<local>` 与远端同一个处置；命令体不做远端假设。",
     ),
     (
+        "bring_terminal_to_front",
+        "↗ 拉前：`origin` 只原样放进问本机后端的那一问（`session-window` 的 `machine`），会话在哪由本机后端判（远端会话它自己问那台）；\
+             壳只照答找窗口、拉前，本机 `<local>` 与远端同一条路，命令体不做远端假设。",
+    ),
+    (
         "open_session_in_new_window",
         "开独立窗口：`origin` 只随 URL 交给那个窗口（它自己订 `session-lines/<sid>` 要寻址键），\
              本机 `<local>` 与远端同一个处置；命令体不做远端假设。",
@@ -633,7 +608,7 @@ fn local_or_both_commands_take_no_remote_only_parameter() {
     //
     // `LEDGER` 里一行进出 `Local` / `Both`（新增、删掉、`Side` 改了），这个数就跟着变；
     //   同一条命令两侧收成一条路（`Remote` 改成 `Both`）也算，命令总数不动、这个数照样变。
-    const EXPECTED_LOCAL_OR_BOTH: usize = 38;
+    const EXPECTED_LOCAL_OR_BOTH: usize = 36;
     assert_eq!(
         checked, EXPECTED_LOCAL_OR_BOTH,
         "检到 {checked} 条 Local/Both 命令（Local {n_local} + Both {n_both}），\
@@ -942,10 +917,9 @@ fn command_dispatch_class() -> BTreeMap<String, Derived> {
 /// 每格的数是**跑出来的**：改了某条命令的 `Side` 或体之后，先让 `hist == want` 那一比印出现打的直方图，照它写，
 /// 不按增减去算（算出来恰好相等不是判据）。
 const REMOTE_SIDE_SIGNOFF: &[(Derived, usize)] = &[
-    // 装 · 卸只拦本机（`deploy.rs::remote_only`；表里有没有那台由本机后端答）。
-    (Derived::RemoteOnly, 1),
+    (Derived::RemoteOnly, 0),
     (Derived::FramePlane, 0),
-    (Derived::Mixed, 1),
+    (Derived::Mixed, 0),
     (Derived::Unclassified, 1),
 ];
 
@@ -975,7 +949,7 @@ fn the_remote_side_column_is_signed_off() {
     // 反向自检①：派生器扫不到东西的时候，下面每一条都会**空真地**成立。
     //    地板只守「扫描面没塌」：`#[tauri::command]` 真的删了，就照现打的数把地板改低。
     assert!(
-        derived.len() >= 39,
+        derived.len() >= 35,
         "派生器只认出 {} 条命令的派发跳（`LEDGER` 现打 {} 行）—— **扫描面塌了**，\n\
              不是「命令变少了」。先修 `command_dispatch_class`，别信下面任何一条绿。",
         derived.len(),
@@ -991,7 +965,7 @@ fn the_remote_side_column_is_signed_off() {
     //    ⚠ 地板只守「这一栏没塌成空集」；**有牙的是下面那条直方图相等**，不是这个数。
     //    人群真的变少（一条 `Side::Remote` 命令删了、或并进带 origin 的 `Both`），照现打的数把地板改低。
     assert!(
-        remote_rows.len() >= 3,
+        remote_rows.len() >= 1,
         "`Side::Remote` 现打只有 {} 行 —— 本条的人群塌了，下面几条会空真地绿",
         remote_rows.len()
     );

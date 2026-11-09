@@ -633,3 +633,57 @@ fn an_account_without_a_credentials_file_is_left_alone() {
         "替没登录的号建了凭据文件"
     );
 }
+
+// ── MCP 需登录那一判（needs_login_of）：读面夹具全是合成的 ──
+
+use crate::agents::{McpEntry, McpRead, McpStatus};
+
+fn need_entry(scope: &'static str, name: &str, status: McpStatus, login_in: &[&str]) -> McpEntry {
+    McpEntry {
+        scope,
+        name: name.to_string(),
+        server: serde_json::json!({}),
+        source: "/h/.claude.json".to_string(),
+        status,
+        login_in: login_in.iter().map(|s| s.to_string()).collect(),
+        seen_ms: None,
+    }
+}
+
+fn need_read(entries: Vec<McpEntry>) -> McpRead {
+    McpRead {
+        entries,
+        dirs: vec![],
+        problems: vec![],
+    }
+}
+
+/// 用户级那一份 ＋ 活会话项目那一份：项目级 · 本地级要登录的带上项目；项目那一份里重复出现的用户级不再算一遍；不要登录的不算。
+#[test]
+fn project_servers_needing_login_count_and_carry_their_project() {
+    let user = need_read(vec![
+        need_entry("user", "notes", McpStatus::NeedsLogin, &["work"]),
+        need_entry("user", "down", McpStatus::Failed, &[]),
+    ]);
+    let proj = need_read(vec![
+        need_entry("user", "notes", McpStatus::NeedsLogin, &["work"]),
+        need_entry("project", "tracker", McpStatus::NeedsLogin, &[]),
+        need_entry("local", "db", McpStatus::NeedsLogin, &["side"]),
+        need_entry("project", "ok", McpStatus::Disabled, &[]),
+    ]);
+    let got = needs_login_of(&[(None, user), (Some("/p/app".into()), proj)]);
+    let need = |name: &str, scope: &'static str, who: &[&str], project: Option<&str>| McpNeed {
+        name: name.into(),
+        scope,
+        login_in: who.iter().map(|s| s.to_string()).collect(),
+        project: project.map(str::to_string),
+    };
+    assert_eq!(
+        got,
+        vec![
+            need("notes", "user", &["work"], None),
+            need("tracker", "project", &[], Some("/p/app")),
+            need("db", "local", &["side"], Some("/p/app")),
+        ]
+    );
+}

@@ -30,7 +30,7 @@ import type { AgentsPanel } from "./agents-panel";
 import type { GridSessionSnapshot, SessionPeek } from "./session-status";
 import type { Tab, TabsSummary } from "./tab-model";
 import type { SessionFace } from "./generated/SessionFace";
-import { activityOf, closesFromMenu, closesQuietly, isEnded, isLive, terminalWay } from "./face-can";
+import { activityOf, closesFromMenu, closesQuietly, frontBlocked, isEnded, isLive, viewBlocked } from "./face-can";
 import { isLocalOrigin, isRemoteOrigin, LOCAL, type Machine } from "./ipc/origin";
 // `Tab` 的形状与标题函数在 `tab-model.ts`；这里 re-export，调用方只 import 本文件（落点算术直接从 `tab-drop.ts` 取）。
 export type { Tab, TabsSummary } from "./tab-model";
@@ -137,6 +137,7 @@ export class TabManager {
       openMenu: (e, sid) => this.openMenu(e, sid),
       toggleSelect: (sid) => this.pick(sid, "toggle"),
       openMenuAt: (el, sid) => this.openMenu(el, sid),
+      front: (sid) => this.frontGated(sid),
       fixMachine: (origin, fix) => this.fixMachine(origin, fix),
       planForGroup: (gid, name, members) => this.onPlanForGroup(gid, name, members),
     });
@@ -349,7 +350,8 @@ export class TabManager {
     "tab.open-cwd",
     "tab.pop-out",
     "tab.context-menu",
-    "session.terminal",
+    "terminal.bring-front",
+    "panel.toggle-terminal",
   ]);
 
   /**
@@ -397,7 +399,8 @@ export class TabManager {
         setAutoAnswer(t.origin, sid, min).catch((e: unknown) => failToast(copyText("tabMenu.autoAnswer.failed"), e));
       },
       openCwd: (sid) => void this.openTabCwd(sid),
-      terminal: (sid) => this.terminalFor(sid),
+      front: (sid) => this.frontGated(sid),
+      view: (sid) => this.viewTerminal(sid),
     },
     this.actions,
   );
@@ -704,6 +707,7 @@ export class TabManager {
       title,
       projectDir,
       cwdShown: null, // 显示形：会话事实到了才有（`onSessionFacts`）
+      projectName: null, // 项目名：会话事实到了才有（`onSessionFacts`；后端切好的，界面不切路径）
       label: pendingName?.label ?? null,
       forkedLine: null, // 会话事实到了才有（`onSessionFacts`）
       agent: null, // 是哪一家：会话事实到了才有（`onSessionFacts`），之前要分家的那几项灰着
@@ -1078,18 +1082,29 @@ export class TabManager {
   }
 
   /**
-   * 「终端」那一颗（会话头 · 右键 · 命令面板 · 快捷键 · 报错卡同一条路）：做什么照脸上那一格（`terminalWay`，本机标签页挑 near、远端挑 far）——
-   * 拉它的外部窗口 · 在这里开它的终端（切过去、开底部抽屉的终端页）· 做不了 ⇒ 那一句进状态栏「消息」、不弹 toast、不发 IPC。
+   * 拉前（tab 行尾 ↗ · 右键 · 会话头 · 命令面板 · 快捷键 ` · 报错卡同一条路，本机会话与远端会话同一条）：点得了 ⇒ 拉它的外部窗口（`frontFor`）；
+   * 点不了 ⇒ 那一句进状态栏「消息」、不弹 toast、不发 IPC；还没收到脸 ⇒ 什么都不做。
    */
-  terminalFor(sid: string): void {
+  frontGated(sid: string): void {
     const tab = this.store.tabs.get(sid);
     if (!tab) return;
-    const way = terminalWay(tab.face, isRemoteOrigin(tab.origin));
-    if (way === null) return;
-    const title = copyText("mobDrawer.item.terminal");
-    if (way.go === "no") noteMessage(title, way.why);
-    else if (way.go === "front") void this.frontFor(sid);
-    else this.onOpenHere?.(sid);
+    const why = frontBlocked(tab.face);
+    if (why === null) void this.frontFor(sid);
+    else if (why) noteMessage(copyText("terminal.head.front"), why);
+  }
+
+  /** 看它的终端（右键 · 会话头 · 命令面板 · Ctrl+`）：点得了 ⇒ 切过去、开底部抽屉的终端页（`onOpenHere`）；点不了 ⇒ 同上那一句进「消息」。 */
+  viewTerminal(sid: string): void {
+    const tab = this.store.tabs.get(sid);
+    if (!tab) return;
+    const why = viewBlocked(tab.face);
+    if (why === null) this.onOpenHere?.(sid);
+    else if (why) noteMessage(copyText("sessionHead.act.terminal"), why);
+  }
+
+  /** 在终端里打开（报错卡 · 命令面板 Shift+Enter；右键那一项走菜单自己那一口，同一条）：另开一个终端窗口接进它住的那个终端。 */
+  async attachInTerminal(sid: string): Promise<void> {
+    await this.menu.attachTo(sid);
   }
 
   /** 会话头的「打开工作目录」。 */
@@ -1407,9 +1422,14 @@ export class TabManager {
     if (this.router.bringMonitorToFront) bringMonitorToFront();
   }
 
-  /** 快捷键 ` · 命令面板：当前标签页的「终端」那一颗。 */
-  terminalActive(): void {
-    if (this.store.activeId) this.terminalFor(this.store.activeId);
+  /** 快捷键 ` · 命令面板：当前标签页拉前。 */
+  frontActive(): void {
+    if (this.store.activeId) this.frontGated(this.store.activeId);
+  }
+
+  /** 快捷键 Ctrl+` · 命令面板：当前标签页看它的终端。 */
+  viewActive(): void {
+    if (this.store.activeId) this.viewTerminal(this.store.activeId);
   }
 
   /** 拉窗没成那一条的［接上终端］（主窗口接到设置窗那一节）。 */

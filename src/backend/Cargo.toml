@@ -426,7 +426,6 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 toml_edit = { version = "0.25", default-features = false, features = ["parse", "display"] }
 jiff = { version = "0.2", default-features = false, features = ["std", "tzdb-bundle-always"] }
-iana-time-zone = "0.1"
 mimalloc = { version = "0.1", default-features = false, features = ["no_thp"] }
 sha2 = "0.11"
 ts-rs = "12.0.1"

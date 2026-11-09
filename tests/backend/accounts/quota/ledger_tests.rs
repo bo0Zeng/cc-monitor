@@ -242,15 +242,6 @@ fn the_book_carries_its_version_and_a_newer_one_is_left_alone() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
-#[test]
-fn the_ledger_path_follows_the_data_home() {
-    let got = path_from(&|k| match k {
-        "CCM_DATA_DIR" => Some("/data/home".into()),
-        _ => None,
-    });
-    assert_eq!(got, Some(PathBuf::from("/data/home").join(FILE_NAME)));
-}
-
 // ── 第二个来源（`quota-probe`）：按窗口合并 · 两个写者谁也冲不掉谁 ─────────────────────
 
 fn win(name: &str, used: f64, resets_at: Option<u64>) -> QuotaWindow {

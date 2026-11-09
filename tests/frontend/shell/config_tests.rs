@@ -426,7 +426,12 @@ fn a_disk_failure_says_the_reason_word_and_keeps_the_os_text_in_the_detail() {
 fn the_key_never_lands_in_the_config_file_the_frontend_rewrites_wholesale() {
     use creds_core::store;
     let cfg = super::resolve_config_path().expect("config path");
-    let creds = store::credentials_path(&super::resolve_monitor_data_dir().expect("data dir"));
+    let creds =
+        super::resolve_monitor_data_dir()
+            .expect("data dir")
+            .join(relay_route_core::file_name_of(
+                relay_route_core::APIKEY_CREDENTIALS_REL,
+            ));
     assert_ne!(cfg, creds, "凭据落在了前端『读—改—写』整份的那个文件上");
     assert_eq!(cfg.parent(), creds.parent());
     let cfg_src =

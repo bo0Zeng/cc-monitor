@@ -259,16 +259,6 @@ export class FakeBackend {
     throw f.fail;
   }
 
-  /** 壳的 `front_missed`：无头壳写的那一张原样交回；壳没答成 ⇒ 抛壳交的那一形。 */
-  private async face(args: Record<string, unknown>): Promise<unknown> {
-    await this.ready;
-    const r = await fetch("/__ccm/face", { method: "POST", body: JSON.stringify({ key: this.key, machine: args.machine, miss: args.miss }) });
-    if (!r.ok) throw new Error(`/__ccm/face：${await r.text()}`);
-    const f = (await r.json()) as { ok: boolean; body?: unknown; fail?: unknown };
-    if (!f.ok) throw f.fail;
-    return f.body;
-  }
-
   /** 壳的 `diagnostics_report`：壳交的事实照场景（`load_config` · `get_log_file_info` 那两条的答）组，成品原样是本机真后端的。 */
   private async diagnostics(): Promise<unknown> {
     const cmds = this.world.commands;
@@ -453,9 +443,6 @@ export class FakeBackend {
       case "attach_stage_stop":
         this.stoppedTickets.add(Number(args.ticket));
         return null;
-      case "front_missed":
-        // ↗ 出口那一跳没成的那一张：交无头壳照 `face_core::front` 写（同壳那一条命令），台架不写字。
-        return this.face(args);
       case "diagnostics_report":
         // 「复制诊断信息」：同壳那一条，只交壳自己的三样事实（版本号 · 日志文件 · config 顶层键），整段由本机真后端 `diagnostics-report` 出。
         return this.diagnostics();

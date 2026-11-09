@@ -15,7 +15,7 @@ use crate::platform::shell::posix;
 use cap_core::{Cap, Over};
 use copy_core::copy_text;
 use serde::Serialize;
-use serde_json::json;
+use serde_json::{json, Map, Value};
 use std::path::{Path, PathBuf};
 
 /// 钩子命令里那个程序（`Stop` → `cc-bus stop-hook`：唯一的入口 ＋ 动词）。会话起来时不用登记：会话 id 由 cc-monitor 认。
@@ -166,39 +166,31 @@ pub(crate) fn classify_command(
     })
 }
 
-/// 某个事件下调 `want` 的钩子。逐层容忍（坏条目跳过）；多条里能用的优先，其次 `PathMissing` / `Unknown`。
-pub(crate) fn diagnose_event(
-    root: &serde_json::Value,
-    event: &str,
+/// 登记着的那几条命令里调 `want` 的那一条定态：多条里能用的优先，其次 `PathMissing` / `Unknown`。
+pub(crate) fn diagnose_commands(
+    commands: &[String],
     want: (&str, &str),
     exists: &dyn Fn(&str) -> bool,
 ) -> HookState {
     let mut fallback: Option<HookState> = None;
-    let entries = root
-        .get("hooks")
-        .and_then(|h| h.get(event))
-        .and_then(|e| e.as_array());
-    for entry in entries.into_iter().flatten() {
-        let inner = entry.get("hooks").and_then(|h| h.as_array());
-        for hk in inner.into_iter().flatten() {
-            let Some(cmd) = hk.get("command").and_then(|c| c.as_str()) else {
-                continue;
-            };
-            if cmd.trim().is_empty() {
-                continue;
+    for cmd in commands {
+        if let Some(st) = classify_command(cmd, want, exists) {
+            if st.is_working() {
+                return st;
             }
-            if let Some(st) = classify_command(cmd, want, exists) {
-                if st.is_working() {
-                    return st;
-                }
-                fallback.get_or_insert(st);
-            }
+            fallback.get_or_insert(st);
         }
     }
     fallback.unwrap_or(HookState::NotInstalled)
 }
 
+/// cc-bus 装进的那一家的足迹面（钩子格的读与拼住那一家，经注册表那两格问）。
+fn hooks_face() -> Option<crate::agents::FootprintFace> {
+    crate::agents::asset_kind().and_then(crate::agents::footprint_face)
+}
+
 /// 完整诊断。`raw` = settings.json 原文；读不到 / 坏 JSON / 顶层不是对象 ⇒ `NotInstalled` ＋ `note` 说原因。
+/// 哪几条命令登记在「停下时」那一种下由那一家答（[`crate::agents::FootprintFace::stop_hook_commands`]）；没有那一家 ⇒ 一条都没有。
 pub(crate) fn diagnose(raw: Option<&str>, exists: &dyn Fn(&str) -> bool) -> HooksDiagnosis {
     let noted = |note: String| HooksDiagnosis {
         stop: HookState::NotInstalled,
@@ -214,14 +206,71 @@ pub(crate) fn diagnose(raw: Option<&str>, exists: &dyn Fn(&str) -> bool) -> Hook
     if !v.is_object() {
         return noted(copy_text("rsHooksDiag.diagnose.notObject", &[]));
     }
+    let commands = hooks_face().map_or_else(Vec::new, |f| (f.stop_hook_commands)(&v));
     HooksDiagnosis {
-        stop: diagnose_event(&v, "Stop", (PROGRAM, VERB), exists),
+        stop: diagnose_commands(&commands, (PROGRAM, VERB), exists),
         note: String::new(),
     }
 }
 
-/// 要加的内容：一条 Stop 钩子直接指向 `<skills 根>/cc-bus/scripts/cc-bus`、带动词 `stop-hook`（家目录底下 ⇒ `"$HOME/…"`，否则绝对路径）。
-/// 入口不在 ⇒ `None`（cc-bus 没装，先装）。
+/// 照（键路径, 那一项）拼成要并进去的那一份：路径上一层层是对象，最后一格是数组、那一项放进去（通用的 JSON 形状，不认哪一家的格名）。
+fn nest(slots: &[(Vec<&str>, Value)]) -> Value {
+    fn put(at: &mut Map<String, Value>, path: &[&str], item: &Value) {
+        match path {
+            [] => {}
+            [last] => {
+                if let Some(arr) = at
+                    .entry(last.to_string())
+                    .or_insert_with(|| json!([]))
+                    .as_array_mut()
+                {
+                    arr.push(item.clone());
+                }
+            }
+            [key, rest @ ..] => {
+                if let Some(next) = at
+                    .entry(key.to_string())
+                    .or_insert_with(|| Value::Object(Map::new()))
+                    .as_object_mut()
+                {
+                    put(next, rest, item);
+                }
+            }
+        }
+    }
+    let mut doc = Map::new();
+    for (path, item) in slots {
+        put(&mut doc, path, item);
+    }
+    Value::Object(doc)
+}
+
+/// [`nest`] 的反面：要加的内容 ⇒（键路径, 那一项），「待办」照它一项项并进那份文件。读不懂 ⇒ 空。
+pub fn slots_of(snippet: &str) -> Vec<(Vec<String>, Value)> {
+    fn walk(v: &Value, path: &mut Vec<String>, out: &mut Vec<(Vec<String>, Value)>) {
+        match v {
+            Value::Object(m) => {
+                for (k, sub) in m {
+                    path.push(k.clone());
+                    walk(sub, path, out);
+                    path.pop();
+                }
+            }
+            Value::Array(items) => {
+                out.extend(items.iter().map(|it| (path.clone(), it.clone())));
+            }
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    if let Ok(v) = serde_json::from_str::<Value>(snippet) {
+        walk(&v, &mut Vec::new(), &mut out);
+    }
+    out
+}
+
+/// 要加的内容：一条「停下时」钩子直接指向 `<skills 根>/cc-bus/scripts/cc-bus`、带动词 `stop-hook`（家目录底下 ⇒ `"$HOME/…"`，否则绝对路径）；
+/// 并进哪一格由那一家答（[`crate::agents::FootprintFace::stop_hook_slots`]）。入口不在 · 没有那一家 ⇒ `None`（cc-bus 没装，先装）。
 pub(crate) fn snippet(skills: &Path, home: Option<&Path>) -> Option<String> {
     let script: PathBuf = skills
         .join(super::cc_bus_install::NAME)
@@ -235,10 +284,8 @@ pub(crate) fn snippet(skills: &Path, home: Option<&Path>) -> Option<String> {
         None => shell_quote_core::posix_quote(&script.display().to_string()),
     };
     let command = format!("{word} {VERB}");
-    let v = json!({ "hooks": {
-        "Stop": [ { "hooks": [ { "type": "command", "command": command } ] } ],
-    } });
-    serde_json::to_string_pretty(&v).ok()
+    let slots = (hooks_face()?.stop_hook_slots)(&command);
+    serde_json::to_string_pretty(&nest(&slots)).ok()
 }
 
 /// `$HOME/…` · `${HOME}/…` · `~/…` 按这台家目录展开；其余原样。

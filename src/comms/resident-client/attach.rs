@@ -5,15 +5,12 @@
 use crate::client::{split_and_park, BackendHello, ParkedWriter};
 use crate::line::Downstream;
 use cap_core::{Cap, Over};
-use cmd_wire::attach::{AttachLine, AttachReply, Relation, Yes};
+use cmd_wire::attach::{AttachLine, AttachReply, Relation, Yes, REFUSE_MALFORMED};
 use cmd_wire::watch::WatchAsk;
 use comms_inward::line::{read_capped_line, CappedLine};
 use copy_core::copy_text;
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, ReadHalf, WriteHalf};
-
-/// 小中继（`--resident-attach`）回 `absent`：那台此刻没有常驻后端在听（没起 · 刚退）。重连循环凭它去 `--resident-ensure`。
-pub const RELAY_ABSENT: &str = "absent";
 
 /// 握手那两行（hello · attach 回话）的上限：hello 实测 8.6 KB（10-13：命令名 · 撤不动名单 · 每条 typed 命令的形状指纹三张表，
 /// typed 命令越多越长），64 KiB 给足余量，又堵死「一直发字节不发换行」。
@@ -162,9 +159,6 @@ fn read_failed(hello: bool, raw: String) -> AttachFail {
         raw,
     }
 }
-
-/// 常驻后端认不得 attach 行时回的原因（后端 `wire/listen.rs` 的 `REFUSE_MALFORMED`）。
-pub const REFUSE_MALFORMED: &str = "malformed-attach";
 
 /// 整段握手：写 attach 行（`mine` ＝ 手上这一版；没带 ⇒ 新旧记不可比；`watch` ＝ 在看名单；`deflate` ⇒ 要那台压）→ 读第一行（拒绝 ⇒ [`AttachFail::Refused`]；不是 hello ⇒
 /// [`AttachFail::NotOurs`]）→ 读回话（认不得这一形 ⇒ [`AttachFail::Old`]；要了 deflate、回话认了 ⇒ 读半边边读边解）。每一行各等至多 `within`。

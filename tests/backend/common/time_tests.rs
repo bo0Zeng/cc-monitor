@@ -101,6 +101,36 @@ fn t4_the_constant_lives_only_here() {
     );
 }
 
+/// ★ 时区那一格（帧面信封 `tz` · CLI `--tz` · 流开头 `--tz`）只一处读：[`Tz::of`]。
+/// 别处内联 `.and_then(Tz::named).unwrap_or_default()` 就是第二份读法（认不得 ⇒ UTC 那一条各写各的）。
+#[test]
+fn t4b_the_tz_cell_is_read_only_through_tz_of() {
+    let root = guard_core::addr::backend_src_root();
+    let needle = "Tz::named)";
+    let files = guard_core::scan_tree!(&root, &["rs"]);
+    assert!(files.len() >= 60, "只扫到 {} 份 —— 遍历坏了", files.len());
+    let hits: Vec<String> = files
+        .iter()
+        .filter(|(_, src)| guard_core::production_code(src).contains(needle))
+        .map(|(p, _)| {
+            p.strip_prefix(&root)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/")
+        })
+        .collect();
+    assert!(
+        hits.is_empty(),
+        "时区那一格又长出了一份读法：{hits:?} —— 改调 `Tz::of`"
+    );
+    let sample =
+        "let tz = tz.as_deref().and_then(crate::common::time::Tz::named).unwrap_or_default();";
+    assert!(
+        guard_core::production_code(sample).contains(needle),
+        "针认不出样本"
+    );
+}
+
 #[test]
 fn t5_display_forms_follow_the_day_and_the_year() {
     let now = days_from_civil(2026, 10, 7) * 86_400 + 12 * 3_600;
@@ -255,18 +285,14 @@ fn t10_file_mtime_short_and_full() {
 
 #[test]
 fn t11_the_viewer_time_zone_is_named_and_daylight_saving_follows_the_instant() {
-    // 认不得 · 不是串 · 缺 ⇒ UTC（信封那一格的宽读）。
-    assert_eq!(Tz::of(&serde_json::json!("Asia/Shanghai")), sh());
-    for v in [
-        serde_json::json!("Nowhere/Atlantis"),
-        serde_json::json!(480),
-        serde_json::Value::Null,
-    ] {
-        assert_eq!(Tz::of(&v), Tz::default(), "{v}");
+    // 认不得 · 缺 ⇒ UTC（信封那一格的宽读；不是串的那一形由信封宽读当没带，见 `wire_tests`）。
+    assert_eq!(Tz::of(Some("Asia/Shanghai")), sh());
+    for v in [Some("Nowhere/Atlantis"), Some(""), None] {
+        assert_eq!(Tz::of(v), Tz::default(), "{v:?}");
         // 按 UTC 算，但说不出看的那一台是哪个时区（不冒充成 `UTC`）。
-        assert_eq!(Tz::of(&v).offset_secs(0), 0, "{v}");
-        assert_eq!(Tz::of(&v).viewer_zone(), None, "{v}");
-        assert_eq!(Tz::of(&v).iana_name(), "UTC", "转给别台时照算的那一个明说");
+        assert_eq!(Tz::of(v).offset_secs(0), 0, "{v:?}");
+        assert_eq!(Tz::of(v).viewer_zone(), None, "{v:?}");
+        assert_eq!(Tz::of(v).iana_name(), "UTC", "转给别台时照算的那一个明说");
     }
     assert_eq!(
         Tz::named("UTC").expect("UTC").viewer_zone().as_deref(),
@@ -275,8 +301,8 @@ fn t11_the_viewer_time_zone_is_named_and_daylight_saving_follows_the_instant() {
     assert_eq!(sh().viewer_zone().as_deref(), Some("Asia/Shanghai"));
     assert_eq!(
         Tz::named(TZ_HERE).expect("local").viewer_zone(),
-        crate::platform::local_tz::iana_name(),
-        "「这一台」⇒ 这台系统的时区名"
+        Tz::here().viewer_zone(),
+        "`local` 就是「这一台」"
     );
     assert_eq!(sh().offset_secs(0), 8 * 3_600);
     // 「看的人就在这一台」：按这台系统的钟（与这台的偏移读法同一处）；只等于它自己。
@@ -284,7 +310,7 @@ fn t11_the_viewer_time_zone_is_named_and_daylight_saving_follows_the_instant() {
     let t = days_from_civil(2026, 7, 1) * 86_400;
     assert_eq!(
         here.offset_secs(t),
-        crate::platform::local_tz::offset_secs(t as u64).unwrap_or(0)
+        crate::platform::tz::offset_secs(t).unwrap_or(0)
     );
     assert_ne!(here, Tz::default());
     assert_eq!(here, Tz::named("local").unwrap());
@@ -361,6 +387,8 @@ fn t11b_the_name_handed_to_another_machine_is_always_said() {
     let here = Tz::named(TZ_HERE).expect("local");
     assert_eq!(
         here.iana_name(),
-        crate::platform::local_tz::iana_name().unwrap_or_else(|| "UTC".to_string())
+        Tz::here()
+            .viewer_zone()
+            .unwrap_or_else(|| "UTC".to_string())
     );
 }

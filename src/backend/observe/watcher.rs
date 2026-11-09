@@ -284,14 +284,32 @@ pub struct Reactions {
     /// 给这个 pid 的窗格打身份标（`control::identity_tag::tag_seen`）：回（这条会话住在什么容器里，这次真写了没有）——
     /// 容器随 `session_added` 报出去，写了几个进对账的回数。
     pub tag: Tag,
+    /// 一条刚宣告的会话跑在哪个号下（`accounts::manage::library::account_of_process_here`）：观测侧不认识账号库，只在宣告那一刻问一声。
+    pub account_of: AccountOf,
 }
 
 /// 打身份标那一手的形状（[`Reactions::tag`]）。
 pub(crate) type Tag = fn(u32, &str) -> (Option<crate::wire::SessionContainer>, bool);
 
+/// 宣告时判号那一手的形状（[`Reactions::account_of`]）：那一家的账号库面 ＋ pid ⇒ 号名；判不了 ⇒ `None`。
+pub type AccountOf = fn(u32, &crate::agents::AccountsFace) -> Option<String>;
+
 /// 没接上打标的那一手（夹具）：不打、不写。
 fn untagged(_: u32, _: &str) -> (Option<crate::wire::SessionContainer>, bool) {
     (None, false)
+}
+
+/// 没接上判号的那一手（夹具）：不说是哪个号。
+fn unjudged(_: u32, _: &crate::agents::AccountsFace) -> Option<String> {
+    None
+}
+
+/// 这台的账号库目录（`<家>/` ＋ 契约常量 `ACCOUNTS_DIR_REL`）：watcher 盯清单与各号凭据文件用。
+fn accts_dir_here() -> PathBuf {
+    match crate::platform::paths::home_dir() {
+        Some(h) => crate::platform::paths::home_join(&h, relay_route_core::ACCOUNTS_DIR_REL),
+        None => PathBuf::from(relay_route_core::ACCOUNTS_DIR_REL),
+    }
 }
 
 /// 这一批文件事件落在哪几个会话的任务目录里（`<tasks>/<sid>/…` 的第一段；`<tasks>` 自己不算）。
@@ -797,7 +815,7 @@ impl AccountsEar {
 /// `p` 是 `<账号目录>/<某号>/` 下那份凭据文件（文件名与账号清单判「已登录」用的同一个常量）。
 fn credentials_touched(p: &Path, accts_dir: &Path) -> bool {
     p.file_name()
-        .is_some_and(|n| n == crate::observe::accounts_query::CREDENTIALS_FILE)
+        .is_some_and(|n| n == acct_core::CREDENTIALS_NAME)
         && p.parent().and_then(Path::parent) == Some(accts_dir)
 }
 
@@ -1367,7 +1385,7 @@ fn watch_loop(
     };
     let sessions = (local.pidfile_dir)(&agent_home);
     // 账号 manifest（「账号清单变了」一帧）。
-    let accounts_manifest = crate::observe::accounts_query::default_manifest_path();
+    let accounts_manifest = accts_dir_here().join(relay_route_core::ACCOUNTS_MANIFEST_NAME);
 
     let mut state = ReaderState::new(projects.clone());
     state.asked = crate::history::needs_changed::asked_sids();
@@ -1384,6 +1402,7 @@ fn watch_loop(
         .collect();
     state.scans = Some(crate::observe::record_scan::global());
     state.tag = reactions.tag;
+    state.account_of = reactions.account_of;
     state.launch = Some((reactions, own));
     // 这台的会话注解（改过的名）：起步读一次，那份文件动了再读（耳朵见下面 `notes_ear`）。读不了 ⇒ 当没有改过名。
     let notes_path = crate::history::history_annotations::path();
@@ -1975,8 +1994,8 @@ struct ReaderState {
     added: HashMap<String, Frame>,
     /// 宣告时说的是「读记录中」的会话（此刻在干什么只有记录说、记录还没读完）：读完必说一次判出来的那一态（判不出 ⇒ 说不清）。
     reading: HashSet<String>,
-    /// 这台的账号库目录：宣告时判会话跑在哪个号下读它（夹具换成自己的）。
-    accts_dir: PathBuf,
+    /// 宣告时判会话跑在哪个号下（[`Reactions::account_of`]）：生产由 [`watch_loop`] 接上；默认不判（夹具要判就自己接上）。
+    account_of: AccountOf,
     /// 此刻有待答请求挂着的会话（活会话表每换一次经 [`WatchEvent::Asked`] 交来；夹具直接写）。
     asked: std::collections::BTreeSet<String>,
     /// 进程状态文件 · 冻住那几样变过、活会话表还没重造（[`publish_table`]）。
@@ -2310,7 +2329,7 @@ impl ReaderState {
             prime_bytes: 0,
             added: HashMap::new(),
             reading: HashSet::new(),
-            accts_dir: crate::observe::accounts_query::default_accts_dir(),
+            account_of: unjudged,
             asked: std::collections::BTreeSet::new(),
             table_dirty: true,
             clocks: HashMap::new(),
@@ -3275,7 +3294,7 @@ fn send_line(
         Some(t) => (t.record, t.cwd),
         None => (None, None),
     };
-    // 一步用时：这一行的调用记下、这一行的结果配上那条调用的时刻（写字在结果那一格，[`crate::agents::StepResultExt::timed_by`]）。
+    // 一步用时：这一行的调用记下、这一行的结果配上那条调用的时刻，连那一句一起写（[`crate::observe::recognize::step_clock::said`]）。
     if let Some(r) = record.as_mut() {
         let clock = state.clocks.entry(session_id.to_string()).or_default();
         clock.note(r);
@@ -3757,10 +3776,8 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
     if reading {
         state.reading.insert(sid.clone());
     }
-    // 那一家有账号库才判：进程环境里的配置目录对上账号库里哪个号。
-    let account = crate::agents::accounts_face(a.kind).and_then(|f| {
-        crate::observe::accounts_query::account_of_process(pid, &f, &state.accts_dir)
-    });
+    // 那一家有账号库才判：进程环境里的配置目录对上账号库里哪个号（判法在账号库那一侧，经 `account_of` 问）。
+    let account = crate::agents::accounts_face(a.kind).and_then(|f| (state.account_of)(pid, &f));
     let face = announced_face(
         reading,
         state.heard(&sid, a.activity),

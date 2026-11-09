@@ -211,7 +211,7 @@ impl InboundClient {
         self.machine.get_or_init(|| origin.to_string());
     }
 
-    /// 记下看的这一台的时区（只认第一次；`None` ⇒ 不带）。桌面登记时交 `host_core::viewer_tz()`，手机交系统那一份。
+    /// 记下看的这一台的时区（只认第一次；`None` ⇒ 不带）。桌面登记时交 `platform_core::tz::iana_name`（只看长相），手机交系统那一份。
     pub fn set_viewer_tz(&self, tz: Option<String>) {
         if let Some(tz) = tz {
             self.tz.get_or_init(|| tz);
@@ -450,9 +450,11 @@ impl InboundClient {
             });
         }
         // 那台握手时说过做不到 ⇒ 不发，事前就拒（一个字节不出本侧）。
+        // 那一句照那台的码、按这条连接登记的名字说（同上面 `Differs`）：那台 hello 里写的是它自称（「本机」），转到这一侧就说错了机器。
         if let Some(code) = self.offer_now().unavailable(cmd).map(str::to_string) {
             return Err(CallError::Unavailable {
                 cmd: cmd.to_string(),
+                said: copy_core::unavailable(&code, &self.machine_said()),
                 code,
             });
         }

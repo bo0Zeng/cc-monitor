@@ -11,7 +11,7 @@
  * 数据：每台问 `plan-list`，选中的那一片所在的工作区问 `plan-read`；那台推 `plan-changed` ⇒ 摘要变了才重问。
  * 判定全在后端；这里只排版、只认最后一趟回答。
  */
-import { openPath } from "@tauri-apps/plugin-opener";
+import { commands } from "../ipc/commands";
 import { button, setDisabled } from "../kit/button";
 import { banner } from "../kit/banner";
 import { morph } from "../kit/morph";
@@ -727,7 +727,7 @@ export class PlanView {
     try {
       const r = await planCommand(cur.origin, cur.workspace, "render");
       if (!r.path) throw new ControlError(r.said ?? "");
-      await openPath(r.path);
+      await commands.os_open({ kind: "path", path: r.path });
       toast(copyText("plan.page.wholeOpened"), "", { level: "success" });
     } catch (e) {
       failToast(copyText("plan.page.wholeFailed"), e);

@@ -245,6 +245,25 @@ pub(crate) enum Found<'a> {
     Ambiguous,
 }
 
+/// [`find`] 对上恰好一个 ⇒ 那一行；认不到 · 认不准 ⇒ `not_known` · `ambiguous`（这两句只在这里说）。
+pub(crate) fn find_one<'a>(rows: &'a [TermRow], t: &Target) -> Result<&'a TermRow, Said> {
+    match find(rows, t) {
+        Found::One(r) => Ok(r),
+        Found::NotKnown => Err(not_known("not_known")),
+        Found::Ambiguous => Err(ambiguous()),
+    }
+}
+
+/// 不止一个终端挂着这个 sid。
+fn ambiguous() -> Said {
+    crate::wire::spec::fail(
+        "ambiguous",
+        crate::common::contract::malformed(
+            "more than one terminal carries this sid; point at one by `terminal`",
+        ),
+    )
+}
+
 pub(crate) fn find<'a>(rows: &'a [TermRow], t: &Target) -> Found<'a> {
     let hits: Vec<&TermRow> = rows
         .iter()
@@ -294,7 +313,7 @@ fn view_on(on: On<'_>, id: &str, color: bool, back: u32) -> Result<View, Said> {
             id,
             GEOMETRY_FMT,
         ])
-        .map_err(super::capture_pane::tmux_unavailable)?;
+        .map_err(crate::host::tmux::tmux_unavailable)?;
     let geo = String::from_utf8_lossy(&out.stdout);
     let n: Vec<u32> = geo
         .trim_end_matches(['\n', '\r'])
@@ -554,18 +573,7 @@ pub fn preview_on(
         ));
     }
     let (rows, _, _) = rows_on(on)?;
-    let row = match find(&rows, &target) {
-        Found::One(r) => r,
-        Found::NotKnown => return Err(not_known("not_known")),
-        Found::Ambiguous => {
-            return Err(Said::new(
-                "ambiguous",
-                crate::common::contract::malformed(
-                    "more than one terminal carries this sid; point at one by `terminal`",
-                ),
-            ))
-        }
-    };
+    let row = find_one(&rows, &target)?;
     let view = view_on(on, row.target(), color, back)?;
     let at = now_secs();
     Ok(preview_reply(
@@ -650,20 +658,12 @@ pub fn follow_target_on(
             crate::common::contract::malformed("tmux is not installed on this machine"),
         ));
     };
-    match find(&rows, &target) {
-        Found::One(r) => Ok(FollowTarget {
-            target: r.target().to_string(),
-            session: r.id.clone(),
-            pane: r.pane.clone(),
-        }),
-        Found::NotKnown => Err(not_known("not_known")),
-        Found::Ambiguous => Err(Said::new(
-            "ambiguous",
-            crate::common::contract::malformed(
-                "more than one terminal carries this sid; point at one by `terminal`",
-            ),
-        )),
-    }
+    let r = find_one(&rows, &target)?;
+    Ok(FollowTarget {
+        target: r.target().to_string(),
+        session: r.id.clone(),
+        pane: r.pane.clone(),
+    })
 }
 
 /// 这一刻那一屏（带颜色、不往回要）：与 `terminal-preview` 同一份成品（实时预览每一帧就是它）。
@@ -686,7 +686,7 @@ pub(crate) fn screen_view_on(
 pub(crate) fn tmux_version_on(on: On<'_>) -> Result<String, Said> {
     let out = on
         .read(&[UTF8_CLIENT_FLAG, "display-message", "-p", "#{version}"])
-        .map_err(super::capture_pane::tmux_unavailable)?;
+        .map_err(crate::host::tmux::tmux_unavailable)?;
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
@@ -827,13 +827,7 @@ fn admit_on(
     // 身份门照 `send-into` 那一道：此刻再探一次（名单那一刻之后可能换了人），挂着 sid 的窗格由门按 sid 找、身份按它判。
     // 送到哪：那个窗格（窗格 ID 同样是句柄、不复用），没挂 sid 的会话 ⇒ 探回来的会话句柄。令牌只有门发得出。
     let sid = row.pane.as_ref().map(|_| row.sid.as_str());
-    let at = match gate::admit_with(
-        &|| crate::host::tmux::child(on.socket),
-        &row.name,
-        &row.id,
-        sid,
-        requester.as_deref(),
-    )? {
+    let at = match gate::admit_with(on, &row.name, &row.id, sid, requester.as_deref())? {
         Ok(at) => at,
         Err(Barred::Gone) => return Ok(Err(Refused::Ended)),
         Err(Barred::OtherSid) => return Ok(Err(Refused::NotKnown)),
@@ -918,12 +912,7 @@ fn managed_row(target: &Target) -> Result<Option<TermRow>, Said> {
     match find(&rows, target) {
         Found::One(r) => Ok(Some(r.clone())),
         Found::NotKnown => Ok(None),
-        Found::Ambiguous => Err(Said::new(
-            "ambiguous",
-            crate::common::contract::malformed(
-                "more than one terminal carries this sid; point at one by `terminal`",
-            ),
-        )),
+        Found::Ambiguous => Err(ambiguous()),
     }
 }
 

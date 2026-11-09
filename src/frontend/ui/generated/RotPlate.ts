@@ -4,4 +4,8 @@ import type { Words } from "./Words";
 /**
  * 一个号的号牌：号色（`--acct-c0..c7` 第几格，同 `accounts-list` 那一格）· 号名（人眼里叫什么，同额度那几处）· 号牌字（同 `accounts-list` 那一格）。
  */
-export type RotPlate = { color: number, label: Words, text: Words, };
+export type RotPlate = { 
+/**
+ * 账号库里没有这个号 ⇒ 缺（三端画中性，不按名字补一个像真的色）。
+ */
+color?: number, label: Words, text: Words, };

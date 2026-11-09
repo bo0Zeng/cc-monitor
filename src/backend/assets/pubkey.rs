@@ -1,28 +1,24 @@
-//! 要求：推送公钥是本机后端帧命令 `pubkey-push {machine}`（那一台的配置照机器表组请求，跳板按名字查表，
-//! 与 `remote-probe` 同形），写 `authorized_keys` 经那台（后端不在就经 SSH exec 那一次、只写这一件）；「monitor 零 SSH」。
+//! 要求：推送公钥是本机后端帧命令 `pubkey-push {machine}`（那一台按名字照机器表问，跳板照表找），
+//! 写 `authorized_keys` 只经那台后端；那台后端不在 ⇒ 这件事不发生（先装后端），「monitor 零 SSH」。
 //!
 //! # 两条帧命令，两台各一条
 //!
 //! - **`pubkey-push {machine, pubKeyPath?}`**（本机常驻后端答）：读本机那份 `.pub`（显式给的 · 否则私钥同名 `.pub`）→
-//!   [`sanitize_public_key`] → 那台后端此刻在（monitor 连它的那条长流拨通着，`dial::streams`）⇒ 问**那台后端** `authorized-keys-add {key}`；
-//!   不在（密钥登录建立之前 · 后端还没装）⇒ 沿池里那条 SSH **一次** exec（[`posix::add_line_once`]，只写这一件）。
-//!   ⚠ 按**此刻的状态**分支，不是「后端失败了再退回 shell」（`D11`）。
+//!   [`sanitize_public_key`] → 问**那台后端** `authorized-keys-add {key}`；问不到（后端还没装 · 连接失败）⇒ 没成，那一句照问不到的那一句。
 //! - **`authorized-keys-add {key}`**（被写那台答）：[`plan_authorized_keys`] 算 → 经这台自己的文件管理面写（[`door::edit`]，CAS ＋ 建父目录）
-//!   → `.ssh` 700 · `authorized_keys` 600（与 shell 那一串逐条同义）。
+//!   → `.ssh` 700 · `authorized_keys` 600。
 //!
-//! 校验 · 规划 · 解记号三个纯函数与那一串 shell 都在这里；界面那一侧没有 Tauri 命令做这件事。
+//! 校验 · 规划两个纯函数都在这里；界面那一侧没有 Tauri 命令做这件事。
 //!
 //! # 买不到的
 //!
-//! - 纯密码冷 onboarding：拨号只做 publickey / agent 鉴权（不做密码鉴权）⇒ 已有 key / agent 访问权时追加 / 轮换新公钥。
+//! - 纯密码冷 onboarding：拨号只做 publickey / agent 鉴权（不做密码鉴权）⇒ 已有 key / agent 访问权、那台后端装上了，才追加 / 轮换新公钥。
 //! - `pubKeyPath` 是本机那台的路径（界面 · 本机后端同一台）；读它不经文件管理面（那是「这台自己的用户文件」的写面，读本机一份公钥不写）。
 
 use crate::platform::fs::Ro;
 use copy_core::copy_text;
-use serde_json::Value;
 
 use crate::common::door::{self, Door};
-use crate::platform::shell::posix;
 
 /// 推送结果：key 是新加的还是本就存在。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -33,10 +29,6 @@ pub(crate) enum PushOutcome {
     Added,
     Already,
 }
-
-/// shell 那一串打的两个记号。
-const ADDED: &str = "ADDED";
-const ALREADY: &str = "ALREADY";
 
 /// `authorized_keys` 在家目录底下住哪。
 const SSH_DIR: &str = ".ssh";
@@ -118,32 +110,7 @@ pub(crate) fn sanitize_public_key(raw: &str) -> Result<String, SanitizeKeyErr> {
     Ok(key.to_string())
 }
 
-/// 那一次 exec 的整串（key 经唯一的 quote 成词）。**纯函数**。
-pub(crate) fn authorized_keys_cmd(key: &str) -> String {
-    posix::add_line_once(
-        SSH_DIR,
-        AUTH_FILE,
-        &shell_quote_core::posix_quote(key),
-        ADDED,
-        ALREADY,
-    )
-}
-
-/// 那一次 exec 的 stdout → 结局。两个记号互斥（命令末尾只跑一个 `printf`）；都没有 ⇒ `Err`（`mkdir` / `chmod` 中途失败，命令链断在记号前）。
-pub(crate) fn parse_push_outcome(output: &str) -> Result<PushOutcome, String> {
-    if output.contains(ADDED) {
-        Ok(PushOutcome::Added)
-    } else if output.contains(ALREADY) {
-        Ok(PushOutcome::Already)
-    } else {
-        Err(copy_text(
-            "rsPubkey.parsePushOutcome.noMarker",
-            &[("output", output.trim())],
-        ))
-    }
-}
-
-/// 把一行公钥并进 `authorized_keys` 的原文 —— 与 shell 那一串逐条同义：已有**整行相等**的一行 ⇒ `Already`、不写（`grep -qxF`）；
+/// 把一行公钥并进 `authorized_keys` 的原文：已有**整行相等**的一行 ⇒ `Already`、不写；
 /// 否则末行没换行先补一个再追加 ⇒ `Added`。**纯函数**。
 pub(crate) fn plan_authorized_keys(
     existing: Option<&str>,
@@ -266,44 +233,37 @@ pub(crate) fn pub_key_path(
         .ok_or_else(|| copy_text("rsPubkey.pushPublicKey.noKey", &[]))
 }
 
-/// 推给那台的两条路（生产 = [`Wire`]；判据用替身数「问了哪一条」）。
+/// 问那台的那一条路（生产 = [`Wire`]；判据用替身数「问了谁、交了什么」）。
 pub(crate) trait Reach: Send + Sync {
-    /// 这一端的机器表（跳板照它按名字找）。
-    fn hosts(&self) -> Vec<crate::dial::Host>;
-    /// 那台后端此刻在吗（monitor 连它的那条长流拨通着，[`crate::dial::streams`]）。
-    fn backend_up(&self, machine: &str) -> bool;
-    /// 问那台后端 `authorized-keys-add {key}`，回它的结局。
+    /// 问那台后端 `authorized-keys-add {key}`，回它的结局；问不到 ⇒ 那一码那一句（跳板不对 ⇒ `bad_jump`）。
     fn ask_add<'a>(
         &'a self,
         machine: &'a str,
         key: &'a str,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<PushOutcome, String>> + Send + 'a>>;
-    /// 沿那台的拨号请求跑**一次** exec，回 stdout（退出码非 0 ⇒ `Err` 带 stderr）。
-    fn exec_once<'a>(
-        &'a self,
-        dial: &'a Value,
-        command: String,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send + 'a>>;
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<PushOutcome, crate::common::said::Said>>
+                + Send
+                + 'a,
+        >,
+    >;
 }
 
-/// 生产那两条路：机器表 ＋ `remote_ask`（问那台后端）· `remote_ask::capture_full`（一次 exec）。
+/// 生产那一条路：`remote_ask`（按名字照机器表问那台后端）。
 pub(crate) struct Wire;
 
 impl Reach for Wire {
-    fn hosts(&self) -> Vec<crate::dial::Host> {
-        crate::dial::remote_ask::REACH.hosts()
-    }
-
-    fn backend_up(&self, machine: &str) -> bool {
-        crate::dial::streams::up(machine)
-    }
-
     fn ask_add<'a>(
         &'a self,
         machine: &'a str,
         key: &'a str,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<PushOutcome, String>> + Send + 'a>>
-    {
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<PushOutcome, crate::common::said::Said>>
+                + Send
+                + 'a,
+        >,
+    > {
         Box::pin(async move {
             let req = KeyAddReq {
                 key: key.to_string(),
@@ -318,39 +278,17 @@ impl Reach for Wire {
             )
             .await
             .map(|r| r.outcome)
-            .map_err(|s| s.said)
-        })
-    }
-
-    fn exec_once<'a>(
-        &'a self,
-        dial: &'a Value,
-        command: String,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send + 'a>>
-    {
-        Box::pin(async move {
-            let got = crate::dial::remote_ask::capture_full(dial, command).await?;
-            match got.exit_code() {
-                Some(0) => Ok(got.stdout),
-                // 那台 shell 的 stderr 是原话：记一行日志，句子只说没成（这一跳的失败形没有原话位）。
-                _ => Err(crate::common::said::IntoNote::into_note(
-                    crate::common::said::Said::with_raw(
-                        copy_text("bePubkey.exec.failed", &[]),
-                        got.stderr.trim(),
-                    ),
-                )),
-            }
         })
     }
 }
 
-/// `pubkey-push` 的入参：那一台的配置（同 `remote-probe`：测的是可能还没存的那一台，跳板照机器表按名字找）＋ 本机那份 `.pub` 的路径。
+/// `pubkey-push` 的入参：那一台（按它的名字照机器表问；私钥那一格给默认的 `.pub`）＋ 本机那份 `.pub` 的路径。
 #[derive(Debug, Clone, serde::Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct PubkeyPushReq {
-    /// 那台的配置（设置页表单里那台，可能还没保存）。
+    /// 设置页表单里那台（问的是机器表里同名那一台）。
     pub(crate) machine: crate::dial::Host,
     /// 本机那份 `.pub` 的路径；缺 / 空 ⇒ 私钥同名 `.pub`（两样都没有 ⇒ `refused`，界面让人挑文件）。
     #[serde(default)]
@@ -369,7 +307,7 @@ pub struct PubkeyPushed {
 }
 
 crate::wire::typed::codes! {
-    /// `pubkey-push` 的码：跳板查无 / 成环 · 那份 `.pub` 找不到 / 不是公钥 · 那台没加上。
+    /// `pubkey-push` 的码：跳板查无 / 成环 · 那份 `.pub` 找不到 / 不是公钥 · 那台没加上（后端不在 · 问不到也是它）。
     pub enum PushErr {
         BadJump = "bad_jump",
         Refused = "refused",
@@ -377,7 +315,7 @@ crate::wire::typed::codes! {
     }
 }
 
-/// `pubkey-push`（本机常驻后端答）：见头注。真异步（拨号 / 问那台）。
+/// `pubkey-push`（本机常驻后端答）：见头注。真异步（问那台）。
 pub struct PubkeyPush;
 
 impl crate::wire::typed::Command for PubkeyPush {
@@ -399,15 +337,13 @@ impl crate::wire::typed::Handle for PubkeyPush {
     }
 }
 
-/// `pubkey-push` 的本体（可达表 · 读 `.pub` 由调用方给，判据用替身）。
+/// `pubkey-push` 的本体（问那台 · 读 `.pub` 由调用方给，判据用替身）。问不到的那一码原样交上去，码表里没有的落 `failed`。
 pub(crate) async fn answer_push(
     req: &PubkeyPushReq,
     reach: &dyn Reach,
     read_pub: &(dyn Fn(&str) -> Result<String, crate::common::said::Said> + Send + Sync),
 ) -> Result<PubkeyPushed, crate::common::said::Said> {
     let machine = &req.machine;
-    let dial =
-        crate::dial::request_draft(&reach.hosts(), machine, "capture", serde_json::json!({}))?;
     let path = pub_key_path(req.pub_key_path.as_deref(), machine.key())
         .map_err(|e| crate::common::said::Said::new("refused", e))?;
     let key = match sanitize_public_key(&read_pub(&path)?) {
@@ -420,19 +356,7 @@ pub(crate) async fn answer_push(
         }
         Err(e) => return Err(crate::common::said::Said::new("refused", e.into_said())),
     };
-    let name = machine.name().to_string();
-    let outcome = if reach.backend_up(&name) {
-        reach
-            .ask_add(&name, &key)
-            .await
-            .map_err(|e| crate::common::said::Said::new("failed", e))?
-    } else {
-        let out = reach
-            .exec_once(&dial, authorized_keys_cmd(&key))
-            .await
-            .map_err(|e| crate::common::said::Said::new("failed", e))?;
-        parse_push_outcome(&out).map_err(|e| crate::common::said::Said::new("failed", e))?
-    };
+    let outcome = reach.ask_add(machine.name(), &key).await?;
     Ok(PubkeyPushed {
         said: pushed_said(outcome, &path),
     })

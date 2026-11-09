@@ -3,7 +3,8 @@
 use crate::wire::spec::CommandSpec;
 
 pub(super) const SPECS: &[CommandSpec] = &[
-    super::typed::blocking::<crate::assets::aliases::AliasesRead>("启动文件候选（接入那一格）"),
+    super::typed::blocking::<crate::assets::aliases::AliasesRead>("启动文件候选（接入那一格）")
+        .capped(crate::assets::aliases::ALIASES_READ_CAP),
     super::typed::blocking::<crate::faces::profiles_face::ProfilesRead>(
         "读回配置文件整份：每段自己写的几项 · 能不能用 · 链接还是终端函数 · 表单回填",
     ),

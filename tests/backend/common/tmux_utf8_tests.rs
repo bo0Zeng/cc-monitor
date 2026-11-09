@@ -300,3 +300,11 @@ fn the_two_representations_stay_two_different_things() {
         UTF8_CLIENT_ENV.1
     );
 }
+
+/// `-t` 的精确目标恒是 `=<名>:`（`INVARIANTS §31a`）：名字原样夹在中间、不引号化；`join_session` 渲给客户端的也是这一形再引。
+#[test]
+fn exact_target_is_the_exact_match_shape() {
+    assert_eq!(exact_target("cc-abc"), "=cc-abc:");
+    assert_eq!(exact_target("si*"), "=si*:");
+    assert!(join_session("cc-abc").contains("=cc-abc:"));
+}

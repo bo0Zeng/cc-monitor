@@ -48,6 +48,7 @@ fn at(landed: Landed, session: Option<&str>) -> Reopened {
         landed,
         session: session.map(str::to_string),
         host: session.map(|_| crate::wire::TerminalHost::Tmux),
+        at: None,
         line: None,
         sid: Some(SID.into()),
         agent: None,

@@ -18,7 +18,7 @@ import { el } from "./kit/el";
 import { morph } from "./kit/morph";
 import { failToast } from "./kit/toast";
 import { openSettingsWindow } from "./open-settings";
-import { firstRow, hints, nameIn, type TopSpec } from "./rot-board";
+import { firstRow, hints, type TopSpec } from "./rot-board";
 import { rotAnchor, sendWrite, topActs } from "./rot-mount";
 import { createOrder, type MoveEnd } from "./rot-order";
 import { readStrategies, readView, rotBudget } from "./rot-reads";
@@ -79,11 +79,6 @@ export function mountSessionRotation(origin: Machine, sid: string): SessionRot {
     await reread();
   };
 
-  /** 换到 `account`（小窗［立即用］）· 拖到第一格：那台说它事实上发不出去（unusable）⇒ 不换，原因写在顺序上方。 */
-  const blockedLine = (account: string, said: string): { account: string; text: string } => {
-    const why = view?.accounts.find((f) => f.account === account)?.blocked?.text ?? said;
-    return { account, text: copyText("rot.acct.refused", { account: nameIn(view, account), why }) };
-  };
   const temp = (op: RotTempOp): Promise<boolean> => sendWrite(W.failTemp, () => callTyped(origin, "rotation-temp", { sid, op }, rotBudget()), refresh);
 
   const order = createOrder(
@@ -99,8 +94,8 @@ export function mountSessionRotation(origin: Machine, sid: string): SessionRot {
         const code = refusalIn(end.error)?.code;
         // 没有拒码（超时 · 断线）⇒ 说不清：留在放下处，下一次重读（连上 · 推送）照后端画。
         if (code === undefined) return "unsure";
-        const blocked = blockedLine(account, end.said);
-        if (code === "unusable") refused = blocked;
+        // 换到 `account`（拖到第一格 · 小窗［立即用］）那台说它事实上发不出去 ⇒ 不换，那台写好的整句摆在顺序上方。
+        if (code === "unusable") refused = { account, text: end.said };
         else failToast(W.failTemp, end.error);
         return "back";
       },
@@ -109,10 +104,9 @@ export function mountSessionRotation(origin: Machine, sid: string): SessionRot {
       useNow: (account) =>
         void (async () => {
           const end = await write(() => callTyped(origin, "rotation-use-now", { sid, account }, rotBudget()));
-          const blocked = end.ok ? null : blockedLine(account, end.said);
           if (end.ok) refused = null;
           else if (refusalIn(end.error)?.code !== "unusable") return void failToast(W.failUseNow, end.error);
-          else refused = blocked;
+          else refused = { account, text: end.said };
           await refresh();
         })(),
       editStrategy: (account) => editStrategy(account),

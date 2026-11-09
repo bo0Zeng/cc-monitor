@@ -47,7 +47,7 @@ const CRATES: &[(&str, Class, &str)] = &[
     ("batch-core", Class::Core, "一组一条命令：带票发 · 同名问一次 · 断了同票再问 · 重试与撤销计划（`retry_plan` · `undo_plan`）· 标题 · 结局句，判与写字都在这里；后端与手机嵌的核心链，文件窗口链着的照实登欠账"),
     ("pick-core", Class::Core, "选中几项 ⇒ 给哪几项、灰着说什么（`blocked` · `refused_here` · `why_not_editable` 回的都是句子）；手机嵌的核心链，文件窗口链着的照实登欠账"),
     ("copy-core", Class::Contract, "文案表：按同一个键取同一句（`copy_text` / `copy_static`），连带出口照它写的格式化（大小 · 时长 · 个数 · 截字）与通道那几句（said · reason · discard · detail）；各家照同一份取，判好的结局由调用方交进来"),
-    ("creds-core", Class::Core, "凭据落盘格式与文件名 · 写半边（`harden`）· 家目录与数据目录那一族；后端链，壳与文件窗口链着的照实登欠账（家与数据目录挪走之后清）"),
+    ("creds-core", Class::Core, "凭据落盘格式与文件名 · 写半边（`harden`）；后端链"),
     ("deploy-contract", Class::Contract, "部署那一族两侧对上的：表 A 的键与行 · 拒绝的形状与话 · 身份戳格式 · 计划答话；包里另有 `build_relation` · `build_order` · `key_from_uname` · 读身份戳那几样判定（壳 `local_backend_host` 还调 `build_relation`），挪进后端 `deploy` 之前照实记在这里"),
     ("filewin-contract", Class::Contract, "monitor 与文件窗口进程两边对上的形状：开窗种子（连同主窗所在显示器的工作区 `WorkArea`）· 就绪那一行 · 「在此打开终端」那一问的名字与参数 · 主题令牌名单"),
     ("test-home", Class::TestInfra, "测试档的家一开始就是沙箱：各 crate 只在 dev 侧引它，不判业务"),
@@ -78,17 +78,12 @@ const OUTLET_DEBT: &[(&str, &str, &str)] = &[
     (
         "monitor",
         "face-core",
-        "W33（↗ 那一句由本机后端写）· W37（会话簿 · 活卡板照本机后端推的成品）两块都做完才删",
+        "W37（会话簿 · 活卡板照本机后端推的成品）做完才删",
     ),
     (
         "monitor",
         "chunk-core",
         "W79（附件草稿整圈随上传路进核心，壳只交暂存文件的路径）",
-    ),
-    (
-        "monitor",
-        "creds-core",
-        "W03（家目录 · 数据目录挪进 relay-route-core）",
     ),
     (
         "文件窗口",
@@ -104,11 +99,6 @@ const OUTLET_DEBT: &[(&str, &str, &str)] = &[
         "文件窗口",
         "pick-core",
         "W14（选中变了问本机后端要菜单成品）",
-    ),
-    (
-        "文件窗口",
-        "creds-core",
-        "W03（家目录 · 数据目录挪进 relay-route-core）",
     ),
 ];
 

@@ -28,7 +28,7 @@ import { fold } from "../kit/fold";
 import { failToast } from "../kit/toast";
 import { openOnMachine } from "../file-window";
 import type { SettingsTarget } from "../open-settings";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { commands } from "../ipc/commands";
 
 export type DataTab = "chores" | "placed";
 
@@ -378,7 +378,7 @@ export class DataPage {
 
   private go(origin: Machine, c: Chore): void {
     if (c.action === "how" && c.howUrl) {
-      void openUrl(c.howUrl);
+      void commands.os_open({ kind: "url", url: c.howUrl }).catch((e: unknown) => console.warn("[data-page] os_open howUrl failed:", e));
       return;
     }
     const g = c.go;

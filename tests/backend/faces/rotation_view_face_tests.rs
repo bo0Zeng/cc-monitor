@@ -113,7 +113,10 @@ impl Home {
                 }),
                 {
                     let live = Arc::clone(&self.live);
-                    Arc::new(move || live.lock().expect("lock").clone())
+                    crate::accounts::upstream_select::rotate::HistoryPorts {
+                        live: Arc::new(move || live.lock().expect("lock").clone()),
+                        ring: Arc::new(|| {}),
+                    }
                 },
                 Some(dead_token_endpoint()),
             ),
@@ -256,9 +259,72 @@ fn the_strategy_list_shows_every_file_with_who_uses_it() {
     assert!(lo.for_new && lo.error.is_none() && !lo.words_bad);
     assert_eq!(lo.summary, "换号时按账号列表顺序。", "说明的第一行");
     assert_eq!(got.strategies[0].summary, "");
-    assert_eq!(lo.in_use, [S1], "走了的会话也数进去了");
     assert!(got.strategies[0].error.is_some(), "读不懂的没带原因");
     assert_eq!(got.for_new, "by-list");
+    // 能不能删由后端判（与 `rotation-strategy-delete` 拒的同一处、同一句）：活会话在用 ⇒ 不能删、说几个、谁在用（走了的不算）。
+    assert_eq!(
+        (
+            lo.remove.enabled,
+            lo.remove.why.clone(),
+            lo.remove.who.clone()
+        ),
+        (
+            false,
+            Some(copy_core::copy_text(
+                "beRotation.strategy.inUse",
+                &[("n", "1")]
+            )),
+            Some(S1[..8].to_string())
+        ),
+        "在用的那份"
+    );
+    let free = &got.strategies[2];
+    assert_eq!(
+        (
+            free.remove.enabled,
+            free.remove.why.as_deref(),
+            free.remove.who.as_deref()
+        ),
+        (true, None, None),
+        "没人用、也不是新会话用的那份 ⇒ 能删"
+    );
+    // 没有活会话在用、但新会话用它 ⇒ 照样不能删，那一句同删命令拒的。
+    home.live.lock().expect("lock").remove(S1);
+    let got = strategies_with(&ctx, &RotationStrategiesReq::default(), &home.alive());
+    let lo = &got.strategies[1];
+    assert_eq!(
+        (
+            lo.remove.enabled,
+            lo.remove.why.clone(),
+            lo.remove.who.as_deref()
+        ),
+        (
+            false,
+            Some(copy_core::copy_text("beRotation.edit.forNew", &[])),
+            None
+        ),
+        "新会话用的那份"
+    );
+}
+
+/// ★ 编辑小窗底行整句由后端写：改的是哪份 ＋ 没有会话在用（有会话还在用旧版 ⇒ 那一条提示的那一句）；两端照摆。
+#[test]
+fn the_editor_foot_is_one_written_line() {
+    let home = Home::new("foot");
+    let ctx = home.ctx();
+    let v = strategy_view(&ctx, &home, "by-list");
+    let sep = copy_core::copy_text("kit.text.sep", &[]);
+    assert_eq!(
+        v.foot.as_deref(),
+        Some(
+            format!(
+                "{}{sep}{}",
+                copy_core::copy_text("rot.pane.foot", &[("name", "by-list")]),
+                copy_core::copy_text("rot.pane.noUse", &[])
+            )
+            .as_str()
+        )
+    );
 }
 
 // ── rotation-view ──────────────────────────────────────────────────────────────
@@ -291,15 +357,11 @@ fn a_session_view_carries_everything_the_four_blocks_draw() {
         "这台记录树里没有它 ⇒ 会话 id 前 8 位"
     );
     assert_eq!(v.accounts[0].fact.account, "a", "号列表里的在前");
-    // 每个号身上带号牌（界面不再另问账号清单去对）：号色同 `accounts-list` 那一格的规则（库里没给 ⇒ 按名字算），号名同额度那几处，号牌字同号行那一格。
+    // 每个号身上带号牌（界面不再另问账号清单去对）：号色照账号库那一格（库里没有这个号 ⇒ 不给，三端画中性，不按名字补一个像真的色），号名同额度那几处，号牌字同号行那一格。
     let plate = &v.accounts[0].plate;
     assert_eq!(
         (plate.color, plate.label.0.as_str(), plate.text.0.as_str()),
-        (
-            crate::accounts::manage::model::color_fallback("a"),
-            "a",
-            "a"
-        )
+        (None, "a", "a")
     );
     assert_eq!(v.listed, 1);
     assert_eq!(
@@ -366,18 +428,22 @@ fn a_session_view_carries_everything_the_four_blocks_draw() {
     assert_eq!(v.lineup[0].group, RotGroup::Use);
 
     // 记录树里有它 ⇒ 顶栏写那条会话的名字（第一句），不轮换的那一形也带。写这台的记录树 ⇒ 先拿那把锁。
+    // 记录树是这台进程共用的：用一个别的测试都不用的会话号（用 S1 的话，并行的别条读名字时会读到这一句）。
+    const TITLED: &str = "33333333-3333-4333-8333-333333333333";
+    home.saw(&ctx, TITLED);
+    home.load(&ctx, TITLED, None);
     let _tree = crate::history::history_list::test_support::MACHINE_TREE.blocking_lock();
     let dir = crate::history::listing::records_root(&crate::history::listing::agent_home())
         .expect("有记录树")
         .join("-p");
     std::fs::create_dir_all(&dir).unwrap();
-    let rec = dir.join(format!("{S1}.jsonl"));
+    let rec = dir.join(format!("{TITLED}.jsonl"));
     std::fs::write(
         &rec,
         "{\"type\":\"user\",\"uuid\":\"u\",\"timestamp\":\"2026-01-01T00:00:00.000Z\",\"message\":{\"role\":\"user\",\"content\":\"整理报表\"}}\n",
     )
     .unwrap();
-    let v = session_view(&ctx, &home, S1);
+    let v = session_view(&ctx, &home, TITLED);
     std::fs::remove_file(&rec).ok();
     assert_eq!(v.title.as_deref(), Some("整理报表"));
 }
@@ -528,9 +594,10 @@ fn a_view_writes_every_time_it_carries() {
     let (at, said) = held.expect("停发");
     let at = at.expect("到几点说得出");
     assert!(hm(&at), "{at}");
+    let dur = copy_core::rel_duration(3_600_000).expect("一小时说得出");
     assert!(
-        said.contains(&at) && said.contains("{dur}"),
-        "停发那一句写好了到几点、留着「还有多久」给界面填：{said}"
+        said.contains(&at) && said.contains(&dur) && !said.contains("{dur}"),
+        "停发那一句写好了到几点、还有多久（两端照摆，不填）：{said}"
     );
 }
 
@@ -644,6 +711,7 @@ fn a_session_view_hands_the_order_as_lines_without_a_timeline() {
             },
         },
         now(),
+        &crate::common::time::Tz::default(),
     )
     .expect("先不用");
     let v = session_view(&ctx, &home, S1);
@@ -741,12 +809,12 @@ fn the_unknown_zone_hint_always_names_a_zone() {
         }
     );
     assert_eq!(named.text, copy_core::copy_text("beRotation.hint.tz", &[]));
-    for unsaid in [serde_json::Value::Null, serde_json::json!("Mars/Base")] {
-        let n = tz_hint(&crate::common::time::Tz::of(&unsaid));
+    for unsaid in [None, Some("Mars/Base")] {
+        let n = tz_hint(&crate::common::time::Tz::of(unsaid));
         assert_eq!(
             n.hint,
             RotHint::TzUnknown { zone: "UTC".into() },
-            "{unsaid}：说不出 ⇒ 照算的那一个"
+            "{unsaid:?}：说不出 ⇒ 照算的那一个"
         );
         assert_eq!(n.text, copy_core::copy_text("beRotation.hint.tz", &[]));
     }
@@ -755,7 +823,7 @@ fn the_unknown_zone_hint_always_names_a_zone() {
     assert_eq!(
         here.hint,
         RotHint::TzUnknown {
-            zone: crate::platform::local_tz::iana_name().unwrap_or_else(|| "UTC".into())
+            zone: crate::common::time::Tz::here().iana_name()
         },
         "「这一台」⇒ 这台系统的时区名"
     );

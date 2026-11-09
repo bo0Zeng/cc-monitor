@@ -8,7 +8,7 @@
  * ［提交］`login-finish {job, pasted}`；［取消］· ✕ · Esc · 点遮罩 `login-cancel {job}`、不确认；［重新开始］再发一次 `login-start`。
  * 本机自己回跳：等推来的 `changed {login, key: job}`。失败后怎么画全照后端的 `again`（接着粘 · 重新开始 · 没法再来），不按码分。
  */
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { commands } from "./ipc/commands";
 import { el } from "./kit/el";
 import { openDrawer, type DrawerHandle } from "./kit/drawer";
 import { button, setBusy, setDisabled } from "./kit/button";
@@ -403,7 +403,7 @@ class LoginDrawer {
 
   private async openPage(url: string): Promise<void> {
     try {
-      await openUrl(url);
+      await commands.os_open({ kind: "url", url });
     } catch (e) {
       console.warn("[login] 打不开登录页：", e);
     }

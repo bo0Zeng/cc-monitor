@@ -30,7 +30,14 @@ fn a_bash_request_reads_as_an_approval_with_full_command_and_human_rules() {
     assert_eq!(a.what.as_deref(), Some("touch a.txt"));
     assert_eq!(a.detail, "touch a.txt\necho ok", "全文不截");
     assert_eq!(a.suggestions.len(), 2, "删规则那一种不是放宽，不给");
-    assert!(a.suggestions[0].text.contains("/w"));
+    // 适配层只交码 ＋ 原值，写成人话在核心（`AskSuggestion::said`）。
+    assert_eq!(a.suggestions[0].scope, SuggestScope::Session);
+    assert_eq!(a.suggestions[0].rule, SuggestRule::Dirs(vec!["/w".into()]));
+    assert_eq!(a.suggestions[1].rule, SuggestRule::AcceptEdits);
+    assert_eq!(
+        a.suggestions[0].raw,
+        bash_req()["permission_suggestions"][0]
+    );
     assert!(!a.blocks_terminal);
     assert_eq!(a.agent_id, None);
 }

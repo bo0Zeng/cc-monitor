@@ -1,6 +1,6 @@
 // 号色：账号库里的事实 —— 那台后端加号时分第一个空格、存进清单（`accounts/manage/model.rs::Manifest::with_colors`），
-// `accounts-list` 每号带 `color`（`--acct-c0..c7` 第几格）。界面只照它画，不按名字算（按名字哈希时 team / lab 撞同一格）。
-// 那台没给这个号（清单还没问到 · 不在库里）⇒ 不猜：画中性的头像（没有 `acct-cN`）。
+// `accounts-list` 每号带 `color`（令牌表 `--acct-c<格>` 的第几格）。界面只照它画，不按名字算（按名字哈希时 team / lab 撞同一格）。
+// 那台没给这个号（清单还没问到 · 不在库里）⇒ 不猜：画中性的头像（不设 `--acct`）。
 import { appStore } from "./app-store";
 import { copyText } from "./copy-table";
 import { LOCAL, type Machine } from "./ipc/origin";
@@ -22,10 +22,24 @@ export function accountPlateOf(name: string, origin: Machine = LOCAL): string {
   return rowOf(name, origin)?.plate ?? copyText("acct.val.none");
 }
 
+/**
+ * 给一个元素挂上号色那一格：设 `--acct` / `--acct-ink` 为 tokens.css 那一格（`var(--acct-c<格>)` / `var(--acct-ink<格>)`），
+ * CSS 只读这两个名字；`null` ⇒ 撤掉（中性）。号色有几格、各是什么色只在 tokens.css 写一次。
+ */
+export function paintAccountColor(el: HTMLElement, slot: number | null): void {
+  if (slot === null) {
+    el.style.removeProperty("--acct");
+    el.style.removeProperty("--acct-ink");
+    return;
+  }
+  el.style.setProperty("--acct", `var(--acct-c${slot})`);
+  el.style.setProperty("--acct-ink", `var(--acct-ink${slot})`);
+}
+
 // ------------------------------------------------------------ 视图 helper
 /**
- * 账号头像元素——圆角方块 `.acct-avatar.acct-c<号色>` + 号牌字（那台后端写好的 `plate`）。
- * 不透明填充 + 自带 ink（styles.css 的 --acct-cN/--acct-inkN），主题无关。chip / tab 徽章共用。
+ * 账号头像元素——圆角方块 `.acct-avatar`（号色照 {@link paintAccountColor}）+ 号牌字（那台后端写好的 `plate`）。
+ * 不透明填充 + 自带 ink（tokens.css 那一格），主题无关。chip / tab 徽章共用。
  * `origin` ＝ 号在哪一台（缺省本机）；`color` · `plate` ＝ 那份成品自己带的号色 · 号牌字（给了就照它，不另查账号清单；号色 `null` ⇒ 中性）；size 可选覆盖边长（px，默认走 CSS）；ghost=true 走幽灵态（lastAccount 软来源，描边淡填充）。
  */
 export function accountAvatarEl(
@@ -35,7 +49,7 @@ export function accountAvatarEl(
   const slot = opts.color !== undefined ? opts.color : accountColorOf(name, opts.origin);
   const el = document.createElement("span");
   el.className = `acct-avatar${opts.ghost ? " ghost" : ""}`;
-  if (slot !== null) el.className += ` acct-c${slot}`;
+  paintAccountColor(el, slot);
   el.textContent = opts.plate ?? accountPlateOf(name, opts.origin);
   el.setAttribute("aria-hidden", "true");
   if (opts.size) {

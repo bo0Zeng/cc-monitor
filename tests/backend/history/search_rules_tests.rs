@@ -434,3 +434,31 @@ fn contains_lc_agrees_with_lowercasing_and_allocates_nothing() {
     assert!(a && b && !c);
     assert_eq!(grew, 0, "大小写不敏感的包含分配了 {grew} 字节");
 }
+
+/// 项目名只一种切法（`plain_path_core::last_segment`）：Windows 目录的会话，清单行的 `projectName` 与整行标题里的项目
+/// 都是它切出来的那一段（Linux 上的后端也切得开 `\`）。搜索行那一半在 `faces/facts_shown_tests.rs`（搜索住 observe，本包链不到）。
+#[test]
+fn a_windows_project_dir_names_the_project_by_the_one_cut() {
+    let cwd = r"C:\w\proj\";
+    let cut = plain_path_core::last_segment(cwd).map(|s| serde_json::json!(s));
+    assert_eq!(cut, Some(serde_json::json!("proj")));
+    let row = crate::history::listing_scan::SessionRow {
+        session_id: "0b1c2d3e-aaaa-4bbb-8ccc-1234567890ab".into(),
+        record_path: "/h/projects/C--w-proj/0b1c2d3e-aaaa-4bbb-8ccc-1234567890ab.jsonl".into(),
+        cwd: Some(cwd.into()),
+        ..Default::default()
+    };
+    let listing = crate::history::history_list::listing_from(
+        vec![("C--w-proj".into(), Ok(vec![row]))],
+        &[],
+        &crate::history::live_table::LiveTable::default(),
+        &serde_json::json!({}),
+    );
+    let listed = serde_json::to_value(listing).unwrap()["rows"][0]["projectName"].clone();
+    assert_eq!(Some(listed), cut, "清单行");
+    let line = session_line(&LabelFacts {
+        project_dir: Some(cwd.into()),
+        ..Default::default()
+    });
+    assert!(line.starts_with("proj "), "整行标题里的项目：{line}");
+}

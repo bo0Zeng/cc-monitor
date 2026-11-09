@@ -63,22 +63,32 @@ pub(super) const SPECS: &[CommandSpec] = &[
         "把这台二进制带着的 cc-bus 装到这台",
     ),
     // 两台之间「装」那一件的枢纽（skill 与 MCP 同一对）：界面只问本机一次，本机后端向来源那台取、交被写那台判与写（`assets/hub.rs`）。
-    //   依赖本进程的可达表 ⇒ 只在流面上（`stream::cli::STREAM_ONLY`）。
+    //   依赖本进程的可达表 ⇒ 只在流面上（登记行上写 `.stream_only`）。
     super::typed::asynchronous::<crate::faces::ext_hub_face::ExtHubPreview>(
         "装到几台之前那一张卡：本机后端当枢纽，向各台问完并好",
+    )
+    .stream_only(
+        "枢纽要经本进程的可达表够到来源那台与被写那台；一次性进程里那张表是空的 ⇒ 除了本机对本机什么都问不到。",
     ),
     super::typed::asynchronous::<crate::faces::ext_hub_face::ExtHubApply>(
         "装到几台，本机后端当枢纽；各台各自结局",
+    )
+    .stream_only(
+        "同 `ext-hub-preview`：两头都要经本进程的可达表够到；一次性进程里那张表是空的。",
     ),
     // 扩展页那张表：这台现扫一次、记下（资产目录的写口从这扇门递进去），各台目录合成「条目 × 机器」。
     //   读可达表认出每台的名字 ⇒ 只在流面上。表里有 MCP 行 ⇒ 各台那一格 `mcp` 由这台问到再交（`ext_list_face::with_mcp`）
     //   ⇒ 异步档（扫目录与本机那一份进阻塞池）。
-    super::typed::asynchronous::<crate::faces::ext_list_face::ExtListCmd>("设置「扩展」页那张表"),
+    super::typed::asynchronous::<crate::faces::ext_list_face::ExtListCmd>("设置「扩展」页那张表")
+        .stream_only(
+            "它按本进程的可达表认出每台叫什么、连没连上；一次性进程里那张表是空的 ⇒ 只剩本机、别的台全画成「没连上」，是假话。\
+             本机那一半另有 `ext-list-here`（同一份 `ext::answer_list`，目录先裁到这台一格 ⇒ 可达表无从参与），它上 CLI 面。",
+        ),
     // 〔第二个前端 2026-10-08〕扩展页那张表的**本机那一半**：同一份 `assets::ext::answer_list`，只是目录先裁到这台自己那一格。
     //   凭据在 `ext::columns`：本机那一列**压根不问可达表**（`here` 为真 ⇒ `reachable` 恒真、`key` 恒 `null`、`name` 取目录里那台自报的 label），
     //   可达表只被**别的台**那几列用来认名字与连没连上。裁完一列不剩 ⇒ 可达表无从参与 ⇒ 这一条在一次性进程里与常驻那一个**答得一样真**，
     //   照派生规则（`stream::cli::cli_exposed`）上 CLI 面。
-    //   跨机那一整张（别的台叫什么 · 连没连上 · 「装到…」从哪台拿哪一版）仍只在 `ext-list`（`stream::cli::STREAM_ONLY`，理由在 `stream::cli` 判据的 `NOT_ON_CLI`）。
+    //   跨机那一整张（别的台叫什么 · 连没连上 · 「装到…」从哪台拿哪一版）仍只在 `ext-list`（它的登记行上写 `.stream_only` 与理由）。
     //   ⚠ 不是把 `ext-list` 加一个参数：上不上 CLI 面按**命令名**派生，同一条命令没法「带这个参数才上」。
     super::typed::blocking::<crate::faces::catalog_face::ExtListHereCmd>(
         "设置「扩展」页那张表的本机那一半（不问可达表）",

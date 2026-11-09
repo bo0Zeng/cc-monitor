@@ -19,7 +19,7 @@
 //!
 //! # 起进程
 //!
-//! 探测复用 [`super::gate::probe`]，只有真要写时才多起一个 `tmux set-option`（在调用点放行后端 clippy 起进程那一组）。
+//! 探测复用 [`super::gate::probe_with`]，只有真要写时才多起一个 `tmux set-option`（在调用点放行后端 clippy 起进程那一组）。
 //! 改的是 tmux server 的运行期状态，不是用户既有数据（同 `tmux_hook`）。
 
 /// 一次打标的结局。**返回而不是吞掉** —— 唯一调用点（`observe/watcher.rs::process_session_added`）
@@ -43,7 +43,7 @@ pub(crate) enum Outcome {
     /// 挪进 [`Outcome::PaneUnknown`]：它们说的是「不知道」，不是「不在」。
     NotInTmux,
     /// 不知道它在不在 tmux 里：环境这一刻读不到（`EnvRead::Unreadable`：exec 窗口、僵尸、非 Linux），
-    /// 或者 `TMUX_PANE` 有值但形状过不了 [`pane_is_safe`]。
+    /// 或者 `TMUX_PANE` 有值但形状过不了 `host::tmux::pane_id_ok`。
     ///
     /// 打标上与 `NotInTmux` 一样（都不打）；分开只为了容器那一格不把「不知道」报成「不在」。
     PaneUnknown,
@@ -119,21 +119,14 @@ impl Outcome {
     }
 }
 
-/// tmux 的 pane id 形状：`%` + 十进制数字。
-///
-/// 空串必须挡住：`tmux display-message -p -t '' …` 不报错，静默解析成「当前 / 最近的那个会话」，
-/// 一个空的 `TMUX_PANE` 就会把 sid 打到碰巧的会话上 —— 打错标就是杀错。
-fn pane_is_safe(pane: &str) -> bool {
-    match pane.strip_prefix('%') {
-        Some(n) => !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()),
-        None => false,
-    }
-}
+// tmux 的 pane id 形状（`%` + 十进制数字）住宿主口。空串必须挡住：`tmux display-message -p -t '' …` 不报错，
+// 静默解析成「当前 / 最近的那个会话」，一个空的 `TMUX_PANE` 就会把 sid 打到碰巧的会话上 —— 打错标就是杀错。
+use crate::host::tmux::pane_id_ok;
 
 /// 取这个进程所在的 tmux pane（`TMUX_PANE`），核过形状才回；三态（[`PaneRead`]）：打标上「没设」与
 /// 「读不到 / 形状不对」等价，容器那一格不等价（「不在 tmux 里」vs「不知道」）。
 ///
-/// `proc_env_var` 在读侧就把空串压成了 `EnvRead::Unset` ⇒ `pane_is_safe("")` 在这条路上执行不到；留着它，
+/// `proc_env_var` 在读侧就把空串压成了 `EnvRead::Unset` ⇒ `pane_id_ok("")` 在这条路上执行不到；留着它，
 /// 是为了那条早退哪天换了写法时还有一道门站着。
 fn pane_of(pid: u32) -> PaneRead {
     use crate::platform::proc::EnvRead;
@@ -143,7 +136,7 @@ fn pane_of(pid: u32) -> PaneRead {
         EnvRead::Unreadable => return PaneRead::Unknown,
     };
     let pane = raw.trim().to_string();
-    if pane_is_safe(&pane) {
+    if pane_id_ok(&pane) {
         PaneRead::Pane(pane)
     } else {
         PaneRead::Unknown
@@ -160,18 +153,84 @@ enum PaneRead {
     Unknown,
 }
 
-/// tmux 注给 pane 的那个变量名（键名是常量、不是参数：本文件不回传整份环境）。
-const TMUX_PANE_ENV: &str = "TMUX_PANE";
+// tmux 注给 pane 的那个变量名（键名是常量、不是参数：本文件不回传整份环境）。
+use crate::common::tmux_utf8::TMUX_PANE_ENV;
 
-/// watcher 打标那一手（`observe::watcher::Reactions::tag`，由 `stream/entry.rs` 接上）：观测侧在「这个 pid 确实是写那份 pidfile 的那个 claude」
-/// 被证过之后调它。打不上的那两形说出来，回（容器，这次真写了没有）。**[`tag`] 在生产里的唯一调用点。**
-pub fn tag_seen(pid: u32, sid: &str) -> (Option<crate::wire::SessionContainer>, bool) {
+/// 打一次标、把打不上的那两形说出来。**[`tag`] 在生产里的唯一调用点**（[`tag_seen`] 与补打 [`retag_pending`] 都经它）。
+fn tag_said(pid: u32, sid: &str) -> Outcome {
     let outcome = tag(pid, sid);
     if let Some(note) = outcome.failure_note(pid, sid) {
         tracing::warn!("{note}");
     }
+    outcome
+}
+
+/// watcher 打标那一手（`observe::watcher::Reactions::tag`，由 `stream/entry.rs` 接上）：观测侧在「这个 pid 确实是写那份 pidfile 的那个 claude」
+/// 被证过之后调它。回（容器，这次真写了没有）；没打上的记下、之后补打。
+pub fn tag_seen(pid: u32, sid: &str) -> (Option<crate::wire::SessionContainer>, bool) {
+    let _one_at_a_time = tagging();
+    // 先补打上一回没打上的那几条（watcher 的下一个事件就是「后续周期」；不起定时器）。
+    retag_held();
+    let outcome = tag_said(pid, sid);
+    remember(pid, sid, &outcome);
     let wrote = outcome.wrote();
     (outcome.container(), wrote)
+}
+
+/// 打标一次只一趟（watcher 的打标 · 门那一下的补打）：两趟交错时，补打手里那条旧 sid 会盖掉刚打上的新 sid，
+/// 门也会在别人补打到一半时拿到空的待补那一份、照旧说「不是我们的」。拿着它的那一趟最多等几发 tmux 的期限。
+fn tagging() -> std::sync::MutexGuard<'static, ()> {
+    static TAGGING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    TAGGING.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+/// 打标没打上（`Outcome::Failed`：tmux 超时 · 报错）的那一条：`(pid, sid, 打标那一刻的 procStart)`。
+/// 记下来是为了补打：标没写上 ⇒ 身份门对那个会话一直说「不是我们的」，结束 · 送键永远被拒。
+type Pending = (u32, String, u64);
+
+/// 记着待补打的那几条。生产是进程内一份；测试构建按线程各一份（同 [`door`]：补打会经本线程注入的假 tmux 起，
+/// 别的测试线程碰不到这一份，也不会替它去起没注入的 tmux）。
+#[cfg(not(any(test, feature = "test-support")))]
+fn with_pending<R>(f: impl FnOnce(&mut Vec<Pending>) -> R) -> R {
+    static PENDING: std::sync::Mutex<Vec<Pending>> = std::sync::Mutex::new(Vec::new());
+    f(&mut PENDING.lock().unwrap_or_else(|p| p.into_inner()))
+}
+
+#[cfg(any(test, feature = "test-support"))]
+fn with_pending<R>(f: impl FnOnce(&mut Vec<Pending>) -> R) -> R {
+    thread_local! {
+        static PENDING: std::cell::RefCell<Vec<Pending>> = const { std::cell::RefCell::new(Vec::new()) };
+    }
+    PENDING.with(|p| f(&mut p.borrow_mut()))
+}
+
+/// 这一回的结局落进待补打那一份：没打上（`Failed`）⇒ 记下（同一个 pid 只留最新那条）；别的结局 ⇒ 划掉这个 pid。
+fn remember(pid: u32, sid: &str, outcome: &Outcome) {
+    let start = crate::platform::proc::proc_starttime(pid);
+    with_pending(|p| {
+        p.retain(|(q, _, _)| *q != pid);
+        if let (Outcome::Failed(_), Some(start)) = (outcome, start) {
+            p.push((pid, sid.to_string(), start));
+        }
+    });
+}
+
+/// **补打**上一回没打上的那几条（门说「不是我们的」之前调）：等正在打标的那一趟打完，再逐条补。没有待补的 ⇒ 一发 tmux 都不起。
+pub(crate) fn retag_pending() {
+    let _one_at_a_time = tagging();
+    retag_held();
+}
+
+/// [`retag_pending`] 的本体（调用方拿着 [`tagging`]）：pid 还是打标那一刻那个进程（procStart 没变）才打；
+/// 打上了 · 进程没了 ⇒ 划掉，又没打上 ⇒ 留着。
+fn retag_held() {
+    for (pid, sid, start) in with_pending(|p| p.clone()) {
+        let alive = crate::platform::proc::proc_starttime(pid) == Some(start);
+        let keep = alive && matches!(tag_said(pid, &sid), Outcome::Failed(_));
+        if !keep {
+            with_pending(|p| p.retain(|e| *e != (pid, sid.clone(), start)));
+        }
+    }
 }
 
 /// **把 `sid` 打到 `pid` 所在的那个 tmux 会话上。** 生产只经 [`tag_seen`]。

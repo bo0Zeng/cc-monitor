@@ -4,12 +4,6 @@ const ALLOWED: &[(&str, &str)] = &[
         "core:default",
         "Tauri 核心默认集（窗口/事件/路径等基础能力）",
     ),
-    ("opener:default", "用系统默认程序打开路径/URL 的默认集"),
-    (
-        "opener:allow-open-path",
-        "★ 带 `path: **` 的宽授权：用户点「在文件管理器里打开」时要能开任意目录。\
-             ⚠ 它只能**打开**，不能读写内容",
-    ),
     ("dialog:default", "文件选择框（SFTP 上传/下载选本地路径）"),
     ("core:window:allow-minimize", "最小化"),
     ("core:window:allow-set-title", "窗口标题写「cc-monitor · 需手动 N」（任务栏、Alt+Tab 里看得见谁在等你）"),
@@ -177,6 +171,38 @@ fn every_webview_permission_is_registered() {
         "继承这套权限的窗口模式变了。\n\
              ⚠ `viewer-*` 是通配：它决定了**将来每一个 viewer 窗口**都拿到这套能力。\n\
              加一个模式 = 把能力发给一类新窗口，要有人看一眼。"
+    );
+}
+
+/// webview 不拿「用系统程序打开」那一族（`opener:`）：打开路径 · 网址 · 在文件夹中显示只经壳那一条命令
+/// （`lib.rs::os_open`，挑程序住 `platform/proc.rs`）。插件那一族会把「起本机程序」这一门开在壳的登记之外。
+#[test]
+fn the_webview_holds_no_opener_permission() {
+    let raw = capability_json();
+    let v: serde_json::Value =
+        serde_json::from_str(&raw).expect("capabilities/default.json 不是合法 JSON");
+    let perms = v
+        .get("permissions")
+        .and_then(|p| p.as_array())
+        .expect("找不到 `permissions` 数组 —— 文件形状变了，本条此刻无效");
+    let opener: Vec<String> = perms
+        .iter()
+        .filter_map(|p| match p {
+            serde_json::Value::String(s) => Some(s.clone()),
+            other => other
+                .get("identifier")
+                .and_then(|i| i.as_str())
+                .map(str::to_string),
+        })
+        .filter(|n| n.starts_with("opener:"))
+        .collect();
+    assert!(
+        opener.is_empty(),
+        "能力清单里还有 `opener:` 那一族：{opener:?} —— 用系统程序打开只经壳命令 `os_open`"
+    );
+    assert!(
+        !ALLOWED.iter().any(|(a, _)| a.starts_with("opener:")),
+        "登记表里不许登 `opener:` 那一族"
     );
 }
 

@@ -123,6 +123,7 @@ function rig(n: number, grouped = 0): Rig {
     openMenu: vi.fn(),
     toggleSelect: vi.fn(),
     openMenuAt: vi.fn(),
+    front: vi.fn(),
     fixMachine: vi.fn(),
   };
   const bar = document.createElement("div");
@@ -449,12 +450,13 @@ describe("P8：事件委托 —— 每个 tab 零监听器，整条栏恒定那�
       expect(r.host.switchTo).toHaveBeenCalledTimes(1);
     });
 
-    it("行尾只有 ⋯ ×：各自的动作、不切 tab、click 不冒到 document", () => {
+    it("行尾 ↗ ⋯ ×：各自的动作、不切 tab、click 不冒到 document", () => {
       const r = make(4); // s1 / s3 是远端
       const doc = seenAtDoc("click");
       try {
         const acts = [...btn(r, "s0").querySelectorAll(".tab-acts > *")].map((e) => e.className);
-        expect(acts).toEqual(["tab-more", "tab-close"]);
+        expect(acts).toEqual(["tab-focus", "tab-more", "tab-close"]);
+        sub(r, "s3", "tab-focus").click();
         sub(r, "s1", "tab-more").click();
         expect(r.host.openMenuAt).toHaveBeenCalledWith(sub(r, "s1", "tab-more"), "s1");
         sub(r, "s2", "tab-close").click();

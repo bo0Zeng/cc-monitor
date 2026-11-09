@@ -28,7 +28,6 @@ const NOT_FAILURES: Record<string, string> = {
   "detail.label.local": "本机的称呼（名字，不是失败那一句）",
   "control.machine.peer": "不知道名字时称呼那台的词",
   "terminalFront.unavailable.short": "↗ 此刻点不点得了那一句（能不能点是另一件事，不在这张表里）",
-  "reason.io.unknown": "「原因不明」这一格是通用的原因词，↗ 出错那一张借来当正文；别处照常用",
 };
 
 /** 界面自己知道的事、两端各一个取句口（判定登记表里登成镜像：取的是表里同一把键）：键 ⇒ 允许的那几个文件。 */

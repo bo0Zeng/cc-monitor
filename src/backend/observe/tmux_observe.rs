@@ -47,15 +47,6 @@ pub(super) fn classify_with_server_state(
     }
 }
 
-/// B2：`tmux ls -F` 格式串（真 TAB 分列）。name⇥path⇥cmd⇥attached⇥windows⇥@ccm_sid（活动窗格的）⇥session_id⇥各窗格的 @ccm_sid。
-///
-/// `@ccm_sid` 打在**窗格**上（一个会话里可以跑几个 claude）：末列逐窗口、逐窗格展开（解析见
-/// `common::session_snapshot::pane_sids`）；`#{session_id}` 是会话账本认会话的句柄（会话改名它不变）。
-pub const TMUX_LS_FMT: &str = "#{session_name}\t#{pane_current_path}\t#{pane_current_command}\t#{?session_attached,1,0}\t#{session_windows}\t#{@ccm_sid}\t#{session_id}\t#{W:#{P:#{@ccm_sid} }}";
-
-/// `TMUX_LS_FMT` 的列数 —— [`tab_underflow`] 的 N。**改格式串必须同步这个数**。
-pub(crate) const TMUX_LS_FMT_FIELDS: usize = 8;
-
 // ★★ 这两个口径的家在 `crate::common::tmux_utf8`：控制面那个包不依赖观测面
 // ⇒ 共用的家只能是 `common/`，两层各自 `use` 同一个家。
 //
@@ -69,6 +60,8 @@ pub(crate) const TMUX_LS_FMT_FIELDS: usize = 8;
 //    （`tests::tmux_server_query_yields_nothing_without_a_server`）⇒ 动脚本串会让两份漂开，
 //    而挂 env 一个字节都不用动它。
 use crate::common::tmux_utf8::tab_underflow;
+// 列整台会话的格式串与切行住宿主口（会话快照的探测器同一份）。
+use crate::host::tmux::{ls_row, session_rows, TMUX_LS_FMT, TMUX_LS_FMT_FIELDS};
 
 // ---------- P1（zero-poll-liveness）：tmux 观测的取值（原 `tmux_sessions` 帧的 `observation` 格；那一帧删了，只喂会话账本） ----------
 //
@@ -315,31 +308,6 @@ fn session_names(raw: &str) -> std::collections::BTreeSet<String> {
         .map(str::trim)
         .filter(|n| !n.is_empty() && *n != "NO_TMUX")
         .map(str::to_string)
-        .collect()
-}
-
-/// 一行 `tmux ls` 切成列；段数不等于 `TMUX_LS_FMT_FIELDS`（下溢 = 通道被改写 · 过溢 = 路径里有真 TAB）或名字空 ⇒ 整行丢掉
-/// （通道被改写就不当好数据；本函数也被「raw 从别处来」的路径调得到，不许假设上游已经筛过）。
-/// 回 `(会话名, 句柄, 这个会话挂着的 sid)`，sid 活动窗格那个在前。
-fn ls_row(line: &str) -> Option<(&str, &str, Vec<String>)> {
-    let cols: Vec<&str> = line.split('\t').collect();
-    if cols.len() != TMUX_LS_FMT_FIELDS {
-        return None;
-    }
-    let name = cols[0].trim();
-    if name.is_empty() || name == "NO_TMUX" {
-        return None;
-    }
-    let sids = crate::common::session_snapshot::pane_sids(cols[5], cols[7]);
-    Some((name, cols[6].trim(), sids))
-}
-
-/// 把这一份观测切成**那张唯一的会话快照**认的行（`crate::common::session_snapshot::SessionRow`：
-/// 会话名 ＋ 它某个窗格上的 `@ccm_sid`，挂着几个就几行）。
-pub fn session_rows(raw: &str) -> Vec<crate::common::session_snapshot::SessionRow> {
-    raw.lines()
-        .filter_map(ls_row)
-        .flat_map(|(name, _, sids)| crate::common::session_snapshot::rows_of(name, sids))
         .collect()
 }
 

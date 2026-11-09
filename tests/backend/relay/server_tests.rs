@@ -1529,10 +1529,10 @@ fn spawn_relay_child_at(
         )
         // 凭据住家里（`<家>/apikey-credentials.json`）：家指到夹具那一份所在的目录。
         .env(
-            creds_core::store::DATA_DIR_ENV,
+            relay_route_core::DATA_DIR_ENV,
             creds_path.parent().expect("凭据夹具有父目录"),
         )
-        // 家那一对一起给（同 test-home 换家）：Windows 上找家先看 `USERPROFILE`（`creds_core::store::home_dir`），
+        // 家那一对一起给（同 test-home 换家）：Windows 上找家先看 `USERPROFILE`（`relay_route_core::home_dir`），
         //   只给 `HOME` 的话子进程沿用父进程那个沙箱家、在那里铸一把别的钥匙 ⇒ 门上回 403 `bad-key`。
         .env("HOME", &home)
         .env("USERPROFILE", &home)
@@ -4326,7 +4326,7 @@ fn rk1_the_minted_key_never_shows_up_in_logs_tee_argv_env_or_upstream() {
 }
 
 /// tee 交出的一件，写成一行 JSON（判据用：中转那一侧原样交了什么）。⚠ **不是线上帧** —— 线上的 `tap` 帧由流归位折过、归过位
-/// （`stream::run_route`）；这一行只说中转抄出来的那一件本身（会话标签 · 自报的运行 · 第几段 · 第几件 · 原文 / 收尾）。
+/// （`observe::run_route`）；这一行只说中转抄出来的那一件本身（会话标签 · 自报的运行 · 第几段 · 第几件 · 原文 / 收尾）。
 fn tee_line(ev: &TapEvent) -> String {
     #[derive(serde::Serialize)]
     struct TeeLine<'a> {

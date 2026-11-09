@@ -85,7 +85,7 @@ fn every_field_goes_through_untouched() {
     assert_eq!(got.len(), 1);
     let back: serde_json::Value = serde_json::from_str(&got[0]).unwrap();
     let want: serde_json::Value = serde_json::from_str(body).unwrap();
-    // 两向：读那一层原样（`future` 也过去）—— 字段语义只在下一层一处（`task_entry`，成品判据在 `feature_face_tests`）。
+    // 两向：读那一层原样（`future` 也过去）—— 字段怎么读只在那一家的适配层一处（`agents/claudecode/tasks.rs`，成品判据在 `feature_face_tests`）。
     assert_eq!(back, want);
 }
 
@@ -109,7 +109,7 @@ fn a_sid_that_would_walk_out_of_the_task_root_is_refused() {
     let h = home("fence");
     // 正控：一个普通 sid 过得去。
     assert!(session_task_lines(&h, "abc-123").is_ok());
-    for bad in ["", ".", "..", "../x", "a/b", "a\\b", "a\0b"] {
+    for bad in ["", ".", "..", "../x", "a/b", "a\\b", "a\0b", "a_b", " a"] {
         let err = session_task_lines(&h, bad).expect_err(bad);
         assert_eq!(err.code.as_deref(), Some("bad_args"), "{bad:?}");
     }
@@ -134,4 +134,37 @@ fn a_dir_that_is_there_but_unreadable_is_not_an_empty_list() {
         got.expect_err("读不了的目录回了 Ok").code.as_deref(),
         Some("failed")
     );
+}
+
+/// ★ 状态是闭集：认不出的 ⇒ `other`（不把原串过边界）；`activeForm` 只在进行中给（别的状态带着也不出）。
+#[test]
+fn an_unknown_status_is_other_and_the_active_form_only_shows_while_in_progress() {
+    let h = home("closed");
+    put(
+        &h,
+        "s",
+        "1.json",
+        r#"{"id":"1","subject":"a","status":"weird"}"#,
+    );
+    put(
+        &h,
+        "s",
+        "2.json",
+        r#"{"id":"2","subject":"b","status":"completed","activeForm":"x"}"#,
+    );
+    put(
+        &h,
+        "s",
+        "3.json",
+        r#"{"id":"3","subject":"c","status":"in_progress","activeForm":"y"}"#,
+    );
+    let wire: Vec<serde_json::Value> = session_tasks(&h, "s")
+        .unwrap()
+        .iter()
+        .map(|t| serde_json::to_value(t).unwrap())
+        .collect();
+    assert_eq!(wire[0]["status"], "other");
+    assert_eq!(wire[1]["status"], "completed");
+    assert_eq!(wire[1].get("activeForm"), None, "不在进行中：不给");
+    assert_eq!(wire[2]["activeForm"], "y");
 }

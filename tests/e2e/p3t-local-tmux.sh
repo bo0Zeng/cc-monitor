@@ -174,7 +174,7 @@ case "$CMD" in
 esac
 
 # ── 按生产的送法跑它：`bash -lic <cmd>`，stdio 全 null、脱离进程组
-#    （`launch.rs::build_local_posix_argv` / `launch_local_posix` 逐字同形）。
+#    （`platform/terminal.rs::build_local_posix_argv` / `launch_local_posix` 逐字同形）。
 #    ⚠ 没有 tty ⇒ ccm 建完会话后那次 attach 会失败，而**会话留下** ——
 #    这正是 P3t 要拿到的东西：进程活在 tmux 里有真 tty，等人来接。
 setsid bash -lic "$CMD" </dev/null >/dev/null 2>&1 &

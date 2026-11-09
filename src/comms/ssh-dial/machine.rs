@@ -39,9 +39,9 @@ pub struct Host {
     /// 首选地址。
     #[serde(default)]
     pub host: String,
-    /// 端口（缺 ＝ 22）。
+    /// 端口（缺 ＝ 22；缺省只住这里，两端的表单空着就不交这一键）。
     #[serde(default = "port_22")]
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number", optional))]
     pub port: u64,
     #[serde(default)]
     pub user: String,
@@ -121,13 +121,16 @@ impl Host {
         None
     }
 
-    /// 全部拨号地址：`host` 排首、`addresses` 追加，去重保序；解析不了的那一行丢掉。`host` 空 ⇒ 一条都没有。
+    /// 全部拨号地址：`host` 排首、`addresses` 追加，去重保序；解析不了的那一行丢掉。`host` 空 · 端口装不进 u16 ⇒ 一条都没有
+    /// （端口成不成立只由 [`Host::fault`] 判；这里不悄悄换成缺省）。
     pub fn endpoints(&self) -> Vec<Endpoint> {
         let host = self.host.trim();
+        let Ok(port) = u16::try_from(self.port) else {
+            return Vec::new();
+        };
         if host.is_empty() {
             return Vec::new();
         }
-        let port = u16::try_from(self.port).unwrap_or(22);
         let mut out = vec![Endpoint {
             host: host.to_string(),
             port,

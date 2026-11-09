@@ -771,7 +771,7 @@ fn traits_of(spec: &CommandSpec) -> String {
             crate::stream::inbound::MARGIN_MS / 1000
         ));
     }
-    let places = crate::stream::inbound::views::places_of(spec.name);
+    let places = spec.places;
     if !places.is_empty() {
         let at: Vec<String> = places
             .iter()

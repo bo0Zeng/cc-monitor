@@ -42,9 +42,6 @@ vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 //    jsdom 里实例化**，形状照 `tests/frontend/ui/tabs.vitest.ts`（那边路径少一层 `../`）。
 //    ⚠ 与上面那组同一条纪律：本文件其余判据一条都不经过被 mock 的这几个模块
 //      （它们全是「读源码文本 + 数命令名」），入场/交回各打一次全量核过读数。
-vi.mock("@tauri-apps/plugin-opener", () => ({
-  openPath: vi.fn().mockResolvedValue(undefined),
-}));
 vi.mock("../../../../src/frontend/ui/stream", () => ({
   MessageStream: class {
     contentElement = document.createElement("div");
@@ -246,7 +243,7 @@ describe("C04a 命令名钉死", () => {
     expect(bogus, "包装层里这些键名 Rust 侧不存在 ⇒ 运行时必错").toEqual([]);
 
     // **本条是 Phase D 审计的阻塞项**：键不动、只把字面量抄成另一个真实存在的命令时，
-    // `tsc` 0 错、其余守卫全绿，而运行时会调错命令（实测反例：字面量抄成 `open_log_file`，
+    // `tsc` 0 错、其余守卫全绿，而运行时会调错命令（实测反例：字面量抄成另一条返回 `()` 的命令，
     // 它返回 `Result<(), String>` ⇒ 设置面板拿到 null 后 render 直接崩）。
     for (const [key, text] of entries) {
       const literals = [
@@ -841,5 +838,39 @@ describe("〔C4a〕裸 invoke 只在包装层", () => {
     expect(bareInvokeSites("invokeLaunchOrCopyFallback(origin, cmd);")).toBe(0);
     expect(bareInvokeSites("this.invoke(x); myinvoke(y);")).toBe(0);
     expect(bareInvokeSites("commands.invoke_thing();")).toBe(0);
+  });
+});
+
+/** 一段（已剥注释的）TS 里引的 Tauri 插件与 `api/path`（`import … from` · `export … from` · `import("…")` · `require("…")` 都算）。 */
+function tauriPluginImports(code: string): string[] {
+  return [
+    ...code.matchAll(/(?:\bfrom\s*|\b(?:import|require)\s*\(\s*)["'](@tauri-apps\/(?:plugin-[\w-]+|api\/path))["']/g),
+  ].map((m) => m[1]);
+}
+
+describe("Tauri 插件与 api/path 只在包装层", () => {
+  it("★★ 全仓生产 TS 里引 `@tauri-apps/plugin-*` · `@tauri-apps/api/path` 的文件 == { 包装层 }，且不引 opener", () => {
+    const perFile = new Map<string, string[]>();
+    for (const f of walk("src", ".ts")) {
+      if (f.includes(".test.") || f.includes(".vitest.")) continue;
+      const hits = tauriPluginImports(stripComments(readFileSync(f, "utf8"), "ts"));
+      if (hits.length > 0) perFile.set(f.slice(REPO_ROOT.length + 1), hits);
+    }
+    expect(
+      [...perFile.keys()].sort(),
+      "包装层之外又有人直接引 Tauri 插件了 —— 这台电脑上的系统窗口与路径只经 `ipc/commands.ts` 转出；\n" +
+        "用系统程序打开 / 在文件夹中显示走壳命令 `commands.os_open`（`reveal-in-folder.ts` · `file-window.ts::openOnMachine`）。",
+    ).toEqual([WRAPPER_FILE]);
+    expect(perFile.get(WRAPPER_FILE)?.sort()).toEqual(["@tauri-apps/api/path", "@tauri-apps/plugin-dialog"]);
+  });
+
+  it("★ 识别器阳性五形 ＋ 阴性两形", () => {
+    expect(tauriPluginImports('const m = await import("@tauri-apps/plugin-opener");')).toEqual(["@tauri-apps/plugin-opener"]);
+    expect(tauriPluginImports("const p = require('@tauri-apps/api/path');")).toEqual(["@tauri-apps/api/path"]);
+    expect(tauriPluginImports('import { open } from "@tauri-apps/plugin-dialog";')).toEqual(["@tauri-apps/plugin-dialog"]);
+    expect(tauriPluginImports("export { homeDir } from '@tauri-apps/api/path';")).toEqual(["@tauri-apps/api/path"]);
+    expect(tauriPluginImports('import { openUrl } from "@tauri-apps/plugin-opener";')).toEqual(["@tauri-apps/plugin-opener"]);
+    expect(tauriPluginImports('import { invoke } from "@tauri-apps/api/core";')).toEqual([]);
+    expect(tauriPluginImports('const s = "@tauri-apps/plugin-opener";')).toEqual([]);
   });
 });

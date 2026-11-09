@@ -1,5 +1,5 @@
 # 计划（planned-build）的读面：找 pb、跑 `pb dump`、加工成界面排版的成品、盯计划仓推 `changed {plan}`。只读，计划仓一个字节都不写。
-# 只引观测面 · 历史清单 · agents · 插件 · 帧面零件 · 纯工具 · 平台八层。
+# 只引历史清单 · agents · 插件 · 帧面零件 · 纯工具 · 平台八层。
 [package]
 name = "backend-plan"
 version = "0.0.0"
@@ -17,7 +17,6 @@ workspace = true
 test-support = []
 
 [dependencies]
-backend-observe = { path = "../observe" }
 backend-history = { path = "../history" }
 backend-agents = { path = "../agents" }
 backend-plugin = { path = "../plugin" }
@@ -27,8 +26,6 @@ backend-platform = { path = "../platform" }
 # 帧的线上形（计划的线上类型住 `cmd_wire::plan`）。
 cmd-wire = { path = "../../common/cmd-wire" }
 copy-core = { path = "../../common/copy-core" }
-# 推不出家那一句里点名的环境量（`DATA_DIR_ENV`）。
-creds-core = { path = "../../common/creds-core" }
 face-core = { path = "../../common/face-core" }
 md-core = { path = "../../common/md-core" }
 # 后端的门牌与家的契约（`~/.cc-monitor/` 下每一样的相对路径）。

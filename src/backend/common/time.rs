@@ -69,6 +69,11 @@ enum Zone {
 /// 「看的人就在这台上」那个词（`--tz local`）。
 pub const TZ_HERE: &str = "local";
 
+/// 这一台说得出的时区名：`TZ` · `/etc/localtime` 那条链 · 系统答的名里第一个时区库认得的（`platform::tz::iana_name` 每一步都问 [`Tz::iana`]）；都不认 ⇒ `None`。
+fn here_name() -> Option<String> {
+    crate::platform::tz::iana_name(|n| Tz::iana(n).is_some())
+}
+
 /// 同一个时区 ⇔ 同一个 IANA 名（UTC 与 UTC 相等）；「这一台」只等于「这一台」。
 impl PartialEq for Tz {
     fn eq(&self, other: &Self) -> bool {
@@ -111,13 +116,11 @@ impl Tz {
     }
 
     /// 转得给别台的那个名（`--tz` · 信封 `tz`），恒说得出：说了名 ⇒ 那个名（UTC ⇒ `UTC`）；没说 ⇒ 照算的那一个 `UTC` 明说；
-    /// 「这一台」⇒ 这台系统的 IANA 名，说不出（Windows · `TZ` 是 POSIX 串）⇒ `UTC`。不交 ⇒ 那台按它自己的钟写，就错到那台去了。
+    /// 「这一台」⇒ 这台说得出的时区名（`TZ` · 那条链 · 系统答的里第一个时区库认得的），都说不出 ⇒ `UTC`。不交 ⇒ 那台按它自己的钟写，就错到那台去了。
     pub fn iana_name(&self) -> String {
         match &self.0 {
             Zone::Named(z) => z.iana_name().unwrap_or("UTC").to_string(),
-            Zone::Here => {
-                crate::platform::local_tz::iana_name().unwrap_or_else(|| "UTC".to_string())
-            }
+            Zone::Here => here_name().unwrap_or_else(|| "UTC".to_string()),
             Zone::Unsaid => "UTC".to_string(),
         }
     }
@@ -127,14 +130,14 @@ impl Tz {
     pub fn viewer_zone(&self) -> Option<String> {
         match &self.0 {
             Zone::Named(_) => Some(self.iana_name()),
-            Zone::Here => crate::platform::local_tz::iana_name(),
+            Zone::Here => here_name(),
             Zone::Unsaid => None,
         }
     }
 
-    /// 信封那一格的读法（帧面 `tz` · CLI `--tz` · 流开头 `--tz` 同一处读）：是串且认得 ⇒ 那个时区，别的 ⇒ UTC。
-    pub fn of(v: &serde_json::Value) -> Self {
-        v.as_str().and_then(Self::named).unwrap_or_default()
+    /// 信封那一格的读法（帧面 `tz` · CLI `--tz` · 流开头 `--tz` 同一处读）：带了且认得 ⇒ 那个时区，别的（没带 · 不是串 · 认不得）⇒ UTC。
+    pub fn of(v: Option<&str>) -> Self {
+        v.and_then(Self::named).unwrap_or_default()
     }
 
     /// 时刻 `t`（unix 秒）那一刻比 UTC 快几秒。
@@ -143,10 +146,7 @@ impl Tz {
             Zone::Named(z) => {
                 jiff::Timestamp::from_second(t).map_or(0, |ts| i64::from(z.to_offset(ts).seconds()))
             }
-            Zone::Here => u64::try_from(t)
-                .ok()
-                .and_then(crate::platform::local_tz::offset_secs)
-                .unwrap_or(0),
+            Zone::Here => crate::platform::tz::offset_secs(t).unwrap_or(0),
             Zone::Unsaid => 0,
         }
     }

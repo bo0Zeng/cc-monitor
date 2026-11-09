@@ -20,12 +20,40 @@ fn table() -> std::sync::MutexGuard<'static, BTreeMap<String, Entry>> {
     TABLE.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// 进程里那条「某台的成品变了」的通道（流连接订它推 `changed {machine}`）：那台的名字 ＋ 成品。
-pub fn changes() -> &'static tokio::sync::broadcast::Sender<(String, MachineState)> {
-    static TX: std::sync::OnceLock<tokio::sync::broadcast::Sender<(String, MachineState)>> =
+/// 上一次推出去的各台那几句（[`fleet`]）：变没变只在推的这一侧照它判一次，流连接不各算各的。
+static FLEET_WAS: Mutex<Option<FleetLines>> = Mutex::new(None);
+
+/// 某台的成品变了（流连接推 `changed {machine}`）。`fleet`：各台合一次写好的那几句随这一下变了 ⇒ 新的那几句
+/// （流连接再推一帧 `changed {empty}`）；没变 ⇒ `None`。
+#[derive(Debug, Clone)]
+pub struct Moved {
+    pub machine: String,
+    pub state: MachineState,
+    pub fleet: Option<FleetLines>,
+}
+
+/// 进程里那条「某台的成品变了」的通道（流连接订它）。
+pub fn changes() -> &'static tokio::sync::broadcast::Sender<Moved> {
+    static TX: std::sync::OnceLock<tokio::sync::broadcast::Sender<Moved>> =
         std::sync::OnceLock::new();
     follow_pool();
-    TX.get_or_init(|| tokio::sync::broadcast::channel::<(String, MachineState)>(64).0)
+    TX.get_or_init(|| tokio::sync::broadcast::channel::<Moved>(64).0)
+}
+
+/// 照此刻那张表算一次各台那几句，与上一次推出去的（`was`，生产是 [`FLEET_WAS`]）比：变了 ⇒ 记下、交出来带进这一推；没变 ⇒ `None`。
+/// 在表的锁里调（同一刻只有一处在推，先后不乱）。
+fn fleet_moved(
+    was: &Mutex<Option<FleetLines>>,
+    t: &BTreeMap<String, Entry>,
+    hosts: &[(String, bool)],
+    links: &Links,
+) -> Option<FleetLines> {
+    let now = fleet_over(t, hosts, links);
+    let mut was = was.lock().unwrap_or_else(|e| e.into_inner());
+    (was.as_ref() != Some(&now)).then(|| {
+        *was = Some(now.clone());
+        now
+    })
 }
 
 /// 池里成员动了 ⇒ 每台照此刻的连接重推一份。一个进程起一次：头一回在异步运行时里要这条通道的那一下起
@@ -91,15 +119,18 @@ pub(crate) fn note_in(
     fact: Fact,
 ) -> MachineState {
     let enabled = enabled_in(hosts, machine);
-    let p = {
-        let mut t = table();
-        let e = t.entry(machine.to_string()).or_default();
-        fold(e, fact);
-        product_in(e, machine, enabled, links)
-    };
+    let mut t = table();
+    let e = t.entry(machine.to_string()).or_default();
+    fold(e, fact);
+    let p = product_in(e, machine, enabled, links);
+    let fleet = fleet_moved(&FLEET_WAS, &t, hosts, links);
     // 此刻没有流连接订它 ⇒ 发不出是正常的：表在进程里，客户端重问 `machine-read` 就有
     changes()
-        .send((machine.to_string(), p.clone()))
+        .send(Moved {
+            machine: machine.to_string(),
+            state: p.clone(),
+            fleet,
+        })
         .discard(Why::NotAnError);
     p
 }
@@ -113,21 +144,24 @@ pub(crate) fn table_moved() {
 
 /// [`table_moved`] 的本体（机器表与连接由调用方给）。
 pub(crate) fn table_moved_in(hosts: &[(String, bool)], links: &Links) {
-    let products: Vec<(String, MachineState)> = {
-        let mut t = table();
-        t.retain(|m, _| hosts.iter().any(|(n, _)| n == m));
-        hosts
-            .iter()
-            .map(|(n, c)| {
-                (
-                    n.clone(),
-                    product_in(t.get(n).unwrap_or(&Entry::default()), n, *c, links),
-                )
+    let mut t = table();
+    t.retain(|m, _| hosts.iter().any(|(n, _)| n == m));
+    let last = hosts.len().saturating_sub(1);
+    for (i, (n, c)) in hosts.iter().enumerate() {
+        let state = product_in(t.get(n).unwrap_or(&Entry::default()), n, *c, links);
+        // 各台那几句只在最后一台那一推里判一次、带一次。
+        let fleet = if i == last {
+            fleet_moved(&FLEET_WAS, &t, hosts, links)
+        } else {
+            None
+        };
+        changes()
+            .send(Moved {
+                machine: n.clone(),
+                state,
+                fleet,
             })
-            .collect()
-    };
-    for p in products {
-        changes().send(p).discard(Why::NotAnError); // 没人订就发不出，同上
+            .discard(Why::NotAnError); // 没人订就发不出，同上
     }
 }
 

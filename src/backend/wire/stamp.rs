@@ -3,7 +3,7 @@
 //!
 //! 形状在 `cmd-wire`（孤儿规则不许在那边的类型上加固有方法 ⇒ 扩展特征）。
 
-use crate::agents::record::{retry_line, Body, Record};
+use crate::agents::record::{reason_word, Body, Record};
 use crate::common::cells::Words;
 use crate::common::time::{iso_hm, parse_iso8601_ms, Tz};
 
@@ -58,6 +58,33 @@ fn notice_row(what: &str, end: Option<cmd_wire::record::TaskEnd>, time: &str) ->
     copy_core::copy_text(
         "speaker.notice.row",
         &[("what", what), ("state", &state), ("time", time)],
+    )
+}
+
+/// 还在重试的那一行（「{原因} · 重试 a/b · {钟面} 起」；次数缺一样 ⇒ 不带那一截）：记录出口与会话事实那一串都经它。
+pub fn retry_line(
+    reason: crate::agents::ApiReason,
+    attempt: Option<u32>,
+    max: Option<u32>,
+    since: &str,
+) -> String {
+    let retry = match (attempt, max) {
+        (Some(a), Some(b)) => copy_core::copy_text(
+            "apiError.retry.count",
+            &[
+                ("retryAttempt", &a.to_string()),
+                ("maxRetries", &b.to_string()),
+            ],
+        ),
+        _ => String::new(),
+    };
+    copy_core::copy_text(
+        "apiError.retry.line",
+        &[
+            ("reason", &reason_word(reason)),
+            ("retry", &retry),
+            ("time", since),
+        ],
     )
 }
 

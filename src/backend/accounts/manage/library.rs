@@ -3,7 +3,7 @@
 //! 帧面那几条（宿主 `faces/read_face.rs` · `faces/session_account_face.rs` …）：
 //! - `accounts-list` → `{meta, accounts, notice}`（[`list_product_with`]）；
 //! - 正在跑的会话各属哪个号（[`session_accounts`]）· 停这台之前会打断什么（[`machine_product`]）。
-//! 会话宣告时判号（[`account_of_process`]）。
+//! 会话宣告时判号（[`account_of_process_here`]）由进程入口接进观测侧那一格（观测侧不认识账号库）。
 //!
 //! # 账号 0
 //!
@@ -224,11 +224,8 @@ fn scan_accounts(
                     auth_kind: auth_kind.to_string(),
                     // 鉴权方式这一维不阻塞它被选中；不等于真能连上（界面要把这个状态说出来）。
                     auth_ready: ready,
-                    // 号色（`--acct-c0..c7` 第几格）：账号库里的事实，界面只画它（[`colors_of`]；不在表里的按名字哈希兜底）。
-                    color: colors
-                        .get(&a.name)
-                        .copied()
-                        .unwrap_or_else(|| crate::accounts::manage::model::color_fallback(&a.name)),
+                    // 号色（`--acct-c0..c7` 第几格）：账号库里的事实，界面只画它（[`colors_of`]；库里没给 ⇒ 缺，画中性）。
+                    color: colors.get(&a.name).copied(),
                 });
             }
             let effective_default =
@@ -301,7 +298,7 @@ fn next_default(m: &Manifest) -> Option<String> {
 }
 
 /// 这台账号库给每个号的号色（名 ⇒ 第几格；读不出 ⇒ 空表）：别处画号色（轮换那一页）与 `accounts-list` 同一份；
-/// 不在表里的号照 `color_fallback` 按名字算（同清单那一行）。
+/// 不在表里的号不给（同清单那一行：画中性）。
 pub fn account_colors() -> std::collections::BTreeMap<String, u8> {
     manifest_or_why(&resolve_accts_dir())
         .map(|m| colors_of(&m))
@@ -548,6 +545,11 @@ pub fn account_of_process(
     accts_dir: &Path,
 ) -> Option<String> {
     owner_of(pid, face.session_env.config_dir, &dirs_of(accts_dir)).account
+}
+
+/// [`account_of_process`]，账号库取这台的那一份：进程入口把它接进观测侧宣告会话那一格（`observe::watcher::Reactions::account_of`）。
+pub fn account_of_process_here(pid: u32, face: &crate::agents::AccountsFace) -> Option<String> {
+    account_of_process(pid, face, &resolve_accts_dir())
 }
 
 /// 正在跑的会话各属哪个号：活会话表（`history::live_table`）每个进程一行。

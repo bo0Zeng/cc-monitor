@@ -829,7 +829,7 @@ impl crate::wire::typed::Handle for SessionsNeedsCmd {
 /// [`SessionsNeedsCmd`] 的本体：家目录 · 这台计划里要人看的每一条（工作区 · 片名 · 落在哪一格）· 会话外的清单（读不出 ⇒ 那一句）是参数。
 pub(crate) fn needs_at(
     home: &Path,
-    plan: &[crate::observe::recognize::facts::NeedAt],
+    plan: &[crate::wire::needs::NeedAt],
     manual: Result<Vec<cmd_wire::needs::ManualItem>, String>,
 ) -> NeedsList {
     let annotations = match crate::history::history_annotations::load() {
@@ -850,7 +850,7 @@ pub(crate) fn needs_with(
     home: &Path,
     here: &crate::history::session_hidden::Here,
     annotations: &crate::history::history_annotations::Table,
-    plan: &[crate::observe::recognize::facts::NeedAt],
+    plan: &[crate::wire::needs::NeedAt],
     manual: Result<Vec<cmd_wire::needs::ManualItem>, String>,
 ) -> NeedsList {
     crate::observe::recognize::facts::needs_list(
@@ -1196,10 +1196,8 @@ pub(crate) fn turns_page(
 
 /// 还没收尾那一轮的「现在在做哪一步 / 在等什么」：此刻谁持着它 · 答题口接没接上 · pidfile 说在等什么。
 fn dress_open_turn(home: &Path, path: &str, last: &mut crate::observe::recognize::turns::TurnRow) {
-    let sid = Path::new(path)
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("");
+    let sid = crate::agents::sid_of(Path::new(path)).unwrap_or_default();
+    let sid = sid.as_str();
     let holders = locate::facts_holders(home, path).unwrap_or_default();
     let off = answer_off_of(&holders, locate::facts_agent(home, path).as_deref());
     let needs = dress_ask(
@@ -1484,11 +1482,9 @@ pub(crate) fn facts_in(
         }
     };
     let path = path.as_str();
-    // 中转看见过这个会话的请求 ⇒ 它带没带扩展上下文那一项（会话 id ＝ 记录文件名，中转的流标签就是它）。
-    let sid = Path::new(path)
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("");
+    // 中转看见过这个会话的请求 ⇒ 它带没带扩展上下文那一项（会话 id 照那一家的文件命名，中转的流标签就是它）。
+    let sid = crate::agents::sid_of(Path::new(path)).unwrap_or_default();
+    let sid = sid.as_str();
     let relay = crate::observe::relay_marks::seen(sid);
     let mut facts = locate::facts(home, path, limits, relay).map_err(HistoryFactsErr::Failed)?;
     if facts.project_dir.is_none() {
@@ -1498,6 +1494,11 @@ pub(crate) fn facts_in(
         .project_dir
         .as_deref()
         .map(|d| crate::common::cells::Words(crate::platform::paths::home_short(d, user_home)));
+    facts.project_name = facts
+        .project_dir
+        .as_deref()
+        .and_then(plain_path_core::last_segment)
+        .map(str::to_string);
     facts.where_line = facts::where_line(called, facts.cwd_shown.as_ref().map(|w| w.0.as_str()));
     if facts.agent.is_none() {
         facts.agent = locate::facts_agent(home, path).map(Into::into);

@@ -68,10 +68,6 @@ pub(crate) use caps::until_of;
 #[cfg(test)]
 pub(crate) use caps::{cap_of, MARGIN_MS};
 pub(crate) use doors::LocalFiles;
-pub use doors::{
-    align_aliases, deliver_queues, fill_account_colors, share_on_demand_dirs, watch_account_mcp,
-    watch_rotation,
-};
 #[cfg(test)]
 use drain::{exit_after_drain_within, Drain};
 use sniff::sniff_id;
@@ -80,7 +76,7 @@ use spec::{BlockingHandler, CommandSpec, DataHandler, Outcome};
 
 /// 单行上限。超过即整行丢弃 + 回 `line_too_long`。
 ///
-/// 取值与 `control/cli_args.rs::MAX_CLI_STDIN` 同一量级（1 MiB）——
+/// 取值与 `wire/cli_args.rs::MAX_CLI_STDIN` 同一量级（1 MiB）——
 /// 那条是审计 security-重要② 加的，理由相同：无界读遇超大输入 = 无界堆分配
 /// （Pi 级设备 OOM）。一条命令信封远小于它，1 MiB 已是极宽松的上限。
 ///
@@ -90,7 +86,7 @@ use spec::{BlockingHandler, CommandSpec, DataHandler, Outcome};
 /// `handle_line` 才看 `raw.len()`。D 审计实测：喂 512 MiB 无换行的流 ⇒
 /// **RSS 从 6 MiB 涨到 518 MiB**，而它照样回了一条 `line_too_long`「看起来对」。
 ///
-/// 也就是说：常数抄了先例，**机制没抄** —— 先例（当时那道一次性 stdin 上限，现在是 `cli_args::MAX_CLI_STDIN`）用的是
+/// 也就是说：常数抄了先例，**机制没抄** —— 先例（当时那道一次性 stdin 上限，现在是 `wire::cli_args::MAX_CLI_STDIN`）用的是
 /// `stdin().take(上限)`，真·先取上限再读。
 /// 而功能自述的验收判据里逐字写着「超长单行 ⇒ 进程存活、**内存不涨**」，
 /// 那句当时是**没有任何测试的假声明**。
@@ -139,6 +135,19 @@ pub(crate) fn unix_mode_unavailable(unix_mode_bits: bool) -> Vec<crate::wire::Un
         .collect()
 }
 
+/// 有托管那一臂的命令：声明了 [`NO_TMUX`]（tmux 那一形的终端要它），可目标是托管终端时经托管口做、不起 tmux
+/// ⇒ 没有 tmux 的机器上照样做得到（Windows 本机的终端都是托管的），不进 `unavailable`；对 tmux 那一形下手时照回 `no_tmux`。
+/// 与「声明了 `no_tmux`、处理器够得着托管口」的命令两向相等，由 `target_parity_guard.rs` 的
+/// `the_hosted_arm_list_is_the_no_tmux_commands_that_reach_the_hosted_port` 钉。
+pub const HOSTED_ARM: &[&str] = &[
+    "terminal-preview",
+    "terminal-input",
+    "terminal-follow",
+    "session-interrupt",
+    "session-model",
+    "session-permission",
+];
+
 /// 本机做不到的一项：置灰那一句按本机的名字写好（别台的由本机后端转它的 hello 时换成那台的名字：`control/feeds.rs`）。
 fn gap_here(command: &str, code: &str) -> crate::wire::Unavailable {
     crate::wire::Unavailable {
@@ -152,10 +161,11 @@ fn gap_here(command: &str, code: &str) -> crate::wire::Unavailable {
 ///
 /// # 这里为什么没有一张手写的「命令 → 它依赖什么」表
 ///
-/// 那件事 [`REGISTRY`] 已经说过了：**谁会回 `no_tmux`，谁就依赖 tmux**。
-/// 再手写一张 = 第二份真相，而两份真相里迟早有一份是旧的（本工作区最贵的那一类病）。
-/// ⇒ 直接从 `codes` 派生。副作用正是要的：以后**新加**一条会回 `no_tmux` 的命令，
+/// 那件事 [`REGISTRY`] 已经说过了：**谁会回 `no_tmux`，谁就依赖 tmux** —— 再手写一张 = 第二份真相，
+/// 而两份真相里迟早有一份是旧的（本工作区最贵的那一类病）。⇒ 直接从 `codes` 派生：以后**新加**一条会回 `no_tmux` 的命令，
 /// 它自动进这张表，没有人需要记得来改这里。
+/// 减掉的那一份是 [`HOSTED_ARM`]（有托管那一臂、只在对 tmux 那一形下手时要 tmux）：它是名单，
+/// 但不是手抄的第二份 —— 与「声明 `no_tmux`、够得着托管口」两向相等由判据从调用图钉着。
 ///
 /// # `tmux` 的三态各自落在哪（🔴 这一格是本函数唯一容易假绿的地方）
 ///
@@ -172,7 +182,7 @@ pub(crate) fn unavailable_from(tmux: Option<bool>) -> Vec<crate::wire::Unavailab
     let mut out = Vec::new();
     if tmux == Some(false) {
         for spec in REGISTRY {
-            if spec.codes.contains(&NO_TMUX) {
+            if spec.codes.contains(&NO_TMUX) && !HOSTED_ARM.contains(&spec.name) {
                 out.push(gap_here(spec.name, NO_TMUX));
             }
         }
@@ -355,19 +365,6 @@ where
 }
 
 /// 处理一行。**任何失败都只回一条错误应答，绝不 panic、绝不结束读循环。**
-/// 请求信封里 `machine` 那一格（问的是哪台；缺 · `null` · 空串 ＝ 问本后端自己）。
-fn machine_of(raw: &[u8]) -> Option<String> {
-    #[derive(serde::Deserialize)]
-    struct Hop {
-        #[serde(default)]
-        machine: Option<String>,
-    }
-    serde_json::from_slice::<Hop>(raw)
-        .ok()
-        .and_then(|h| h.machine)
-        .filter(|m| !m.trim().is_empty())
-}
-
 async fn handle_line(
     raw: &[u8],
     replies: &mpsc::Sender<Frame>,
@@ -392,7 +389,7 @@ async fn handle_line(
     req.until = caps::until_of(req.within_ms);
     // 信封带 `machine` ⇒ 这一问是问那台的：经那台的常驻流转过去（`control/feeds.rs::forward`），出口声明原样交那台、由它裁；
     //   本后端不认这条命令也不拦（认不认 · 形状对不对是连那台的客户端判）。撤单照本连接的 `id` 撤这一趟（转过去那一问随之撤）。
-    if let Some(machine) = machine_of(raw) {
+    if let Some(machine) = req.machine.clone() {
         // 那台的在看名单不转过去：交那台的名单台（本后端持有那台的常驻流，名单跟着它走、那台换连接照样带上），各条流的并起来报。
         if req.cmd == resident_client::watch::WATCH_CMD {
             match crate::wire::typed::take::<crate::wire::WatchAsk>(&req.args) {
@@ -536,26 +533,14 @@ fn dispatch(
     match req.cmd.as_str() {
         // 答题 hook 挂一条待答请求、阻塞等人答：挂的那条要跟着**本连接**走（hook 那一头走了就撤）⇒ 硬臂带上本连接的号；
         //   本体是真异步（等的是一个通道），`cancel` 能在那儿把它打断（打断 ＝ 不给决定，同连接断）。
-        // 在 app 里登录一个号：作业跟着**本连接**走（连接断了就杀），作业自己收了推一帧 `changed {login}` 给本连接、敲需手动的铃。
-        //   起子命令 ＋ 等它打印链接（有界）⇒ 阻塞档。
+        // 在 app 里登录一个号：作业跟着**本连接**走（连接断了就杀），作业自己收了推一帧 `changed {login}` 给本连接、敲需手动的铃
+        //   （那一帧在 `faces::login_face::start` 里造：这里只交本连接的号与应答通道）。起子命令 ＋ 等它打印链接（有界）⇒ 阻塞档。
         "login-start" => {
             let push = replies.clone();
             Disposition::SpawnBlocking(
                 req,
                 crate::wire::typed::answer_blocking::<crate::faces::login_face::LoginStart, _>(
-                    move |r, _cx| {
-                        let on_end: crate::accounts::sign_in::OnEnd =
-                            Box::new(move |job, ended| {
-                                use crate::faces::login_face::{SignInState, SignInStateExt as _};
-                                push.blocking_send(Frame::changed(crate::wire::Changed::Login {
-                                    key: job.to_string(),
-                                    body: Some(SignInState::of(ended)),
-                                }))
-                                .discard(Why::PeerGone); // 发起登录的那条连接已断 ⇒ 「登录作业收了」那一帧没人收（作业本来就跟着它收）
-                                crate::history::needs_changed::ring();
-                            });
-                        crate::faces::login_face::start(&r, asks, on_end)
-                    },
+                    move |r, _cx| crate::faces::login_face::start(&r, asks, push),
                 ),
             )
         }
@@ -773,14 +758,7 @@ fn listened(
         crate::common::batch_book::listen(
             t,
             Box::new(move |p| {
-                tx.send_replace(Some(Frame::FilesBatch(crate::wire::FilesBatch {
-                    ticket: p.ticket.clone(),
-                    done: p.done,
-                    total: p.total,
-                    current: p.current.clone(),
-                    bytes_done: p.bytes.map(|b| b.0),
-                    bytes_total: p.bytes.map(|b| b.1),
-                })));
+                tx.send_replace(Some(Frame::FilesBatch(p.into())));
             }),
         )
     });

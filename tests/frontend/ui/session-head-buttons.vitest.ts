@@ -62,7 +62,7 @@ function rig(t: Tab | null = tab("a")): { h: SessionHead; host: { more: ReturnTy
   const item = (id: string, label: string, extra: Partial<MenuItem> = {}): MenuItem => ({ id, label, onClick: () => clicked.push(id), ...extra });
   const host = {
     active: () => current,
-    openCwd: vi.fn(), terminal: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), reconnect: vi.fn(), planMark: () => null,
+    openCwd: vi.fn(), front: vi.fn(), view: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), reconnect: vi.fn(), planMark: () => null,
     menuItem: vi.fn((_sid: string, id: string): MenuItem | null => {
       switch (id) {
         case "popOut": return item("popOut", copyText("history.menu.openWindow"));
@@ -120,19 +120,19 @@ describe("纯函数：读盘 · 清单 · 勾 · 挪 · 拖 · 放不下", () =>
     expect(sanitizeHeadButtons([])).toEqual([]);
   });
 
-  it("默认只「终端」与「在会话里找」两颗；「结束会话」与「更多」都不在全集里；「切到终端」「显示 ▾」两颗删了（存过的读时跳过）", () => {
-    expect(DEFAULT_HEAD_BUTTONS).toEqual(["terminal", "find"]);
+  it("默认照 5.1.1 拉前 · 看它的终端各一颗，加「在会话里找」；「结束会话」与「更多」都不在全集里；「显示 ▾」删了（存过的读时跳过）", () => {
+    expect(DEFAULT_HEAD_BUTTONS).toEqual(["front", "terminal", "find"]);
     const ids = headEditRows([]).map((r) => r.id);
     expect(ids).not.toContain("kill");
     expect(ids).not.toContain("more");
-    expect(ids).not.toContain("front");
+    expect(ids).toContain("front");
     expect(ids).not.toContain("display");
-    expect(ids).toHaveLength(9);
-    expect(sanitizeHeadButtons(["front", "display", "find"]), "盘上存过的旧 id 读时跳过，不迁移").toEqual(["find"]);
+    expect(ids).toHaveLength(10);
+    expect(sanitizeHeadButtons(["front", "display", "find"]), "盘上存过的旧 id 读时跳过，不迁移").toEqual(["front", "find"]);
   });
 
   it("清单：上段按顺序勾着，下段按全集顺序；勾上放末尾、取消回下段；Alt+↑↓ 挪一格到头不动", () => {
-    expect(headEditRows(["find", "cwd"]).slice(0, 3)).toEqual([{ id: "find", on: true }, { id: "cwd", on: true }, { id: "terminal", on: false }]);
+    expect(headEditRows(["find", "cwd"]).slice(0, 3)).toEqual([{ id: "find", on: true }, { id: "cwd", on: true }, { id: "front", on: false }]);
     expect(toggleHeadButton(["find"], "pin")).toEqual(["find", "pin"]);
     expect(toggleHeadButton(["find", "pin"], "find")).toEqual(["pin"]);
     expect(nudgeHeadButton(["a", "b", "c"] as never, "b" as never, -1)).toEqual(["b", "a", "c"]);
@@ -181,20 +181,25 @@ describe("会话头目录行", () => {
 });
 
 describe("会话头那一排", () => {
-  it("★ 默认：终端 · 在会话里找 · ⋯；「终端」做得了 ⇒ 点了交宿主那一条，悬停是那台写好的去做什么；做不了 ⇒ 在、灰着、点了不做事", () => {
+  it("★ 默认：拉前 · 看它的终端 · 在会话里找 · ⋯；各自做得了 ⇒ 点了交宿主各自那一条；做不了 ⇒ 在、灰着、点了不做事", () => {
     const { h, host } = rig(tab("a", { face: liveFace("working", true) }));
-    expect(heads(h)).toEqual(["terminal", "find", "more"]);
-    expect(btn(h, "terminal").hasAttribute("aria-disabled")).toBe(false);
-    expect(btn(h, "terminal").getAttribute("aria-label")).toBe(copyText("mobDrawer.item.terminal"));
+    const fn = (x: unknown, k: string): ReturnType<typeof vi.fn> => (x as Record<string, ReturnType<typeof vi.fn>>)[k];
+    expect(heads(h)).toEqual(["front", "terminal", "find", "more"]);
+    expect(btn(h, "front").getAttribute("aria-label")).toBe(copyText("terminal.head.front"));
+    expect(btn(h, "terminal").getAttribute("aria-label")).toBe(copyText("sessionHead.act.terminal"));
+    for (const id of ["front", "terminal"]) expect(btn(h, id).hasAttribute("aria-disabled"), id).toBe(false);
+    btn(h, "front").click();
+    expect(fn(host, "front")).toHaveBeenCalledWith("a");
     btn(h, "terminal").click();
-    expect((host as unknown as { terminal: ReturnType<typeof vi.fn> }).terminal).toHaveBeenCalledWith("a");
+    expect(fn(host, "view")).toHaveBeenCalledWith("a");
     btn(h, "find").click();
-    expect((host as unknown as { find: ReturnType<typeof vi.fn> }).find).toHaveBeenCalled();
-    // 远端、不在任何宿主里 ⇒ 那台说别处没有终端可接：灰着。
+    expect(fn(host, "find")).toHaveBeenCalled();
+    // 远端、不在任何宿主里 ⇒ 拉前照旧点得了；看它的终端那台说别处没有终端可接：灰着。
     const off = rig(tab("r", { origin: "devbox", face: liveFace("working", false) }));
+    expect(btn(off.h, "front").hasAttribute("aria-disabled")).toBe(false);
     expect(btn(off.h, "terminal").getAttribute("aria-disabled"), "做不了只灰着一种样子").toBe("true");
     btn(off.h, "terminal").click();
-    expect((off.host as unknown as { terminal: ReturnType<typeof vi.fn> }).terminal).not.toHaveBeenCalled();
+    expect(fn(off.host, "view")).not.toHaveBeenCalled();
   });
 
   it("★ 摆上来的「打开工作目录」远端会话也有（文件窗口落在那台那个目录，A2-17-7-5）；没有目录 ⇒ 不出", async () => {
@@ -213,7 +218,7 @@ describe("会话头那一排", () => {
     store.cfg = { sessionHead: { buttons: ["find", "pin", "bogus", "front", "display", "cwd"] } };
     const { h } = rig();
     await h.loadButtons();
-    expect(heads(h)).toEqual(["find", "pin", "cwd", "more"]);
+    expect(heads(h)).toEqual(["find", "pin", "front", "cwd", "more"]);
   });
 
   it("从「⋯」那份菜单借来的那几颗：点了就是那一项（有子菜单 ⇒ 锚在按钮上开）；灰着的说为什么", async () => {
@@ -253,7 +258,7 @@ describe("按钮那一排右键 · 编辑浮层", () => {
   it("★ 右键某一颗：「调整会话头按钮…」·「从会话头移走「x」」；移走 ⇒ 当场落盘、会话头跟着变、toast 可撤", async () => {
     const { h } = rig();
     btn(h, "terminal").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
-    const name = copyText("mobDrawer.item.terminal");
+    const name = copyText("sessionHead.act.terminal");
     expect(menuLabels().map((l) => l.trim())).toEqual([copyText("sessionHead.edit.open"), copyText("sessionHead.edit.remove", { name })]);
     menuItemEl(copyText("sessionHead.edit.remove", { name })).click();
     await flush();
@@ -281,7 +286,7 @@ describe("按钮那一排右键 · 编辑浮层", () => {
     expect(pop.textContent).toContain(copyText("sessionHead.edit.hint"));
     expect(pop.textContent).toContain(copyText("sessionHead.edit.overflow"));
     const rows = (): HTMLElement[] => [...pop.querySelectorAll<HTMLElement>("[data-row]")];
-    expect(rows().map((r) => r.dataset.row)).toEqual(["terminal", "find", "cwd", "popOut", "account", "pin", "group", "resume", "close", "more"]);
+    expect(rows().map((r) => r.dataset.row)).toEqual(["front", "terminal", "find", "cwd", "popOut", "account", "pin", "group", "resume", "close", "more"]);
     const box = (id: string): HTMLInputElement => pop.querySelector<HTMLInputElement>(`[data-row="${id}"] input[type=checkbox]`)!;
     expect(box("terminal").checked).toBe(true);
     expect(box("cwd").checked).toBe(false);
@@ -292,8 +297,8 @@ describe("按钮那一排右键 · 编辑浮层", () => {
     box("pin").click();
     await flush();
     expect(lastButtonsWrite()).toEqual([{ op: "set", path: ["sessionHead", "buttons"], value: [...DEFAULT_HEAD_BUTTONS, "pin"] }]);
-    expect(heads(h)).toEqual(["terminal", "find", "pin", "more"]);
-    expect(rows().map((r) => r.dataset.row).slice(0, 3), "清单跟着重排：勾上的进上段末尾").toEqual([...DEFAULT_HEAD_BUTTONS, "pin"]);
+    expect(heads(h)).toEqual(["front", "terminal", "find", "pin", "more"]);
+    expect(rows().map((r) => r.dataset.row).slice(0, 4), "清单跟着重排：勾上的进上段末尾").toEqual([...DEFAULT_HEAD_BUTTONS, "pin"]);
   });
 
   it("浮层键盘：Alt+↓ 挪一格（焦点跟着那一行）· 空格勾 / 不勾 · Esc 关、焦点回「⋯」", async () => {
@@ -305,7 +310,7 @@ describe("按钮那一排右键 · 编辑浮层", () => {
     row("terminal").dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", code: "ArrowDown", altKey: true, bubbles: true }));
     await flush();
     const written = (): string[] => (lastButtonsWrite() as { value: string[] }[])[0]!.value;
-    expect(written().slice(0, 2)).toEqual(["find", "terminal"]);
+    expect(written().slice(0, 3)).toEqual(["front", "find", "terminal"]);
     expect(document.activeElement).toBe(row("terminal"));
     row("terminal").dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", code: "ArrowDown", bubbles: true }));
     expect(document.activeElement, "↓ 走到下一行").toBe(row("cwd"));
@@ -326,7 +331,7 @@ describe("按钮那一排右键 · 编辑浮层", () => {
     reset.click();
     await flush();
     expect(lastButtonsWrite()).toEqual([{ op: "remove", path: ["sessionHead"] }]);
-    expect(heads(h)).toEqual(["terminal", "find", "more"]);
+    expect(heads(h)).toEqual(["front", "terminal", "find", "more"]);
     expect(vi.mocked(undoToast).mock.calls[0][0]).toBe(copyText("sessionHead.edit.resetDone"));
     vi.mocked(undoToast).mock.calls[0][1]();
     await flush();

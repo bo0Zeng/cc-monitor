@@ -128,3 +128,27 @@ fn the_base_layer_never_names_the_config_layer() {
         bad.join("\n")
     );
 }
+
+/// 换号要问的两样 history 的事（这台活着的会话 · 需手动的铃）由宿主递进 `Hop`：额度 · 上游选择的生产段一处都不引 history 的这两份
+/// （账号血缘那一处 `lineage` 这次不动，不在这根针里）。
+#[test]
+fn quota_and_upstream_select_never_reach_into_history_for_live_or_ring() {
+    let root = guard_core::addr::backend_src_root();
+    let mut files = walk(&root.join("accounts/quota"));
+    files.extend(walk(&root.join("accounts/upstream_select")));
+    let mut bad = Vec::new();
+    for p in files {
+        let src = std::fs::read_to_string(&p).expect("read rs");
+        let prod = production_code(&src);
+        for n in ["history::live_table", "history::needs_changed"] {
+            if prod.contains(n) {
+                bad.push(format!("{} → {n}", rel(&root, &p)));
+            }
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "额度 · 上游选择自己去 history 拿活会话 / 敲铃（该由宿主递进 Hop）：\n{}",
+        bad.join("\n")
+    );
+}

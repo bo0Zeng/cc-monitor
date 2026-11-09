@@ -92,25 +92,14 @@ fn the_answer_is_a_function_of_the_machine_not_of_the_build() {
     );
     let missing = unavailable_from(Some(false));
     let names: Vec<&str> = missing.iter().map(|u| u.command.as_str()).collect();
-    // 🔴 期望值 = `REGISTRY` 里登记了 `no_tmux` 的那几条（**这张表是从 `codes` 派生的**）：
-    //    起一组那两条（`set-plan` · `set-launch`，一组只起在 tmux 里）· 终端管理两条（`terminal-preview` / `terminal-input`）·
-    //    中断 `session-interrupt`（同 `terminal-input` 按宿主送 Esc）· `session-model` · `session-permission` ·
-    //    终端实时预览 `terminal-follow`（起 tmux 控制模式客户端）· 问图 `plan-ask`（开口那句只跟 tmux）。
+    // 🔴 期望值 = `REGISTRY` 里登记了 `no_tmux`、又没有托管那一臂的那几条（**这张表是从 `codes` 派生的**）：
+    //    起一组那两条（`set-plan` · `set-launch`，一组只起在 tmux 里）· 问图 `plan-ask`（开口那句只跟 tmux）。
+    //    预览 · 送字 · 中断 · 换模型 · 权限档 · 实时预览有托管那一臂（`HOSTED_ARM`）：没 tmux 时托管终端照做，不整机拒。
     //    新加一条会回 `no_tmux` 的命令 ⇒ 它自动进表，本条红「未必是错」，把这里的期望值补上。
     //    ⚠ 顺序按 `REGISTRY` 的排列，不是字典序。
     assert_eq!(
         names,
-        vec![
-            "set-plan",
-            "set-launch",
-            "terminal-preview",
-            "terminal-input",
-            "session-interrupt",
-            "session-model",
-            "session-permission",
-            "terminal-follow",
-            "plan-ask"
-        ],
+        vec!["set-plan", "set-launch", "plan-ask"],
         "没有 tmux 的那台机器上，做不到的恰好是 `REGISTRY` 里登记了 `{NO_TMUX}` 的那几条。\n\
              ⚠ 本条红**未必是错**：你要是新加了一条会回 `{NO_TMUX}` 的命令，它已经自动进表了\n\
              （这张表是从 `codes` 派生的，不是手写的）—— 那就把这里的期望值补上。\n\
@@ -238,22 +227,16 @@ fn the_windows_answer_is_confirmed_absent_not_unknown() {
     .iter()
     .map(|u| u.command.clone())
     .collect();
-    // 🔴 期望值同上一条：`REGISTRY` 里登记了 `no_tmux` 的那几条（从 `codes` 派生）。
+    // 🔴 期望值同上一条：`REGISTRY` 里登记了 `no_tmux`、又没有托管那一臂的那几条（从 `codes` 派生）。
     assert_eq!(
         names,
         vec![
             "set-plan".to_string(),
             "set-launch".to_string(),
-            "terminal-preview".to_string(),
-            "terminal-input".to_string(),
-            "session-interrupt".to_string(),
-            "session-model".to_string(),
-            "session-permission".to_string(),
-            "terminal-follow".to_string(),
             "plan-ask".to_string()
         ],
-        "🔴 **Windows 上这张表又空了** —— 这一格就是这里的正题。\n\
-             握手帧第四条面在动机平台上不说话 = 这一格什么都没买到。\n\
+        "🔴 **Windows 上这张表又空了，或托管终端做得到的又被整机拒了** —— 这一格就是这里的正题。\n\
+             握手帧第四条面在动机平台上不说话 = 这一格什么都没买到；把托管终端做得到的列进来 = 能用的按钮被灰掉。\n\
              ⚠ 本条红未必是错：新加了一条会回 `no_tmux` 的命令，它会自动进表 —— 那就补期望值。\n\
              实得：{names:?}"
     );

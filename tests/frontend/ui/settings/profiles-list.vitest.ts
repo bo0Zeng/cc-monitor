@@ -83,7 +83,6 @@ describe("buildProfilesList", () => {
       sets: [],
     };
     vi.resetModules();
-    vi.doMock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn() }));
     undoToasts = [];
     vi.doMock("../../../../src/frontend/ui/kit/toast", () => ({
       toast: () => undefined,

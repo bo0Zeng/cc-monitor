@@ -343,7 +343,7 @@ fn own_at(tag: &str) -> (std::path::PathBuf, crate::platform::fs::Own) {
         tmp.to_string_lossy().into_owned(),
     );
     let own = crate::platform::fs::Own::issue_with(&|k| match k {
-        creds_core::store::DATA_DIR_ENV => Some(data.clone()),
+        relay_route_core::DATA_DIR_ENV => Some(data.clone()),
         "HOME" => Some(home.clone()),
         _ => None,
     });

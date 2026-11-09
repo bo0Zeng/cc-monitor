@@ -441,12 +441,20 @@ fn attach_line(name: &str, here: Here, deps: &Deps) -> Result<String, Said> {
 }
 
 /// 落成的样子：`at` ＝ 落在的那个终端（名字 ＋ 住在哪种宿主里；`window` ⇒ `None`）。
+/// 接上的那个终端照宿主写成的那一截（[`Opened::at`]，出口照摆）。
 pub fn opened(landed: Landed, at: Option<(String, TerminalHost)>, line: Option<String>) -> Opened {
+    let said = at.as_ref().map(|(n, h)| {
+        cmd_wire::cells::Words(match h {
+            TerminalHost::Tmux => copy_core::copy_text("sessionOpen.at.tmux", &[("name", n)]),
+            TerminalHost::Managed => copy_core::copy_text("sessionOpen.at.managed", &[("name", n)]),
+        })
+    });
     let (session, host) = at.map_or((None, None), |(n, h)| (Some(n), Some(h)));
     Opened {
         landed,
         session,
         host,
+        at: said,
         line,
         sid: None,
         agent: None,
@@ -880,10 +888,7 @@ pub fn run_self_as_ccm(argv: &[String]) -> Result<(i32, String, String), Said> {
         clippy::disallowed_methods,
         reason = "在 tmux 里后台起会话：起本二进制自己当 ccm 跑界面那一行（只多 `--detach`，argv 不过 shell、stdin 空），被起的那一趟照样归本仓的守法管；不许加第二种用途"
     )]
-    let out = Child::new(me)
-        .args(argv.iter().skip(1))
-        .env_remove("TMUX")
-        .env_remove("TMUX_PANE")
+    let out = crate::common::tmux_utf8::unnested(Child::new(me).args(argv.iter().skip(1)))
         .run(SELF_AS_CCM_WITHIN)
         .map_err(|e| e.into_cmd_err("start_failed", |e| e.to_string()))?;
     Ok((

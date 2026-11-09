@@ -209,6 +209,7 @@ fn opened(sid: Option<&str>) -> cmd_wire::session::Opened {
         landed: cmd_wire::session::Landed::Started,
         session: Some("t".into()),
         host: Some(crate::wire::TerminalHost::Tmux),
+        at: None,
         line: None,
         sid: sid.map(str::to_string),
         agent: None,

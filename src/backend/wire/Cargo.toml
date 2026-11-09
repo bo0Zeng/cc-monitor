@@ -1,4 +1,4 @@
-# 帧面的协议零件：帧 · typed 命令 · 登记形状 · 复制详情 · 主题表 · 监听判定 · 收场闸 · ccm 这一行的词。只引 agents · 纯工具 · 平台三层。
+# 帧面的协议零件：帧 · typed 命令 · 登记形状 · 复制详情 · 主题表 · 监听判定 · 收场闸 · ccm 这一行的词 · CLI 面读入参 · `--text` 拼字。只引 agents · 纯工具 · 平台三层。
 [package]
 name = "backend-wire"
 version = "0.0.0"
@@ -24,8 +24,6 @@ backend-platform = { path = "../platform" }
 # 帧的线上形（客户端按同一份解）。
 cmd-wire = { path = "../../common/cmd-wire" }
 copy-core = { path = "../../common/copy-core" }
-# 回显给宿主的那两个环境量名之一（数据目录）。
-creds-core = { path = "../../common/creds-core", features = ["harden"] }
 # attach 那一行的新旧判定（序键是 `BUILD_ID` 的）。
 deploy-contract = { path = "../../common/deploy-contract" }
 relay-route-core = { path = "../../common/relay-route-core" }

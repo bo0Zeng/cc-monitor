@@ -382,3 +382,44 @@ fn inflight_averages_the_sends_open_over_five_minutes() {
         "说不出在哪个号上 ⇒ 不记"
     );
 }
+
+/// ★ 中转抄出来的一整件交给这一本（`Spend::tap`）：0 号那一件开了头 · 说出用量的那几件记用量 · 收尾那一件说完了；
+/// 截断的那一件不记。两发：一发整段在途、一发后半段开着 ⇒ 在途 1.5，用量记在会话此刻那个号名下。
+#[test]
+fn a_whole_tap_event_opens_counts_and_closes_a_send() {
+    use crate::relay::{TapBody, TapEvent};
+    let ev = |resp: u64, n: u64, body: TapBody| TapEvent {
+        stream: "s1".into(),
+        heads: Vec::new(),
+        resp,
+        n,
+        body,
+    };
+    let start = |input: u64| {
+        format!(r#"{{"type":"message_start","message":{{"usage":{{"input_tokens":{input}}}}}}}"#)
+    };
+    let s = Spend::default();
+    s.answered(Some("s1"), AGENT, "a");
+    s.tap(&ev(1, 0, TapBody::Data(start(100_000))), T0);
+    s.tap(&ev(2, 0, TapBody::Data(start(100_000))), T0 + 150);
+    s.tap(
+        &ev(
+            2,
+            1,
+            TapBody::Clipped {
+                head: start(9_000_000),
+                len: 1,
+            },
+        ),
+        T0 + 160,
+    );
+    s.tap(&ev(1, 1, TapBody::End { broken: false }), T0 + 300);
+    let n = s.me("s1", T0 + 300).inflight.expect("量得到");
+    assert!((n - 1.5).abs() < 1e-9, "{n}");
+    let t = s.lock().tally[&(AGENT.to_string(), "a".to_string())];
+    assert_eq!(
+        (t.units, t.sends),
+        (200_000.0, 2),
+        "两发开头那两件的用量记在 a 名下，截断那一件不记"
+    );
+}

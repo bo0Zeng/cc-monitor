@@ -29,7 +29,8 @@ fn approve(sid: &str) -> AskIn {
         what: Some("touch a".into()),
         detail: "touch a\necho b".into(),
         suggestions: vec![AskSuggestion {
-            text: "/w".into(),
+            scope: crate::agents::SuggestScope::Session,
+            rule: crate::agents::SuggestRule::Dirs(vec!["/w".into()]),
             raw: json!({"type": "addDirectories", "directories": ["/w"], "destination": "session"}),
         }],
         questions: vec![],

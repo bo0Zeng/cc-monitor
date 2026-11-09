@@ -645,6 +645,21 @@ mod tests {
         bin
     }
 
+    /// 写一份可执行的替身脚本。写盘那一下在子进程里做：本进程从不持有它的写句柄 ⇒ 并行的别的判据此刻 fork 出来的子进程
+    /// 继承不到这份写句柄，随后 exec 它不会撞 ETXTBSY（本进程里 `fs::write` 再 exec 在并行下偶发撞上）。
+    fn put_exec(p: &Path, text: &str) {
+        use std::io::Write;
+        use std::process::Stdio;
+        let mut c = Command::new("sh")
+            .args(["-c", "cat > \"$1\" && chmod 755 \"$1\"", "sh"])
+            .arg(p)
+            .stdin(Stdio::piped())
+            .spawn()
+            .unwrap();
+        c.stdin.take().unwrap().write_all(text.as_bytes()).unwrap();
+        assert!(c.wait().unwrap().success(), "写替身 {} 失败", p.display());
+    }
+
     fn heavy_with_path(d: &Path, bin: &Path, args: &[&str]) -> Output {
         Command::new(bin.join("bash"))
             .arg(root().join("tests/scripts/heavy.sh"))
@@ -819,17 +834,13 @@ mod tests {
         );
         let log = d.join("calls.log");
         let fake = |name: &str, body: &str| {
-            let p = bin.join(name);
-            std::fs::write(
-                &p,
-                format!(
+            put_exec(
+                &bin.join(name),
+                &format!(
                     "#!/bin/bash\necho \"{name} $*\" >> '{}'\n{body}\n",
                     log.display()
                 ),
-            )
-            .unwrap();
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+            );
         };
         fake("systemctl", "exit 0");
         fake(
@@ -883,10 +894,7 @@ mod tests {
             ],
         );
         let fake = |name: &str, body: &str| {
-            let p = bin.join(name);
-            std::fs::write(&p, format!("#!/bin/bash\n{body}\n")).unwrap();
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+            put_exec(&bin.join(name), &format!("#!/bin/bash\n{body}\n"));
         };
         fake("systemctl", "exit 0");
         fake(
@@ -1002,6 +1010,8 @@ mod tests {
                 .env_remove("HEAVY_HELD")
                 .env_remove("TMUX")
                 .env_remove("TMUX_PANE")
+                // 判据自己可能由编译调度派到远端跑（那边设着它）：被测的快检照本机那一趟判
+                .env_remove("BUILDSCHED_TAG")
                 .output()
                 .unwrap()
         };
@@ -1270,6 +1280,8 @@ mod tests {
             .env_remove("TMUX")
             .env_remove("TMUX_PANE")
             .env_remove("CCM_BUILD_REMOTE_OK")
+            // 判据自己可能由编译调度派到远端跑（那边设着它）：要远端那一趟的经 `envs` 另给
+            .env_remove("BUILDSCHED_TAG")
             .envs(envs.iter().copied())
             .current_dir(d);
         match lock {
@@ -1282,6 +1294,57 @@ mod tests {
             String::from_utf8_lossy(&out.stdout),
             String::from_utf8_lossy(&out.stderr)
         )
+    }
+
+    /// ★ 整趟快检外派（编译调度在远端起命令时设 `BUILDSCHED_TAG`，本机没有）：带着它 ⇒ 手机 · win-check 两格不起 gradle · `cargo check`
+    /// （远端没装 Android 工具链与 Windows 目标），各印一行「远端跳过，本机单跑」，其余各格照跑；`--only` 那两格带着它也跳过。
+    /// 本机（没有它）`--only mobile` · `--only win-check` 只跑那一格。
+    #[test]
+    fn quick_check_on_a_remote_skips_mobile_and_win_check_for_a_local_run() {
+        let d = fake_quick_repo("qc-remote");
+        let calls = || std::fs::read_to_string(d.join("calls")).unwrap_or_default();
+        let remote = [("BUILDSCHED_TAG", "t1")];
+        let said = run_fake_quick_with(&d, &[], None, &remote);
+        let seen = calls();
+        assert!(
+            !guard_core::contains_word(&seen, "cargo check")
+                && !guard_core::contains_word(&seen, "gradle"),
+            "远端那一趟起了 win-check / 手机：{seen}\n{said}"
+        );
+        assert!(
+            guard_core::contains_word(&seen, "cargo test"),
+            "其余各格没照跑：{seen}\n{said}"
+        );
+        // 汇总行只记重的四段：手机记进「没跑」，win-check 不在那四段里
+        assert!(said.contains("；没跑 mobile\n"), "{said}");
+        for seg in ["mobile", "win-check"] {
+            assert!(
+                said.contains(&format!(
+                    "  --   {seg:<16} 远端跳过，本机单跑：--only {seg}"
+                )),
+                "{seg} 跳过了却没说：{said}"
+            );
+        }
+        for only in ["mobile", "win-check"] {
+            let _ = std::fs::remove_file(d.join("calls"));
+            let said = run_fake_quick_with(&d, &["--only", only], None, &remote);
+            assert_eq!(calls(), "", "远端 --only {only} 起了东西：{said}");
+            assert!(said.contains("远端跳过，本机单跑"), "{said}");
+        }
+        // 本机补那两格：各只起自己那一样
+        for (only, want) in [
+            ("mobile", vec!["gradle --no-daemon held=0"]),
+            (
+                "win-check",
+                vec!["cargo check held=0", "cargo check held=0"],
+            ),
+        ] {
+            let _ = std::fs::remove_file(d.join("calls"));
+            let said = run_fake_quick(&d, &["--only", only], None);
+            assert_eq!(calls().lines().collect::<Vec<_>>(), want, "{said}");
+            assert!(said.trim_end().contains("QUICK: OK"), "{said}");
+        }
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     /// ★ 全机编译锁（锁脚本在仓外，路径照 `CCM_BUILD_LOCK`）：给了 ⇒ 编译那几段（后端 · clippy · 壳 · creds-harden 的 cargo，

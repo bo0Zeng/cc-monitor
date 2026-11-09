@@ -226,27 +226,21 @@ fn the_stop_budget_outlasts_the_remote_stop() {
 // 中继 `absent` 时 ensure 之后只再接一次、没成照退避 · 「没带字节就不比新旧」随重连循环住 `resident-client`：
 //   `feed_tests.rs::a_relay_still_absent_after_ensure_is_one_transient_failure` · `feed_tests.rs::without_its_own_build_the_relation_is_incomparable`。
 
-/// 小中继的第一行（读法住 `resident-client`，两端同一份）：拒绝那一形读出理由，别的（hello）照 hello 读。理由词与后端那一侧逐字相同（跨 crate 字面量）。
+/// 小中继的第一行（读法住 `resident-client`，两端同一份）：拒绝那一形读出理由（理由词住契约 `cmd_wire::attach`，后端写的也是它），别的（hello）照 hello 读。
 #[test]
-fn the_relay_refusal_line_is_read_and_its_words_match_the_backend() {
-    use resident_client::attach::{relay_refusal, RELAY_ABSENT};
+fn the_relay_refusal_line_is_read() {
+    use cmd_wire::attach::{REFUSE_ABSENT, REFUSE_UNREACHABLE};
+    use resident_client::attach::relay_refusal;
     assert_eq!(
         relay_refusal(r#"{"attach":"refused","reason":"absent"}"#).as_deref(),
-        Some(RELAY_ABSENT)
+        Some(REFUSE_ABSENT)
     );
     assert_eq!(
         relay_refusal(r#"{"attach":"refused","reason":"unreachable"}"#).as_deref(),
-        Some("unreachable")
+        Some(REFUSE_UNREACHABLE)
     );
     assert_eq!(
         relay_refusal(r#"{"kind":"hello","v":1,"build_id":"p1"}"#),
         None
-    );
-    let be = include_str!("../../../src/backend/wire/listen.rs");
-    assert!(
-        be.contains(&format!(
-            "pub const REFUSE_ABSENT: &str = \"{RELAY_ABSENT}\";"
-        )),
-        "后端那一侧「没人在听」的理由词与这里不同了"
     );
 }

@@ -116,36 +116,6 @@ fn a_keyed_url_splits_only_when_the_key_and_the_route_both_have_our_shape() {
     assert!(key_shape_ok(&key) && !key_shape_ok(&key[..63]) && !key_shape_ok(&key.to_uppercase()));
 }
 
-/// 藏钥匙：一行里每条插好钥匙的我们那一形地址，钥匙段换成 `…`、其余逐字不变；不是那一形的地址原样。
-#[test]
-fn hiding_the_key_replaces_only_the_key_segment_of_our_keyed_urls() {
-    let k1 = "0123456789abcdef".repeat(4);
-    let k2 = "fedcba9876543210".repeat(4);
-    let json =
-        format!(r#"    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8788/{k1}/t/claude-code/_","#);
-    assert_eq!(
-        hide_key(&json),
-        r#"    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8788/…/t/claude-code/_","#
-    );
-    let toml = format!(
-        "openai_base_url = \"http://127.0.0.1:8788/{k1}/s/codex/w\" # http://127.0.0.1:1/{k2}/t/a/b/~tok"
-    );
-    assert_eq!(
-        hide_key(&toml),
-        "openai_base_url = \"http://127.0.0.1:8788/…/s/codex/w\" # http://127.0.0.1:1/…/t/a/b/~tok"
-    );
-    for plain in [
-        format!("x http://127.0.0.1:8788/{}/t/claude-code/_ y", &k1[..63]),
-        format!("http://localhost:8788/{k1}/t/claude-code/_"),
-        format!("http://127.0.0.1:8788/{k1}/x/a/b"),
-        "http://127.0.0.1:8788/t/claude-code/_".to_string(),
-        format!("token = \"{k1}\""),
-        "中文 http://127.0.0.1:".to_string(),
-    ] {
-        assert_eq!(hide_key(&plain), plain, "不是那一形 ⇒ 原样");
-    }
-}
-
 /// 插钥匙是切钥匙的逆：插出来的切得回原来两半、钥匙段恰是那一把；地址或钥匙形状不对 ⇒ 不插。
 #[test]
 fn keying_a_url_is_the_inverse_of_splitting_it() {
@@ -597,4 +567,102 @@ fn an_account_id_passes_the_gate_and_is_not_the_undeclared_segment() {
     for ok in ["a", "0", "team-2", "a_b"] {
         assert!(account_ok(ok), "{ok:?}");
     }
+}
+
+// ═══════ 家目录 · 数据目录：哪个环境变量算家、数据目录怎么推，两侧一条规矩 ═══════════════════
+
+/// 注入的环境（`(变量, 值)`；不在表里 ⇒ 没设）。
+fn env_of(
+    pairs: &'static [(&'static str, &'static str)],
+) -> impl Fn(&str) -> Option<std::ffi::OsString> {
+    move |k| {
+        pairs
+            .iter()
+            .find(|(n, _)| *n == k)
+            .map(|(_, v)| (*v).into())
+    }
+}
+
+/// ★ 要求：「规则按平台惯例 —— **Windows：`USERPROFILE` → `HOME`；其余：`HOME` → `USERPROFILE`**…
+/// 都空 ⇒ `None`、调用方明说」。两臂各喂同一组注入环境，期望手写；空串当没设。
+#[test]
+fn the_home_is_picked_by_the_platform_convention() {
+    let p = |s: &str| Some(std::path::PathBuf::from(s));
+    let both: &[(&str, &str)] = &[("USERPROFILE", r"C:\Users\u"), ("HOME", "/home/u")];
+    let only_home: &[(&str, &str)] = &[("HOME", "/home/u")];
+    let only_profile: &[(&str, &str)] = &[("USERPROFILE", r"C:\Users\u")];
+    let empty_first_win: &[(&str, &str)] = &[("USERPROFILE", ""), ("HOME", "/home/u")];
+    let empty_first_other: &[(&str, &str)] = &[("HOME", ""), ("USERPROFILE", r"C:\Users\u")];
+    let blank: &[(&str, &str)] = &[("HOME", ""), ("USERPROFILE", "")];
+    let cases: [(&'static [(&str, &str)], bool, Option<std::path::PathBuf>); 10] = [
+        (both, true, p(r"C:\Users\u")),
+        (only_home, true, p("/home/u")),
+        (empty_first_win, true, p("/home/u")),
+        (blank, true, None),
+        (&[], true, None),
+        (both, false, p("/home/u")),
+        (only_profile, false, p(r"C:\Users\u")),
+        (empty_first_other, false, p(r"C:\Users\u")),
+        (blank, false, None),
+        (&[], false, None),
+    ];
+    for (env, windows, want) in cases {
+        assert_eq!(
+            home_dir_on(&env_of(env), windows),
+            want,
+            "env {env:?} · windows={windows}"
+        );
+    }
+    // 本进程这一臂：`home_dir_from` 取的是本平台那一格（门禁在 Linux 上跑 ⇒ 非 Windows 那一臂）。
+    #[cfg(not(windows))]
+    assert_eq!(home_dir_from(&env_of(both)), p("/home/u"));
+}
+
+/// 数据目录：`CCM_DATA_DIR`（非空且绝对）照用；空串当没设 ⇒ `<家>/.cc-monitor`；设了却不是绝对路径 ⇒ `None`（不退回真家）；没家又没设 ⇒ `None`。
+#[test]
+fn the_data_dir_follows_the_override_else_the_home() {
+    use std::path::PathBuf;
+    assert_eq!(DATA_DIR_ENV, "CCM_DATA_DIR");
+    let home = || Some(PathBuf::from("/home/u"));
+    assert_eq!(
+        monitor_data_dir(None, home()),
+        Some(PathBuf::from("/home/u/.cc-monitor"))
+    );
+    assert_eq!(
+        monitor_data_dir(Some("  "), home()),
+        Some(PathBuf::from("/home/u/.cc-monitor"))
+    );
+    // 绝对路径照这台平台的写法（Windows 上 `/iso/data` 没有盘符，不算绝对）。
+    let abs = if cfg!(windows) {
+        r"C:\iso\data"
+    } else {
+        "/iso/data"
+    };
+    assert_eq!(
+        monitor_data_dir(Some(abs), home()),
+        Some(PathBuf::from(abs))
+    );
+    assert_eq!(monitor_data_dir(Some("rel/data"), home()), None);
+    assert_eq!(monitor_data_dir(None, None), None);
+    // 默认那一形与布局表同一个根（`.cc-monitor/` 开头的每一个 `*_REL`）。
+    assert!(LISTEN_DIR_REL.starts_with(".cc-monitor/"));
+}
+
+/// 「文件与数据」里后端列的家里那几样，含历史注解与 API key 表（落点照声明表那一行，后端逐样 stat，壳不另列）。
+#[test]
+fn home_entries_list_the_history_annotations_and_the_api_key_table() {
+    let rel_of = |id: &str| OWN_HOME_ENTRIES.iter().find(|e| e.0 == id).map(|e| e.1);
+    assert_eq!(
+        rel_of("historyMetadata"),
+        Some(HISTORY_ANNOTATIONS_FILE.row.rel)
+    );
+    assert_eq!(rel_of("apikey"), Some(APIKEY_CREDENTIALS_FILE.row.rel));
+    assert_eq!(
+        file_name_of(HISTORY_ANNOTATIONS_REL),
+        "history-metadata.json"
+    );
+    assert_eq!(
+        file_name_of(APIKEY_CREDENTIALS_REL),
+        "apikey-credentials.json"
+    );
 }

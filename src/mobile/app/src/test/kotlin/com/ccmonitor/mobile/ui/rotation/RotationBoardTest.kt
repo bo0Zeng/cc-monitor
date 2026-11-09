@@ -161,12 +161,12 @@ class RotationBoardTest {
         }
 
     @Test
-    fun `立即用：rotation-use-now；那台回 unusable ⇒ 按钮下照 rot·acct·refused 写那个号事实上的那一句`() =
+    fun `立即用：rotation-use-now；那台回 unusable ⇒ 按钮下摆那台写好的整句`() =
         runTest {
             val (link, b) = board(more = { cmd, _ -> if (cmd == Rotation.USE_NOW) RotFixture.failed("unusable", "用不了") else null })
             b.useNow("lab")
             assertEquals(mapOf("sid" to "s1", "account" to "lab"), link.calls(Rotation.USE_NOW).single())
-            assertEquals("lab" to copyText("rot.acct.refused", "account" to "lab", "why" to "5 小时用量已到上限"), b.state.value.refused)
+            assertEquals("lab" to "用不了", b.state.value.refused)
         }
 
     @Test
@@ -281,17 +281,16 @@ class RotationBoardTest {
     }
 
     @Test
-    fun `编辑小窗底行：改的是哪份 · 在用旧版那一句（那台写的）带［都载入新版］；没人在用写「没有会话在用」`() {
+    fun `编辑小窗底行照那台写好的整句摆；有会话还在用旧版 ⇒ 带［都载入新版］`() {
         val older = mapOf("hint" to mapOf("k" to "older", "n" to 2.0), "tone" to "plain", "text" to "夹具·2 个会话还在用旧版")
-        val sep = copyText("kit.text.sep")
-        val v = Rotation.ofView(RotFixture.view(hints = listOf(older)))!!
-        assertEquals(copyText("rot.pane.foot", "name" to "spread") + sep + "夹具·2 个会话还在用旧版" to true, paneFoot(v))
-        val idle = Rotation.ofView(RotFixture.view(strategy = "night"))!!
-        assertEquals(copyText("rot.pane.foot", "name" to "night") + sep + copyText("rot.pane.noUse") to false, paneFoot(idle))
+        val v = Rotation.ofView(RotFixture.view(hints = listOf(older)) + ("foot" to "夹具·底行 · 2 个会话还在用旧版"))!!
+        assertEquals("夹具·底行 · 2 个会话还在用旧版" to true, paneFoot(v))
+        val idle = Rotation.ofView(RotFixture.view(strategy = "night") + ("foot" to "夹具·底行 · 无会话在用"))!!
+        assertEquals("夹具·底行 · 无会话在用" to false, paneFoot(idle))
     }
 
     @Test
-    fun `放下 ⇒ 交一次 rotation-temp move {account, to}，回包才定：成 ⇒ 重读；拖到第一格那台回 unusable ⇒ 滑回、照 rot·acct·refused 写那一句`() =
+    fun `放下 ⇒ 交一次 rotation-temp move {account, to}，回包才定：成 ⇒ 重读；拖到第一格那台回 unusable ⇒ 滑回、摆那台写好的整句`() =
         runTest {
             val (link, b) = board(more = { cmd, args -> if (cmd == Rotation.TEMP && ((args?.get("op") as? Map<*, *>)?.get("move") as? Map<*, *>)?.get("to") == 0) RotFixture.failed("unusable", "用不了") else null })
             val ends = mutableListOf<MoveEnd>()
@@ -303,7 +302,7 @@ class RotationBoardTest {
             assertEquals(mapOf("sid" to "s1", "op" to mapOf("move" to mapOf("account" to "work", "to" to 0))), link.calls(Rotation.TEMP).last())
             assertEquals(listOf(MoveEnd.DONE, MoveEnd.BACK), ends)
             assertEquals(0, link.calls(Rotation.USE_NOW).size)
-            assertEquals("work" to copyText("rot.acct.refused", "account" to "Work", "why" to "用不了"), b.state.value.refused)
+            assertEquals("work" to "用不了", b.state.value.refused)
         }
 
     @Test
@@ -391,23 +390,14 @@ class RotationBoardTest {
         }
 
     @Test
-    fun `提示的字是那台写好的；停发那一句的 {dur} 照回包的 now 与 until 填；颜色照那台给的语气`() =
+    fun `提示的字是那台写好的（停发那一句连还有多久也写好）；颜色照那台给的语气`() =
         runTest {
-            val (_, b) = board(view = { RotFixture.view(hints = listOf(RotFixture.hold(4 * 3600), RotFixture.ERROR, RotFixture.TZ)) })
+            val (_, b) = board(view = { RotFixture.view(hints = listOf(RotFixture.HOLD, RotFixture.ERROR, RotFixture.TZ)) })
             val (hold, err, tz) =
                 b.state.value.view!!
                     .hints
-            assertEquals(
-                "已停发 · 18:30 team 恢复（还有 " +
-                    com.ccmonitor.mobile.core.copy.DurationFormat
-                        .short(4 * 3600 * 1000L) + "）",
-                hintText(
-                    hold,
-                    b.state.value.view!!
-                        .now,
-                ),
-            )
-            assertEquals("策略「spread」出错：第 12 行，除数为 0", hintText(err, 0))
+            assertEquals("已停发 · 18:30 team 恢复（还有 4 小时）", hold.text)
+            assertEquals("策略「spread」出错：第 12 行，除数为 0", err.text)
             assertEquals("原话", err.detail)
             assertEquals("/h/strategies/spread.rhai", (err.hint as RotHint.StrategyError).path)
             assertEquals(NoteTone.ERROR, toneOf(err.tone))

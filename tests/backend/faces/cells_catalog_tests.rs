@@ -611,18 +611,15 @@ const NEVER_WRITTEN: &[(&str, &str)] = &[
     ("history_list", "up.*.face.account"),
     // 清单行是冷读出来的：被顶替那一格只有离开那一帧带。
     ("history_list", "up.*.face.life.by"),
-    // 离开那一帧的脸是那台照活会话表现写的、手上没有容器那一格：「在这里开」接哪个终端的句柄恒缺（交了由那台认）。
-    ("session_left", "face.can.terminal.far.open.terminal"),
+    // 离开那一帧的脸是那台照活会话表现写的、手上没有容器那一格：「看它的终端」接哪个终端的句柄恒缺（交了由那台认）。
+    ("session_left", "face.can.view.open.terminal"),
     // 清单行 · 组员那张脸是冷读出来的、没有容器那一格：同上，句柄恒缺。
-    ("history_list", "up.*.face.can.terminal.far.open.terminal"),
+    ("history_list", "up.*.face.can.view.open.terminal"),
     (
         "groups_read",
-        "groups[].members[].face.can.terminal.far.open.terminal",
+        "groups[].members[].face.can.view.open.terminal",
     ),
-    (
-        "groups_read",
-        "pinned[].face.can.terminal.far.open.terminal",
-    ),
+    ("groups_read", "pinned[].face.can.view.open.terminal"),
     // 组员那张脸是各台照清单那一行冷读出来的，同上。
     ("groups_read", "groups[].members[].face.account"),
     ("groups_read", "pinned[].face.account"),

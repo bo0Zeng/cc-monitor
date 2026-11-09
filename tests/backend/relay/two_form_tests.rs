@@ -247,7 +247,7 @@ fn a_codex_shaped_round_gets_426_then_picks_its_upstream_by_login_form_and_route
         events.iter().all(|e| e.stream == SID),
         "流标签不是 session-id 的值"
     );
-    let mut router = crate::stream::run_route::RunRouter::new(
+    let mut router = crate::observe::run_route::RunRouter::new(
         Arc::new(crate::observe::runs::RunBook::default()),
         crate::agents::stream_families(),
     );
@@ -256,7 +256,7 @@ fn a_codex_shaped_round_gets_426_then_picks_its_upstream_by_login_form_and_route
     for e in events {
         for f in router.on_tap(e) {
             {
-                let crate::stream::run_route::Routed { run, resp, ev, .. } = f;
+                let crate::observe::run_route::Routed { run, resp, ev, .. } = f;
                 let slot = by_resp.entry(resp).or_insert((run.clone(), Vec::new()));
                 assert_eq!(slot.0, run, "同一段流归了两个运行");
                 slot.1.extend(ev);

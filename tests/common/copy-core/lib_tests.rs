@@ -17,9 +17,9 @@ fn it_embeds_the_one_table_on_disk() {
     assert_eq!(
         copy_text(
             "sessionOpen.attached.body",
-            &[("machine", "devbox"), ("name", "%1")]
+            &[("machine", "devbox"), ("at", "%1")]
         ),
-        "devbox · tmux 会话「%1」"
+        "devbox · %1"
     );
 }
 
@@ -29,7 +29,7 @@ fn a_missing_key_says_its_name_instead_of_panicking() {
     assert_eq!(copy_text("no.such.key", &[]), "〔no.such.key〕");
     assert_eq!(
         copy_text("sessionOpen.attached.body", &[("machine", "devbox")]),
-        "devbox · tmux 会话「{name}」"
+        "devbox · {at}"
     );
 }
 
@@ -89,37 +89,37 @@ fn the_shared_interpolation_golden_agrees_with_this_reader() {
 /// 一个不成对 / 不是给了值的 `{` 原样留着、后面的占位符照认。正反各一格（只断「不重扫」的话，把插值焊成「一个都不换」也能绿）。
 #[test]
 fn the_interpolation_is_one_pass_and_never_rescans_a_value() {
-    // 值里带另一个参数的占位符：原样留着（逐个 replace 的话会成 `[%1] tmux: %1`）。
+    // 值里带另一个参数的占位符：原样留着（逐个 replace 的话会成 `%1 · %1`）。
     assert_eq!(
         copy_text(
             "sessionOpen.attached.body",
-            &[("machine", "{name}"), ("name", "%1")]
+            &[("machine", "{at}"), ("at", "%1")]
         ),
-        "{name} · tmux 会话「%1」"
+        "{at} · %1"
     );
     // 参数给的顺序反过来也一样（顺序不是语义的一部分）。
     assert_eq!(
         copy_text(
             "sessionOpen.attached.body",
-            &[("name", "{machine}"), ("machine", "devbox")]
+            &[("at", "{machine}"), ("machine", "devbox")]
         ),
-        "devbox · tmux 会话「{machine}」"
+        "devbox · {machine}"
     );
     // 值里带它自己的占位符、带花括号残片：都原样。
     assert_eq!(
         copy_text(
             "sessionOpen.attached.body",
-            &[("machine", "{machine}"), ("name", "{a{b}")]
+            &[("machine", "{machine}"), ("at", "{a{b}")]
         ),
-        "{machine} · tmux 会话「{a{b}」"
+        "{machine} · {a{b}"
     );
     // 正控：两个占位符都真换了（不是「一个都不换」）。
     assert_eq!(
         copy_text(
             "sessionOpen.attached.body",
-            &[("machine", "devbox"), ("name", "%1")]
+            &[("machine", "devbox"), ("at", "%1")]
         ),
-        "devbox · tmux 会话「%1」"
+        "devbox · %1"
     );
 }
 

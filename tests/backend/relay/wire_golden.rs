@@ -481,7 +481,7 @@ fn the_bytes_on_all_three_wires_match_the_golden_table_verbatim() {
 }
 
 /// tee 交出的一件，写成一行 JSON（判据用：中转那一侧原样交了什么）。⚠ **不是线上帧** —— 线上的 `tap` 帧由流归位折过、归过位
-/// （`stream::run_route`）；这一行只说中转抄出来的那一件本身（会话标签 · 自报的运行 · 第几段 · 第几件 · 原文 / 收尾）。
+/// （`observe::run_route`）；这一行只说中转抄出来的那一件本身（会话标签 · 自报的运行 · 第几段 · 第几件 · 原文 / 收尾）。
 fn tee_line(ev: &crate::relay::TapEvent) -> String {
     #[derive(serde::Serialize)]
     struct TeeLine<'a> {

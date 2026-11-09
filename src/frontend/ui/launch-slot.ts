@@ -67,8 +67,6 @@ interface Slot {
   row: HTMLButtonElement;
 }
 
-const projOf = (cwd: string): string => cwd.split("/").filter(Boolean).pop() ?? cwd;
-
 /** 那一行 · 那一页的标题：正在启动 · 未报到 · 问不到那台 ⇒ 状态不明。 */
 const titleOf = (sl: Slot): string =>
   sl.missed === null ? copyText("launch.placeholder.title") : sl.missed.unknown ? copyText("runs.state.unknown") : copyText("launch.slot.missedTitle");
@@ -168,7 +166,7 @@ export class LaunchSlots {
     const sl = this.showing === null ? undefined : this.slots.get(this.showing);
     const terminal = sl?.missed?.terminal;
     if (!sl || terminal === null || terminal === undefined || sl.spec.tmuxName === null) return null;
-    return { origin: sl.spec.origin, terminal, name: sl.spec.tmuxName, title: projOf(sl.spec.cwd) };
+    return { origin: sl.spec.origin, terminal, name: sl.spec.tmuxName, title: sl.spec.cwd };
   }
 
   /** 只给判据用：此刻有几行 · 正看着哪一个。 */
@@ -214,7 +212,8 @@ export class LaunchSlots {
     title.className = "tab-title one-line";
     const proj = document.createElement("span");
     proj.className = "tab-proj";
-    proj.textContent = projOf(cwd);
+    // 后端回话之前没有切好的项目名：照用户打的目录原样摆，界面不切路径。
+    proj.textContent = cwd;
     const label = document.createElement("span");
     label.className = "tab-label";
     label.textContent = titleOf(sl);

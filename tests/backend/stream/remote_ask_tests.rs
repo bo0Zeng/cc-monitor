@@ -193,7 +193,7 @@ async fn a_viewer_on_this_machine_hands_its_zone_name_to_the_far_one() {
         .await
         .expect_err("替身答的不是 JSON");
     let calls = far.calls.lock().unwrap().clone();
-    let zone = crate::platform::local_tz::iana_name().unwrap_or_else(|| "UTC".to_string());
+    let zone = crate::common::time::Tz::here().iana_name();
     assert!(
         calls[0].1.ends_with(&format!(" '--tz' '{zone}'")),
         "{}",

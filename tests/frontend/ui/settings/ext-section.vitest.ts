@@ -10,13 +10,6 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-const { revealed } = vi.hoisted(() => ({ revealed: [] as unknown[] }));
-vi.mock("@tauri-apps/plugin-opener", () => ({
-  revealItemInDir: (p: unknown) => {
-    revealed.push(p);
-    return Promise.resolve();
-  },
-}));
 
 import { invoke } from "@tauri-apps/api/core";
 import { ExtSection } from "../../../../src/frontend/ui/settings/ext-section";
@@ -282,9 +275,15 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
       [copyText("extPage.button.uninstall")],
       [copyText("extPage.button.uninstall")],
     ]);
+    invokeMock.mockClear();
     (machineLines(s)[0].querySelector(".ext-place button[data-reveal]") as HTMLButtonElement).click();
+    (machineLines(s)[1].querySelector(".ext-place button") as HTMLButtonElement).click();
     await settle();
-    expect(revealed).toEqual(["/h/.claude/skills/demo"]);
+    // 两颗都经 `openOnMachine`：本机 ⇒ 壳命令 `os_open` 的 reveal；远端 ⇒ 文件窗口开进那台那个目录。
+    expect(invokeMock.mock.calls.filter(([c]) => c === "os_open").map(([, a]) => a)).toEqual([{ what: { kind: "reveal", path: "/h/.claude/skills/demo" } }]);
+    expect(
+      invokeMock.mock.calls.filter(([c]) => c === "open_file_window").map(([, a]) => [(a as { origin: string }).origin, (a as { path: string }).path]),
+    ).toEqual([["laptop", "/g/.claude/skills/demo"]]);
   });
 
   it("勾上几台 ⇒ 问本机后端一张卡（勾上的几台 ＋ 选的那一处）；装到哪照它给的各处画；改选 ⇒ 带上那一处重问；［装到 N 台］⇒ 交回那一处与各台的记号 ⇒ 各台同步一趟、重读，点变「仅项目」", async () => {

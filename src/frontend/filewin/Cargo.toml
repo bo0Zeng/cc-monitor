@@ -28,9 +28,12 @@ chunk-core = { path = "../../common/chunk-core" }
 pick-core = { path = "../../common/pick-core" }
 comms-inward = { path = "../../comms/inward" }
 copy-core = { path = "../../common/copy-core" }
-creds-core = { path = "../../common/creds-core" }
+# 家目录哪个环境变量算（`relay_route_core::home_dir`，monitor 与后端同一份）。
+relay-route-core = { path = "../../common/relay-route-core" }
 filewin-contract = { path = "../../common/filewin-contract" }
 host-core = { path = "../../common/host-core" }
+# 本机时区（修改时间 · 「复制详情」的时刻按本机钟；信封 `tz` 那一格的位子 `TZ_ROOM`）：后端与壳同一份。
+platform-core = { path = "../../common/platform-core" }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["raw_value"] }

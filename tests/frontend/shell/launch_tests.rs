@@ -3,7 +3,7 @@ use super::*;
 #[allow(unused_imports)]
 use crate::platform::terminal::*;
 
-/// 开终端这一族今天住两份：`launch.rs`（跑什么 · 开窗 · 设置页那两条 Tauri 命令）＋ `platform/terminal.rs`（开窗的两个平台臂）。
+/// 开终端这一族今天住两份：`launch.rs`（开窗 · 设置页那两条 Tauri 命令）＋ `platform/terminal.rs`（开窗的两个平台臂 · POSIX 那一臂跑什么的校验与 argv）。
 /// 按源码判的那几条读两份的合订本（`launch.rs` 与 `platform/terminal.rs`）。
 const LAUNCH_SRC: &str = concat!(
     include_str!("../../../src/frontend/shell/src/launch.rs"),
@@ -633,6 +633,7 @@ fn the_local_argv_hands_the_command_through_byte_for_byte_prefix_and_all() {
 /// 远端那一半（ssh 外壳 ＋ PS 单引号层剥净之后就是同一串）随渲染搬进本机后端：
 /// `tests/backend/dial_terminal_tests.rs::the_basic_shape_goes_through_the_agent_and_wraps_the_payload_only_twice`。
 /// 这里留本地那一半：直接 exec `bash -lic <载荷>`，载荷逐字节不动、没有 ssh 包。
+#[cfg(not(windows))]
 #[test]
 fn local_posix_sends_the_payload_itself_without_an_ssh_wrap() {
     let payload = "unset CLAUDE_CONFIG_DIR; cd '/home/z/p' && ccm --tmux claude --resume s1";
@@ -645,6 +646,7 @@ fn local_posix_sends_the_payload_itself_without_an_ssh_wrap() {
 }
 
 /// 与传输无关的三条校验，本地那条路**同样**生效（不是只有远端才验）。
+#[cfg(not(windows))]
 #[test]
 fn local_argv_shares_the_transport_agnostic_validation() {
     assert!(build_local_posix_argv("   ").is_err(), "空命令");
@@ -661,6 +663,7 @@ fn local_argv_shares_the_transport_agnostic_validation() {
 ///
 /// 远端（走 PowerShell）那一半的「应拒」随渲染搬进本机后端（`dial_terminal_tests.rs::bad_inputs_are_refused_and_say_which_cell`）；
 /// 这里留本地那一半。
+#[cfg(not(windows))]
 #[test]
 fn double_quote_rejection_is_powershell_only() {
     let with_dq = r#"claude --append-system-prompt "be brief""#;

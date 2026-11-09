@@ -171,20 +171,20 @@ fn row(
     said: &str,
     bg: bool,
     fork: Option<&str>,
-) -> Value {
-    json!({
-        "sessionId": sid,
-        "jsonlPath": format!("/h/.claude/projects/-w/{sid}.jsonl"),
-        "startedAtMs": started,
-        "updatedAtMs": updated,
-        "messageCountApprox": 3,
-        "firstUserExcerpt": said,
-        "aiTitle": title,
-        "cwd": cwd,
-        "isBg": bg,
-        "forkedFromSessionId": fork,
-        "forkedFromMessageUuid": fork.map(|_| "m-1"),
-    })
+) -> SessionRow {
+    SessionRow {
+        session_id: sid.to_string(),
+        record_path: format!("/h/.claude/projects/-w/{sid}.jsonl"),
+        started_at_ms: started,
+        updated_at_ms: updated,
+        message_count_approx: 3,
+        first_user_excerpt: said.to_string(),
+        ai_title: title.map(str::to_string),
+        cwd: Some(cwd.to_string()),
+        is_bg: bg,
+        forked_from_session_id: fork.map(str::to_string),
+        forked_from_message_uuid: fork.map(|_| "m-1".to_string()),
+    }
 }
 
 fn no_excerpt(_: &std::path::Path) -> String {
@@ -295,6 +295,41 @@ fn find<'a>(v: &'a Value, sid: &str) -> &'a Value {
         .iter()
         .find(|r| r["sessionId"] == sid)
         .unwrap_or_else(|| panic!("{sid} 不在清单里"))
+}
+
+/// 合成历史那一家只交首条人话原文；摘录怎么截 · 压空白在核心一处，与记录树那一行同一口径（≤ `EXCERPT_CHARS` 字、无换行）。
+#[test]
+fn a_synth_rows_excerpt_is_clipped_like_the_record_tree_ones() {
+    fn long_said(_: &std::path::Path) -> String {
+        format!("{}\n{}", "甲".repeat(150), "乙".repeat(150))
+    }
+    let synth = vec![(
+        "codex",
+        vec![crate::agents::SynthSession {
+            sid: "019a0000-0000-7000-8000-00000000c0de".into(),
+            path: PathBuf::from("/h/.codex/sessions/2026/09/25/rollout-x.jsonl"),
+            cwd: "/w/delta".into(),
+            mtime_ms: 650,
+        }],
+        long_said as fn(&std::path::Path) -> String,
+    )];
+    let l = listing_from(Vec::new(), &synth, &live_table(&[], &[]), &json!({}));
+    let got = l["rows"][0]["firstUserExcerpt"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(
+        got.chars().count() <= crate::history::search_rules::EXCERPT_CHARS + 1
+            && !got.contains('\n'),
+        "合成历史那一行的摘录没照核心的口径截 · 压：{got:?}"
+    );
+    assert_eq!(
+        got,
+        copy_core::clip_flat(
+            &long_said(std::path::Path::new("")),
+            crate::history::search_rules::EXCERPT_CHARS
+        )
+    );
 }
 
 /// ★ 判据 1：这台的清单逐格。
@@ -995,7 +1030,12 @@ fn rows_carry_the_hidden_cell_judged_from_that_machines_facts() {
 fn a_session_the_ledger_calls_reconnectable_is_listed_as_reconnectable() {
     let sid = "9e9e9e9e-0000-4000-8000-000000000001";
     let other = "9e9e9e9e-0000-4000-8000-000000000002";
-    let v = |s: &str| json!({"sessionId": s, "cwd": "/w/a", "jsonlPath": "/x.jsonl"});
+    let v = |s: &str| SessionRow {
+        session_id: s.to_string(),
+        cwd: Some("/w/a".to_string()),
+        record_path: "/x.jsonl".to_string(),
+        ..SessionRow::default()
+    };
     let none = live_table(&[], &[sid]);
     let r = session_row(&v(sid), "-w-a", &none).unwrap();
     let o = session_row(&v(other), "-w-a", &none).unwrap();

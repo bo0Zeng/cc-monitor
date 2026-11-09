@@ -51,6 +51,7 @@ import { openSession, setLaunchSlots } from "../../../src/frontend/ui/session-op
 import type { ArriveAsk } from "../../../src/frontend/ui/generated/ArriveAsk";
 import { NoTerminalWindow } from "../../../src/frontend/ui/terminal-open";
 import { copyText } from "../../../src/frontend/ui/copy-table";
+import { machineName } from "../../../src/frontend/ui/ipc/chan-caller";
 import type { Landed } from "../../../src/frontend/ui/generated/Landed";
 import type { Opened } from "../../../src/frontend/ui/generated/Opened";
 import type { SessionOpenReq } from "../../../src/frontend/ui/generated/SessionOpenReq";
@@ -133,6 +134,15 @@ describe("照 landed 开不开 · 报到交那台等", () => {
       running: { opened: true, said: true },
       idle: { opened: true, said: true },
     });
+  });
+
+  it("★ 接上已有的那句：那台照宿主写好的那一截照摆（界面不按宿主挑字）", async () => {
+    reply = opened("running", { session: "w8demo-cc", at: "托管终端「w8demo-cc」" });
+    await openSession("<local>", { what: { kind: "look", session: "w8demo-cc" }, local: true });
+    await flush();
+    const body = String(toasts.toast.mock.calls.at(-1)?.[1]);
+    expect(body).toBe(copyText("sessionOpen.attached.body", { machine: machineName("<local>"), at: "托管终端「w8demo-cc」" }));
+    expect(body).not.toContain("tmux");
   });
 
   it("★ 后台起的（新起）：只有 window 开", async () => {

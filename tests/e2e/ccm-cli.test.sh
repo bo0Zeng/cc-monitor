@@ -470,11 +470,11 @@ cat > "$HHOME/.cc-monitor/profiles.toml" <<'TOML'
 from = "cc"
 hosted = true
 
-[bcch]
+[labcch]
 from = "cch"
-account = "b"
+account = "lab"
 TOML
-ln -s "$CCM_NATIVE" "$CCMDIR/cch"; ln -s "$CCM_NATIVE" "$CCMDIR/bcch"
+ln -s "$CCM_NATIVE" "$CCMDIR/cch"; ln -s "$CCM_NATIVE" "$CCMDIR/labcch"
 HENV=(env -u CLAUDE_CONFIG_DIR -u TMUX -u TMUX_PANE -u CCM_HOST HOME="$HHOME")
 hrun() { "${HENV[@]}" "$@"; }
 ck "没有托管终端：说一句" "$(zh beHost.hosts.none)" "$(hrun "$CCM" -- --hosts)"
@@ -488,7 +488,7 @@ ck "ccm -- --hosts：点名的号 · 没点名的说缺省号 · 没人接着" "
    "$(printf '%s\n' "$HOSTS" | sort | awk '{print $3}' | tr '\n' ' ' | sed 's/ $//')"
 ck "ccm -- --hosts：没人接着" "2" "$(printf '%s\n' "$HOSTS" | grep -cF "$(zh beHost.hosts.detached)")"
 ck "cch ls ＝ ccm -- --hosts（管道里也答：不起会话）" "$HOSTS" "$(hrun "$CCMDIR/cch" ls </dev/null)"
-ck "bcch ls 与 cch ls 同一份" "$HOSTS" "$(hrun "$CCMDIR/bcch" ls </dev/null)"
+ck "labcch ls 与 cch ls 同一份" "$HOSTS" "$(hrun "$CCMDIR/labcch" ls </dev/null)"
 ck "cch attach 缺名：说清" "ccm: $(zh beArgv.needVal.missing name=attach)" "$(hrun "$CCMDIR/cch" attach 2>&1)"
 ck "cch ls 后面多了词：说清" "ccm: $(zh beArgv.hostedEntry.extra word=ls extra=x)" "$(hrun "$CCMDIR/cch" ls x 2>&1)"
 ck "cch 别的第一个词照 ccm @cch：起在托管终端里" "yes" \

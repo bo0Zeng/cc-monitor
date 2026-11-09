@@ -60,20 +60,19 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "monitor→backend",
         "tests/frontend/shell/backend_kill_tests.rs",
         "src/backend/control/kill.rs",
-        "创建路径不许铸出后端结束那一道形状门拒的名字：字符集的来源必须从后端 `parse_name` 现抠 \
+        "正控：识别「建会话 / 杀会话」动词的那个识别器，要在后端真杀会话的那一处生产段上认得出（认不出 ⇒ 上面的「不在」不可信）",
+    ),
+    (
+        "monitor→backend",
+        "tests/frontend/shell/backend_kill_tests.rs",
+        "src/backend/control/gate_rules.rs",
+        "创建路径不许铸出后端名字门拒的名字：字符集的来源必须从后端 `existing_tmux_name_issue` 现抠 \
          （本侧手抄一份就成了两侧同源的恒等）",
     ),
     // `mcp_sync_tests.rs` 那两条边随 monitor 那份推拉编排一起删了（编排进了被写那台后端）。
     // 足迹的申报表与判据进了后端 ⇒ 原先 `tool_registry_tests.rs` → 后端 `assets/*`（五条装 / 卸口对拍）·
     //   `config_surface_tests.rs` → `assets/mcp_edit.rs` · `footprint_remote_tests.rs` → `stream/inbound/` 那七条成了后端 crate 内部的读，摘了；
     //   反过来长出几条 backend→monitor（申报表去钉 monitor 那一侧真放字节的口，见下）与 monitor→backend（monitor 的判据读申报表）。
-    (
-        "backend→monitor",
-        "tests/backend/footprint/registry_tests.rs",
-        "src/frontend/shell/src/deploy.rs",
-        "申报表 `backend` / `ccm` 那几行的装 / 卸口在 monitor 放字节那一侧（部署远端后端 · 卸载）：申报的「可装 / 可卸」\
-         必须与那两个真有的口逐字签名一致（读 `assets/*` 的那一族，方向照申报表）",
-    ),
     (
         "backend→monitor",
         "tests/backend/footprint/registry_tests.rs",
@@ -84,7 +83,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "backend→monitor",
         "tests/backend/control/launch_tests.rs",
-        "src/frontend/shell/src/launch.rs",
+        "src/frontend/shell/src/platform/terminal.rs",
         "★ **启动请求一个字段的上限与 monitor 本机那条送法的命令串上限同量级** —— \
          `launch_tests.rs::the_field_cap_stays_in_the_same_range_as_the_monitor_command_cap`。两侧各写一个 `Cap`，刻意不同值；\
          失效方向：两侧差出几倍 ⇒ 一条在一侧送得出的命令在另一侧被拒成「太长」。",
@@ -149,13 +148,6 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "**跨 crate 字面量对拍**：宿主交给脱离常驻那条载体的 `CCM_BACKEND_STDERR_LOG` 与后端读的那一个，\
          两边各声明一份；漂了**不会报错** —— 后端当作「没交」、stderr 照旧进 `/dev/null`，设置页那一行永远是「还没有」。\
          ⇒ 只能同时读两侧的源码才验得了（形状同常驻开关那一条）。",
-    ),
-    (
-        "monitor→backend",
-        "tests/frontend/shell/remote_resident_tests.rs",
-        "src/backend/wire/listen.rs",
-        "★**跨 crate 字面量对拍**：小中继「没人在听」那个理由词（`REFUSE_ABSENT`）客户端那一侧（`resident-client`，桌面与手机同一份）与后端各声明一份，重连循环凭它判「等一会儿再接」还是「当场停」；\
-         漂了**不会报错** —— 刚起的那台后端还没绑上，会被当成接不上直接报失败 ⇒ 同时读两侧源码才验得了",
     ),
     (
         "monitor→backend",

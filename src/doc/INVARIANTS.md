@@ -17,7 +17,7 @@
 - 例外 2 · **后端自部署**：写那台的 `~/.cc-monitor/bin/`（非用户数据、幂等、按 `deploy-install` 只升不降），绝不碰 `<claude_dir>`。
 - 例外 4 · **别名块与别名文件**：rc / `$PROFILE` 里的 BEGIN / END 块（`aliases_block_install` / `aliases_block_remove`，本机远端同一条），经 `Door::put`（§4）。
 - 例外 5 · **项目 MCP 配置**：帧命令 `mcp-sync-apply`（装）/ `ext-uninstall-apply`（卸），写面只有项目 `.mcp.json`（落点必须是那台上的绝对项目目录，不含 `..`），绝不写 `~/.claude.json` / `settings.json`。
-- 例外 6 · **公钥推送**：帧命令 `pubkey-push`，只追加到远端 `~/.ssh/authorized_keys`（幂等去重）。那台后端不在时走一次 SSH exec：这是建立信任那一跳，按构造发生在后端可达之前，是「用户文件只经后端写」唯一的 monitor 侧远端例外。
+- 例外 6 · **公钥推送**：帧命令 `pubkey-push`，只追加到远端 `~/.ssh/authorized_keys`（幂等去重），一律经那台后端 `authorized-keys-add` 写；那台后端不在就没成、先装后端，monitor 侧不再有远端直写。
 - 例外 7 · **装 cc-bus skill**：往 `<claude_dir>/skills/cc-bus/` 写（`src/backend/assets/cc_bus_install.rs`），四个配套一条不许省：只由扩展页确认卡触发 · realpath 白名单（解到底仍在 claude 目录底下）· 逐文件比、一致就不写 · 覆盖前整目录改名成 `cc-bus.bak-<秒>`。
 
 **分叉不是例外**：从某一轮分叉（帧命令 `session-fork`，本体 `control/fork_write.rs`）只新增一份 `<new-sid>.jsonl`：`create_new(true)`（`O_EXCL`）、只收 sid、原会话零改动。后端写盘只许发生在登记过的模块里（§41.6）。
@@ -40,7 +40,7 @@
 
 不跟随界面上改的 Claude 数据目录漂移（那一格住本机后端 `prefs.json` 的 `agentHomes`）。一台机器一个家：与后端同一个目录，只给本人（0700）。
 
-**唯一的明文例外 `CCM_DATA_DIR`**（`config.rs::DATA_DIR_ENV`）：只为把整个进程挪到别处跑（自动化测试、一次性复算）。只认绝对路径；空串 == 没设；给了但不合法 ⇒ `None`，**不退回用户真家目录**；它挪的是整个 data dir；默认住址只在 `creds_core::store::monitor_data_dir` 拼，monitor 全树只经 `config.rs::resolve_monitor_data_dir` 派生。常驻后端的套接字也按家算（`relay_route_core::listen_socket_for`），隔离跑的 monitor 有它自己的常驻后端；一个家只有一个常驻后端攥得住 `run/` 的锁。
+**唯一的明文例外 `CCM_DATA_DIR`**（`config.rs::DATA_DIR_ENV`）：只为把整个进程挪到别处跑（自动化测试、一次性复算）。只认绝对路径；空串 == 没设；给了但不合法 ⇒ `None`，**不退回用户真家目录**；它挪的是整个 data dir；默认住址只在 `relay_route_core::monitor_data_dir` 拼，monitor 全树只经 `config.rs::resolve_monitor_data_dir` 派生。常驻后端的套接字也按家算（`relay_route_core::listen_socket_for`），隔离跑的 monitor 有它自己的常驻后端；一个家只有一个常驻后端攥得住 `run/` 的锁。
 
 **为什么不能松动**：读配置不能先解析 Claude 数据目录（填错就再也打不开设置）；换 Claude 目录后偏好不丢；跨进程文件位置稳定。
 
@@ -57,7 +57,7 @@
 | `ps-registry/` `ps-await/` | **缓存/IPC** | `bind.rs` | Linux bash / zsh 接入块留的终端记录与认出来的窗口，启动重扫 |
 | `logs/` | **缓存/派生** | `logging.rs` · 本机常驻后端 | `monitor/` 按天滚动、留 3 天（§15）；`backend/` 是脱离运行的本机后端 stderr |
 | `bin/` `staging/` `logs/backend/` `relay-key` `cache/last-seen.json` `launch-pending/` `answer-plugin/` `ssh_config` `profiles-written.json` `cache/skeleton/` `cache/listing.json` `cache/remote-listing/` | **缓存** | 本机后端 | 能重建的：程序 · 上传暂存区 · 错误输出 · 中转钥匙（丢了重铸）· 离线那台的上次值 · 起会话便条 · 答题插件 · 终端用的 ssh 配置 · 上次写出的配置指纹 · 大记录的骨架 · 历史清单缓存（都照记录重扫）· 远端那几台的会话清单副本（照那台再问一次整份） |
-| `run/` `backend.json` `prefs.json` `machines.json` `profiles.toml` `aliases.sh` `aliases.ps1` `skill-installs.json` `assets-catalog.json` `chores.json` `plan-review.json` `bookmarks.json` `backups/` `accounts/` `accounts-mcp.json` `apikey-credentials.json` `quota.json` `rotation.json` `lineage.json` `launch-accounts.json` `session-queue/` `cc-bus/` `known_hosts` `set-groups.json` `groups-owed.json` `strategies/` `hosts/` | **真相** | 本机后端 | 删了会丢的：常驻后端的套接字与进程记录 · 退出行为 · 这台的偏好（启动命令 · 每号模型 · 上下文上限 · 各家数据目录）· 机器表 · 别名配置 · 装记录 · 资产目录 · 「待办」里的选择 · 计划需手动的认可 · 这台的书签（文件窗口与手机收藏的目录）· 卸外来资产前的备份 · 账号库 · API key · 各号最近的用量与轮换设置 · 会话血缘 · 每条会话上次用的号 · 会话输入队（还没送进会话的那几句，一条会话一份）· cc-bus 的收件箱与已读位置 · 各台的主机钥匙（删了下回连上就是首见）· 补足会话建的组与组名的对应 · 组改名与解散没送到别台的待补 · 轮换策略的源码 · 托管终端（各自的事实与连接入口；按版本的程序副本也住这里）。声明表（`relay_route_core::OWN_FILES`）里的每一份都在「文件与数据」那一页列着，故意不列的写在 `data_paths_tests.rs` 的 `NOT_LISTED`（每行写为什么）。名字取契约常量（`relay_route_core` · `creds_core::store`）：家里那几样由本机后端 `data-report` 的 `own` 列（`relay_route_core::OWN_HOME_ENTRIES`）；住数据目录的 `logs/backend/` · `apikey-credentials.json` 由 `data_paths.rs::monitor_entries` 列 |
+| `run/` `backend.json` `prefs.json` `machines.json` `profiles.toml` `aliases.sh` `aliases.ps1` `skill-installs.json` `assets-catalog.json` `chores.json` `plan-review.json` `bookmarks.json` `backups/` `accounts/` `accounts-mcp.json` `apikey-credentials.json` `quota.json` `rotation.json` `lineage.json` `launch-accounts.json` `session-queue/` `cc-bus/` `known_hosts` `set-groups.json` `groups-owed.json` `strategies/` `hosts/` | **真相** | 本机后端 | 删了会丢的：常驻后端的套接字与进程记录 · 退出行为 · 这台的偏好（启动命令 · 每号模型 · 上下文上限 · 各家数据目录）· 机器表 · 别名配置 · 装记录 · 资产目录 · 「待办」里的选择 · 计划需手动的认可 · 这台的书签（文件窗口与手机收藏的目录）· 卸外来资产前的备份 · 账号库 · API key · 各号最近的用量与轮换设置 · 会话血缘 · 每条会话上次用的号 · 会话输入队（还没送进会话的那几句，一条会话一份）· cc-bus 的收件箱与已读位置 · 各台的主机钥匙（删了下回连上就是首见）· 补足会话建的组与组名的对应 · 组改名与解散没送到别台的待补 · 轮换策略的源码 · 托管终端（各自的事实与连接入口；按版本的程序副本也住这里）。声明表（`relay_route_core::OWN_FILES`）里的每一份都在「文件与数据」那一页列着，故意不列的写在 `data_paths_tests.rs` 的 `NOT_LISTED`（每行写为什么）。名字只取 `relay_route_core`：家里那几样（含 `history-metadata.json` · `apikey-credentials.json`）由本机后端 `data-report` 的 `own` 列（`relay_route_core::OWN_HOME_ENTRIES`）；住数据目录的 `logs/backend/` 由 `data_paths.rs::monitor_entries` 列 |
 
 - **真相** = 用户手写 / 意图，删了丢东西、要备份、要迁移友好；**缓存/派生** = 能从别处重建，随便删。
 - **新增任何 data dir 文件，必须声明它是哪类**：界面这一侧的（monitor 数据目录）在 `data_paths.rs` 的枚举里（`DataPathInfo.class: DataClass` 非可选）；本机后端家里的（`~/.cc-monitor/`）在 `relay_route_core::OWN_HOME_ENTRIES` 里（后端 `data-report` 的 `own` 照它出、界面照抄）。设置页每行据它显示「删了会丢 / 可随手删」。两边拼起来与上表两向相等（`data_paths_tests.rs`，异源判据）；后端自家那几样另与上表逐样对（`footprint/data_tests.rs`）。
@@ -340,9 +340,9 @@ Claude Code 把很多不是人说的东西也写成 `type=user`。判定只有�
 
 裸 `-t <名>` 按「精确 → 名字开头 → glob」解析：只有 `sib-2` 在时 `kill-session -t sib` 杀掉 `sib-2` 且 rc=0。`=` 只在 target-session 路径上被认，`send-keys` / `capture-pane` / `set-option` 走 pane 解析 ⇒ 必须带尾冒号 `=<名>:`，它是所有动词上都既通用又精确的唯一形式。`new-session -s <名>` 收的是名字，不加 `=` / `:`。e2e 的 shell 探针同样用 `=<名>:`。
 
-构造点：后端 `control/launch.rs::exact_target`（argv 直传）与调用行渲染器（`ccm_invocation.rs` 就地 resume 那一形，由 `ccm_invocation_tests.rs` 那张表逐字节钉）· `control/ccm/plan.rs`。新建的名字走 `gate_rules::new_tmux_name_issue`（禁 glob 与目标语法字符、前导 `-`、控制符、视觉欺骗字符、超长），attach 已有会话走 `gate_rules::existing_tmux_name_issue`（只拒空 · 控制符 · 视觉欺骗字符）。
+构造点只一处：后端 `common/tmux_utf8.rs::exact_target`（argv 那一格，不引号化）；`control/launch.rs`（argv 直传）· `control/ccm/plan.rs` · `tmux_utf8::join_session`（渲给客户端的那一行，再引号化）都调它，调用行渲染器（`ccm_invocation.rs` 就地 resume 那一形）由 `ccm_invocation_tests.rs` 那张表逐字节钉。新建的名字走 `gate_rules::new_tmux_name_issue`（禁 glob 与目标语法字符、前导 `-`、控制符、视觉欺骗字符、超长），attach（`ccm --attach`）· 送键那一路的已有会话名走 `gate_rules::existing_tmux_name_issue`（只拒空 · 控制符 · 视觉欺骗字符 · `:`）。
 
-**谁在守**：`exact_target_is_the_exact_match_shape` · `tmux_backend_gate_guard_tests.rs::every_target_placeholder_comes_from_exact_target`（monitor 生产段零处 `-t {…}`）。
+**谁在守**：`exact_target_is_the_exact_match_shape` · `tmux_backend_gate_guard_tests.rs::the_exact_target_is_spelled_in_one_place`（后端生产段 `"={` 只在 `tmux_utf8.rs`） · `tmux_backend_gate_guard_tests.rs::every_target_placeholder_comes_from_exact_target`（monitor 生产段零处 `-t {…}`）。
 
 ## 32. 本仓只有暗色主题——别声称"明暗两套都覆盖了"（仓库级事实）
 
@@ -370,13 +370,13 @@ monitor 的每一条起会话路径（新起 · resume · 换号重启 · 分叉
 
 送键与杀会话只走后端（结束：界面 · 手机交 `terminal-end`（按名单句柄或会话 ID，两种宿主同一条），批量停 `sessions-stop` 每一项同它；送字：`terminal-input` · 会话输入队的投递（`faces/session_send.rs`），就地键入在 `session-open` · 换号重启里头；monitor 一道门都没有、生产段一处 `kill-session` 都没有）。三道门都在后端：
 
-1. **Gate 1（恒强制）**：目标名过 `gate_rules::existing_tmux_name_issue`（空 · 控制符 · 视觉欺骗字符）；入口 `kill.rs::admit_existing_name`（结束 · 抓屏共用）与 `src/backend/control/launch.rs::parse_request`。空目标（`=:` 会被当成当前会话）是唯一真正危险的默认值。
+1. **Gate 1（恒强制）**：目标名过 `gate_rules::existing_tmux_name_issue`（空 · 控制符 · 视觉欺骗字符 · `:`）；入口 `kill.rs::admit_existing_name`（送键那一路）· `ccm --attach` · `src/backend/control/launch.rs::parse_request`。空目标（`=:` 会被当成当前会话）是唯一真正危险的默认值。
 2. **Gate 2（身份，并集）**：`control/gate.rs::admit`：`is_ccm_tmux_name` 前缀命中**或** `@ccm_sid` 已设（只认事实，不认 `_expect`）。判定本体在 `control/gate_rules.rs`。
 3. **Gate 3（只对 kill）**：`control/gate.rs::admit_destructive`：会话只有一个 window 才许 kill（长出了别的 window ⇒ 有独立于本工具的用户活动）。
 
-**原子 verify ＋ act**：`control/gate.rs::probe` 一次 `display-message -p -t <目标>` 取回 `session_id` · `@ccm_sid` · `session_windows`，判完之后对拿回来的 `#{session_id}` 句柄下命令，不另按名字发第二条（两次往返之间的窗口可被抢跑）。所有形态都先 probe 一次。后端不在 ⇒ 明确失败（文案 `tmuxControl.channel.*`），不走另一条路做掉。
+**原子 verify ＋ act**：`control/gate.rs::probe_with` 一次 `display-message -p -t <目标>` 取回 `session_id` · `@ccm_sid` · `session_windows`，判完之后对拿回来的 `#{session_id}` 句柄下命令，不另按名字发第二条（两次往返之间的窗口可被抢跑）。所有形态都先探一次。**结束终端按名单句柄探**：`terminal-end` · `sessions-stop` 认出名单那一行之后，`gate::admit_destructive(on, row, …)` 探的是那一行的 `row.id`（`#{session_id}`，不复用），在列名单的同一台 tmux 上，不按名字再认一次 ⇒ 列名单之后那个会话没了、同名又起了一个，回 `no_such_session`，新的那一个不被杀；名字只拿来说话与判 Gate 2 的名字规则。后端不在 ⇒ 明确失败（文案 `tmuxControl.channel.*`），不走另一条路做掉。
 
-**谁在守**：`tests/e2e/backend-gate2-acceptance.sh`（真后端 ＋ 真 tmux、私有 `-L` socket，用例逐行来自判定表 `gate2-golden.tsv`，送字那一路借 `terminal-input` 走 `gate::admit_with`——与就地键入同一道门）· `tmux_backend_gate_guard_tests.rs`（monitor 侧零第二条路）· 类型：送键（`launch::type_literal` · `press_key` · `send-into` 那一臂）只收 `gate::Admitted`；结束会话只有 `kill::end` 一个口，只收 `gate::Doomed` 或 `launch::JustMade`（本趟刚建、启动命令没送进的空壳）。三样字段私有、不能复制：前两样只有 `control/gate.rs` 造得出、只由探测结果 `gate::Probed`（同样私有、不能复制，只有 `probe_with` 造）与门自己按 sid 找到的窗格构造，`JustMade` 只有 `launch.rs` 建会话那一臂造 ⇒ 不过门的送键 / 杀编不过。
+**谁在守**：`tests/e2e/backend-gate2-acceptance.sh`（真后端 ＋ 真 tmux、私有 `-L` socket，用例逐行来自判定表 `gate2-golden.tsv`，送字那一路借 `terminal-input` 走 `gate::admit_with`——与就地键入同一道门）· `kill_tests.rs::terminal_end_does_not_kill_a_namesake_that_replaced_the_listed_session`（真 tmux 私有 socket：结束按句柄过门）· `tmux_backend_gate_guard_tests.rs`（monitor 侧零第二条路；门生产段不自己列窗格）· 类型：送键（`launch::type_literal` · `press_key` · `send-into` 那一臂）只收 `gate::Admitted`；结束会话只有 `kill::end` 一个口，只收 `gate::Doomed` 或 `launch::JustMade`（本趟刚建、启动命令没送进的空壳）。三样字段私有、不能复制：前两样只有 `control/gate.rs` 造得出、只由探测结果 `gate::Probed`（同样私有、不能复制，只有 `probe_with` 造）与门自己按 sid 找到的窗格构造，`JustMade` 只有 `launch.rs` 建会话那一臂造 ⇒ 不过门的送键 / 杀编不过。
 
 ## 36. 本地（Windows）那一行也由本机后端出成品——清嵌套会话标记只归 `ccm` 的最终 exec，本地渲染器不重复实现
 
@@ -573,7 +573,7 @@ webview 拿得到的 Tauri 权限只许是登记过的那一批；webview 里跑
 
 **为什么不能松动**：tmux 判客户端是不是 UTF-8 只看 `LC_ALL` → `LC_CTYPE` → `LANG` 第一个非空值；一旦不是，输出里的 TAB 与非 ASCII 全被改写成 `_`、退出码仍是 0 ⇒ 会话从列表里静默消失。改写是每客户端全有全无的，所以下溢是完备检测器。
 
-**谁在守**：`gate_tests.rs::both_tmux_call_sites_ask_for_a_utf8_client_before_the_subcommand` · `tmux_observe_tests.rs::every_sh_call_site_in_this_module_carries_the_utf8_env` · `session_snapshot_tests.rs::the_one_list_sessions_call_asks_for_a_utf8_client_before_the_subcommand` · `gate_tests.rs::the_underflow_predicate_catches_the_real_dirty_bytes` · `tmux_observe_tests.rs::the_underflow_predicate_only_fires_downward` · `session_snapshot_tests.rs::a_tab_starved_line_is_dropped_instead_of_becoming_a_session` · `tmux_utf8_tests.rs::each_kou_jing_has_exactly_one_home_and_it_is_this_file` · `lib_invariant_population_tests.rs::every_tmux_print_site_is_registered_with_how_it_carries_utf8`（人群：每一处「打印子命令 ＋ `-F` / `-p`」== 登记表）· `tmux_backend_gate_guard_tests.rs::utf8_client_kou_jing_has_one_home_and_this_side_has_none`。上溢不管。
+**谁在守**：`gate_tests.rs::the_gate_tmux_call_asks_for_a_utf8_client_before_the_subcommand` · `host/tmux_tests.rs::every_list_panes_asks_for_a_utf8_client_before_the_subcommand` · `tmux_observe_tests.rs::every_sh_call_site_in_this_module_carries_the_utf8_env` · `session_snapshot_tests.rs::the_one_list_sessions_call_asks_for_a_utf8_client_before_the_subcommand` · `gate_tests.rs::the_underflow_predicate_catches_the_real_dirty_bytes` · `tmux_observe_tests.rs::the_underflow_predicate_only_fires_downward` · `host/tmux_tests.rs::a_tab_starved_line_is_dropped_instead_of_becoming_a_session` · `tmux_utf8_tests.rs::each_kou_jing_has_exactly_one_home_and_it_is_this_file` · `lib_invariant_population_tests.rs::every_tmux_print_site_is_registered_with_how_it_carries_utf8`（人群：每一处「打印子命令 ＋ `-F` / `-p`」== 登记表）· `tmux_backend_gate_guard_tests.rs::utf8_client_kou_jing_has_one_home_and_this_side_has_none`。上溢不管。
 
 ---
 

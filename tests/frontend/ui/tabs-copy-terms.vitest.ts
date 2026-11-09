@@ -50,7 +50,7 @@ const TAB_LAYER = [
   "src/frontend/ui/tab-session-actions.ts",
 ];
 
-/** 加上 ↗ 结局那一份（出口自己那一跳的失败那几句；壳 · 后端交来的那一张由 `face_core::front` 写）。 */
+/** 加上 ↗ 结局那一份（壳交来的那一张由本机后端照 `face_core::front` 写）。 */
 const SPOKEN = [...TAB_LAYER, "src/frontend/ui/front-result.ts"];
 
 /** 一份源码里全部字符串 / 模板字面量的文字（模板的各段拼起来，插值处留空）。 */

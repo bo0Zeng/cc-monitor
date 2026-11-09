@@ -16,7 +16,7 @@ export type ImportGroup = SshImportGroup;
 /** 期限：批量 = 逐个 `ssh -G`（不建连接），别名数通常个位；30 秒盖住回程与起进程，不含握手（`<local>` 长连接早就连着）。 */
 const SSH_IMPORT_BUDGET_MS = 30_000;
 
-/** 批量导入预览。`known` ＝ 机器列表里已有的那几台（后端据它标「已在列表里」）。失败原样抛通道那个错（那一句 · 码 · 详情都在）。 */
-export async function importSshHosts(known: { host: string; user: string; port: number }[]): Promise<SshImported> {
-  return await callTyped(LOCAL, "ssh-config-import", { known }, budgetWithin(SSH_IMPORT_BUDGET_MS));
+/** 批量导入预览（「已在列表里」由本机后端照它自己那张机器表标）。失败原样抛通道那个错（那一句 · 码 · 详情都在）。 */
+export async function importSshHosts(): Promise<SshImported> {
+  return await callTyped(LOCAL, "ssh-config-import", {}, budgetWithin(SSH_IMPORT_BUDGET_MS));
 }

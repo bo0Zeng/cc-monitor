@@ -138,7 +138,7 @@ subscribe(origin, kind)    → 流
 模块地图（`src/backend/`，逐文件清单见它的 README，每个目录的 `mod.rs` 头注是那一块的说明）：
 
 - `platform/`：平台原语与平台 cfg 的唯一住处（独立 crate `backend-platform`，不引后端里任何别的层；路径 · 进程 · 判活的读法 · 信号 · 文件原语 · 脱离）；`platform/shell/` 是 shell 方言知识的唯一住处（引号 · 定义函数 · 导出环境 · rc / `$PROFILE` 在哪）。
-- `host/`：宿主口（终端住在哪种宿主里：tmux · 托管）与 ccm 这一行的词（独立 crate `backend-host`，只引 `agents/` · `wire/` · `common/` · `platform/`）。`host/tmux.rs` 是起 `tmux` 进程的唯一一处（`child`：别处对 tmux 下命令经它拿命令、argv 自给）与终端名单 · 会话快照探测器 · 观测那两跳 `sh -c`；`host/managed.rs` 是托管那一臂；`host::list` 把两种宿主的行合成一份。`host/ccm_line/`：`ccm` 这一行的词与解析（旗标 · 默认值 · 自己叫什么 · 配置那一段的记号）；起会话 · 账号域 · 别名那一族都引它，做事那一半住 `control/ccm/`。`control/` 与 `observe/` 都引它，它引不到那两层（包的依赖管着）；「真起 tmux 的生产文件恰好是 `host/tmux.rs`」由 `target_parity_guard` 判。
+- `host/`：宿主口（终端住在哪种宿主里：tmux · 托管）（独立 crate `backend-host`，只引 `agents/` · `wire/` · `common/` · `platform/`）。`host/tmux.rs` 是起 `tmux` 进程的唯一一处（`child`：别处对 tmux 下命令经它拿命令、argv 自给）与终端名单 · 会话快照探测器 · 观测那两跳 `sh -c`；`host/managed.rs` 是托管那一臂；`host::list` 把两种宿主的行合成一份。`wire/ccm_line/`：`ccm` 这一行的词与解析（旗标 · 默认值 · 自己叫什么 · 配置那一段的记号）；起会话 · 账号域 · 别名那一族都引它，做事那一半住 `control/ccm/`。`control/` 与 `observe/` 都引它，它引不到那两层（包的依赖管着）；「真起 tmux 的生产文件恰好是 `host/tmux.rs`」由 `target_parity_guard` 判。
 - `observe/`：产出观测帧的读（会话文件 watcher · 会话账本 · 划段 · tmux 观测 · 历史 / 搜索 / 任务 / 账号查询）。
 - `control/`：改状态的动作，以及只喂控制决策的只读查询（起会话与命令渲染 · kill · 送键 · 抓屏 · 分叉落盘 · 常驻与退出行为 · 部署计划 · 写用户文件的那一族 · 传输台）。
 - `files/`：文件管理的读面（常驻文件名索引 · 列 · 读 · 按内容搜）。
@@ -153,7 +153,7 @@ subscribe(origin, kind)    → 流
 - `history/`：历史跨机 join 与注解（星标 / 改名 / 隐藏 / 在哪几组 / 固定）与组（§3.10）；会话血缘（谁起的谁，`history/lineage.rs`）也住这里（独立的包 `backend-history`）。
 - `plan/`：计划页的读面（这台机器上的计划工作区、每片的图与状态）。
 - `faces/`：只读面与功能侧的帧面宿主（本体在 `observe/` / `control/` / `accounts/`），格目录与通用投影也在这里。
-- `wire/`：帧面的协议零件，最底下那一层（帧定义 · typed 命令 · 登记形状 · 复制详情 · 码 → 句 · 主题表 · 监听判定 · 收场闸），只引 `platform/` · `common/` · `agents/` · `relay/`，各功能都引它。
+- `wire/`：帧面的协议零件，最底下那一层（帧定义 · typed 命令 · 登记形状 · 复制详情 · 码 → 句 · 主题表 · 监听判定 · 收场闸 · CLI 面读入参 · `--text` 拼字 · 出口写钟面），只引 `platform/` · `common/` · `agents/` · `relay/`，各功能都引它。
 - `stream/`：进后端的口，最上面那一层（命令表 · 帧面的信封与分派 · CLI 面的分派 · 对后端其余部分开的门 · 总期限 · 出口声明 · tee 消费侧与活卡），引所有功能，除 `main.rs` / `lib.rs` 谁都不引它（它住主 crate，拆出去的那些包够不着）。本机后端问别台：转界面带 `machine` 的那一问与本机后端自己的有类型那一问走那台的常驻流（`control/feeds.rs` 的 `forward` · `call`），其余经 `dial/remote_ask.rs` 的 `--resident-call`。
 - `footprint/`：足迹（这台机器上 cc-monitor 写过什么、能不能撤）；`common/`：共用判定与成品的格类型；`stderr_log/`：脱离起的常驻后端把 stderr 落进一份有上限、滚动的文件（设置页「日志」里看得到）。
 
@@ -255,8 +255,8 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 #### 出口怎么挑格：请求信封里的声明
 
 出口在请求信封里交自己的声明 `view`（帧面那一格 · CLI 面 `--view`，同一份）：词是 `cells`（只要这几格）与 `omit`（这几格不要），路径照格目录写。
-核心只一个通用投影（`faces/project.rs::project`）：声明先按格目录校验（认不出的词 · 成品 · 格 ⇒ `bad_args`，不静默放过），每条命令的应答里哪几处住着哪件成品登记一次（`stream/inbound/views.rs::PLACES`），成功的应答照声明裁好再装运；各命令不自己认「要不要正文」一类的开关。
-流要什么由 attach 行 / `--view` 交的声明说（`IPC-PROTOCOL.md` §2），没有流旗标。还靠开关定形的：入参 `raw`。CLI 面的 `--text`（给人看那一形）是所有命令通用的一个出法（`control/ship_text.rs` 把核心写好的 `text` · `rows` 拼成字），不按命令写。
+核心只一个通用投影（`faces/project.rs::project`）：声明先按格目录校验（认不出的词 · 成品 · 格 ⇒ `bad_args`，不静默放过），每条命令的应答里哪几处住着哪件成品写在它的登记行上（`.places(..)`，`wire/spec.rs::CommandSpec`），成功的应答照声明裁好再装运；各命令不自己认「要不要正文」一类的开关。
+流要什么由 attach 行 / `--view` 交的声明说（`IPC-PROTOCOL.md` §2），没有流旗标。还靠开关定形的：入参 `raw`。CLI 面的 `--text`（给人看那一形）是所有命令通用的一个出法（`wire/ship_text.rs` 把核心写好的 `text` · `rows` 拼成字），不按命令写。
 
 #### 一个出口的新需求：只改出口，还是动核心
 
@@ -281,7 +281,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 | 记录解释（一行 → 通用记录） | `agents/<家>/`，Claude 的链与主线在 `agents/claudecode/` · `agents/mainline.rs` |
 | 划段（一轮里哪几条收进「过程」） | `observe/recognize/turns.rs` |
 | 子运行（子 agent）表 | `observe/runs.rs`，帧 `session_runs` |
-| 帧定义与发帧 | 线上形 `src/common/cmd-wire/src/frame.rs`（`Frame`）· 后端在它上面的写字与丢帧规矩 `wire/mod.rs` · `stream/tap.rs` · 活卡 `stream/live.rs` · 主题表 `wire/topic.rs` |
+| 帧定义与发帧 | 线上形 `src/common/cmd-wire/src/frame.rs`（`Frame`）· 后端在它上面的写字与丢帧规矩 `wire/mod.rs` · `stream/tap.rs` · 活卡 `observe/live.rs` · 主题表 `wire/topic.rs` |
 | 收口 · 重放 · 就绪点 | 壳 `stream_source/` · `event_replay.rs` · `session_book.rs` · `stream_watch.rs` |
 | 排版 | 界面 `events.ts` → `tabs.ts` → `render-stream-record.ts` → `cards/` |
 | 手机 | `core-claude` 的 `link/`（常驻流客户端 · 帧解码）→ `app` 的聊天屏 |
@@ -291,7 +291,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 ### 3.2 命令层
 
 - **命令表**：后端每条入方向命令一行 `CommandSpec`（名字 · 一句说明 · 错误码 · 入参与回包的每一格 · 跑在哪一档），按域分文件住 `src/backend/stream/inbound/registry/`；信封、取消、期限在 `stream/inbound/`。
-- **一张表两个面**：帧面（长连接上的 `{op, args}`）与 CLI 面（`ccm -- --<命令>`，入参从 stdin 读一段 JSON 或 `--args-b64`）从同一张表派生；只上帧面的登记为 `STREAM_ONLY`。CLI 面认哪些子命令只问闸门 `stream::cli::is_subcommand`（派生的那几条 ∪ 不从命令表派生、只在 CLI 面的那几条：用法 ＋ 一句话 ＋ 实现，在 `stream/oneshot.rs` 的 `ONESHOTS`）；`ccm -- <词>` 交不交后端由入口把同一问交给 `control::ccm::route`。
+- **一张表两个面**：帧面（长连接上的 `{op, args}`）与 CLI 面（`ccm -- --<命令>`，入参从 stdin 读一段 JSON 或 `--args-b64`）从同一张表派生；只上帧面的在登记行上写 `.stream_only(理由)`（答得了、只有界面用得着的写 `.ui_only(理由)`）。CLI 面认哪些子命令只问闸门 `stream::cli::is_subcommand`（派生的那几条 ∪ 不从命令表派生、只在 CLI 面的那几条：用法 ＋ 一句话 ＋ 实现，在 `stream/oneshot.rs` 的 `ONESHOTS`）；`ccm -- <词>` 交不交后端由入口把同一问交给 `control::ccm::route`。
 - **协议参考从代码生成**：`IPC-COMMANDS.md` 由 `tests/backend/protocol_doc_gen.rs` 从命令表与帧类型写出，判据是「重新生成 == 仓里那份」；改了命令或帧之后那条判据红、现打的那份落在 `.build/golden/`，对过后 `bash tests/scripts/bless-golden.sh` 拷回（所有金样判据都是这一个写口，判据本身只比不写）。
 - **握手**：hello 带 `commands`（这台接受的命令）· `unavailable`（接得下、这台做不到的，带码）· `shapes`（每条 typed 命令的形状指纹，撤不撤得动算在里面）；出口据它置灰，不猜。
 - **调用方**：桌面界面经 `chan.call(origin, op, payload)`，回包解码写在各 `*-reads.ts`；手机经 `core-claude` 的 `CoreLink`（`link/Link.kt`；一问一答由手机嵌的核心里那份 `resident-client` 发，同桌面）；脚本与 skill 走 CLI 面。
@@ -499,7 +499,7 @@ UI Automation 在那个窗口的标签页里找名字带记号的那个、选中
 - **按系统前台窗口切 tab**：Windows Terminal 一个进程多个窗口、多个 tab，前台窗口只拿得到 WT 主进程的把手，分不出是哪个 tab。改为看 jsonl：用户在 claude 里敲回车，claude 写一行 `type=user`，monitor 切到那个 tab（INVARIANTS §20）。
 - **子运行的记录走主会话的行**：子运行（子 agent）的记录数量大，全量推会把重放缓冲撑大数倍、还会混进主时间线。那台后端照样盯着它们
   （与主记录同一条文件事件管线），只出成品：运行表帧 `session_runs`（列在 agent 面板里，不进主 tab 的消息流）；点面板那一行 / 派出它的那张卡的卡头
-  开它自己的窗口（agent 窗口，查看窗那个入口带 `run=`），窗口里才按运行读它的记录（帧命令 `history-run`），运行表一变就续读。流那一侧由后端归位、拼成活卡（`live` 帧带 `run`，`stream/live.rs`），子运行的卡不上主 tab。
+  开它自己的窗口（agent 窗口，查看窗那个入口带 `run=`），窗口里才按运行读它的记录（帧命令 `history-run`），运行表一变就续读。流那一侧由后端归位、拼成活卡（`live` 帧带 `run`，`observe/live.rs`），子运行的卡不上主 tab。
 - **从 agent 的祖先链猜终端窗口**：explorer 起 PowerShell ＋ WT 接管控制台的常见架构下，agent 的祖先链与 WT 窗口完全脱节，启发式在主流环境下都不可靠。本机改为点 ↗ 那一刻沿 agent 进程往上，每一级问它的控制台显示在哪个窗口（Windows）。远端会话从此刻连着它的终端出发：那台读出那个终端的 `SSH_CONNECTION`（在 tmux 里就问 tmux 此刻哪些客户端连着），本机后端按这四元组在连接表里找到这台电脑上开着那条连接的进程，往上数父进程到 `explorer.exe` 为止，monitor 沿链每一级先问它的控制台显示在哪个窗口，再取第一个有可见窗口的进程。链从连接的拥有者起、不从 agent 起；找不到就照实说原因（在 tmux 后台没人连着 · 不在这台电脑上 · 经跳板或端口转换对不上 · 没有窗口或不止一个）。
 - **换掉 webview**：这个 app 的核心是渲染会话记录（Markdown · 代码高亮 · LaTeX · 可折叠工具卡 · 流式追加 · 上万条记录的虚拟化），正是 HTML 最擅长、原生 GUI 工具箱最不擅长的那一类。文件窗口不渲染会话记录，所以它是原生（egui）的。
 

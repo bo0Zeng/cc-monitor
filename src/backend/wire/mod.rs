@@ -36,11 +36,14 @@ use backend_platform as platform;
 static TEST_HOME: fn() = test_home::linked;
 
 pub mod ccm_line; // `ccm` 这一行的词与解析（旗标 · 默认值 · 自己叫什么 · 配置的记号）：起会话 · 账号域 · 别名那一族都往下引它
+pub mod cli_args; // CLI 面读入参的唯一一处（两个口 · 上限 · 静默窗 · 码；`stream::cli` · `--resident-call` 经它读）
 pub mod cli_words; // CLI 面的词：流模式显式词 · 子命令后面的选项词（与请求信封同名的那几格）· 帧命令名到子命令的拼法
 pub mod conn; // 连接本身那几条帧命令的类型（`ping` · `cancel` · `stream-watch`）
 pub mod detail; // 失败应答的「复制详情」那一格（时刻 · 机器 · 命令 · 码 · 原话）· 失败投到 CLI 面
 pub mod drain; // 流模式收场：退出之前先排空开跑之后停不下来的那一档（闸 · 票 · 期限）
 pub mod listen; // 常驻监听口的纯判定（判 attach · 拒绝那一行 · 分档 · 模式 · 常量；接受循环住 `stream/entry.rs`）
+pub mod needs; // 需手动那一族在后端里传的格（不上线：计划算好、观测面拼整份时收）
+pub mod ship_text; // CLI `--text`：回包里写好的格（顶上 `text` · 每一处 `rows`）拼成字，所有命令通用
 pub mod spec; // 一条入方向命令的登记形状（各族命令表只 use 这一份）· 按档装处理器 `prepare`
 pub mod stamp; // 出口那一下写记录的钟面那几格（`timeText` · `atMs` · 重试那一行 · 收场通知那一行）
 pub mod topic; // 「X 变了 ⇒ 重读」那一种推送（`changed`）的主题表（只此一处：名字 · 可丢性 · 小成品上限）
@@ -63,7 +66,7 @@ pub use cmd_wire::frame::{Allow, CanClose, CanSay, SessionCan, SessionDot, Sessi
 pub use cmd_wire::frame::{
     BranchRun, SessionBranch, SessionRuns, TerminalFollowEnd, TerminalScreen,
 };
-pub use cmd_wire::frame::{CanTerminal, TermOpen, TermWay};
+pub use cmd_wire::frame::{CanView, TermOpen};
 pub use cmd_wire::frame::{Cancelled, Changed, Overflow, Reply, SessionLeft};
 pub use cmd_wire::frame::{FilesBatch, Probe, SessionsReplayed, Transfer};
 pub use cmd_wire::frame::{FollowEnd, RereadWhy, SessionContainer, TerminalHost, TransferEnd};
@@ -146,10 +149,10 @@ pub trait SessionFaceExt: Sized {
     fn of(life: Life) -> Self;
     /// 带上这条会话跑在哪个号下（`account`，宣告时判的那一个）。
     fn under(self, account: Option<String>) -> Self;
-    /// 带上 pidfile 说的接进去有没有意义（`attachable`，宣告时读的那一格）：`Some(false)` ⇒ 两端「在这里开它的终端」都不能；
+    /// 带上 pidfile 说的接进去有没有意义（`attachable`，宣告时读的那一格）：`Some(false)` ⇒ 在终端里打开 · 接进去看它的终端都不能；
     /// 拉它的外部窗口照旧；没说 ⇒ 照原样。
     fn attachable(self, attachable: Option<bool>) -> Self;
-    /// 带上它住的那个终端的句柄（容器那一格，宣告时判的）：「在这里开」接的就是它；判不出 ⇒ 缺，交了由那台认。
+    /// 带上它住的那个终端的句柄（容器那一格，宣告时判的）：「看它的终端」接的就是它；判不出 ⇒ 缺，交了由那台认。
     fn housed_in(self, c: Option<&SessionContainer>) -> Self;
     /// 带上那台照记录写好的状态一句（填 `line` · `clock` · `peek` 三格，只经这一口）；`None` ⇒ 照原样（那一态的那一句）。
     fn saying(self, said: Option<StateLine>) -> Self;
@@ -168,47 +171,30 @@ fn no(why: Words) -> Allow {
     Allow::No { why }
 }
 
-/// 这台的壳拉不拉得了外部终端窗口（与壳 `platform/host_facts.rs` 的 `terminal_front` 同一个判法：看的人在这台上，壳就是这台的壳）。
-const FRONT_HERE: bool = cfg!(any(windows, target_os = "linux"));
-
-/// 拉它的外部窗口（悬停那一句）。
-fn go_front() -> TermWay {
-    TermWay::Front {
-        said: Words(copy_core::copy_text("beTerminal.go.front", &[])),
-    }
-}
-
-/// 在看的这一端接进它住的那个终端（句柄由 [`SessionFaceExt::housed_in`] 补）。
-fn go_attach() -> TermWay {
-    TermWay::Here {
+/// 看它的终端：在看的这一端接进它住的那个终端（句柄由 [`SessionFaceExt::housed_in`] 补）。
+fn view_attach() -> CanView {
+    CanView::Yes {
         said: Words(copy_core::copy_text("beTerminal.go.here", &[])),
         open: TermOpen::Attach { terminal: None },
     }
 }
 
-/// 终端已经不在：先恢复再在这一端开。
-fn go_resume() -> TermWay {
-    TermWay::Here {
+/// 看它的终端：终端已经不在 ⇒ 先恢复再在这一端开。
+fn view_resume() -> CanView {
+    CanView::Yes {
         said: Words(copy_core::copy_text("beTerminal.go.resume", &[])),
         open: TermOpen::Resume,
     }
 }
 
-/// 两端都做不了：同一句。
-fn no_terminal(why: &Words) -> CanTerminal {
-    CanTerminal {
-        near: TermWay::No { why: why.clone() },
-        far: TermWay::No { why: why.clone() },
-    }
+/// 没有终端可接：不在 tmux 或托管终端里。
+fn no_host() -> Words {
+    Words(copy_core::copy_text("beTerminal.why.noHost", &[]))
 }
 
-/// 有外部窗口可拉的（tmux · 判不了住哪 · 不在宿主里）：在这台上看 ⇒ 拉窗；壳拉不了 ⇒ `otherwise`。
-fn front_or(otherwise: TermWay) -> TermWay {
-    if FRONT_HERE {
-        go_front()
-    } else {
-        otherwise
-    }
+/// 看不了它的终端：那一句。
+fn view_no(why: &Words) -> CanView {
+    CanView::No { why: why.clone() }
 }
 
 /// 说得了：框里那一句占位（文案表那一条）。
@@ -234,16 +220,17 @@ impl SessionFaceExt for SessionFace {
     fn attachable(mut self, attachable: Option<bool>) -> Self {
         if attachable == Some(false) {
             let why = Words(copy_core::copy_text("sessionState.unattachable.why", &[]));
-            for way in [&mut self.can.terminal.near, &mut self.can.terminal.far] {
-                if matches!(
-                    way,
-                    TermWay::Here {
-                        open: TermOpen::Attach { .. },
-                        ..
-                    }
-                ) {
-                    *way = TermWay::No { why: why.clone() };
+            if self.can.attach == Allow::Yes {
+                self.can.attach = no(why.clone());
+            }
+            if matches!(
+                self.can.view,
+                CanView::Yes {
+                    open: TermOpen::Attach { .. },
+                    ..
                 }
+            ) {
+                self.can.view = CanView::No { why };
             }
         }
         self
@@ -256,14 +243,12 @@ impl SessionFaceExt for SessionFace {
             }
             _ => None,
         };
-        for way in [&mut self.can.terminal.near, &mut self.can.terminal.far] {
-            if let TermWay::Here {
-                open: TermOpen::Attach { terminal },
-                ..
-            } = way
-            {
-                terminal.clone_from(&handle);
-            }
+        if let CanView::Yes {
+            open: TermOpen::Attach { terminal },
+            ..
+        } = &mut self.can.view
+        {
+            terminal.clone_from(&handle);
         }
         self
     }
@@ -277,8 +262,8 @@ impl SessionFaceExt for SessionFace {
             ))
         };
         match life {
-            Life::Live { activity, host } => live_face(activity, host, false),
-            Life::Reading { host } => live_face(None, host, true),
+            Life::Live { activity, host } => live_face(activity, host, false, TMUX_HERE),
+            Life::Reading { host } => live_face(None, host, true, TMUX_HERE),
             Life::Reconnectable => {
                 let tip = Words(copy_core::copy_text(
                     "sessionState.reconnectable.tooltip",
@@ -299,11 +284,10 @@ impl SessionFaceExt for SessionFace {
                     can: SessionCan {
                         close: CanClose::No { why: running() },
                         resume: no(running()),
-                        // tmux 会话还在：在这台上看 ⇒ 拉 ccm 开的那个窗口（壳拉不了 ⇒ 在这里开）；别处看 ⇒ 接进去。
-                        terminal: CanTerminal {
-                            near: front_or(go_attach()),
-                            far: go_attach(),
-                        },
+                        // tmux 会话还在：拉得了连着它的那个窗口、接得进去、看得了。
+                        front: Allow::Yes,
+                        attach: Allow::Yes,
+                        view: view_attach(),
                         reattach: Allow::Yes,
                         // 离开「活」两样都能换：记在注解上、下次恢复用上（没有终端也收）。
                         model: Allow::Yes,
@@ -347,15 +331,10 @@ impl SessionFaceExt for SessionFace {
                     can: SessionCan {
                         close: CanClose::Quiet,
                         resume: if gone { no(tip.clone()) } else { Allow::Yes },
-                        // 已结束：终端不在了 ⇒ 先恢复再在这一端开；记录已不在 ⇒ 恢复不了，两端都不能（同恢复那一句）。
-                        terminal: if gone {
-                            no_terminal(&tip)
-                        } else {
-                            CanTerminal {
-                                near: go_resume(),
-                                far: go_resume(),
-                            }
-                        },
+                        // 已结束：没有窗口可拉、没有终端可接；看它的终端 ⇒ 先恢复再在这一端开；记录已不在 ⇒ 恢复不了（同恢复那一句）。
+                        front: no(why.clone()),
+                        attach: no(why.clone()),
+                        view: if gone { view_no(&tip) } else { view_resume() },
                         reattach: no(why.clone()),
                         stop: no(why.clone()),
                         end: no(why),
@@ -394,7 +373,9 @@ impl SessionFaceExt for SessionFace {
                             "sessionState.unseen.noResume",
                             &[],
                         ))),
-                        terminal: no_terminal(&name),
+                        front: no(name.clone()),
+                        attach: no(name.clone()),
+                        view: view_no(&name),
                         reattach: no(name.clone()),
                         model: no(name.clone()),
                         permission: no(name.clone()),
@@ -409,11 +390,25 @@ impl SessionFaceExt for SessionFace {
     }
 }
 
-/// 进程在的那几段（`reading` ＝ 记录还没读完、此刻在干什么只有记录说）。
+/// 这台有没有 tmux 可住（Windows 上没有：读不到进程环境，打标那一探永远「判不出」）。
+const TMUX_HERE: bool = cfg!(unix);
+
+/// 有没有终端可接进去（在终端里打开 · 看它的终端）：住在 tmux · 托管终端里 ⇒ 有；不在任何宿主里 ⇒ 没有；
+/// 住哪判不出 ⇒ 这台有 tmux 就交了由那台认，没有 tmux（托管终端是认得出的，没认出就是不在里面）⇒ 没有。
+fn has_terminal(host: Option<Housed>, tmux_here: bool) -> bool {
+    match host {
+        Some(Housed::In(_)) => true,
+        Some(Housed::Bare) => false,
+        None => tmux_here,
+    }
+}
+
+/// 进程在的那几段（`reading` ＝ 记录还没读完、此刻在干什么只有记录说）。`tmux_here`：这台有没有 tmux（[`TMUX_HERE`]）。
 fn live_face(
     activity: Option<SessionActivity>,
     host: Option<Housed>,
     reading: bool,
+    tmux_here: bool,
 ) -> SessionFace {
     let running = || Words(copy_core::copy_text("backend.status.connected", &[]));
     let (dot, key, tone, order) = match activity {
@@ -511,24 +506,18 @@ fn live_face(
         can: SessionCan {
             close: CanClose::No { why: running() },
             resume: no(running()),
-            // 托管终端：没有外部窗口，两端都在这里开（瘦客户端接进去）；tmux 会话（住哪判不了 ⇒ 交了由那台认）：在这台上看 ⇒
-            // 拉 ccm 开的那个窗口，别处看 ⇒ 接进去；不在任何宿主里（非 cc-monitor 起的）⇒ 只拉得了它的窗口，别处没有终端可接。
-            terminal: match host {
-                Some(Housed::In(TerminalHost::Managed)) => CanTerminal {
-                    near: go_attach(),
-                    far: go_attach(),
-                },
-                Some(Housed::In(TerminalHost::Tmux)) | None => CanTerminal {
-                    near: front_or(go_attach()),
-                    far: go_attach(),
-                },
-                Some(Housed::Bare) => {
-                    let why = Words(copy_core::copy_text("terminal.empty.notOurs", &[]));
-                    CanTerminal {
-                        near: front_or(TermWay::No { why: why.clone() }),
-                        far: TermWay::No { why },
-                    }
-                }
+            // 拉前：哪种宿主都有一个显示它的终端窗口可找（tmux 的客户端 · 附着上托管终端的那一扇 · 它自己挂着的那个终端）。
+            front: Allow::Yes,
+            // 在终端里打开 · 看它的终端：有终端可接（[`has_terminal`]）⇒ 接得进去；没有 ⇒ 照实说为什么。
+            attach: if has_terminal(host, tmux_here) {
+                Allow::Yes
+            } else {
+                no(no_host())
+            },
+            view: if has_terminal(host, tmux_here) {
+                view_attach()
+            } else {
+                view_no(&no_host())
             },
             reattach: no(running()),
             model,
@@ -581,7 +570,7 @@ pub const REPLY_PAGE_BYTES: cap_core::Cap = cap_core::Cap {
 /// hello 回显哪几格宿主交来的环境（[`Frame::Hello`] 的 `host_env`）。**名单只有这两格** —— 中转端口 ·
 /// 家（`CCM_DATA_DIR`，只有隔离跑才交），都是本机 monitor 起常驻后端时交的（monitor 那一侧 `local_backend_host::HANDED_ENVS`，
 /// 两向对拍）。监听口的钥匙文件路径不在这里。
-pub const HOST_ECHO_ENVS: [&str; 2] = [child_env::RELAY_PORT, creds_core::store::DATA_DIR_ENV];
+pub const HOST_ECHO_ENVS: [&str; 2] = [child_env::RELAY_PORT, relay_route_core::DATA_DIR_ENV];
 
 /// 按 [`HOST_ECHO_ENVS`] 从环境里取回显的那几格（没被交 / 空串的那一格不回显）。**纯函数**：环境由调用方给。
 pub fn host_env_from(
@@ -986,12 +975,16 @@ pub struct Request {
     /// 「<目录> · <机器>」这类句子照它写。可缺；不是非空串 ⇒ 当没带（不拒），没带就不编名字。
     #[serde(default, deserialize_with = "lenient_called")]
     pub called: Option<String>,
+    /// 这一问问的是哪台（机器表里那台的名字）：带了 ⇒ 经那台的常驻流转过去，本后端不自己答。
+    /// 可缺；不是非空串（`5` · 空白）⇒ 当没带、问本后端自己（不拒整条）。
+    #[serde(default, deserialize_with = "lenient_called")]
+    pub machine: Option<String>,
     /// 分派那一层由 `within_ms` 减余量换成的截止时刻（不上线）。
     #[serde(skip)]
     pub until: Option<crate::platform::child::Until>,
 }
 
-/// `called` 的宽读：只认非空白的串，别的一律当没带。
+/// `called` · `machine` 的宽读：只认非空白的串，别的一律当没带。
 fn lenient_called<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
     let v = serde_json::Value::deserialize(d)?;
     Ok(v.as_str()
@@ -1008,7 +1001,7 @@ fn lenient_ms<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<u64>, D::
 /// `tz` 的宽读（[`crate::common::time::Tz::of`]）：认不得 ⇒ UTC。
 fn lenient_tz<'de, D: serde::Deserializer<'de>>(d: D) -> Result<crate::common::time::Tz, D::Error> {
     Ok(crate::common::time::Tz::of(
-        &serde_json::Value::deserialize(d)?,
+        serde_json::Value::deserialize(d)?.as_str(),
     ))
 }
 

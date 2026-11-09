@@ -31,14 +31,16 @@ backend-platform = { path = "../platform" }
 # 帧的线上形（客户端按同一份解）。
 cmd-wire = { path = "../../common/cmd-wire" }
 copy-core = { path = "../../common/copy-core" }
+# 路径最后一段（项目名）只这一种切法：`plain_path_core::last_segment`。
+plain-path-core = { path = "../../common/plain-path-core" }
 # 一组一条命令的结局那一句（同文件窗口 · 手机嵌的核心那一份）。
 batch-core = { path = "../../common/batch-core" }
+# 分块传的循环（`transfer-copy` 远端那一端的分块腿：逐块进那台的暂存区 ＋ 整份摘要 · 逐块读回；同文件窗口 · 手机嵌的核心那一份）。
+chunk-core = { path = "../../common/chunk-core" }
 # 照契约类型写成品字的那一侧。
 face-core = { path = "../../common/face-core" }
 acct-core = { path = "../../common/acct-core" }
 upstream-url-core = { path = "../../common/upstream-url-core" }
-# 这台的数据目录怎么推 · 出生即只给本人（同账号域那一份，开 `harden`）。
-creds-core = { path = "../../common/creds-core", features = ["harden"] }
 # 交给 Win32 的路径（长路径前缀）只从它来。
 win-path-core = { path = "../../common/win-path-core" }
 shell-quote-core = { path = "../../common/shell-quote-core" }

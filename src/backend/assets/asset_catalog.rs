@@ -386,18 +386,13 @@ pub(crate) fn session_projects() -> (Vec<String>, Option<String>) {
 
 /// [`session_projects`] 的本体：agent 的家由调用方给（判据拿临时家目录喂）。
 pub(crate) fn session_projects_at(agent_home: &Path) -> (Vec<String>, Option<String>) {
-    let mut buf = Vec::new();
-    if let Err(e) = crate::history::listing::list_projects_into(agent_home, &mut buf) {
-        return (Vec::new(), Some(e));
-    }
-    let mut dirs: Vec<String> = String::from_utf8_lossy(&buf)
-        .lines()
-        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
-        .filter_map(|v| {
-            v.get("projectPath")
-                .and_then(Value::as_str)
-                .map(str::to_string)
-        })
+    let projects = match crate::history::listing::list_projects(agent_home) {
+        Ok(p) => p.unwrap_or_default(),
+        Err(e) => return (Vec::new(), Some(e)),
+    };
+    let mut dirs: Vec<String> = projects
+        .into_iter()
+        .map(|p| p.project_path)
         .filter(|p| Path::new(p).is_absolute())
         .collect();
     dirs.sort();

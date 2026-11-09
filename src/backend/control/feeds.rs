@@ -48,9 +48,9 @@ pub(crate) trait Ssh: Send + Sync + 'static {
     ) -> Boxed<'_, Result<Pipe, Problem>>;
     /// 跑一次收全。
     fn capture(&self, machine: &str, command: String) -> Boxed<'_, Result<Captured, Problem>>;
-    /// 把这一版的后端放到那台的落点（成没成记进机器状态，不阻断这一轮）。
-    fn install(&self, machine: &str) -> Boxed<'_, ()>;
-    /// 到那台的这一跳远不远（池里那条连接的读数，`ssh_dial::pool::far_of`；常驻流照它定要不要那台压）。
+    /// 把这一版的后端放到那台的落点，回放成没有（成没成另记进机器状态）。
+    fn install(&self, machine: &str) -> Boxed<'_, bool>;
+    /// 到那台的这一跳远不远（池里那条连接的读数，`dial::links::far`；常驻流照它定要不要那台压）。
     fn far(&self, machine: &str) -> bool;
 }
 
@@ -64,7 +64,7 @@ fn relay_out() -> Relay {
 
 static RELAY: std::sync::OnceLock<Relay> = std::sync::OnceLock::new();
 
-/// 一台的链路：名字 ＋ 下面那条 SSH。本机后端自己装后端（`installs`）。
+/// 一台的链路：名字 ＋ 下面那条 SSH。本机后端自己装后端（`install` 回这一轮放成没有）。
 struct Link {
     machine: String,
     ssh: Arc<dyn Ssh>,
@@ -81,12 +81,8 @@ impl Transport for Link {
         self.ssh.capture(&self.machine, command)
     }
 
-    fn install(&self) -> Boxed<'_, ()> {
+    fn install(&self) -> Boxed<'_, bool> {
         self.ssh.install(&self.machine)
-    }
-
-    fn installs(&self) -> bool {
-        true
     }
 
     fn far(&self) -> bool {
@@ -195,8 +191,8 @@ pub(crate) fn resume_in(machine: &str, wanted: &[String], ssh: &Arc<dyn Ssh>, re
 /// 一台那条流上此刻的那几样（循环交事那一口记）。
 #[derive(Default)]
 struct Seen {
-    /// 接着的时候记「那台后端此刻在」（[`crate::dial::streams`]）。
-    up: Option<crate::dial::streams::Held>,
+    /// 上一态是不是接着（翻成接着的那一下推 `changed {groups}`）。
+    up: bool,
     /// 这一条连接的 hello 转出去了、还没断（断了要转一帧 `ended`）。
     attached: bool,
     /// 那台 hello 自报的版本号（最近一次接上的那一份）。
@@ -278,8 +274,8 @@ fn start_one(machine: &str, ssh: &Arc<dyn Ssh>, relay: &Relay) -> Arc<Feed<Link>
                     let up = matches!(st, feed::State::Up { .. });
                     let (version, ended, unclear, came_up) = {
                         let mut s = lock(&seen);
-                        let came_up = up && s.up.is_none();
-                        s.up = up.then(|| crate::dial::streams::hold(&name));
+                        let was_up = std::mem::replace(&mut s.up, up);
+                        let came_up = up && !was_up;
                         let ended = !up && std::mem::take(&mut s.attached);
                         let unclear = if ended {
                             unclear_now(&mut s.book, &name)
@@ -487,7 +483,6 @@ impl Pool {
         use_: &str,
         extra: serde_json::Value,
     ) -> Result<crate::dial::DialRequest, Problem> {
-        crate::dial::host();
         crate::dial::dial_named(&crate::dial::machines_now(), machine, use_, extra)
             .map_err(|f| Problem::new(f.said, ""))
     }
@@ -515,7 +510,6 @@ impl Ssh for Pool {
 
     fn capture(&self, machine: &str, command: String) -> Boxed<'_, Result<Captured, Problem>> {
         // 一次性 exec 只经问远端那一跳（`remote_ask::capture_full`：上限 · 老后端见到 hello 就收都在那里）。
-        crate::dial::host();
         let dial = crate::dial::request_named(
             &crate::dial::machines_now(),
             machine,
@@ -530,33 +524,27 @@ impl Ssh for Pool {
         })
     }
 
-    fn install(&self, machine: &str) -> Boxed<'_, ()> {
+    fn install(&self, machine: &str) -> Boxed<'_, bool> {
         let machine = machine.to_string();
         Box::pin(async move {
-            let slots = match crate::control::deploy_plan::carried_slots() {
-                Ok(s) => s,
-                Err(why) => {
-                    tracing::warn!(
-                        "[feeds] {machine}：读不到带着的那几格后端字节，这一轮不装：{why}"
-                    );
-                    return;
-                }
-            };
+            // 带着哪几个槽由那一趟自己照这台的槽目录读（读不了 ⇒ 那一句照实记进那台的成品，照样接已有的后端）。
             let req = crate::control::deploy_plan::DeployInstallReq {
-                slots,
                 machine: machine.clone(),
             };
-            if let Err(e) = crate::control::deploy_plan::answer_install(req).await {
-                tracing::warn!("[feeds] {machine} 没装上（照样接已有的后端）：{e:?}");
+            match crate::control::deploy_plan::answer_install(req).await {
+                Ok(_) => true,
+                Err(e) => {
+                    tracing::warn!("[feeds] {machine} 没装上（照样接已有的后端）：{e:?}");
+                    false
+                }
             }
         })
     }
 
     /// 照这台的拨号请求问池里那几条连接的读数；请求组不成 ⇒ 远（宁可压）。
     fn far(&self, machine: &str) -> bool {
-        Self::request(machine, "stream", serde_json::json!({})).map_or(true, |req| {
-            ssh_dial::pool::far_of(&ssh_dial::pool::ssh().links(), &req)
-        })
+        Self::request(machine, "stream", serde_json::json!({}))
+            .map_or(true, |req| crate::dial::links::far(&req))
     }
 }
 
@@ -697,7 +685,10 @@ pub(crate) async fn stop_with(
         crate::wire::spec::fail("stop_failed", p.said).and_raw(Some(p.detail.as_str()))
     };
     let exec = ssh
-        .capture(machine, feed::backend_command(feed::STOP))
+        .capture(
+            machine,
+            feed::backend_command(&[relay_route_core::RESIDENT_STOP]),
+        )
         .await
         .map_err(fail)?;
     let v = feed::read_one_shot(&exec, machine).map_err(|f| fail(f.problem))?;

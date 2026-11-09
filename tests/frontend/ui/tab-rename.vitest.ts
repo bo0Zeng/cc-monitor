@@ -89,6 +89,7 @@ function bar(tabs: Tab[]) {
     openMenu: vi.fn(),
     toggleSelect: vi.fn(),
     openMenuAt: vi.fn(),
+    front: vi.fn(),
     fixMachine: vi.fn(),
   } satisfies TabBarViewHost;
   const el = document.createElement("div");
@@ -179,7 +180,8 @@ describe("标签页改名：写那台注解里的 customTitle", () => {
       hide: vi.fn(),
       unhide: vi.fn(),
       openCwd: vi.fn(),
-      terminal: vi.fn(),
+      front: vi.fn(),
+      view: vi.fn(),
     } satisfies TabMenuHost;
     new TabMenu(host, {} as TabSessionActions).open(new MouseEvent("contextmenu"), "a");
     const item = [...document.querySelectorAll<HTMLElement>("[role=menuitem]")].find((e) => e.textContent?.includes(copyText("history.menu.rename")));

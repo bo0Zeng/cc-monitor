@@ -293,36 +293,36 @@ fn no_entry_description_speaks_our_internal_words() {
     assert_eq!(bad, Vec::<String>::new(), "条目说明里又出现了 sid / HWND");
 }
 
-/// ★ 本机后端家里那几样不归这里列（界面照本机后端 `data-report` 的 `own` 画）；数据目录里与后端相关、却只住界面这一侧的两份
-/// （API key 表 · 宿主交给后端的错误输出所在的目录）在这一份枚举里，路径就是写它的那一处用的：凭据文件名取 `creds_core::store`，
-/// 错误输出取 `logging::backend_stderr_log_path`。期望逐条手写，不从被测函数派生。
+/// ★ 本机后端写的那几份（历史注解 · API key 表连同家里那几样）不归这里列，由后端照 `OWN_HOME_ENTRIES` 列、逐样 stat
+/// （界面照本机后端 `data-report` 的 `own` 画；远端那台也列）。数据目录里与后端相关、却只住界面这一侧的只剩宿主交给后端的错误输出
+/// 所在的目录，路径取 `logging::backend_stderr_log_path`。期望逐条手写，不从被测函数派生。
 #[test]
 fn the_backend_rows_on_this_side_point_where_they_are_written() {
     let data = TestDir::new("backend-side");
-    let got: Vec<(String, PathBuf, String)> = monitor_entries(data.path())
-        .into_iter()
-        .map(|e| (e.label, PathBuf::from(e.path), e.kind))
-        .filter(|(l, _, _)| l == "apikey-credentials.json" || l == "logs/backend/")
+    let entries = monitor_entries(data.path());
+    let got: Vec<(String, PathBuf, String)> = entries
+        .iter()
+        .map(|e| (e.label.clone(), PathBuf::from(&e.path), e.kind.clone()))
+        .filter(|(l, _, _)| l == "logs/backend/")
         .collect();
     let row = |l: &str, p: PathBuf, k: &str| (l.to_string(), p, k.to_string());
     assert_eq!(
         got,
-        vec![
-            row(
-                "logs/backend/",
-                crate::logging::backend_stderr_log_path(data.path())
-                    .parent()
-                    .unwrap()
-                    .to_path_buf(),
-                "dir",
-            ),
-            row(
-                "apikey-credentials.json",
-                creds_core::store::credentials_path(data.path()),
-                "file",
-            ),
-        ]
+        vec![row(
+            "logs/backend/",
+            crate::logging::backend_stderr_log_path(data.path())
+                .parent()
+                .unwrap()
+                .to_path_buf(),
+            "dir",
+        )]
     );
+    for backend_owned in ["history-metadata.json", "apikey-credentials.json"] {
+        assert!(
+            entries.iter().all(|e| e.label != backend_owned),
+            "`{backend_owned}` 归本机后端列（`OWN_HOME_ENTRIES`），壳又替它 stat 了"
+        );
+    }
 }
 
 /// ★ 日志目录那一行在这份枚举里（设置面板按 `LOGS_DIR_LABEL` 认它、改指「日志」那一页；修在界面层，这一行不从枚举里删）。

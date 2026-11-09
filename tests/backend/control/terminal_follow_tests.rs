@@ -286,7 +286,7 @@ fn the_follower_is_not_counted_as_a_terminal_window() {
     let h = iso.handle_of("c-cc");
     let ls = || {
         String::from_utf8_lossy(
-            &iso.tmux(&["ls", "-F", crate::observe::tmux_observe::TMUX_LS_FMT])
+            &iso.tmux(&["ls", "-F", crate::host::tmux::TMUX_LS_FMT])
                 .stdout,
         )
         .to_string()
@@ -333,8 +333,8 @@ fn the_follower_is_not_counted_as_a_terminal_window() {
         "订阅客户端连上之后 `session_attached` 那一列没变 —— 正控没成立，下面那条在空转"
     );
     assert_eq!(
-        crate::observe::tmux_observe::session_rows(&before),
-        crate::observe::tmux_observe::session_rows(&during),
+        crate::host::tmux::session_rows(&before),
+        crate::host::tmux::session_rows(&during),
         "订阅客户端改了会话快照读出来的行"
     );
     assert_eq!(

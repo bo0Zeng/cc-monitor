@@ -38,6 +38,8 @@ batch-core = { path = "../../common/batch-core" }
 # 帧的线上形（客户端按同一份解）。
 cmd-wire = { path = "../../common/cmd-wire" }
 copy-core = { path = "../../common/copy-core" }
+# 路径最后一段（项目名）只这一种切法：`plain_path_core::last_segment`。
+plain-path-core = { path = "../../common/plain-path-core" }
 creds-core = { path = "../../common/creds-core" }
 face-core = { path = "../../common/face-core" }
 md-core = { path = "../../common/md-core" }

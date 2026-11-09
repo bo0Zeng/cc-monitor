@@ -13,9 +13,9 @@ label: string,
  */
 host: string, 
 /**
- * 端口（缺 ＝ 22）。
+ * 端口（缺 ＝ 22；缺省只住这里，两端的表单空着就不交这一键）。
  */
-port: number, user: string, 
+port?: number, user: string, 
 /**
  * 钥匙文件路径（这台上的；空 ＝ 照 ssh 的缺省找）。
  */

@@ -703,6 +703,10 @@ pub struct FilesBatch {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
     pub bytes_total: Option<u64>,
+    /// 还要多久的成品字（本机后端照这一组的平均速度写好，`common::batch_book::left_text`）；说不出 ⇒ 缺席。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub left_text: Option<String>,
 }
 
 /// 〔「测试连接的进度不许倒退」〕**测试连接那一趟的一格进度**（`remote-probe` 在跑时才出现）。
@@ -1039,8 +1043,13 @@ pub struct SessionCan {
     pub close: CanClose,
     /// 恢复（起一个新进程接着那份记录）。
     pub resume: Allow,
-    /// 「终端」那一颗（拉它的外部窗口 · 在这一端开它的终端 · 做不了，见 [`CanTerminal`]）。
-    pub terminal: CanTerminal,
+    /// 拉前：把它住的那个外部终端窗口拉到前面（tab 行尾 ↗ · 右键 · 会话头 · 快捷键）。活着 · 读记录中 · 程序退了 tmux 会话还在 ⇒ 能，
+    /// 宿主是哪种都一样（本机会话与远端会话同一条：远端的窗口是看的这台上开着 ssh 的那个终端）；看的这一端的壳拉不拉得了窗由那一端自己判，不写在这里。
+    pub front: Allow,
+    /// 在终端里打开：另开一个终端窗口接进它住的那个终端（tmux 会话 · 托管终端）。不在宿主里 · 已结束 · pidfile 说接不进 ⇒ 不能。
+    pub attach: Allow,
+    /// 看它的终端：在看的这一端开它的终端页（桌面底部抽屉 · 手机终端屏），见 [`CanView`]。
+    pub view: CanView,
     /// 程序退了、tmux 会话还在 ⇒ 接回。
     pub reattach: Allow,
     /// 换模型（`session-model`）。
@@ -1088,26 +1097,13 @@ pub enum CanClose {
     No { why: Words },
 }
 
-/// **「终端」那一颗**（两端只这一颗；会话头 · 右键 · 命令面板 · 快捷键 · 手机顶栏都读它）：会话住的那台把两种看法都写好，
-/// 两端只按「看的这一端在不在那台上」挑一格 —— 在那台上（桌面看本机会话）挑 `near`，别处（桌面看远端会话 · 手机）挑 `far`。
-/// 拉不拉得了外部窗口只跟那台自己的系统有关：看的人若就在那台上，壳就是那台的壳，所以由那台判、不由看的那一端判。
+/// 看不看得了它的终端：`{can: "yes", said: 悬停那一句, open: 开哪个}` · `{can: "no", why: 写好的那一句}`（灰着、悬停 / 长按出它）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct CanTerminal {
-    pub near: TermWay,
-    pub far: TermWay,
-}
-
-/// 点「终端」做什么：`front` 拉它住的那个外部终端窗口到前面（只在 `near`）· `here` 在看的这一端开它的终端（`open` 开哪个）·
-/// `no` 做不了（`why` 是那台写好的那一句：灰着、悬停 / 长按出它）。`said` 是悬停那一句。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-#[serde(tag = "go", rename_all = "snake_case")]
-pub enum TermWay {
-    Front { said: Words },
-    Here { said: Words, open: TermOpen },
+#[serde(tag = "can", rename_all = "snake_case")]
+pub enum CanView {
+    Yes { said: Words, open: TermOpen },
     No { why: Words },
 }
 

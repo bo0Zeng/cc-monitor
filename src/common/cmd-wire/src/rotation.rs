@@ -473,8 +473,8 @@ pub struct RotStrategyItem {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub error: Option<RotStrategyError>,
-    /// 此刻还活着、用着它的会话。
-    pub in_use: Vec<String>,
+    /// 能不能删（与 `rotation-strategy-delete` 拒的同一处判）。
+    pub remove: RotRemove,
     pub for_new: bool,
     /// 这份的设置说明写法不合文案规矩（设置照样能用）：只用来出 `RotHint::WordsBad` 那一条提示，不上线。
     #[serde(skip)]
@@ -484,6 +484,20 @@ pub struct RotStrategyItem {
     pub tz_unknown: bool,
     /// 不是照编辑器那一份存出来的（代码或声明跟它此刻的不一样）。
     pub hand: bool,
+}
+
+/// 一份策略能不能删：不能 ⇒ 为什么那一句（同删命令拒的那一句）· 还活着、用着它的会话叫什么（一行，没有 ⇒ 缺）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct RotRemove {
+    pub enabled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub why: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub who: Option<String>,
 }
 
 /// `rotation-strategies` 的应答。
@@ -505,18 +519,19 @@ pub struct RotationStrategiesReply {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub enum RotHint {
-    /// 停发：到几点 · 到时恢复的号。
+    /// 停发：到时恢复的号（到几点 · 还有多久都写进提示那一句）。
     Hold {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
-        until: Option<u64>,
         #[serde(skip_serializing_if = "Option::is_none")]
         #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         account: Option<String>,
-        /// `until` 的钟面（`HH:MM`，看的那一台的时区；不在今天带日期）：后端写提示那一句用，不上线。
+        /// 停到的那一刻的钟面（`HH:MM`，看的那一台的时区；不在今天带日期）：后端写提示那一句用，不上线。
         #[serde(skip)]
         #[cfg_attr(any(test, feature = "ts"), ts(skip))]
         until_text: Option<String>,
+        /// 距停到的那一刻还有多久（已过 ⇒ 缺）：后端写提示那一句用，不上线。
+        #[serde(skip)]
+        #[cfg_attr(any(test, feature = "ts"), ts(skip))]
+        left_text: Option<String>,
     },
     /// 策略出错（这一判走了兜底：此刻的号发得出去就照用，否则照号列表的先后）。`path` ＝ 那份文件在那台上的路径（文件不在 ⇒ 缺）：「看代码」照它开。
     StrategyError {
@@ -646,6 +661,10 @@ pub struct RotationViewReply {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub can: Option<RotCan>,
+    /// 编辑小窗底行那一整句：改的是哪份 ＋（有会话还在用旧版 ⇒ 那一条提示的那一句；没有会话在用 ⇒ 说没有）。不轮换 ⇒ 缺。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub foot: Option<String>,
 }
 
 /// 一个会话在顺序那一块能做的几样：拖着排先后（「拖动排序」那一句跟着它）· 勾掉「先不用」一个号 · 编辑它载入的那份策略。
@@ -701,20 +720,6 @@ pub struct RotDone {}
 pub struct RotationTempReply {
     pub temp: Vec<String>,
     pub off: Vec<String>,
-}
-
-/// 「现在用」碰上那个号事实上发不出去：为什么 · 几点恢复（说不出 ⇒ 缺）。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct RotUnusable {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub why: Option<FactWhy>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
-    pub until: Option<u64>,
 }
 
 /// 写成的那一份。
@@ -781,7 +786,10 @@ pub struct RotAccount {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct RotPlate {
-    pub color: u8,
+    /// 账号库里没有这个号 ⇒ 缺（三端画中性，不按名字补一个像真的色）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub color: Option<u8>,
     pub label: Words,
     pub text: Words,
 }

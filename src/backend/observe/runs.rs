@@ -2,7 +2,7 @@
 //! 记录属于哪个运行、哪条记录派出了子运行、子运行的记录住哪、流与记录拿什么对账，都问适配层给的那一组面（[`RunFaces`]）。
 //!
 //! 两半：
-//! - [`RunBook`]：每条流连接一本，watcher 写、流归位（`stream::run_route`）读：每个会话的运行表 ＋ 对账键归哪个运行。
+//! - [`RunBook`]：每条流连接一本，watcher 写、流归位（`run_route`）读：每个会话的运行表 ＋ 对账键归哪个运行。
 //! - [`RunTrack`]：watcher 那一侧的手 —— 子运行的记录文件在哪（`ChildFace::sources`）、读到哪了；与主记录走同一条文件事件管线，不轮询。
 
 use crate::agents::{ChildLink, RunEnd, RunFaces, RunMark};

@@ -1,5 +1,8 @@
 package com.ccmonitor.mobile.ui.session
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -49,6 +52,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
 import kotlin.coroutines.coroutineContext
+
+/** 终端里程序写剪贴板（OSC 52，termlib 已解好、投到主线程）⇒ 写进系统剪贴板。读剪贴板的询问 termlib 不交上来、不答。 */
+fun systemClipboard(context: Context): (String) -> Unit =
+    { text ->
+        context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("terminal", text))
+    }
 
 /** 终端屏的连接态。 */
 sealed interface SessionUiState {
@@ -110,6 +119,7 @@ class SessionViewModel(
     private val identityRepo: IdentityRepository,
     private val hostConnector: HostConnector, // 建连编排，retain / release / connection 也经它
     backends: HostBackends, // 这台的常驻流：列会话 · 进终端那一行 · 送字 · 抓屏 · 结束 · 推公钥都问那台核心
+    private val copyToClipboard: (String) -> Unit, // 终端里程序经 OSC 52 写剪贴板 ⇒ 写进系统剪贴板（[systemClipboard]）
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) : ViewModel() {
     private val cd: String? = cdArg?.ifBlank { null } // Koin 参数不传 null，空串当 null
@@ -385,6 +395,7 @@ class SessionViewModel(
             cols = 80,
             palette = AppTerminalPalette,
             remoteChannel = shell,
+            onClipboardCopy = copyToClipboard,
         )
 
     /**

@@ -113,6 +113,15 @@ val genThemeTokens =
                 bad(n, v)
             }
             val lines = decls.joinToString("\n") { (n, v) -> "    /** `$n: $v` */\n    val ${kname(n)} = ${value(n, v)}" }
+            // 号色那几格：`--acct-c<n>` · `--acct-ink<n>` 照格号成对出一份列表（几格只在 tokens.css 写一次；格号从 0 连着数）。
+            val acctRe = Regex("""^--acct-c(\d+)$""")
+            val acctSlots = decls.mapNotNull { (n, _) -> acctRe.find(n)?.let { it.groupValues[1].toInt() } }.sorted()
+            if (acctSlots != acctSlots.indices.toList()) throw GradleException("tokens.css 的号色格号不是从 0 连着数：$acctSlots")
+            acctSlots.forEach { if ("--acct-ink$it" !in raw) throw GradleException("tokens.css 有 --acct-c$it 没有 --acct-ink$it") }
+            val acctList =
+                acctSlots.joinToString(", ", prefix = "    /** 号色那几格（`--acct-c<n>` · `--acct-ink<n>` 照格号成对）。 */\n    val Acct: List<AcctColor> = listOf(", postfix = ")") {
+                    "AcctColor(${kname("--acct-c$it")}, ${kname("--acct-ink$it")})"
+                }
             val out = themeGenDir.get().file("com/ccmonitor/mobile/core/ui/theme/ThemeTokens.kt").asFile
             out.parentFile.mkdirs()
             out.writeText(
@@ -127,6 +136,7 @@ val genThemeTokens =
                 |@Suppress("unused", "MagicNumber")
                 |object ThemeTokens {
                 |$lines
+                |$acctList
                 |}
                 |
                 """.trimMargin(),

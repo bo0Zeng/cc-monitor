@@ -401,3 +401,88 @@ fn no_handler_validates_an_arg_and_then_throws_it_away() {
         hits.join("\n")
     );
 }
+
+/// ★ **命令表族文件只放登记行**：`registry/*.rs` 生产段没有 `impl … Command for`。
+/// 命令本体（标记类型 ＋ `Command` · `Handle`）住它那一功能包（faces · control …），族文件只写「这条命令登记在这一族、哪一档、一句话」。
+#[test]
+fn registry_families_hold_only_registration_lines() {
+    let sources = guard_core::addr::backend_inbound_sources();
+    let families: Vec<&(String, String)> = sources
+        .iter()
+        .filter(|(rel, _)| rel.starts_with("src/backend/stream/inbound/registry/"))
+        .collect();
+    assert!(
+        families.len() >= 5,
+        "只找到 {} 份族文件 —— 抽取坏了，本条在空转",
+        families.len()
+    );
+    let hits: Vec<String> = families
+        .iter()
+        .flat_map(|(rel, prod)| {
+            prod.lines()
+                .map(str::trim)
+                .filter(|l| l.starts_with("impl") && l.contains("Command for"))
+                .map(move |l| format!("{rel}: {l}"))
+        })
+        .collect();
+    assert!(
+        hits.is_empty(),
+        "族文件里住着命令本体：{hits:?}\n标记类型与 `impl Command` · `impl Handle` 挪进它那一功能包，族文件只留登记行。"
+    );
+}
+
+/// ★ **一条命令的登记只住登记行**：入方向与 CLI 面没有「命令名 → 某一格」另记的表。
+/// 期限上限（`.capped`）· 成品住处（`.places`）· 上不上 CLI 面（`.stream_only` · `.ui_only`）都写在那条命令的登记行上，
+/// 枢纽问得到的那几条住资产域（`assets::hub_inner::NAMES`）。按名另记一张，加一条命令就得记得回来改它。
+#[test]
+fn no_table_keyed_by_command_name_besides_the_registry() {
+    const VIEWS: &str = include_str!("../../../src/backend/stream/inbound/views.rs");
+    const DOORS: &str = include_str!("../../../src/backend/stream/inbound/doors.rs");
+    const CAPS: &str = include_str!("../../../src/backend/stream/inbound/caps.rs");
+    const CLI: &str = include_str!("../../../src/backend/stream/cli.rs");
+    let pins: &[(&str, &str, &str)] = &[
+        (
+            "src/backend/stream/inbound/views.rs",
+            VIEWS,
+            "const PLACES:",
+        ),
+        (
+            "src/backend/stream/inbound/doors.rs",
+            DOORS,
+            "const HUB_INNER:",
+        ),
+        ("src/backend/stream/inbound/caps.rs", CAPS, "const CAPS:"),
+        ("src/backend/stream/cli.rs", CLI, "const STREAM_ONLY:"),
+        ("src/backend/stream/cli.rs", CLI, "const UI_ONLY:"),
+    ];
+    let hits: Vec<String> = pins
+        .iter()
+        .filter(|(_, src, decl)| guard_core::production_code(src).contains(decl))
+        .map(|(rel, _, decl)| format!("{rel}: {decl}"))
+        .collect();
+    assert!(
+        hits.is_empty(),
+        "按命令名另记的表还在：{hits:?}\n那一格写到命令的登记行上（`CommandSpec` 的 const fn），表删掉。"
+    );
+}
+
+/// ★ **分派臂不写功能包的事**：`inbound/mod.rs` 生产段不自己造推送帧的体（`Changed::…` 那一格的成品归它那一功能包，
+/// 比如 login 收尾推的 `changed {login}` 在 `faces::login_face::start` 里造）。分派只认命令、交通道。
+#[test]
+fn the_dispatch_does_not_build_feature_frames() {
+    let prod =
+        guard_core::production_code(include_str!("../../../src/backend/stream/inbound/mod.rs"));
+    assert!(
+        prod.len() > 3000,
+        "只剥出 {} 字节生产段 —— 抽取坏了",
+        prod.len()
+    );
+    let hits: Vec<&str> = ["Changed::", "FilesBatch {"]
+        .into_iter()
+        .filter(|needle| prod.contains(needle))
+        .collect();
+    assert!(
+        hits.is_empty(),
+        "`inbound/mod.rs` 自己造了 {hits:?}：挪回那一功能包（它收应答通道、自己造那一帧）"
+    );
+}

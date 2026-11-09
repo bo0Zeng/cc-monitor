@@ -164,59 +164,144 @@ fn list_moves_become_one_changed_frame() {
     });
 }
 
-/// ★ 订阅节点：事实那几种 ⇒ 推一帧 `changed {quota}`；带会话的 ⇒ 再推一帧 `changed {rotation, key: sid}`；
-/// 策略那一种 ⇒ `changed {rotation_strategies}`（续令牌没成那一声需手动的铃由发端敲，不在这里）。没订那条通道的连接永远不推。
+/// ★ 节点 ⇒ 帧（`Node::changed`）：事实那几种 ⇒ `changed {quota}`；带会话的 ⇒ 再加 `changed {rotation, key: sid}`；
+/// 策略那一种 ⇒ `changed {rotation_strategies}`（续令牌没成那一声需手动的铃由发端敲，不在这里）；落后丢件 ⇒ 不带会话的那两帧。
 #[test]
 fn each_kind_of_node_becomes_the_changed_frames_it_stands_for() {
-    use crate::accounts::quota::nodes::{emit, Source};
+    use crate::accounts::quota::nodes::{Node, Source};
+    let topics = |cs: Vec<Changed>| -> Vec<(Topic, Option<String>)> {
+        cs.iter()
+            .map(|c| (c.topic(), c.key().map(str::to_string)))
+            .collect()
+    };
+    let of = |source, sid: Option<&str>| {
+        topics(
+            Node {
+                source,
+                sid: sid.map(str::to_string),
+            }
+            .changed(),
+        )
+    };
+    let q = vec![(Topic::Quota, None)];
+    for s in [
+        Source::Reading,
+        Source::QuotaFile,
+        Source::Logins,
+        Source::Login,
+    ] {
+        assert_eq!(of(s, None), q, "{s:?}");
+    }
+    assert_eq!(
+        of(Source::Refused, Some("s9")),
+        vec![(Topic::Quota, None), (Topic::Rotation, Some("s9".into()))]
+    );
+    assert_eq!(
+        of(Source::Book, Some("s1")),
+        vec![(Topic::Rotation, Some("s1".into()))]
+    );
+    assert_eq!(
+        of(Source::Strategies, None),
+        vec![(Topic::RotationStrategies, None)]
+    );
+    assert_eq!(
+        topics(Node::lagged()),
+        vec![(Topic::Quota, None), (Topic::RotationStrategies, None)]
+    );
+}
+
+/// ★ 一次机器变动推到 N 条连接：各台那几句没变（推的那一侧判过、项里没带）⇒ 每条 0 帧 `changed {empty}`，
+/// 只有那台的 `changed {machine}`；变了（项里带着）⇒ 每条恰好再一帧 `changed {empty}`，体就是带来的那几句。
+#[test]
+fn a_machine_move_pushes_the_fleet_lines_only_when_they_changed() {
+    use crate::control::machine_state::Moved;
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("rt");
+    rt.block_on(async {
+        let hub = std::sync::Arc::new(TapHub::default());
+        let tx = tokio::sync::broadcast::channel::<Moved>(8).0;
+        let mut conns: Vec<TapRx> = (0..3)
+            .map(|_| {
+                let mut t = attach_rx(hub.clone());
+                t.machine = Some(tx.subscribe());
+                t
+            })
+            .collect();
+        let state = crate::control::machine_state::read()
+            .remove(cmd_wire::machine::LOCAL)
+            .expect("本机那一行");
+        let fleet = crate::control::machine_state::fleet();
+        for (with, want) in [(None, 0usize), (Some(fleet.clone()), 1)] {
+            tx.send(Moved {
+                machine: "m1".into(),
+                state: state.clone(),
+                fleet: with,
+            })
+            .unwrap();
+            for t in &mut conns {
+                match tokio::time::timeout(guard_core::wall::CEILING, t.next()).await {
+                    Ok(Some(Frame::Changed(Changed::Machine { key, .. }))) => {
+                        assert_eq!(key, "m1")
+                    }
+                    other => panic!("该先推那台：{other:?}"),
+                }
+                let mut empties = 0;
+                loop {
+                    match tokio::time::timeout(std::time::Duration::from_millis(50), t.next()).await
+                    {
+                        Ok(Some(Frame::Changed(Changed::Empty { body }))) => {
+                            assert_eq!(body.as_ref(), Some(&fleet), "体不是带来的那几句");
+                            empties += 1;
+                        }
+                        Ok(other) => panic!("多推了别的：{other:?}"),
+                        Err(_) => break,
+                    }
+                }
+                assert_eq!(empties, want, "这条连接推了几帧 changed {{empty}}");
+            }
+        }
+    });
+}
+
+/// ★ 机器那一路落后丢了几件（带着新句子的那一件可能就在里面）⇒ 这条连接照此刻的各台那几句补一帧 `changed {empty}`，
+/// 不等那几句再变一次。
+#[test]
+fn a_lagged_machine_channel_resends_the_fleet_lines_of_now() {
+    use crate::control::machine_state::Moved;
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .expect("rt");
     rt.block_on(async {
         let mut t = attach_rx(std::sync::Arc::new(TapHub::default()));
-        let tx = tokio::sync::broadcast::channel(16).0;
-        t.nodes = Some(tx.subscribe());
-        let mut got = Vec::new();
-        for (source, sid, n) in [
-            (Source::Reading, None, 1),
-            (Source::QuotaFile, None, 1),
-            (Source::Logins, None, 1),
-            (Source::Login, None, 1),
-            (Source::Refused, Some("s9"), 2),
-            (Source::Book, Some("s1"), 1),
-            (Source::Strategies, None, 1),
-        ] {
-            emit(&tx, source, sid);
-            for _ in 0..n {
-                match tokio::time::timeout(guard_core::wall::CEILING, t.next()).await {
-                    Ok(Some(Frame::Changed(c))) => {
-                        got.push((source, c.topic(), c.key().map(str::to_string)))
-                    }
-                    other => panic!("{source:?} 该推一帧：{other:?}"),
+        let tx = tokio::sync::broadcast::channel::<Moved>(1).0;
+        t.machine = Some(tx.subscribe());
+        let state = crate::control::machine_state::read()
+            .remove(cmd_wire::machine::LOCAL)
+            .expect("本机那一行");
+        for _ in 0..3 {
+            tx.send(Moved {
+                machine: "m1".into(),
+                state: state.clone(),
+                fleet: None,
+            })
+            .unwrap();
+        }
+        let mut empties = 0;
+        loop {
+            match tokio::time::timeout(std::time::Duration::from_millis(50), t.next()).await {
+                Ok(Some(Frame::Changed(Changed::Empty { body }))) => {
+                    assert!(body.is_some(), "补的那一帧没带句子");
+                    empties += 1;
                 }
+                Ok(Some(Frame::Changed(Changed::Machine { .. }))) => {}
+                Ok(other) => panic!("多推了别的：{other:?}"),
+                Err(_) => break,
             }
         }
-        let q = |s| (s, Topic::Quota, None);
-        assert_eq!(
-            got,
-            vec![
-                q(Source::Reading),
-                q(Source::QuotaFile),
-                q(Source::Logins),
-                q(Source::Login),
-                q(Source::Refused),
-                (Source::Refused, Topic::Rotation, Some("s9".to_string())),
-                (Source::Book, Topic::Rotation, Some("s1".to_string())),
-                (Source::Strategies, Topic::RotationStrategies, None),
-            ]
-        );
-        // 没再来 ⇒ 不再推。
-        assert!(
-            tokio::time::timeout(std::time::Duration::from_millis(50), t.next())
-                .await
-                .is_err()
-        );
+        assert_eq!(empties, 1, "落后之后该补一帧 changed {{empty}}");
     });
 }
 

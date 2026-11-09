@@ -80,33 +80,6 @@ pub fn reply_error(reason: crate::agents::ApiReason, status: Option<u32>) -> Rep
     }
 }
 
-/// 还在重试的那一行（「{原因} · 重试 a/b · {钟面} 起」；次数缺一样 ⇒ 不带那一截）：记录出口与会话事实那一串都经它。
-pub fn retry_line(
-    reason: crate::agents::ApiReason,
-    attempt: Option<u32>,
-    max: Option<u32>,
-    since: &str,
-) -> String {
-    let retry = match (attempt, max) {
-        (Some(a), Some(b)) => copy_core::copy_text(
-            "apiError.retry.count",
-            &[
-                ("retryAttempt", &a.to_string()),
-                ("maxRetries", &b.to_string()),
-            ],
-        ),
-        _ => String::new(),
-    };
-    copy_core::copy_text(
-        "apiError.retry.line",
-        &[
-            ("reason", &reason_word(reason)),
-            ("retry", &retry),
-            ("time", since),
-        ],
-    )
-}
-
 /// 来话（agent 交回 · 途中来话 · 另一个会话 · 主会话后来的话）的正文解析成块树，两家适配层都经它（解析只有 `md_core::parse` 一处）；
 /// 另一个会话的来话顺手写好抬头那一句。
 fn said_doc(mut body: Body) -> Body {

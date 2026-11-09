@@ -97,7 +97,7 @@ fn a_shell_command_failure_is_one_shape_with_a_nonempty_detail() {
     // 带码的那一形：码进 `code` 与详情「码」那一项（命令之后、原话之前）。
     let coded = Said::with_raw("x".into(), "boom")
         .coded("2")
-        .named("open_log_dir");
+        .named("os_open");
     assert_eq!(coded.code, "2");
     let at = |k: &str| coded.detail.find(&format!("{}：", label(k))).unwrap();
     assert!(
@@ -257,7 +257,7 @@ fn every_shell_command_fails_as_said_and_names_itself() {
             }
         }
     }
-    assert!(seen >= 29, "人群只扫到 {seen} 条 —— 取法坏了");
+    assert!(seen >= 26, "人群只扫到 {seen} 条 —— 取法坏了");
     assert!(
         bad.is_empty(),
         "这几条壳命令失败时复制详情里没有命令名：{bad:?}"
@@ -323,7 +323,7 @@ fn a_failed_open_says_the_reason_and_keeps_the_raw_words_in_the_detail() {
         )
     );
     assert!(!e.said.contains(bin), "{}", e.said);
-    let detail = e.named("open_log_dir").detail;
+    let detail = e.named("os_open").detail;
     assert!(
         detail.contains(&format!("{}：{bin}", label("detail.label.raw"))),
         "{detail}"
@@ -333,7 +333,7 @@ fn a_failed_open_says_the_reason_and_keeps_the_raw_words_in_the_detail() {
 /// 补上的「命令」排在原话前面（项名次序照 `Label::ALL`）。
 #[test]
 fn the_named_command_goes_before_the_raw_words() {
-    let s = Said::with_raw("x".into(), "boom").named("open_log_dir");
+    let s = Said::with_raw("x".into(), "boom").named("os_open");
     let lines: Vec<&str> = s.detail.lines().collect();
     let at = |k: &str| {
         lines
@@ -357,8 +357,8 @@ fn naming_does_not_split_raw_words_that_look_like_items() {
         label("detail.label.command"),
         label("detail.label.path")
     );
-    let s = Said::with_raw("x".into(), &raw).named("open_log_dir");
-    let cmd = format!("{}：open_log_dir", label("detail.label.command"));
+    let s = Said::with_raw("x".into(), &raw).named("os_open");
+    let cmd = format!("{}：os_open", label("detail.label.command"));
     let raw_line = format!("{}：line one", label("detail.label.raw"));
     let at = |w: &str| {
         s.detail

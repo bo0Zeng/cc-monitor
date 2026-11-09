@@ -135,8 +135,8 @@ pub fn helper_request(args: &[String]) -> Option<HelperRequest> {
 /// 小助手切标签页那一件印的一行：`selected` · `single` · `miss <原因>`（原因同界面那一族的写法）。
 #[cfg(any(windows, test))]
 pub fn tab_line(pick: crate::bind::TabPick) -> String {
+    use crate::bind::TabMiss;
     use crate::bind::TabPick;
-    use face_core::front::TabMiss;
     let why = |m: TabMiss| match m {
         TabMiss::TitleIgnored => "title-ignored",
         TabMiss::NoUia => "no-uia",
@@ -153,8 +153,8 @@ pub fn tab_line(pick: crate::bind::TabPick) -> String {
 /// 小助手的答话 ⇒ 切标签页的结局；读不出（没起来 · 超时 · 形状不认）⇒ 当读不到标签页。
 #[cfg(any(windows, test))]
 pub fn parse_tab(out: &str) -> crate::bind::TabPick {
+    use crate::bind::TabMiss;
     use crate::bind::TabPick;
-    use face_core::front::TabMiss;
     match out.trim().split_whitespace().collect::<Vec<_>>().as_slice() {
         ["selected"] => TabPick::Selected,
         ["single"] => TabPick::Single,
@@ -252,9 +252,9 @@ fn helper_windows(pids: &[u32]) {
 /// 小助手的 tab 那一件：打开窗口的标签页，借 `pid` 的控制台挂记号、切过去、写回（规则在 `bind.rs::pick_tab`），印一行。
 #[cfg(windows)]
 fn helper_tab(pid: u32, hwnd: isize) {
+    use crate::bind::TabMiss;
     use crate::bind::TabPick;
     use copy_core::{Discard, Why};
-    use face_core::front::TabMiss;
     use std::io::Write;
     let marker = crate::bind::front_marker();
     let deadline = std::time::Instant::now() + TAB_BUDGET;
@@ -448,9 +448,9 @@ pub(crate) fn pick_tab_in_budget(
     put_back: std::sync::Arc<dyn Fn(&str) + Send + Sync>,
     answer: std::sync::Arc<dyn Fn(crate::bind::TabPick) + Send + Sync>,
 ) {
+    use crate::bind::TabMiss;
     use crate::bind::{pick_tab, TabPick, TabReader};
     use copy_core::{Discard, Why};
-    use face_core::front::TabMiss;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
     struct Lease {
@@ -619,6 +619,7 @@ pub enum TtyTitle<'a> {
 }
 
 /// 那一下写进终端的字节（控制字符从标题里摘掉，免得把序列提前截断）。
+#[cfg(target_os = "linux")]
 pub fn tty_title_bytes(op: TtyTitle) -> Vec<u8> {
     match op {
         TtyTitle::Push => b"\x1b[22;2t".to_vec(),

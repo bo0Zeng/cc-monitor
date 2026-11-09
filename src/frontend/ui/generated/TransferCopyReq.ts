@@ -3,9 +3,10 @@ import type { CopyFrom } from "./CopyFrom";
 import type { Decide } from "./Decide";
 import type { Machine } from "./Machine";
 import type { OnExists } from "./OnExists";
+import type { WirePath } from "./WirePath";
 
 /**
- * `transfer-copy`：一组远端路径从这一台复制到另一台的一个目录（经本机中转：A → 本机暂存 → B 暂存 → B 提交）。
+ * `transfer-copy`：一组路径从这一台搬到另一台的一个目录；两台都可以是本机（上传 · 下载 · 两台之间同这一条，编排都在本机后端）。
  * 目录整棵：建目录、逐个文件传，逐项结局照实回（目录里的文件键是 `序号/相对段`）。同名照 `on_exists`（目录同名只许跳过或保留两份）。
  * 带票 ⇒ 进度走 `files_batch` 帧，`files-batch-stop` 撤；断开照常做完，同一张票再问回同一份结局。
  */
@@ -19,6 +20,6 @@ from: Machine,
  */
 to: Machine, items: Array<CopyFrom>, 
 /**
- * 落点那台上的目录（绝对路径）。
+ * 落点那台上的目录（绝对路径；原始字节）。
  */
-to_dir: string, on_exists?: OnExists, decide?: { [key in string]: Decide }, ticket?: string, };
+to_dir: WirePath, on_exists?: OnExists, decide?: { [key in string]: Decide }, ticket?: string, };

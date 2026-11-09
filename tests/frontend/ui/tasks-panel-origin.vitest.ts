@@ -29,8 +29,9 @@ import { NO_TASKS, TasksPanel, fetchSessionTasks, originOfSession } from "../../
 import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import type { TaskEntry } from "../../../src/frontend/ui/tasks-panel";
 import type { TasksList } from "../../../src/frontend/ui/generated/TasksList";
+import type { TaskStatus } from "../../../src/frontend/ui/generated/TaskStatus";
 
-function task(id: string, status = "pending"): TaskEntry {
+function task(id: string, status: TaskStatus = "pending"): TaskEntry {
   return { id, subject: `s${id}`, status, statusText: status, blocks: [] };
 }
 

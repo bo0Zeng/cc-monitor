@@ -18,7 +18,6 @@ import {
   keyGroupMoveTarget,
   keyLeaveTarget,
   keyJoinPrevTarget,
-  sameDirName,
   DRAG_THRESHOLD_PX,
   DWELL_MS,
   DWELL_MOVE_PX,
@@ -179,22 +178,19 @@ describe("落下之后：顺序 ＋ 归属一次算好", () => {
   });
 });
 
-describe("新组名：两个 cwd 完全相同 ⇒ 那个目录名，否则「分组 N」", () => {
-  it("同目录（含两种分隔符 · 尾斜杠）⇒ 目录名", () => {
-    expect(sameDirName("/home/u/web-console", "/home/u/web-console/")).toBe("web-console");
-    expect(sameDirName("C:\\work\\app", "C:/work/app")).toBe("app");
+describe("新组名：两个 tab 的项目目录相同 ⇒ 会话事实里的项目名，否则「分组 N」", () => {
+  const at = (projectDir: string | null, projectName: string | null) => ({ projectDir, projectName });
+  const n = (k: number): string => copyText("tabDrop.group.defaultName", { n: k });
+
+  it("项目目录相同 ⇒ 后端写好的项目名（界面不切路径）", () => {
+    expect(defaultGroupName(at("C:\\w\\proj", "proj"), at("C:\\w\\proj", "proj"), [])).toBe("proj");
+    expect(defaultGroupName(at("/w/web-console", "web-console"), at("/w/web-console", "web-console"), [n(1)])).toBe("web-console");
   });
 
-  it("只共前缀不算（「work」没意义）；盘符不当名字；缺一边 ⇒ 没有", () => {
-    expect(sameDirName("/home/user/work/docs", "/home/user/work/cli")).toBeNull();
-    expect(sameDirName("C:\\", "C:\\")).toBeNull();
-    expect(sameDirName(null, "/a")).toBeNull();
-  });
-
-  it("不同目录 ⇒ 分组 N（现有最大号 ＋1）", () => {
-    const n = (k: number): string => copyText("tabDrop.group.defaultName", { n: k });
-    expect(defaultGroupName("/home/user/work/docs", "/home/user/work/cli", [n(1), "白天", n(3)])).toBe(n(4));
-    expect(defaultGroupName("/w/web-console", "/w/web-console", [n(1)])).toBe("web-console");
+  it("项目目录不同 · 缺一边 · 事实还没到（没有项目名）⇒ 分组 N（现有最大号 ＋1）", () => {
+    expect(defaultGroupName(at("/home/user/work/docs", "docs"), at("/home/user/work/cli", "cli"), [n(1), "白天", n(3)])).toBe(n(4));
+    expect(defaultGroupName(null, at("/a", "a"), [])).toBe(n(1));
+    expect(defaultGroupName(at("/a", null), at("/a", null), [])).toBe(n(1));
   });
 });
 

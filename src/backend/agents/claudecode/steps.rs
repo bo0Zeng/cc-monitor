@@ -8,7 +8,6 @@
 
 use super::asks::{ASK_TOOL, INTERACTIVE_TOOLS, PLAN_TOOL};
 use crate::agents::PlanTitleExt as _;
-use crate::agents::StepResultExt as _;
 use crate::agents::{
     Answer, ApiReason, AskOption, AskQuestion, LineDiff, LineDiffKind, LineDiffRow, StepAsk,
     StepBody, StepResult, ToolStep,
@@ -35,7 +34,7 @@ fn diff_row(
     }
 }
 
-/// 攒好的行 ＋ 整份的增删数 ⇒ 行差（[`line_diff::assemble`]）：「+N −M」那一句与过程那一行右侧那一句同一处写（[`StepResult::written`]）。
+/// 攒好的行 ＋ 整份的增删数 ⇒ 行差（[`line_diff::assemble`]，「+N −M」那一句也在那里写）。
 /// `notice` ＝ 降级了的那一句（[`line_diff::ops`] 超了格数上界时写的），照带。
 fn diff_of(
     rows: Vec<LineDiffRow>,
@@ -44,15 +43,7 @@ fn diff_of(
     truncated: bool,
     notice: Option<Words>,
 ) -> LineDiff {
-    let stat = StepResult {
-        ok: true,
-        added: Some(added),
-        removed: Some(removed),
-        ..StepResult::default()
-    }
-    .written(false)
-    .text;
-    line_diff::assemble(rows, added, removed, truncated, notice, stat)
+    line_diff::assemble(rows, added, removed, truncated, notice)
 }
 
 /// 结果里的逐段改动（`structuredPatch`）⇒ 整份的增删数 ＋ 行差（真行号从各段的 `oldStart` / `newStart` 起算；
@@ -383,16 +374,18 @@ const PLAN_APPROVED_LEAD: &str = "User has approved your plan";
 /// 提问答了之后的固定句：`User has answered your questions: "问"="答", "问"="答". …`
 const ANSWERED_LEAD: &str = "User has answered your questions:";
 
-/// 一个 `tool_result` 块（＋ 记录级 `toolUseResult`）⇒ 结果一句。
+/// 一个 `tool_result` 块（＋ 记录级 `toolUseResult`）⇒ 结果的数与码（`text` 留空：右侧那一句由核心 `step_clock::said` 一处写）。
+/// 读文件那一类 ＝ 结果里有 `file.numLines`（[`StepResult::read`]）。
 pub(crate) fn result_of(block: &Value, tur: Option<&Value>) -> StepResult {
-    let read = tur
+    let mut r = counted(block, tur);
+    r.read = tur
         .and_then(|t| t.get("file"))
         .and_then(|f| f.get("numLines"))
         .is_some();
-    counted(block, tur).written(read)
+    r
 }
 
-/// [`result_of`] 的数那一半（右侧那一句由 [`StepResult::written`] 写）。读文件那一类 ＝ 结果里有 `file.numLines`。
+/// [`result_of`] 的数那一半。
 fn counted(block: &Value, tur: Option<&Value>) -> StepResult {
     let text = super::text::stringify_json(block.get("content").unwrap_or(&Value::Null));
     let is_error = block.get("is_error").and_then(Value::as_bool) == Some(true);

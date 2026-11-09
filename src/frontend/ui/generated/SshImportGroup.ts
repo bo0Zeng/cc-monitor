@@ -14,6 +14,6 @@ addresses: Array<string>,
  */
 jump: string | null, members: Array<SshImportMember>, 
 /**
- * 这一组已在机器列表里（组里任一地址 ＋ 用户 ＋ 端口与列表里某台相同；列表由界面交来）。
+ * 这一组已在机器表里（组里任一地址 ＋ 用户 ＋ 端口与表里某台的拨号地址相同；表是本机后端自己那一张）。
  */
 inList: boolean, };

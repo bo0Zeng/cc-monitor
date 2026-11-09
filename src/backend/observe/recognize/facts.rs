@@ -43,6 +43,7 @@
 
 use crate::agents::beat::{contains, one_line, Act, Beat, Side, StopWhy, Watch};
 use crate::common::cells::Words;
+use crate::wire::needs::NeedAt;
 pub use cmd_wire::needs::{Needs, NeedsKind};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -96,6 +97,11 @@ pub struct SessionFacts {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub cwd_shown: Option<Words>,
+    /// 项目名：`project_dir` 的最后一段（`plain_path_core::last_segment`，与历史清单 · 搜索行同一个函数，`/` 与 `\` 都认），
+    /// 与 `cwdShown` 同一处写；两端照摆、不自己切路径。项目目录还没读到 ⇒ 不出现。每次现给，不累加。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub project_name: Option<String>,
     /// 这份记录是哪一家的（线上的 kind，适配层按记录认：`agents::record_kind_of`）；认不出 ⇒ `null`（界面要分家的那几项灰着，不落哪一家）。
     pub agent: Option<crate::agents::AgentKind>,
     /// 此刻持着这条会话的活进程 pid（`accounts_query::session_holders`：照那一家声明的判活方式查），升序；不累加，每次现查。
@@ -825,14 +831,6 @@ const PLAN_RANK: u64 = (NEEDS_BY_DANGER.len() as u64 + 1) * NEEDS_TIER_SPAN;
 /// 会话外的（需登录的号 · MCP）排在计划格之后那一档。
 const MANUAL_RANK: u64 = (NEEDS_BY_DANGER.len() as u64 + 2) * NEEDS_TIER_SPAN;
 
-/// 计划里要人看的一条：哪个工作区 · 哪一片 · 落在哪一格（计划那一侧 `plan::needs::need_items` 算好交进来；没有格可落 ⇒ `None`）。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NeedAt {
-    pub workspace: String,
-    pub slice: String,
-    pub cell: Option<cmd_wire::needs::NeedsCell>,
-}
-
 /// **一台的需手动整份**（`sessions-needs` 的回包，唯一一处拼）：在等的会话（各带 `needs.rank`）· 计划里要人看的每一条
 /// （`plan` ＝ [`NeedAt`] 那几条）· 会话外的（`manual`：读不出 ⇒ 那一句，那一截不列）。
 /// 排好：照 `rank`，并列照交进来的先后。纯计算。
@@ -1434,7 +1432,7 @@ pub fn settle_retries(f: &mut SessionFacts, tz: &crate::common::time::Tz) {
             let reason = crate::agents::record::reason_word(r.reason);
             let text = match r.outcome {
                 RetryOutcome::Retrying => {
-                    crate::agents::record::retry_line(r.reason, r.attempt, r.max, &hm(r.since_ms))
+                    crate::wire::stamp::retry_line(r.reason, r.attempt, r.max, &hm(r.since_ms))
                 }
                 RetryOutcome::Recovered => copy_core::copy_text(
                     "apiError.retry.recovered",

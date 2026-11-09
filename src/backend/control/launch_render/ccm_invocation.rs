@@ -449,7 +449,7 @@ fn launch_face(agent: &str) -> Result<crate::agents::LaunchFace, Refusal> {
         .map_err(Refusal::UnknownAgent)
 }
 
-/// 一个**已有**会话的名字：拒绝集（控制符 · 欺骗字符）＋ 非空（`control/gate_rules.rs`，全仓唯一一份）。
+/// 一个**已有**会话的名字：拒绝集（控制符 · 欺骗字符 · `:`）＋ 非空（`control/gate_rules.rs`，全仓唯一一份）。
 fn existing_name_ok(name: &str) -> Result<(), Refusal> {
     match crate::control::gate_rules::existing_tmux_name_issue(name) {
         None => Ok(()),

@@ -107,7 +107,10 @@ impl Home {
                         .collect(),
                 })
             }),
-            Arc::new(std::collections::BTreeSet::new),
+            crate::accounts::upstream_select::rotate::HistoryPorts {
+                live: Arc::new(std::collections::BTreeSet::new),
+                ring: Arc::new(|| {}),
+            },
             Some(ep),
         )
     }

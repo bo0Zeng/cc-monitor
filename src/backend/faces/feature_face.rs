@@ -4,7 +4,7 @@
 //! 数的正是「把活交给 `read_face::answer` 的帧命令」，本族不在那张表里。
 //!
 //! - 住顶层、不住 `observe/`：`stream/inbound/` 不许出现 `observe::`；本文件只做换壳，读的本体在 `observe/`。
-//! - 应答都是成品：`tasks-list` → `{tasks: [...]}`（字段语义住 `observe/tasks_query.rs::task_entry`），界面经通道直接问、按形状收。
+//! - 应答都是成品：`tasks-list` → `{tasks: [...]}`（任务文件读法在 `agents/claudecode/tasks.rs`，成品句在 `observe/tasks_query.rs`），界面经通道直接问、按形状收。
 //!   整份超过 [`crate::faces::read_face::LINES_CAP_BYTES`] ⇒ `too_large`（不截断）。
 //! - 不拨号、不起进程、不写盘。
 

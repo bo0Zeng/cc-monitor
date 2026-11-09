@@ -332,7 +332,7 @@ fn powershell_single_quoted_literals_have_one_exit() {
 /// 家目录那两个环境变量名（字面量**整串相等**才算，`"$HOME/…"` 这类 shell 文本不算）。
 const HOME_VARS: &[&str] = &["HOME", "USERPROFILE"];
 
-/// 后端生产段里允许的命中（逐条说清）。读法本身住共享契约 `creds_core::store::home_dir_on`，后端一处都不写。
+/// 后端生产段里允许的命中（逐条说清）。读法本身住契约包 `relay_route_core::home_dir_on`，后端一处都不写。
 const HOME_ELSEWHERE: &[(&str, &str, usize)] = &[
     // 交给插件子进程**透传**的变量名表（不是读家目录）。
     ("plugin/invoke.rs", "HOME", 1),
@@ -350,7 +350,7 @@ fn home_census_of(src: &str) -> (BTreeMap<&'static str, usize>, usize) {
 }
 
 /// ★ 要求：「高危四条 … 与中低各条发版前修」（后端多处只读 `HOME`、另有多处各自手写 `HOME.or(USERPROFILE)`）。
-/// 读家目录的规矩只在共享契约 `creds_core::store::home_dir_on` 一处（后端 `platform::paths::home_dir` 转调它）：
+/// 读家目录的规矩只在契约包 `relay_route_core::home_dir_on` 一处（后端 `platform::paths::home_dir` 转调它）：
 /// 后端生产段 `"HOME"` / `"USERPROFILE"` 字面量的 `(文件, 名字) → 处数` == [`HOME_ELSEWHERE`]（两向）· 契约那份各恰好 1 处；
 /// `std::env::home_dir` 的调用零处（`dial/ssh_config.rs` 那最后一处改调了 `platform::paths::home_dir`）。
 /// 正控：往副本里塞回一处手写读数 · 一处 `std::env::home_dir` 都数得出。
@@ -382,11 +382,13 @@ fn the_home_directory_is_read_in_one_place() {
         "家目录又有人自己读了（哪个变量算家是两侧的契约）⇒ 改调 `platform::paths::home_dir` / `home_dir_from`；\
          不是读家目录的（透传表之类），写进 `HOME_ELSEWHERE` 并说清"
     );
-    let contract = home_census_of(include_str!("../../../src/common/creds-core/src/store.rs"));
+    let contract = home_census_of(include_str!(
+        "../../../src/common/relay-route-core/src/lib.rs"
+    ));
     assert_eq!(
         contract,
         (BTreeMap::from([("HOME", 1), ("USERPROFILE", 1)]), 0),
-        "读家目录的那一处（`creds_core::store`）量不出那两个变量名 —— 规矩搬走了或尺子瞎了"
+        "读家目录的那一处（`relay_route_core`）量不出那两个变量名 —— 规矩搬走了或尺子瞎了"
     );
     assert_eq!(
         std_calls,
@@ -397,4 +399,41 @@ fn the_home_directory_is_read_in_one_place() {
     assert_eq!(home_census_of(planted), (BTreeMap::from([("HOME", 1)]), 0));
     let planted_std = "fn h() -> Option<std::path::PathBuf> {\n    std::env::home_dir()\n}\n";
     assert_eq!(home_census_of(planted_std), (BTreeMap::new(), 1));
+}
+
+/// 数据目录的规矩（`CCM_DATA_DIR` 优先，否则 `<家>/.cc-monitor`）只住契约包 `relay_route_core::monitor_data_dir`；
+/// 后端生产段推数据目录只许 `platform/paths.rs` 一处（`data_home_from`），别处都经 `platform::paths::data_home` / `data_home_from`。
+/// 量的是 `monitor_data_dir(` 的处数（`(文件, 处数)` 两向相等）。正控：往副本里塞一处调用数得出。
+#[test]
+fn the_data_home_is_derived_in_one_place() {
+    let count = |src: &str| {
+        guard_core::production_code(src)
+            .matches("monitor_data_dir(")
+            .count()
+    };
+    let root = guard_core::addr::backend_src_root();
+    let mut got = BTreeMap::new();
+    for (p, src) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
+        let rel = p
+            .strip_prefix(&root)
+            .unwrap_or(&p)
+            .to_string_lossy()
+            .replace('\\', "/");
+        let n = count(&src);
+        if n > 0 {
+            got.insert(rel, n);
+        }
+    }
+    assert_eq!(
+        got,
+        BTreeMap::from([
+            ("platform/paths.rs".to_string(), 1),
+            // 装别名块那一跳按交进来的家推：`fn monitor_data_dir(home)` 的定义与 `plan_install` 里那一处调用，转调 `data_home_from`。
+            ("assets/aliases/block.rs".to_string(), 2),
+        ]),
+        "后端又有一处自己推数据目录 ⇒ 改调 `platform::paths::data_home` / `data_home_from`"
+    );
+    let planted =
+        "fn d() -> Option<std::path::PathBuf> {\n    relay_route_core::monitor_data_dir(None, None)\n}\n";
+    assert_eq!(count(planted), 1);
 }

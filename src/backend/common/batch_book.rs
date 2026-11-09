@@ -31,6 +31,44 @@ pub struct Progress {
     pub current: Option<wire::WirePath>,
     /// 整组按字节：已传 · 一共（只有搬字节的那一种报）。
     pub bytes: Option<(u64, u64)>,
+    /// 还要多久的成品字（[`left_text`]，照这一组开做到此刻的平均速度）；说不出 ⇒ 缺。
+    pub left_text: Option<String>,
+}
+
+/// 进度那一格上线的那一帧（`files_batch`）：听的那一侧（帧面每条连接）照它推。
+impl From<&Progress> for cmd_wire::frame::FilesBatch {
+    fn from(p: &Progress) -> Self {
+        Self {
+            ticket: p.ticket.clone(),
+            done: p.done,
+            total: p.total,
+            current: p.current.clone(),
+            bytes_done: p.bytes.map(|b| b.0),
+            bytes_total: p.bytes.map(|b| b.1),
+            left_text: p.left_text.clone(),
+        }
+    }
+}
+
+/// 还要多久那一句：照这一组到此刻的平均速度（`got` 字节用了 `elapsed` 秒）。刚开头（不足 2 秒或一个字节都没走）· 已走满 ⇒ 不说。
+/// 向上取整到这一档的单位（秒 / 分 / 时），再交短时长出字。
+pub fn left_text(got: u64, total: u64, elapsed: f64) -> Option<String> {
+    if got == 0 || got >= total || elapsed < 2.0 {
+        return None;
+    }
+    let left = (total - got) as f64 / (got as f64 / elapsed);
+    let secs = left.ceil() as u64;
+    let up = if secs < 60 {
+        secs.max(1)
+    } else if secs < 3600 {
+        secs.div_ceil(60) * 60
+    } else {
+        secs.div_ceil(3600) * 3600
+    };
+    Some(copy_core::copy_text(
+        "rsFilewinProgress.eta.about",
+        &[("dur", &copy_core::short_duration(up * 1000))],
+    ))
 }
 
 /// 按票记的一组。
@@ -118,9 +156,20 @@ pub struct Run {
     job: Option<Arc<Job>>,
     ticket: String,
     total: u64,
+    /// 开做那一刻（剩余时间照它算平均速度）。
+    began: std::time::SystemTime,
 }
 
 impl Run {
+    fn new(job: Option<Arc<Job>>, ticket: &str, total: usize) -> Run {
+        Run {
+            job,
+            ticket: ticket.to_string(),
+            total: total as u64,
+            began: crate::common::time::now(),
+        }
+    }
+
     pub fn stopped(&self) -> bool {
         self.job
             .as_ref()
@@ -134,9 +183,16 @@ impl Run {
         });
     }
 
-    /// 整组按字节走到哪了（项数 · 手上那一项不动）。
+    /// 整组按字节走到哪了（项数 · 手上那一项不动）；还要多久那一句跟着重算。
     pub fn sent(&self, done: u64, total: u64) {
-        self.tell(|p| p.bytes = Some((done.min(total), total)));
+        let done = done.min(total);
+        let elapsed = crate::common::time::now()
+            .duration_since(self.began)
+            .map_or(0.0, |d| d.as_secs_f64());
+        self.tell(|p| {
+            p.bytes = Some((done, total));
+            p.left_text = left_text(done, total, elapsed);
+        });
     }
 
     fn tell(&self, change: impl FnOnce(&mut Progress)) {
@@ -164,11 +220,7 @@ pub fn ticketed<P, E>(
 ) -> Result<BatchReply, E> {
     let Some(t) = ticket else {
         let p = probe()?;
-        let run = Run {
-            job: None,
-            ticket: String::new(),
-            total: total as u64,
-        };
+        let run = Run::new(None, "", total);
         return Ok(work(p, &run));
     };
     if !ticket_ok(t) {
@@ -199,6 +251,7 @@ pub fn ticketed<P, E>(
                 total: total as u64,
                 current: None,
                 bytes: None,
+                left_text: None,
             }),
             end: Mutex::new(None),
             ended: Condvar::new(),
@@ -213,11 +266,7 @@ pub fn ticketed<P, E>(
             return Err(f);
         }
     };
-    let run = Run {
-        job: Some(job.clone()),
-        ticket: t.to_string(),
-        total: total as u64,
-    };
+    let run = Run::new(Some(job.clone()), t, total);
     run.step(0, None);
     let reply = work(p, &run);
     *lock(&job.end) = Some(reply.clone());

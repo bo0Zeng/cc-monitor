@@ -817,26 +817,6 @@ pub async fn list_dir(s: &Session, path: &str) -> Option<Vec<(String, Option<u64
     )
 }
 
-/// 列一层目录：`(名, 是不是目录, 大小)`（`.` 与 `..` 不算）。读，不过围栏。
-pub async fn list_entries(s: &Session, path: &str) -> Result<Vec<(String, bool, u64)>, Said> {
-    let rd = s.sftp().read_dir(path.to_string()).await.map_err(|e| {
-        Said::with_raw(
-            copy_text(
-                "beSftp.list.failed",
-                &[("path", path), ("why", &why_of(&e))],
-            ),
-            &e,
-        )
-    })?;
-    Ok(rd
-        .filter(|e| e.file_name() != "." && e.file_name() != "..")
-        .map(|e| {
-            let m = e.metadata();
-            (e.file_name(), m.is_dir(), m.size.unwrap_or(0))
-        })
-        .collect())
-}
-
 /// 删一份文件。回「真删了」（不在 ⇒ `false`，不算错）。
 pub async fn remove(s: &Session, path: &str) -> Result<bool, Refusal> {
     let rel = fenced_remote(s, path, Intent::File).await?;

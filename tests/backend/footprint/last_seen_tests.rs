@@ -313,7 +313,7 @@ fn 每一样按回包类型收_形状不对的不收() {
     missing["accounts"][0]
         .as_object_mut()
         .unwrap()
-        .remove("color");
+        .remove("name");
     let mut wrong = accounts_list();
     wrong["accounts"][0]["color"] = json!("3");
     for v in [

@@ -6,7 +6,7 @@
 
 use super::TermRow;
 use crate::common::session_snapshot::SessionRow;
-use crate::common::tmux_utf8::{UTF8_CLIENT_ENV, UTF8_CLIENT_FLAG};
+use crate::common::tmux_utf8::{tab_underflow, UTF8_CLIENT_ENV, UTF8_CLIENT_FLAG};
 use crate::platform::child::{Child, ChildFail, Deadline};
 use copy_core::copy_text;
 
@@ -132,12 +132,14 @@ pub fn parse_rows(text: &str) -> (Vec<TermRow>, bool) {
         }
         seen.push(l.id);
         let mine: Vec<&PaneLine> = panes.iter().filter(|q| q.id == l.id).collect();
+        // 挂着同一个 sid 的几个窗格 ⇒ 照门那一份挑法（[`carrier_by`]）挑一个。
         let mut tagged: Vec<&PaneLine> = Vec::new();
         for q in mine.iter().filter(|q| !q.f[7].is_empty()) {
-            match tagged.iter().position(|t| t.f[7] == q.f[7]) {
-                Some(k) if q.current => tagged[k] = q,
-                Some(_) => {}
-                None => tagged.push(q),
+            if tagged.iter().any(|t| t.f[7] == q.f[7]) {
+                continue;
+            }
+            if let Some(c) = carrier_by(&mine, q.f[7], |p| p.f[7], |p| p.current) {
+                tagged.push(*c);
             }
         }
         if tagged.is_empty() {
@@ -150,6 +152,88 @@ pub fn parse_rows(text: &str) -> (Vec<TermRow>, bool) {
     }
     rows.sort_by(|a, b| a.name.cmp(&b.name));
     (rows, odd)
+}
+
+/// 挂着 `sid` 的那一个：同一个 sid 挂在几处（会话那一级的旧标签往下透）⇒ 当前窗格那个，否则第一个；
+/// 空 `sid` ⇒ 没有（没挂标签的窗格不算「挂着空 sid」）。名单去重（[`parse_rows`]）与门（[`carrier`]）同一个挑法。
+pub fn carrier_by<'a, T>(
+    items: &'a [T],
+    sid: &str,
+    sid_of: impl Fn(&T) -> &str,
+    current: impl Fn(&T) -> bool,
+) -> Option<&'a T> {
+    if sid.is_empty() {
+        return None;
+    }
+    let mut hits = items.iter().filter(|p| sid_of(p) == sid);
+    let first = hits.clone().next();
+    hits.find(|p| current(p)).or(first)
+}
+
+/// 一个会话里的一个窗格（[`panes_on`] 的一行）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PaneTag {
+    /// `#{pane_id}`（`%N`，server 生命周期内不复用 ⇒ 对它下手同对 `#{session_id}` 下手一样关得住 TOCTOU）。
+    pub pane: String,
+    /// 根进程 pid（杀成之后按它认 cc-bus 名册）。
+    pub pid: u32,
+    /// 它挂着的 `@ccm_sid`（窗格上的；没有就是会话那一级的；都没有 ⇒ 空串）。
+    pub sid: String,
+    /// 是不是会话此刻的当前窗格（当前窗口的活动窗格）。
+    pub current: bool,
+}
+
+/// 列一个会话全部窗格的格式：句柄 · 根进程 pid · `@ccm_sid` · 是不是当前窗格（窗格活动、窗口也活动 ⇒ `11`）。
+const SESSION_PANES_FMT: &str =
+    "#{pane_id}\t#{pane_pid}\t#{@ccm_sid}\t#{pane_active}#{window_active}";
+
+/// 这个会话（`#{session_id}` 或 `=名:`）的全部窗格。只读 tmux；问不到 ⇒ 空。
+pub fn panes_on(on: On<'_>, session: &str) -> Vec<PaneTag> {
+    on.read(&[
+        UTF8_CLIENT_FLAG,
+        "list-panes",
+        "-F",
+        SESSION_PANES_FMT,
+        "-s",
+        "-t",
+        session,
+    ])
+    .map(|o| parse_panes(&String::from_utf8_lossy(&o.stdout)))
+    .unwrap_or_default()
+}
+
+/// [`panes_on`] 的原文 ⇒ 行（纯函数）。读不懂的行丢掉（段数不对 = 打印通道被改写，宁可当它不在）。
+pub fn parse_panes(text: &str) -> Vec<PaneTag> {
+    text.lines()
+        .filter_map(|l| {
+            let f: Vec<&str> = l.split('\t').collect();
+            match f.as_slice() {
+                [pane, pid, sid, cur] if pane.starts_with('%') => Some(PaneTag {
+                    pane: pane.to_string(),
+                    pid: pid.trim().parse().ok()?,
+                    sid: sid.to_string(),
+                    current: *cur == "11",
+                }),
+                _ => None,
+            }
+        })
+        .collect()
+}
+
+/// 挂着 `sid` 的那个窗格（挑法见 [`carrier_by`]）。
+pub fn carrier<'a>(panes: &'a [PaneTag], sid: &str) -> Option<&'a PaneTag> {
+    carrier_by(panes, sid, |p| p.sid.as_str(), |p| p.current)
+}
+
+/// tmux 的 pane id 形状：`%` + 十进制数字。空串必须挡住：`-t ''` 不报错，静默解析成「当前 / 最近的那个会话」。
+pub fn pane_id_ok(pane: &str) -> bool {
+    pane.strip_prefix('%')
+        .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+}
+
+/// `$TMUX` 的值（`socket,pid,session`）⇒ socket 路径；空 ⇒ 没有。
+pub fn socket_of(tmux_env: &str) -> Option<&str> {
+    tmux_env.split(',').next().filter(|s| !s.is_empty())
 }
 
 /// `list-clients` 的原文 ⇒ `[(会话 ID, 接上时刻, 最后活动)]`（纯函数；读不懂的行丢掉）。
@@ -247,32 +331,71 @@ pub fn tmux_unavailable(e: ChildFail) -> Said {
     crate::wire::spec::fail(code, said)
 }
 
-/// 一次列全部会话（快照的探测器）的格式串。**三列**用 TAB 分隔：会话名（tmux 转义成字面 `\t`）· 活动窗格的 `@ccm_sid` · 各窗格的 `@ccm_sid`
-/// （见 `common::session_snapshot::pane_sids`，会话 id 的字符集 `[A-Za-z0-9-]`）⇒ 下溢与过溢都不会由合法内容触发，下溢只可能是打印通道被改写。
-/// 列数 `LIST_FMT_FIELDS` 住快照那一侧（切行在那里）。
-pub(crate) const LIST_FMT: &str = "#{session_name}\t#{@ccm_sid}\t#{W:#{P:#{@ccm_sid} }}";
+/// 列整台会话的格式串（会话快照的探测器 [`list_sessions`] 与观测那一跳 `tmux ls` 同一份；真 TAB 分列）：
+/// name⇥path⇥cmd⇥attached⇥windows⇥@ccm_sid（活动窗格的）⇥session_id⇥各窗格的 @ccm_sid。
+///
+/// `@ccm_sid` 打在**窗格**上（一个会话里可以跑几个 claude）：末列逐窗口、逐窗格展开（解析见
+/// `common::session_snapshot::pane_sids`）；`#{session_id}` 是会话账本认会话的句柄（会话改名它不变）。
+pub const TMUX_LS_FMT: &str = "#{session_name}\t#{pane_current_path}\t#{pane_current_command}\t#{?session_attached,1,0}\t#{session_windows}\t#{@ccm_sid}\t#{session_id}\t#{W:#{P:#{@ccm_sid} }}";
+
+/// `TMUX_LS_FMT` 的列数 —— `tab_underflow` 的 N。**改格式串必须同步这个数**。
+pub const TMUX_LS_FMT_FIELDS: usize = 8;
+
+/// 一行 `tmux ls` 切成列；段数不等于 `TMUX_LS_FMT_FIELDS`（下溢 = 通道被改写 · 过溢 = 路径里有真 TAB）或名字空 ⇒ 整行丢掉
+/// （通道被改写就不当好数据；本函数也被「raw 从别处来」的路径调得到，不许假设上游已经筛过）。
+/// 回 `(会话名, 句柄, 这个会话挂着的 sid)`，sid 活动窗格那个在前。
+pub fn ls_row(line: &str) -> Option<(&str, &str, Vec<String>)> {
+    let cols: Vec<&str> = line.split('\t').collect();
+    if cols.len() != TMUX_LS_FMT_FIELDS {
+        return None;
+    }
+    let name = cols[0].trim();
+    if name.is_empty() || name == "NO_TMUX" {
+        return None;
+    }
+    let sids = crate::common::session_snapshot::pane_sids(cols[5], cols[7]);
+    Some((name, cols[6].trim(), sids))
+}
+
+/// `tmux ls -F TMUX_LS_FMT` 的原文 ⇒ 那张唯一的会话快照认的行（会话名 ＋ 它某个窗格上的 `@ccm_sid`，挂着几个就几行）。
+pub fn session_rows(raw: &str) -> Vec<SessionRow> {
+    raw.lines()
+        .filter_map(ls_row)
+        .flat_map(|(name, _, sids)| crate::common::session_snapshot::rows_of(name, sids))
+        .collect()
+}
 
 /// 全 crate 唯一一处「一次列全部 tmux 会话」的起进程点：一次调用列全部，不是每个成员探一次。
-/// 不看退出码（同 `control/gate.rs::probe`）：没有任何会话时 `tmux ls` 是非零 + 空输出，那是「一个都没有」。
-/// `-u` 必须排在子命令之前：放到后面是 `rc=1 + unknown flag -u`，会被压成「一个会话都没有」（`host_tests` 那条判据钉住次序）。
+/// 不看退出码（同 `control/gate.rs::probe_with`）：没有任何会话时 `tmux ls` 是非零 + 空输出，那是「一个都没有」。
+/// `-u` 必须排在子命令之前：放到后面是 `rc=1 + unknown flag -u`，会被压成「一个会话都没有」（`session_snapshot_tests` 那条判据钉住次序）。
+/// 段数下溢的行出声、整行不当好数据（`INVARIANTS §49`）。
 #[expect(
     clippy::disallowed_methods,
     reason = "全 crate 唯一一处一次列全部 tmux 会话（会话快照的探测器）：只读 tmux，不改任何状态"
 )]
 pub(crate) fn list_sessions() -> Result<Vec<SessionRow>, Said> {
     let out = child(None)
-        .args([UTF8_CLIENT_FLAG, "list-sessions", "-F", LIST_FMT])
+        .args([UTF8_CLIENT_FLAG, "list-sessions", "-F", TMUX_LS_FMT])
         .run(TMUX_WITHIN)
         .map_err(|e| {
-            // 句子只说原因词；系统原话记一行日志（快照的失败只交码与那一句，原话不随它走）。
+            // 不走 [`tmux_unavailable`]：快照的失败只交码与那一句，系统原话记一行日志、不随它走（原话位留空）。
             let (c, s) = e.into_cmd_said("no_tmux", |why| {
                 copy_text("reason.tmux.startFailed", &[("why", why)])
             });
             Said::new(c, crate::common::said::IntoNote::into_note(s))
         })?;
-    Ok(crate::common::session_snapshot::parse_rows(
-        &String::from_utf8_lossy(&out.stdout),
-    ))
+    let text = String::from_utf8_lossy(&out.stdout);
+    for line in text.lines() {
+        if !line.trim().is_empty() && tab_underflow(line, TMUX_LS_FMT_FIELDS) {
+            tracing::warn!(
+                "CCM_TMUX_UNPARSABLE list-sessions 切出 {} 段 < {TMUX_LS_FMT_FIELDS} —— \
+                 tmux 打印通道被改写（客户端不是 UTF-8 ⇒ TAB 变 `_`），\
+                 整行不当好数据。原样回包：{line:?}",
+                line.split('\t').count()
+            );
+        }
+    }
+    Ok(session_rows(&text))
 }
 
 /// 观测那一跳 `tmux ls` 的 `sh -c` 脚本：`command -v` 门控解析 PATH；**`exec` 让 tmux 的 rc 原样成为 sh 的 rc**。
@@ -317,3 +440,7 @@ pub fn via_shell(
 #[cfg(test)]
 #[path = "../../../tests/backend/host/tmux_within_tests.rs"]
 mod within_tests;
+
+#[cfg(test)]
+#[path = "../../../tests/backend/host/tmux_tests.rs"]
+mod tests;

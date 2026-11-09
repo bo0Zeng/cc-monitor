@@ -17,7 +17,7 @@ use cmd_wire::cells::Tone;
 use cmd_wire::quota::{SLOT_5H, SLOT_7D};
 pub(crate) use cmd_wire::rotation::{
     RotAccount, RotBadCell, RotBoard, RotCan, RotCell, RotChoice, RotDaySeg, RotGroup, RotHint,
-    RotLine, RotLogRow, RotMark, RotNote, RotOldFile, RotPlate, RotRefused, RotRow,
+    RotLine, RotLogRow, RotMark, RotNote, RotOldFile, RotPlate, RotRefused, RotRemove, RotRow,
     RotStrategyError, RotStrategyItem, RotTarget, RotationStrategiesReply, RotationStrategiesReq,
     RotationViewReply, RotationViewReq,
 };
@@ -49,6 +49,41 @@ impl crate::wire::typed::Handle for RotationStrategies {
     }
 }
 
+/// 还活着、用着 `id` 那份（哪一版都算）的会话。
+pub(crate) fn users(book: &Book, id: &str, live: &dyn Fn(&str) -> bool) -> Vec<String> {
+    uses::in_use(book, id, None)
+        .into_iter()
+        .filter(|sid| live(sid))
+        .collect()
+}
+
+/// 一份策略能不能删（`rotation-strategy-delete` 照这一处拒）：活会话在用 ⇒ 不能，说几个 · 谁；新会话用它 ⇒ 不能。
+pub(crate) fn remove_of(users: &[String], for_new: bool) -> RotRemove {
+    let why = if !users.is_empty() {
+        Some(copy_core::copy_text(
+            "beRotation.strategy.inUse",
+            &[("n", &users.len().to_string())],
+        ))
+    } else if for_new {
+        Some(copy_core::copy_text("beRotation.edit.forNew", &[]))
+    } else {
+        None
+    };
+    let who = (!users.is_empty()).then(|| {
+        let annotations = annotations();
+        users
+            .iter()
+            .map(|sid| crate::history::session_hidden::title_here(sid, &annotations))
+            .collect::<Vec<_>>()
+            .join(&copy_core::copy_text("kit.text.sep", &[]))
+    });
+    RotRemove {
+        enabled: why.is_none(),
+        why,
+        who,
+    }
+}
+
 /// 一份写成线上那一项。
 pub(crate) fn item_of(
     s: &shelf::Shelved,
@@ -67,10 +102,7 @@ pub(crate) fn item_of(
         description,
         rev: s.rev.clone(),
         error: s.file.as_ref().err().map(error_of),
-        in_use: uses::in_use(book, &s.id, None)
-            .into_iter()
-            .filter(|sid| live(sid))
-            .collect(),
+        remove: remove_of(&users(book, &s.id, live), for_new == s.id),
         for_new: for_new == s.id,
         words_bad: head.is_some_and(|h| form::words_bad(&h.form)),
         tz_unknown: head.is_some_and(|h| h.tz.is_none() || h.tz_unknown),
@@ -102,14 +134,11 @@ pub(crate) fn strategies_with(
     }
 }
 
-/// 一个号的号牌：号色照账号库（库里没有 ⇒ 按名补的那一格）· 号名 · 号牌字（与 `accounts-list` 那一行同一处写法）。
+/// 一个号的号牌：号色照账号库（库里没有 ⇒ 缺，画中性）· 号名 · 号牌字（与 `accounts-list` 那一行同一处写法）。
 fn plate_of(id: &str, colors: &std::collections::BTreeMap<String, u8>) -> RotPlate {
     use crate::accounts::quota::name_words::{account_text, plate_text};
     RotPlate {
-        color: colors
-            .get(id)
-            .copied()
-            .unwrap_or_else(|| crate::accounts::manage::model::color_fallback(id)),
+        color: colors.get(id).copied(),
         label: Words(account_text(id)),
         text: Words(plate_text(id)),
     }
@@ -159,16 +188,17 @@ fn note_of(hint: RotHint, name: &str, why: FailWhy) -> RotNote {
     let text = match &hint {
         RotHint::Hold {
             until_text: Some(at),
+            left_text: Some(dur),
             account: Some(a),
-            ..
         } => copy_core::copy_text(
             "beRotation.hint.holdUntil",
-            &[("at", at), ("account", a), ("dur", "{dur}")],
+            &[("at", at), ("account", a), ("dur", dur)],
         ),
         RotHint::Hold {
             until_text: Some(at),
+            left_text: Some(dur),
             ..
-        } => copy_core::copy_text("beRotation.hint.holdAt", &[("at", at), ("dur", "{dur}")]),
+        } => copy_core::copy_text("beRotation.hint.holdAt", &[("at", at), ("dur", dur)]),
         RotHint::Hold { .. } => copy_core::copy_text("beRotation.hint.hold", &[]),
         RotHint::StrategyError { error, .. } => match error.line {
             Some(l) => copy_core::copy_text(
@@ -238,14 +268,18 @@ fn title_of(target: &RotTarget) -> Option<String> {
     let RotTarget::Session { sid } = target else {
         return None;
     };
-    let annotations = match crate::history::history_annotations::load() {
-        crate::history::history_annotations::Loaded::Read(t) => t,
-        _ => Default::default(),
-    };
     Some(crate::history::session_hidden::title_here(
         sid,
-        &annotations,
+        &annotations(),
     ))
+}
+
+/// 会话改过的名字那张表（读不出 ⇒ 空表：照标题 · 第一句 · id 前 8 位）。
+fn annotations() -> crate::history::history_annotations::Table {
+    match crate::history::history_annotations::load() {
+        crate::history::history_annotations::Loaded::Read(t) => t,
+        _ => Default::default(),
+    }
 }
 
 crate::wire::typed::codes! {
@@ -514,6 +548,7 @@ pub(crate) fn view_with(
             log: log_rows(&session.log),
             hints,
             can: can_of(&req.target, false),
+            foot: None,
         });
     }
     let row = ctx.row(&agent);
@@ -534,7 +569,7 @@ pub(crate) fn view_with(
             summary: String::new(),
             rev: String::new(),
             error: None,
-            in_use: Vec::new(),
+            remove: remove_of(&users(&base, &plan.id, live), for_new == plan.id),
             for_new: for_new == plan.id,
             words_bad: false,
             tz_unknown: false,
@@ -543,16 +578,11 @@ pub(crate) fn view_with(
     };
     let mut hints = Vec::new();
     if let Pick::Hold { until, account } = &d.pick {
+        let clock = crate::common::time::TextClock::new(now, tz);
         hints.push(RotHint::Hold {
-            until: *until,
             account: account.clone(),
-            until_text: until.map(|t| {
-                crate::common::time::fmt_at(
-                    i64::try_from(t).unwrap_or(i64::MAX),
-                    i64::try_from(now).unwrap_or(i64::MAX),
-                    tz,
-                )
-            }),
+            until_text: until.map(|t| clock.text(t).0),
+            left_text: until.and_then(|t| clock.rel(t)).map(|w| w.0),
         });
     }
     let why = d.strategy_error.as_ref().map_or(FailWhy::Other, |e| e.why);
@@ -689,6 +719,8 @@ pub(crate) fn view_with(
         ),
     };
     let name = item.id.clone();
+    let used = item.remove.who.is_some();
+    let notes: Vec<RotNote> = hints.into_iter().map(|h| note_of(h, &name, why)).collect();
     Ok(RotationViewReply {
         now,
         now_text: face(now, tz),
@@ -713,9 +745,23 @@ pub(crate) fn view_with(
         decision: Some(decision_of(&d)),
         timeline,
         log,
-        hints: hints.into_iter().map(|h| note_of(h, &name, why)).collect(),
+        foot: Some(foot_of(&name, &notes, used)),
+        hints: notes,
         can: can_of(&req.target, true),
     })
+}
+
+/// 编辑小窗底行：改的是哪份 ＋（有会话还在用旧版 ⇒ 那一条提示的那一句；没有会话在用 ⇒ 说没有）。
+fn foot_of(name: &str, notes: &[RotNote], used: bool) -> String {
+    let older = notes
+        .iter()
+        .find(|n| matches!(n.hint, RotHint::Older { .. }))
+        .map(|n| n.text.clone());
+    let tail = older.or_else(|| (!used).then(|| copy_core::copy_text("rot.pane.noUse", &[])));
+    std::iter::once(copy_core::copy_text("rot.pane.foot", &[("name", name)]))
+        .chain(tail)
+        .collect::<Vec<_>>()
+        .join(&copy_core::copy_text("kit.text.sep", &[]))
 }
 
 /// 会话那一形能做的几样：轮换的会话才有先后可拖、才有「先不用」、才有策略可编辑（不轮换只用开会话的号，手动换号照常）；设置页 ⇒ 缺。

@@ -2,6 +2,9 @@
 
 use crate::wire::spec::CommandSpec;
 
+/// `history-read` · `history-tail` 的应答里成品住的那两处（每行一件 `read_row`，行里的记录是 `record`）。
+const READ_ROWS: &[(&str, &str)] = &[("rows[]", "read_row"), ("rows[].record", "record")];
+
 pub(super) const SPECS: &[CommandSpec] = &[
     // **历史注解**（星标 / 改名 / 隐藏）的读写者换成本机常驻后端 ——
     //   「文件留在原处、同一路径，不迁移、一条不丢」：文件住家里（`<家>/history-metadata.json`，后端按家推），
@@ -22,8 +25,8 @@ pub(super) const SPECS: &[CommandSpec] = &[
     super::typed::asynchronous::<crate::history::groups::GroupsWriteCmd>(
         "建组 · 进出组 · 改名与解散扇出给各片",
     ),
-    // agent 自问（本体 `history/session_self.rs`，标记类型住本文件）：调用进程往上找这台的哪一条会话，组转给常驻问到各台 ⇒ 异步档；一次性 CLI 面 `--session-self`。
-    super::typed::asynchronous::<crate::stream::inbound::registry::history::SessionSelfCmd>(
+    // agent 自问（本体 `history/session_self.rs`，标记类型住 `faces/session_self_face.rs`）：调用进程往上找这台的哪一条会话，组转给常驻问到各台 ⇒ 异步档；一次性 CLI 面 `--session-self`。
+    super::typed::asynchronous::<crate::faces::session_self_face::SessionSelfCmd>(
         "我是哪条会话 · 在哪几组 · 组员有谁",
     ),
     // 一段 Markdown 原文解析成块树（纯函数、不碰盘；长正文解析几毫秒 ⇒ 阻塞档，不占反应堆）。
@@ -64,25 +67,29 @@ pub(super) const SPECS: &[CommandSpec] = &[
     super::typed::asynchronous::<crate::faces::search_face::HistorySearchMerge>(
         "问到各台搜一遍、合成一份",
     ),
-    super::typed::blocking::<crate::faces::history_face::HistoryRunCmd>("一个子运行的记录"),
+    super::typed::blocking::<crate::faces::history_face::HistoryRunCmd>("一个子运行的记录")
+        .places(&[("rows[].record", "record")]),
     // resume 之前问「这条会话的记录还在不在」。同族同档（一次目录枚举 ⇒ 阻塞档）、
     // 同一个只读宿主。**只收 sid**（找文件那一步与分叉 / 删会话同一份 `agents::find_session`）。
     super::typed::blocking::<crate::faces::history_face::HistoryRecordCmd>(
         "这条会话的记录还在不在",
     ),
     // 按**行号**取回（没接骨架的会话丢掉的正文从这里要回来）。同族同档、同一个只读宿主。
-    super::typed::blocking::<crate::faces::history_face::HistoryLinesCmd>("按行号取回一段"),
+    super::typed::blocking::<crate::faces::history_face::HistoryLinesCmd>("按行号取回一段")
+        .places(&[("lines[].record", "record")]),
     // 按引用取回一张图（记录行上线只带引用，画到那一格才问）。同族同档、同一个只读宿主。
     super::typed::blocking::<crate::faces::history_face::HistoryImageCmd>("按引用取回一张图"),
     // 拉一段正文的代码高亮（树里的代码块不带高亮，两端建一段时交那一段的代码块来问）。算高亮吃 CPU ⇒ 阻塞档。
     super::typed::blocking::<crate::faces::prose_hl_face::ProseHlCmd>("拉一段正文的代码高亮"),
     super::typed::blocking::<crate::faces::history_face::HistoryReadCmd>(
         "按字节分页读一份会话",
-    ),
+    )
+    .places(READ_ROWS),
     // 按字节分页读、出记录行（`read_face.rs` 那一臂 ＋ `observe/query/body.rs`）。同族同档、同一个只读宿主。
     super::typed::blocking::<crate::faces::history_face::HistoryPageCmd>(
         "按字节分页读，出记录行",
-    ),
+    )
+    .places(&[("lines[].record", "record")]),
     // 骨架索引与大纲清单上帧面（此前它们在远端走逐次拨号 —— `STILL_DIALED` 那两行）。
     // 同族同档（同步文件 I/O ⇒ 阻塞档）、同一个只读宿主（`read_face::answer`）。
     // 会话内查找上帧面（此前走逐次拨号 —— `STILL_DIALED` 那一行）。同族同档。
@@ -96,16 +103,21 @@ pub(super) const SPECS: &[CommandSpec] = &[
         "问到各台的需手动、合成一个先后",
     ),
     // 答批准 / 提问 / 批计划（`control/asks/`）：会话级答题 hook 经 `needs-ask` 挂一条、阻塞等；任一出口经 `needs-answer` 答，第一个答案落下。
-    //   挂着的请求住常驻进程里 ⇒ 两条都只在帧面（`needs-ask` 要本连接的号 ⇒ 硬臂；`needs-answer` 在 `stream::cli::STREAM_ONLY`）。
+    //   挂着的请求住常驻进程里 ⇒ 两条都只在帧面（`needs-ask` 要本连接的号 ⇒ 硬臂；`needs-answer` 登记行上写 `.stream_only`）。
     super::typed::frame::<crate::control::asks::NeedsAsk>(
         "答题 hook 挂一条待答请求、等人答（hook 客户端 `--answer-hook` 用；本连接断了 ⇒ 撤）",
     ),
     // 锁一下登记表、交给 hook 那一头的通道：不碰盘、不起进程、不等 ⇒ 普通异步档（没有 await 点，也就没什么可撤的）。
     super::typed::asynchronous::<crate::control::asks::NeedsAnswerCmd>(
         "答一条挂着的待答请求（`needs.ask`）：第一个答案落下，其余回「别处已答」（`gone` ＋ 那一句）",
+    )
+    .stream_only(
+        "答的是**常驻进程里挂着的那一条**（`control::asks` 的登记表：答题 hook 经常驻那条连接挂进来、在那儿阻塞等）——\
+         一次性进程里那张表永远是空的，答哪一条都只能回 `not_found`，是假话 ⇒ 真依赖流语义。",
     ),
     // 会话事实（`observe/recognize/facts.rs`）。只收路径：接着上一次算由后端按路径留着（`observe::record_scan`）。
-    super::typed::blocking::<crate::faces::history_face::HistoryFactsCmd>("会话事实"),
+    super::typed::blocking::<crate::faces::history_face::HistoryFactsCmd>("会话事实")
+        .places(&[("", "facts")]),
     super::typed::blocking::<crate::faces::history_face::HistoryBranchCmd>("主线外清单"),
     super::typed::blocking::<crate::faces::history_face::HistoryFindCmd>("会话内查找"),
     super::typed::blocking::<crate::faces::history_face::HistoryIndexCmd>("会话骨架索引"),
@@ -113,7 +125,8 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // 尾段那张图 ＋ 手上那一份（`held`）续不续得上 ＋ 第一页正文，一问交回（续传的判定只在这里）。
     super::typed::blocking::<crate::faces::history_face::HistoryTailCmd>(
         "一份会话的尾段：手上那一份怎么接，连第一页正文",
-    ),
+    )
+    .places(READ_ROWS),
     // 分叉：本体 `control/fork_write.rs::run_inner`（
     //   读 → 适配层的分叉变换（`agents::build_branch_records`）→ `O_EXCL` 新建）。本机远端同一条长连接；读整份 jsonl ⇒ 阻塞档。
     //   回复多一格 `launch`：分叉之后起要的三格事实（`control/fork_launch.rs`，宿主 `faces/fork_face.rs` 收齐）。
@@ -123,6 +136,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // 手动对齐：整机（或 `sid` 只对一个会话）重跑起步那套对齐，回差异。阻塞档：等每份 watcher 做完。
     super::typed::blocking::<crate::stream::resync_face::ResyncCmd>(
         "手动对齐：重发这条流上的会话状态",
+    )
+    .stream_only(
+        "它对齐的是本进程里在跑的 watcher；一次性进程里一份都没有，只能答 `watchers: 0` —— 那是假话。",
     ),
     // ── 功能侧只读查询 —— 远端会话的任务列表（`parity_ledger` `session.tasks`）──
     //
@@ -133,49 +149,3 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // ⚠ 阻塞档：读一个目录 ＋ 每个任务文件各一次。`cancel` 命中回 `not_cancellable`（不撒谎）。
     super::typed::blocking::<crate::faces::feature_face::TasksListCmd>("一个会话的任务列表"),
 ];
-
-// ───────── agent 自问（`session-self`）的接线：本体住 `history/session_self.rs`；转给常驻 · 读机器表是控制面的事，接在命令表这一层 ─────────
-
-// 转给常驻问各台那一段住 `control/cc_bus_scope.rs::groups_via_resident`（cc-bus 的范围判定也读它，只一处）。
-// 命令的标记类型住这里：`Handle` 要接控制面那一段，按孤儿规则只能和标记类型同在一个包（回包与码住 `backend-history`）。
-
-/// `session-self`：调用进程往上找这台的哪一条会话、它在哪几组。
-pub(crate) struct SessionSelfCmd;
-
-impl crate::wire::typed::Command for SessionSelfCmd {
-    const NAME: &'static str = "session-self";
-    type Req = crate::wire::typed::NoArgs;
-    type Reply = crate::history::session_self::SessionSelf;
-    type Err = crate::history::session_self::SessionSelfErr;
-}
-
-impl crate::wire::typed::Handle for SessionSelfCmd {
-    type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
-        _req: crate::wire::typed::NoArgs,
-        cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<
-        Output = Result<
-            crate::history::session_self::SessionSelf,
-            crate::history::session_self::SessionSelfErr,
-        >,
-    > + Send
-           + 'static {
-        use crate::history::session_self as me;
-        async move {
-            let sid = me::who_at(&crate::history::listing::agent_home(), std::process::id())
-                .ok_or_else(|| {
-                    me::SessionSelfErr::NotInSession(crate::common::contract::malformed(
-                        "no process above this one is a session on this machine",
-                    ))
-                })?;
-            let tz = cx.tz.clone();
-            Ok(me::answer(
-                sid,
-                crate::control::cc_bus_scope::groups_via_resident(&tz),
-                crate::history::groups::read_here(tz.clone()),
-            )
-            .await)
-        }
-    }
-}

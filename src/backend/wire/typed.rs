@@ -510,6 +510,9 @@ const fn spec<C: Command, N: Needs>(
         summary,
         codes: <C::Err as Codes>::ALL,
         takes_input: C::TAKES_INPUT,
+        places: &[],
+        cap: None,
+        cli: super::spec::Cli::Open,
         run: Typed {
             how,
             #[cfg(any(test, feature = "test-support"))]

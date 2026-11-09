@@ -51,6 +51,11 @@ projectDir: string | null,
  */
 cwdShown?: Words, 
 /**
+ * 项目名：`project_dir` 的最后一段（`plain_path_core::last_segment`，与历史清单 · 搜索行同一个函数，`/` 与 `\` 都认），
+ * 与 `cwdShown` 同一处写；两端照摆、不自己切路径。项目目录还没读到 ⇒ 不出现。每次现给，不累加。
+ */
+projectName?: string, 
+/**
  * 这份记录是哪一家的（线上的 kind，适配层按记录认：`agents::record_kind_of`）；认不出 ⇒ `null`（界面要分家的那几项灰着，不落哪一家）。
  */
 agent: AgentKind | null, 

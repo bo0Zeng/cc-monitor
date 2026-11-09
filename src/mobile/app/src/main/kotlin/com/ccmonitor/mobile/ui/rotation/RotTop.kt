@@ -65,7 +65,6 @@ internal fun FirstRow(
     ui: RotationUi,
     board: RotationBoard,
     sid: String?,
-    titles: Map<String, String>,
     onEditStrategy: (String?) -> Unit,
 ) {
     var picking by remember { mutableStateOf(false) }
@@ -111,7 +110,7 @@ internal fun FirstRow(
             if (id != current.ifEmpty { null }) board.pick(id)
         }) { picking = false }
     }
-    if (more) MoreSheet(item, titles, board) { more = false }
+    if (more) MoreSheet(item, board) { more = false }
 }
 
 /** 说明：选中那份的开头注释（默认两行，⌄ 展开）；不轮换 ⇒ 那一句（会话里号照样在顺序里）。 */
@@ -197,14 +196,13 @@ private fun PickSheet(
 }
 
 /**
- * 「⋯」抽屉（设置页）：复制 · 改名… · 设为新会话用这份 · 删除（有会话在用 ⇒ 灰，右边「{n} 个会话在用」，长按列出会话标题）·
+ * 「⋯」抽屉（设置页）：复制 · 改名… · 设为新会话用这份 · 删除（那台说删不得 ⇒ 灰，右边那台写的为什么，长按列出那台写好的在用会话）·
  * 新建策略… · 从文件添加…。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MoreSheet(
     item: RotStrategyItem?,
-    titles: Map<String, String>,
     board: RotationBoard,
     onDismiss: () -> Unit,
 ) {
@@ -232,23 +230,25 @@ private fun MoreSheet(
                     board.forNew(st.id)
                 }
             })
-            val busy = st.inUse.size
+            // 能不能删 · 为什么 · 谁在用都是那台判好写好的（与删命令拒的同一处）。
+            val rm = st.remove
             PickRow(
                 copyText("rsFilewinWriteops.label.delete"),
                 "rot-more-delete",
-                enabled = busy == 0,
+                enabled = rm.enabled,
                 onClick = {
-                    if (busy == 0) {
+                    if (rm.enabled) {
                         onDismiss()
                         board.remove(st.id)
                     }
                 },
-                onLongClick = { if (busy > 0) users = !users },
-                trail = { if (busy > 0) Text(copyText("rot.more.inUse", "n" to busy), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                onLongClick = { if (rm.who != null) users = !users },
+                trail = { rm.why?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } },
             )
-            if (users) {
+            val who = rm.who
+            if (users && who != null) {
                 Text(
-                    st.inUse.joinToString(copyText("kit.text.sep")) { titles[it]?.ifEmpty { null } ?: it },
+                    who,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 20.dp),
@@ -299,30 +299,28 @@ internal fun Hints(
     board: RotationBoard,
     onOpenFile: (String) -> Unit,
 ) {
-    view.hints.forEach { n -> Hint(n, view, ui, board, onOpenFile) }
+    view.hints.forEach { n -> Hint(n, ui, board, onOpenFile) }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun Hint(
     n: RotNote,
-    view: RotationViewReply,
     ui: RotationUi,
     board: RotationBoard,
     onOpenFile: (String) -> Unit,
 ) {
     val h = n.hint
-    val text = hintText(n, view.now)
     NoteBox(toneOf(n.tone), Modifier.testTag("rot-hint-${h.k}")) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             if (n.tone == Tone.NEED) NeedsTag()
-            Text(text, style = MaterialTheme.typography.bodyMedium)
+            Text(n.text, style = MaterialTheme.typography.bodyMedium)
         }
         FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
             when (h) {
                 is RotHint.StrategyError -> {
                     h.path?.let { p -> OutlinedButton(onClick = { onOpenFile(p) }) { Text(copyText("rot.hint.code")) } }
-                    CopyDetailButton(text, n.detail)
+                    CopyDetailButton(n.text, n.detail)
                 }
                 is RotHint.TzUnknown -> OutlinedButton(onClick = { board.setTz(h.zone) }) { Text(copyText("rot.hint.setTzTip", "zone" to h.zone)) }
                 RotHint.Newer -> OutlinedButton(onClick = board::loadNew) { Text(copyText("rot.hint.loadNew")) }

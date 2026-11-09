@@ -11,6 +11,18 @@ pub use crate::assets::hub_wire::{
 use crate::common::said::Said;
 use crate::wire::typed::{self, codes, Codes, Command};
 
+/// 枢纽问得到的内层命令（来源那台读 · 被写那台判 / 写）：就是本文件那 8 条，枢纽问这台自己那一跳只放它们（`stream::inbound::doors::LocalFrames`）。
+pub const NAMES: &[&str] = &[
+    CcBusStateCmd::NAME,
+    CcBusInstallCmd::NAME,
+    McpSourceCmd::NAME,
+    McpPreviewCmd::NAME,
+    McpApplyCmd::NAME,
+    SkillReadCmd::NAME,
+    SkillPlanCmd::NAME,
+    SkillApplyCmd::NAME,
+];
+
 /// 下层那一份失败收进这一条的码表（码不在表里 ⇒ `fallback`）。
 fn own_err<E: Codes>(fallback: fn(String) -> E) -> impl Fn(Said) -> E {
     move |f| typed::of_fail(f, fallback)

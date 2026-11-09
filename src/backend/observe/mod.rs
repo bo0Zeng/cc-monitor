@@ -5,13 +5,13 @@
 //! 读一份记录分四层，只许往下引：读行 [`lines`] → 认行 [`recognize`] → 扫描图与骨架（[`record_scan`] · [`skeleton`]）→ 查询 [`query`]；
 //! 跟读（[`watcher`]）在查询之上。方向由本包的判据 `layers_guard` 钉住。
 //!
-//! 独立的包 `backend-observe`：只引 `accounts` · `agents` · `history` · `host` · `wire` · `common` · `platform`，
+//! 独立的包 `backend-observe`：只引 `agents` · `history` · `host` · `relay`（中转抄出来的那一件）· `wire` · `common` · `platform`，
 //! 引了上层就编不过。上层只够得到这里的 `pub` 项。
 //!
 //! # 与控制面的关系：互不引用
 //!
-//! 时机在这边、做的那一半在控制面的三件（装 tmux hook · 认起会话便条 · 打身份标）watcher 只报一声，
-//! 由进程入口（`stream/entry.rs` 的 `WATCH_REACTIONS`）起 watcher 时接上控制面的函数（`watcher::Reactions`）；打标的回值（容器）照样随 `session_added` 报出去。
+//! 时机在这边、做的那一半在控制面的三件（装 tmux hook · 认起会话便条 · 打身份标）watcher 只报一声；宣告时判号（判法住账号库那一侧）watcher 只问一声，
+//! 都由进程入口（`stream/entry.rs` 的 `WATCH_REACTIONS`）起 watcher 时接上那几个函数（`watcher::Reactions`）；打标的回值（容器）照样随 `session_added` 报出去。
 //! 本包不引控制面、控制面也不引这里：两个包谁都没把对方列进依赖，引了就编不过。
 
 // 测试段可以直接问系统钟（量具、夹具的时刻）；生产段只许纯工具那一层的 `time::now`（`clippy.toml`）。
@@ -28,15 +28,15 @@
     )
 )]
 
-// 包里照旧写 `crate::observe::…` · `crate::accounts::…` · `crate::agents::…` · `crate::history::…` ·
+// 包里照旧写 `crate::observe::…` · `crate::agents::…` · `crate::history::…` ·
 // `crate::host::…` · `crate::wire::…` · `crate::common::…` · `crate::platform::…`。
 extern crate self as observe;
-use backend_accounts as accounts;
 use backend_agents as agents;
 use backend_common as common;
 use backend_history as history;
 use backend_host as host;
 use backend_platform as platform;
+use backend_relay as relay;
 use backend_wire as wire;
 
 // 测试档的家一开始就是沙箱（`src/common/test-home`）：这一行让链接器把它的启动段带进本包的测试二进制。
@@ -49,6 +49,12 @@ static TEST_HOME: fn() = test_home::linked;
 use test_meters::{alloc_probe, golden};
 
 pub mod accounts_query;
+// 活卡与流归位共用的有界集合与「第 1、2、4、8… 次才说」的计数。
+pub mod bounded;
+// 活卡成品（整台一份）：对账 · 缺口 · 记录到了整轮覆盖 · 子运行归位 · 截头 · 每条连接的发件箱。
+pub mod live;
+// 流归位：中转抄出来的每段流折成归一事件、定它归哪个运行（只用适配层给的那几格）。
+pub mod run_route;
 // 续算会话事实的那份累加器表（`history-facts` 的续点令牌）。
 // 读行：一行行读到最后一个完整行 · 算不算一行 · 一行怎么解析（读记录的各处都经它）。
 pub mod lines;

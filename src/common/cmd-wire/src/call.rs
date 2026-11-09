@@ -29,12 +29,14 @@ use crate::queue::{
 };
 use crate::quota::{QuotaRead, QuotaReadReq};
 use crate::record::{HistoryLines, HistoryLinesReq, HistoryRead, HistoryReadReq};
+use crate::resync::{ResyncReq, Resynced};
 use crate::rewind::{RewindOptions, SessionRewindOptionsReq};
 use crate::rotation::*;
 use crate::search::{HistorySearchReply, HistorySearchReq};
 use crate::session::{
     ArriveAsk, ArriveEnd, ModeSwitched, ModelSwitched, OpenFacts, Opened, Preview, Sent,
-    SessionCommands, SessionCommandsReq, SessionModelReq, SessionPermissionReq, TerminalsList,
+    SessionCommands, SessionCommandsReq, SessionModelReq, SessionPermissionReq, SessionWindow,
+    SessionWindowReq, TerminalsList,
 };
 use crate::session::{HistoryTail, HistoryTailReq};
 use crate::sync::Patch;
@@ -162,8 +164,10 @@ calls! {
     HistoryListReq => "history-list", Patch<HistoryHead, HistoryRow>;
     AccountsListReq => "accounts-list", AccountsList;
     AnswerReq => "needs-answer", Answered;
+    ResyncReq => "resync", Resynced;
     SessionsNeedsReq => "sessions-needs", NeedsList;
     SessionCommandsReq => "session-commands", SessionCommands;
+    SessionWindowReq => "session-window", SessionWindow;
     SessionModelReq => "session-model", ModelSwitched;
     SessionPermissionReq => "session-permission", ModeSwitched;
     SessionOpenReq => "session-open", Opened;

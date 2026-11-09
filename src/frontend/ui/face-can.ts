@@ -7,7 +7,6 @@
  */
 import type { SessionFace } from "./generated/SessionFace";
 import type { SessionActivity } from "./generated/SessionActivity";
-import type { TermWay } from "./generated/TermWay";
 
 /** 一张脸（还没收到 ⇒ `null`）。 */
 type Face = SessionFace | null;
@@ -21,16 +20,18 @@ export const activityOf = (f: Face): SessionActivity | undefined => (f?.life.is 
 /** 进程或它住的那个终端还在（自动跟随 · 「已隐藏」那一行留不留）：读那台写好的 `life`，不另判。 */
 export const terminalAlive = (f: Face): boolean => f?.life.is === "live" || f?.life.is === "reconnectable";
 /**
- * 「终端」那一颗此刻做什么（会话头 · 右键 · 命令面板 · 快捷键同一道）：那台把两种看法都写好了，这里只挑 ——
- * 看的这一端就在会话住的那台上（本机标签页，`remote` 为假）⇒ `near`，别处 ⇒ `far`。还没收到脸 ⇒ `null`（灰着、不说为什么）。
+ * 终端那三样各自一格（拉前 · 在终端里打开 · 看它的终端），各处（tab 行尾 ↗ · 右键 · 会话头 · 命令面板 · 快捷键）各读各的那一格。
+ * 灰着的那一句：点得了 ⇒ `null`；点不了 ⇒ 那台写好的那一句；还没收到脸 ⇒ 空串（灰着、不说为什么）。本机会话与远端会话同一道。
  */
-export const terminalWay = (f: Face, remote: boolean): TermWay | null => (f ? (remote ? f.can.terminal.far : f.can.terminal.near) : null);
-/** 「终端」灰着的那一句：做得了 ⇒ `null`；做不了 ⇒ 那台写好的那一句；还没收到脸 ⇒ 空串。 */
-export function terminalWhy(f: Face, remote: boolean): string | null {
-  const w = terminalWay(f, remote);
-  if (w === null) return "";
-  return w.go === "no" ? w.why : null;
-}
+const blocked = (a: { can: "yes" } | { can: "no"; why: string } | undefined): string | null => (a === undefined ? "" : a.can === "yes" ? null : a.why);
+/**
+ * 拉前：照脸上 `can.front`。看的这一端的壳拉不了窗（macOS）不在这里判：点了壳照实回「不支持」，那一句由核心写（`face_core::front`）。
+ */
+export const frontBlocked = (f: Face): string | null => blocked(f?.can.front);
+/** 在终端里打开（另开一个终端窗口接进它住的那个终端）：照脸上 `can.attach`。 */
+export const attachBlocked = (f: Face): string | null => blocked(f?.can.attach);
+/** 看它的终端（底部抽屉的终端页）：照脸上 `can.view`。 */
+export const viewBlocked = (f: Face): string | null => blocked(f?.can.view);
 /** 结束得了（右键 · 多选同一个确认框，交 `sessions-stop`）。 */
 export const canEnd = (f: Face): boolean => f?.can.end.can === "yes";
 /** 停得下这一轮（输入框里的 ■，交 `session-interrupt`）：那台判一轮在跑才给（判不出 · 读记录中 · 需手动 ⇒ 不给）。 */

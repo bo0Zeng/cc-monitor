@@ -879,7 +879,8 @@ fn execute(plan: Plan, upstream: Option<&egress::Taken>, own: &crate::platform::
                 };
                 let setup = crate::accounts::quota::setup::uses::Setup::of(std::sync::Arc::new(
                     crate::accounts::quota::rotation::RotationStore::at(
-                        crate::accounts::quota::rotation::path_now(),
+                        own.root()
+                            .map(|d| crate::accounts::quota::rotation::path_under(d.as_path())),
                     ),
                 ));
                 if let Err(e) = crate::accounts::quota::setup::uses::preset(
@@ -979,10 +980,7 @@ pub(crate) fn spawn_hosted(
         clippy::disallowed_methods,
         reason = "脱离起本二进制自己当托管进程（`-- --host-run …`，自成一组、只留一根回信管道）：被起的托管终端那一形照样归本仓的守法管"
     )]
-    let mut spawn = Child::new(&program)
-        .args(&rest)
-        .env_remove("TMUX")
-        .env_remove("TMUX_PANE");
+    let mut spawn = crate::common::tmux_utf8::unnested(Child::new(&program).args(&rest));
     for k in unset {
         spawn = spawn.env_remove(k);
     }
@@ -1068,11 +1066,11 @@ pub(crate) fn hosted_self_check_child(c: &plan::Container) -> Option<Child> {
         clippy::disallowed_methods,
         reason = "托管那一形的自检：里面那一跳的同一串加 `--ccm-print` 原生跑一次，只算计划、不起会话"
     )]
-    let mut check = Child::new(exe)
-        .args(args)
-        .env(crate::host::managed::run::HOST_ENV, &c.name)
-        .env_remove("TMUX")
-        .env_remove("TMUX_PANE");
+    let mut check = crate::common::tmux_utf8::unnested(
+        Child::new(exe)
+            .args(args)
+            .env(crate::host::managed::run::HOST_ENV, &c.name),
+    );
     for k in &c.unset {
         check = check.env_remove(k);
     }

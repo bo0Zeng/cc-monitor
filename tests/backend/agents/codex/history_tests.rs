@@ -69,7 +69,7 @@ fn only_rollout_files_are_sessions_and_cwd_comes_from_the_first_line() {
 }
 
 #[test]
-fn the_first_real_user_line_skips_injected_context_and_is_capped() {
+fn the_first_real_user_line_skips_injected_context_and_comes_whole() {
     let d = test_home::scratch("excerpt");
     let p = d.join("r.jsonl");
     let long = "问".repeat(250);
@@ -85,7 +85,8 @@ fn the_first_real_user_line_skips_injected_context_and_is_capped() {
         .join("\n"),
     )
     .unwrap();
-    assert_eq!(first_user_excerpt(&p), "问".repeat(200));
+    // 交原文：截 · 压空白是核心的事（`history::search_rules::excerpt_of`）。
+    assert_eq!(first_user_excerpt(&p), long);
     // 数组拍平：多段 text 用换行连起来。
     let q = d.join("q.jsonl");
     std::fs::write(

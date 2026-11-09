@@ -518,8 +518,8 @@ export class TabBarDrag {
     const move = this.prefs.collectionsLoaded ? plan.move : ({ kind: "stay" } as const);
     if (move.kind === "found") {
       const name = defaultGroupName(
-        this.store.tabs.get(move.with)?.projectDir ?? null,
-        this.store.tabs.get(sid)?.projectDir ?? null,
+        this.store.tabs.get(move.with) ?? null,
+        this.store.tabs.get(sid) ?? null,
         this.prefs.collections.map((c) => c.name),
       );
       const made = this.prefs.foundGroup([move.with, ...sids], name);

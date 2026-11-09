@@ -16,7 +16,7 @@ pub struct SessionScan {
     ai_title: Option<String>,
     started_at: Option<i64>,
     forked: Option<(String, String)>,
-    /// 第一条写着工作目录的记录说的那个（全文搜索的项目名从这里取；清单那一行照适配层的项目目录）。
+    /// 第一条写着工作目录的记录说的那个（全文搜索的项目名与清单那一行的项目目录都从这里取）。
     cwd: Option<String>,
     // CC 2.1.x 后台分身会话（←/bg/退出转后台 fork 出的 worker）——
     // 记录级的后台标记是官方 resume 选择器同款识别信号（内部字段无兼容
@@ -82,10 +82,12 @@ impl SessionScan {
     }
 
     /// 吸收已解析好的一条（全文搜索那一路本来就整条解开了）：同 [`SessionScan::absorb`] 那一套。
-    pub fn absorb_value(&mut self, kind: &str, v: &serde_json::Value) {
+    /// 回那一家翻好的那一行：搜索照它认这一条是谁说的 · 何时 · 消息 id，不再自己读原文。
+    pub fn absorb_value(&mut self, kind: &str, v: &serde_json::Value) -> SessionLine {
         self.count += 1;
         let l = crate::agents::session_line_of(kind, v);
-        self.take(kind, l, || Some(Cow::Borrowed(v)));
+        self.take(kind, l.clone(), || Some(Cow::Borrowed(v)));
+        l
     }
 
     /// 一行翻好的那几格并进来：后台标记任一行有就算 · 时刻与分叉来源取第一条 · 标题取最新（持续覆盖）·
@@ -106,12 +108,14 @@ impl SessionScan {
         if self.cwd.is_none() {
             self.cwd = l.cwd;
         }
-        if l.title.is_some() {
-            self.ai_title = l.title;
+        if let Some((title, by)) = l.title {
+            if super::search_rules::names_session(by) {
+                self.ai_title = Some(title);
+            }
         }
         if l.role == Some(LineRole::Said) && self.excerpt.is_empty() {
             if let Some(said) = whole().and_then(|v| crate::agents::human_speech(kind, &v)) {
-                self.excerpt = copy_core::clip_flat(&said, super::search_rules::EXCERPT_CHARS);
+                self.excerpt = super::search_rules::excerpt_of(&said);
             }
         }
     }
@@ -142,16 +146,13 @@ impl SessionScan {
     }
 
     /// 这一份的清单行。
-    pub(super) fn row(&self, p: &Path) -> serde_json::Value {
-        let session_id = p
-            .file_stem()
-            .map(|s| s.to_string_lossy().into_owned())
-            .unwrap_or_default();
+    pub(super) fn row(&self, p: &Path) -> SessionRow {
+        let session_id = crate::agents::sid_of(p).unwrap_or_default();
         let (forked_sid, forked_uuid) = match &self.forked {
             Some((s, u)) => (Some(s.clone()), Some(u.clone())),
             None => (None, None),
         };
-        serde_json::to_value(SessionRow {
+        SessionRow {
             session_id,
             record_path: p.to_string_lossy().into_owned(),
             started_at_ms: self
@@ -161,17 +162,16 @@ impl SessionScan {
             message_count_approx: self.count,
             first_user_excerpt: self.excerpt.clone(),
             ai_title: self.ai_title.clone(),
-            cwd: crate::agents::project_dir_of(p),
+            cwd: self.cwd.clone(),
             is_bg: self.is_bg,
             forked_from_session_id: forked_sid,
             forked_from_message_uuid: forked_uuid,
-        })
-        .unwrap_or_default()
+        }
     }
 }
 
-/// 清单里的一行（[`SessionScan::row`] 写、`history_list` · 叫一条会话什么那几处读）：清单缓存与协议之间那一形，**是我们自己的格式**，
-/// 不是那一家的记录（读写两头都经这个类型，不按键名取字）。按 sid 只要分组那几格的行只带三格，其余照缺省。
+/// 清单里的一行（[`SessionScan::row`] 写、`history_list` · 叫一条会话什么那几处读）：在后端里一路按类型传，序列化只为清单缓存落盘那一份，
+/// **是我们自己的格式**，不是那一家的记录。按 sid 只要分组那几格的行只带三格，其余照缺省。
 #[derive(Debug, Default, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub(crate) struct SessionRow {

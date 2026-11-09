@@ -383,7 +383,7 @@ enum Ev {
     Feed(Event),
 }
 
-/// 表单那一台的连接：每一趟在组好的拨号请求上填命令（长 exec 一份 · 收全一份）。测试连接不换装（`installs` 取缺省）。
+/// 表单那一台的连接：每一趟在组好的拨号请求上填命令（长 exec 一份 · 收全一份）。测试连接不换装（`install` 取缺省：不放）。
 struct ProbeLink {
     dial: Arc<dyn Dial>,
     stream: crate::dial::DialRequest,

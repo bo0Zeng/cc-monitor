@@ -79,7 +79,7 @@ const FORBIDDEN_IN_SETTINGS: readonly { pat: string; what: string }[] = [
   { pat: "src/frontend/ui/group-book.ts", what: "tab 管理（组的账）" },
   // `tabs.ts` 拆成 13 份之后，「设置窗里没有 tab 管理」要对每一份都成立 ——
   //   只钉 `tabs.ts` 一个名字，某一份被设置窗间接带进来时这里看不见。正控照旧（每一份都得在主窗 / viewer 的闭包里命中）。
-  { pat: "src/frontend/ui/tab-model.ts", what: "tab 管理（tab 的形状与标题）" },
+  // `tab-model.ts` 只剩类型（项目名改由会话事实给后，`projectNameFromCwd` 删了），构建产物里没有它 ⇒ 不在这张单上。
   { pat: "src/frontend/ui/tab-store.ts", what: "tab 管理（会话状态账 / store）" },
   { pat: "src/frontend/ui/tab-router.ts", what: "tab 管理（路由）" },
   { pat: "src/frontend/ui/tab-session-facts.ts", what: "tab 管理（从记录里抽事实）" },

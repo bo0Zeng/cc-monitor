@@ -30,7 +30,7 @@ beforeEach(() => {
 describe("金样：后端出的成品，原样交到调用方", () => {
   it("导入预览照收", async () => {
     invokeMock.mockResolvedValue(chanReply(golden["ssh-config-import"]));
-    const { groups, partial } = await importSshHosts([]);
+    const { groups, partial } = await importSshHosts();
     expect(groups.map((g) => g.label)).toEqual(["devbox", "pi"]);
     expect(partial).toBe(false);
     expect(groups[0]!.members.map((m) => m.alias)).toEqual(["devbox-lan", "devbox-wan"]);
@@ -45,13 +45,13 @@ describe("请求", () => {
       seen.push({ op: args.op, origin: args.origin, body: chanArgsJson(args) });
       return Promise.resolve(chanReply(golden[args.op]));
     });
-    await importSshHosts([{ host: "pi.local", user: "pi", port: 22 }]);
+    await importSshHosts();
     expect(seen).toEqual([
-      { op: "ssh-config-import", origin: LOCAL, body: { known: [{ host: "pi.local", user: "pi", port: 22 }] } },
+      { op: "ssh-config-import", origin: LOCAL, body: {} },
     ]);
   });
   it("本机后端不在 ⇒ 抛（不是空清单）", async () => {
     invokeMock.mockRejectedValue(NO_CHANNEL);
-    await expect(importSshHosts([])).rejects.toThrow();
+    await expect(importSshHosts()).rejects.toThrow();
   });
 });

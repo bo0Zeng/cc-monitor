@@ -4,6 +4,7 @@
 
 use super::*;
 use crate::agents::StreamFamily;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 const SID: &str = "s-1";
@@ -46,7 +47,7 @@ const PART: &str = r#"{"ev":"part","at":0,"is":"words"}"#;
 const SHUT: &str = r#"{"ev":"shut"}"#;
 
 /// 本线程上 `f` 期间 `tracing` 说了什么（量具住 `test-meters`；几份判据经这里引它）。
-pub(crate) use test_meters::heard;
+use test_meters::heard;
 
 /// 头件丢 ×3 · 没会话标签 · 折不出开始 · 断号 · 满了挤掉最老的：各数各的；正常说完的那一段不算；
 /// 头件丢第 1、2 次各说一行、第 3 次不说。
@@ -81,7 +82,7 @@ fn every_kind_of_drop_is_counted_and_spoken_at_powers_of_two() {
     ]
     .into_iter()
     .collect();
-    assert_eq!(r.lost, want);
+    assert_eq!(format!("{:?}", r.lost), format!("{want:?}"));
     let spoke: Vec<&str> = said
         .iter()
         .filter_map(|l| l.split("没放出去 / 半路收了：").nth(1))
@@ -153,7 +154,7 @@ fn a_side_request_never_reaches_a_card() {
         out.extend(r.on_tap(classed("", 3, 0, OPEN)));
         assert_eq!(out.len(), 2, "没带分类头的那一发没照主运行放");
     });
-    assert_eq!(r.lost.get(&Lost::Side), Some(&1));
+    assert_eq!(format!("{:?}", r.lost), "{Side: 1}");
     assert!(
         said.iter().any(|l| l.contains("Side")),
         "旁路那一段没出声：{said:#?}"

@@ -309,7 +309,7 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Filter { by: "tests/scripts/gate.sh", needle: "quota::rules::decide::tests::consistency_500_groups" },
     ),
     (
-        "tests/backend/stream/live_tests.rs",
+        "tests/backend/observe/live_tests.rs",
         "live_bytes_reading",
         Trigger::Manual("读数不是判据：两条会话同时在说、名单只报一条时这条连接收到的活卡字节；跑法住它自己的头注"),
     ),

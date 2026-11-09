@@ -2,12 +2,12 @@
  * **会话头**（主区顶上 40px）：状态点 · 标题全名 · 「机器 · 目录」· 状态一句；右边一排按钮 ＋ 最右「⋯」（＝这个标签页的右键菜单）。
  * 按状态多一颗、永远在最左：已结束［恢复 ▾］。
  *
- * 右边那一排由用户自己排（默认：终端 · 在会话里找）：存 `config.json` 的 `sessionHead.buttons`（这扇界面自己的偏好；删掉这个键 ＝ 恢复默认）。
+ * 右边那一排由用户自己排（默认：拉前 · 看它的终端 · 在会话里找）：存 `config.json` 的 `sessionHead.buttons`（这扇界面自己的偏好；删掉这个键 ＝ 恢复默认）。
  * 入口：按钮那一排右键（调整… · 从会话头移走「x」）·「⋯」最后一项 · 命令面板；编辑浮层见 `session-head-edit.ts`。
- * 本会话用不上的（远端无目录）不出、不留空位；「终端」一直在，做不了灰着、悬停写那台写好的那一句。窄时先藏目录、再藏状态一句与换模型 · 切权限档那两颗（CSS 容器查询）；
+ * 本会话用不上的（远端无目录）不出、不留空位；拉前 · 看它的终端一直在，做不了灰着、悬停写那一句。窄时先藏目录、再藏状态一句与换模型 · 切权限档那两颗（CSS 容器查询）；
  * 还放不下 ⇒ 从排在最后的那颗起收进「⋯」最上面一组（不改设置，变宽就回来）。
  *
- * 「终端」点了做什么照脸上那一格（`face-can.ts::terminalWay`：拉它的外部窗口 · 在这里开它的终端，宿主那一条判）。
+ * 拉前 · 看它的终端各读脸上那一格（`face-can.ts::frontBlocked` · `viewBlocked`）；看的这一端的壳拉不了窗（macOS）不在这里判，点了壳照实回、那一句核心写。
  * 两个流开关（过程默认展开 · 显示系统注入）只住「⋯」最后一组。
  * 在新窗口打开 · 账号 · 固定 · 分组 · 恢复 · 关闭标签页那几颗借「⋯」那份菜单的同一项（字、能不能点、点了做什么都是那一项）。
  *
@@ -20,7 +20,7 @@
 import type { Tab } from "./tab-model";
 import { isRemoteOrigin } from "./ipc/origin";
 import { machineName } from "./ipc/chan-caller";
-import { canResume, terminalWay } from "./face-can";
+import { canResume, frontBlocked, viewBlocked } from "./face-can";
 import { dispatcher, KeybindingDispatcher } from "./keybindings/registry";
 import { copyText } from "./copy-table";
 import { icon, type IconName } from "./kit/icon";
@@ -55,8 +55,10 @@ export interface HeadMoreExtra {
 export interface SessionHeadHost {
   active(): Tab | null;
   openCwd(sid: string): void;
-  /** 「终端」那一颗（拉窗还是在这里开照脸上那一格）。 */
-  terminal(sid: string): void;
+  /** 拉前（把它住的那个终端窗口拉到前面）。 */
+  front(sid: string): void;
+  /** 看它的终端（底部抽屉的终端页）。 */
+  view(sid: string): void;
   find(): void;
   more(anchor: HTMLElement, sid: string, extra: HeadMoreExtra): void;
   resume(anchor: HTMLElement, sid: string): void;
@@ -74,11 +76,6 @@ export interface SessionHeadHost {
   switching: SwitchHost;
 }
 
-/** 这个会话此刻「终端」那一颗点不点得了（会话头与消息流里的报错卡同一道）：本机标签页挑 near、远端挑 far。 */
-export function canTerminal(tab: Tab): boolean {
-  const way = terminalWay(tab.face, isRemoteOrigin(tab.origin));
-  return way !== null && way.go !== "no";
-}
 
 type Chorded = Parameters<typeof dispatcher.effectiveChord>[0];
 
@@ -285,13 +282,15 @@ export class SessionHead {
     switch (id) {
       case "cwd":
         return tab.projectDir ? plain(copyText("tabBarView.tab.cwdHint"), "tab.open-cwd", () => this.host.openCwd(sid), copyText("tabBarView.tab.cwdHint")) : null;
+      case "front":
       case "terminal": {
-        // 一直画：做不了灰着、悬停写那台写好的那一句；做得了 ⇒ 悬停是去做什么（拉窗 · 在这里开）＋ 键。
-        const way = terminalWay(tab.face, isRemoteOrigin(tab.origin));
-        const label = copyText("mobDrawer.item.terminal");
-        const off = way === null || way.go === "no";
-        const item: MenuItem = { label, detail: chordOf("session.terminal"), enabled: !off, why: way?.go === "no" ? way.why : undefined, onClick: () => this.host.terminal(sid) };
-        return this.fromItem(id, item, label, "session.terminal", way && way.go !== "no" ? way.said : label);
+        // 拉前 · 看它的终端各一颗、一直画：做不了灰着、悬停写那一句；做得了 ⇒ 悬停是名字 ＋ 键。
+        const front = id === "front";
+        const why = front ? frontBlocked(tab.face) : viewBlocked(tab.face);
+        const label = front ? copyText("terminal.head.front") : copyText("sessionHead.act.terminal");
+        const action: Chorded = front ? "terminal.bring-front" : "panel.toggle-terminal";
+        const item: MenuItem = { label, detail: chordOf(action), enabled: why === null, why: why || undefined, onClick: () => (front ? this.host.front(sid) : this.host.view(sid)) };
+        return this.fromItem(id, item, label, action);
       }
       case "find":
         return plain(copyText("sessionHead.act.find"), "session.find", () => this.host.find());
@@ -320,12 +319,12 @@ export class SessionHead {
     const d = dotOf(tab);
     const st = stateLine(tab, now);
     const remote = isRemoteOrigin(tab.origin);
-    const way = JSON.stringify(terminalWay(tab.face, remote));
-    // 那台看不见 ⇒ 不另给［重新连接］：栏底机器条那一行说、那一行修（A2-17-15-2）。去终端只有「终端」那一颗，按状态那一颗不另放。
+    const term = [frontBlocked(tab.face), viewBlocked(tab.face)].join("\u0001");
+    // 那台看不见 ⇒ 不另给［重新连接］：栏底机器条那一行说、那一行修（A2-17-15-2）。去终端那两颗不随状态另放。
     const extra = canResume(tab.face) ? "resume" : "";
     const mark = this.host.planMark(tab);
     const kin = this.kinKey(tab);
-    const drawn = [tab.sessionId, d, tab.title, machineName(tab.origin), tab.cwdShown ?? "", st.text, st.needs ? 1 : 0, remote ? 1 : 0, way, extra, mark?.label ?? "", tab.pinned ? 1 : 0, kin].join("\u0000");
+    const drawn = [tab.sessionId, d, tab.title, machineName(tab.origin), tab.cwdShown ?? "", st.text, st.needs ? 1 : 0, remote ? 1 : 0, term, extra, mark?.label ?? "", tab.pinned ? 1 : 0, kin].join("\u0000");
     if (drawn === this.drawn) return;
     this.drawn = drawn;
     this.el.style.display = "";
@@ -352,7 +351,7 @@ export class SessionHead {
     this.kin.replaceChildren(...this.kinChips(tab));
     // 右边一排：照用户排的那几颗，本会话用不上的不出；最右「⋯」。和上次画的一样 ⇒ 不换。
     const built = this.buttons().map((id) => this.build(id, tab, extra)).filter((b): b is Built => b !== null);
-    const actsDrawn = [sid, way, ...built.map((b) => `${b.id}:${b.el.getAttribute("aria-label")}:${b.el.getAttribute("aria-disabled") ?? ""}`)].join("\u0000");
+    const actsDrawn = [sid, term, ...built.map((b) => `${b.id}:${b.el.getAttribute("aria-label")}:${b.el.getAttribute("aria-disabled") ?? ""}`)].join("\u0000");
     if (actsDrawn === this.actsDrawn) return;
     this.actsDrawn = actsDrawn;
     this.built = built;

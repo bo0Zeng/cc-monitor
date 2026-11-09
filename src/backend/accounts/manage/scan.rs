@@ -289,6 +289,18 @@ pub fn book_at(home: &Path) -> Option<acct_core::AccountBook> {
     manifest_at(&p).ok().flatten().map(|m| m.book)
 }
 
+/// 家目录 `home` 下账号库里每个号的配置目录（[`book_at`] 那一张的具名号；没建账号库 / 读不懂 ⇒ 空）。
+pub fn config_dirs(home: &Path) -> Vec<std::path::PathBuf> {
+    book_at(home)
+        .map(|b| {
+            b.named()
+                .filter_map(|a| a.config_dir.clone())
+                .map(Into::into)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// 清单全文（读得动才有）＋ 读成的模型；不在 ⇒ `None`。
 fn read_manifest(p: &Path) -> Option<(Option<String>, Result<Manifest, Unread>)> {
     if matches!(acct_view::item(p), Item::Absent) {

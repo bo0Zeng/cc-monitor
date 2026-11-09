@@ -45,16 +45,19 @@ fn the_manual_list_names_each_thing_and_how_to_fix_it() {
         row("gone", "subscription", false, false),
         row("ok", "subscription", true, true),
     ]);
-    let mcp = crate::agents::McpRead {
-        entries: vec![
-            entry("notes", crate::agents::McpStatus::NeedsLogin, &["work"]),
-            entry("bare", crate::agents::McpStatus::NeedsLogin, &[]),
-            entry("down", crate::agents::McpStatus::Failed, &[]),
-        ],
-        dirs: vec![],
-        problems: vec![],
-    };
-    let got = json!({ "items": manual_of("claude", &accounts, None, &[], Some(("claude", &mcp))).expect("列得出") });
+    let mcp = crate::accounts::manage::mcp_share_exec::needs_login_of(&[(
+        None,
+        crate::agents::McpRead {
+            entries: vec![
+                entry("notes", crate::agents::McpStatus::NeedsLogin, &["work"]),
+                entry("bare", crate::agents::McpStatus::NeedsLogin, &[]),
+                entry("down", crate::agents::McpStatus::Failed, &[]),
+            ],
+            dirs: vec![],
+            problems: vec![],
+        },
+    )]);
+    let got = json!({ "items": manual_of("claude", &accounts, None, &[], Some(("claude", &mcp[..]))).expect("列得出") });
     let fix = |a: &str| json!({ "command": "login-start", "args": { "kind": "account", "agent": "claude", "account": a } });
     let mcp_fix = |a: Value, s: &str| {
         json!({ "command": "login-start",
@@ -79,7 +82,7 @@ fn the_manual_list_names_each_thing_and_how_to_fix_it() {
     let fake =
         json!({ "items": manual_of("no-such-agent", &accounts, None, &[], None).expect("列得出") });
     assert_eq!(fake, json!({ "items": [] }));
-    let no_mcp_login = json!({ "items": manual_of("no-such-agent", &accounts, None, &[], Some(("fake", &mcp))).expect("列得出") });
+    let no_mcp_login = json!({ "items": manual_of("no-such-agent", &accounts, None, &[], Some(("fake", &mcp[..]))).expect("列得出") });
     assert_eq!(no_mcp_login["items"][0]["kind"], "mcpLogin");
     assert_eq!(
         no_mcp_login["items"][0]["fix"],
@@ -98,6 +101,34 @@ fn the_manual_list_names_each_thing_and_how_to_fix_it() {
             .iter()
             .all(|i| i.get("why").is_none()),
         "有解法的不带 `why`"
+    );
+}
+
+/// 口径取全范围：这台活会话所在项目里的项目级 server 要登录 ⇒ 它也进需手动，解法带上那个项目（在那个项目里登）。
+#[test]
+fn a_project_server_needing_login_in_a_live_session_is_a_manual_item() {
+    let accounts = crate::accounts::manage::library::test_support::list(vec![]);
+    let project = crate::agents::McpRead {
+        entries: vec![crate::agents::McpEntry {
+            scope: "project",
+            ..entry("tracker", crate::agents::McpStatus::NeedsLogin, &[])
+        }],
+        dirs: vec![],
+        problems: vec![],
+    };
+    let mcp = crate::accounts::manage::mcp_share_exec::needs_login_of(&[
+        (None, crate::agents::McpRead::default()),
+        (Some("/p/app".into()), project),
+    ]);
+    let got = json!(
+        manual_of("claude", &accounts, None, &[], Some(("claude", &mcp[..]))).expect("列得出")
+    );
+    assert_eq!(
+        got,
+        json!([{ "kind": "mcpLogin", "account": null, "server": "tracker", "scope": "project",
+                 "said": copy_text("beManual.list.mcpLoginBare", &[("server", "tracker")]),
+                 "fix": { "command": "login-start",
+                          "args": { "kind": "mcp", "agent": "claude", "account": null, "server": "tracker", "projectDir": "/p/app" } } }])
     );
 }
 

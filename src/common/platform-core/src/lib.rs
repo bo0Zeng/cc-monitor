@@ -3,6 +3,7 @@
 //! - [`dir`]：只给本人的目录（[`dir::private_dir`] · [`dir::private_dir_all`]）· 目录的跨进程锁（等到拿到 [`dir::hold`] · 不等 [`dir::try_hold`]，同一把）。
 //! - [`atomic`]：自家状态文件的原子写（[`atomic::write_atomic`]）。
 //! - [`proc`]：`/proc/<pid>/stat` 一行怎么切（[`proc::parse_stat`]）· Windows 进程表（`proc::processes`）· `CREATE_NO_WINDOW`。
+//! - [`tz`]：这台的本地时区 —— 那一刻与 UTC 的差（[`tz::offset_secs`]）· 时区名（[`tz::iana_name`]）。
 //!
 //! 本包不说话：失败回 `io::Error` 或带阶段的结局，给人看的那一句由各家在自己那一层照文案表取（后端造 `Said`）。
 //! 判定不进来：拿这些事实去判「是不是那个进程」「该不该收紧」的规则在调用方。
@@ -18,6 +19,7 @@
 pub mod atomic;
 pub mod dir;
 pub mod proc;
+pub mod tz;
 
 #[cfg(test)]
 #[path = "../../../../tests/common/platform-core/lib_tests.rs"]
@@ -34,6 +36,10 @@ mod atomic_tests;
 #[cfg(test)]
 #[path = "../../../../tests/common/platform-core/single_home_tests.rs"]
 mod single_home_tests;
+
+#[cfg(test)]
+#[path = "../../../../tests/common/platform-core/tz_tests.rs"]
+mod tz_tests;
 
 #[cfg(test)]
 #[used]

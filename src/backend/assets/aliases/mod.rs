@@ -54,7 +54,7 @@ pub mod links;
 pub mod page;
 pub mod profile;
 
-use crate::ccm_line::argv::flag;
+use crate::ccm_line::argv::{flag, hosted_word, Parsed};
 use crate::common::door::{self, Door};
 use crate::common::said::Said;
 // 方言住后端 OS 适配层。
@@ -72,6 +72,30 @@ pub(crate) const CALL: dialect::Call<'static> = dialect::Call {
     end: flag::END,
     landing: relay_route_core::BACKEND_LANDING_REL,
 };
+
+/// 托管入口（被叫成一段写了 `--hosted` 的配置，如 `cch`）的补全交给方言的那几个词：住 `ccm_line::argv`，适配层不往上够 ⇒ 由这里交下去。
+pub(crate) const HOSTED_WORDS: dialect::HostedWords<'static> = dialect::HostedWords {
+    first: &[hosted_word::LS, hosted_word::ATTACH],
+    takes_name: &[hosted_word::ATTACH, hosted_word::ATTACH_SHORT],
+    list: &[flag::END, flag::HOSTS],
+};
+
+/// 合并后的清单里、叫起来是托管入口的那几条（合下来带 `--hosted`：内置的 `cch` · `<号>cch` 与用户基于它写的），照清单的先后。
+pub(crate) fn hosted_names(book: &profile::Book) -> Vec<String> {
+    book.profiles
+        .iter()
+        .filter(|p| is_hosted(book, &p.name))
+        .map(|p| p.name.clone())
+        .collect()
+}
+
+/// 叫这一段起来是不是托管入口（合下来带 `--hosted`）。合不下来的不算。
+pub fn is_hosted(book: &profile::Book, name: &str) -> bool {
+    matches!(
+        profile::resolve(book, name, &[]).map(|r| r.parsed),
+        Ok(Parsed::Opts(o)) if o.hosted
+    )
+}
 
 /// 生成文件自己的围栏（整份重写，所以它只是给人看的边界；两种方言共用，理由同上）。
 /// v1 → v2：`71` 逐字「不要有 account alias 这种东西」—— 文件里只有**一类**别名。
@@ -127,7 +151,8 @@ pub(crate) fn alias_file_in(home: &str, shell: Shell) -> String {
 
 /// 整份生成文件的内容（**编码前**：BOM 那一层在落盘那一跳按方言加）。
 /// **没有时间戳** —— 有了就永远比不出「内容没变」，每次都要写一遍。
-pub(crate) fn render_file(shell: Shell, lines: &[String]) -> String {
+/// `hosted`：要挂托管入口补全的那几条（[`hosted_names`]），补全那一段接在别名之后（方言出文本，[`dialect::ShellDialect::render_hosted_completion`]）。
+pub(crate) fn render_file(shell: Shell, lines: &[String], hosted: &[String]) -> String {
     let mut out = String::new();
     out.push_str(FILE_BEGIN);
     out.push('\n');
@@ -137,6 +162,14 @@ pub(crate) fn render_file(shell: Shell, lines: &[String]) -> String {
     }
     for l in lines {
         out.push_str(l);
+        out.push('\n');
+    }
+    if !hosted.is_empty() {
+        out.push_str(
+            &shell
+                .dialect()
+                .render_hosted_completion(CALL, hosted, HOSTED_WORDS),
+        );
         out.push('\n');
     }
     out.push_str(FILE_END);
@@ -479,7 +512,8 @@ pub(crate) struct Outputs {
 }
 
 /// **照配置文件生成别名**：POSIX 上撞名的那几条写进 `aliases.sh`（固定的 `名字() { ccm @名字 "$@"; }`），其余做成链接；
-/// 这台说 PowerShell 的，`aliases.ps1` 里每条一个函数。内容没变的一个字节不写。
+/// 这台说 PowerShell 的，`aliases.ps1` 里每条一个函数。两份末尾都接上托管入口（`cch` · `<号>cch`）的补全（[`hosted_names`]）。
+/// 内容没变的一个字节不写。
 /// `also`：这一趟另要照顾的那一种（界面按某一种 shell 存的那一下）。
 pub(crate) fn sync_outputs(
     d: &dyn Door,
@@ -489,6 +523,7 @@ pub(crate) fn sync_outputs(
 ) -> Outputs {
     let mut out = Outputs::default();
     let names: Vec<String> = book.profiles.iter().map(|p| p.name.clone()).collect();
+    let hosted = hosted_names(book);
     let mut shells = machine_shells();
     if let Some(sh) = also.filter(|sh| !shells.contains(sh)) {
         shells.push(sh);
@@ -499,7 +534,7 @@ pub(crate) fn sync_outputs(
             .filter(|n| wants_function(n, shell))
             .map(|n| render_line(n, shell))
             .collect();
-        let text = render_file(shell, &lines);
+        let text = render_file(shell, &lines, &hosted);
         match write_alias_file(d, home, shell, |_| Ok(Some(text.clone()))) {
             Ok(true) => out.rewrote.push(alias_file_in(home, shell)),
             Ok(false) => {}

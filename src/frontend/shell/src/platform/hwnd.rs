@@ -17,16 +17,29 @@ pub enum DisplaySession {
     )]
     Win32,
     /// X11 会话（窗口管理器挂 EWMH 那几张表）。
+    #[cfg_attr(
+        all(windows, not(test)),
+        expect(dead_code, reason = "Windows 那一臂只造 Win32")
+    )]
     X11,
     /// Wayland 会话；`desktop` 是 `XDG_CURRENT_DESKTOP` 里的桌面名（`ubuntu:GNOME` ⇒ `GNOME`；没有 ⇒ 空串）。
+    #[cfg_attr(
+        all(windows, not(test)),
+        expect(dead_code, reason = "Windows 那一臂只造 Win32")
+    )]
     Wayland { desktop: String },
     /// 没有图形会话（没有 `$DISPLAY` 也没有 `$WAYLAND_DISPLAY`），或这个平台不做这一族。
+    #[cfg_attr(
+        all(windows, not(test)),
+        expect(dead_code, reason = "Windows 那一臂只造 Win32")
+    )]
     Unsupported,
 }
 
 /// 由那几格环境认会话：说了是 Wayland（`XDG_SESSION_TYPE=wayland`）或挂着 `$WAYLAND_DISPLAY` ⇒ Wayland
 /// （哪怕也有 `$DISPLAY`：那是 Xwayland，只看得见 X 程序的窗口，按它找会把 Wayland 终端认成「没有窗口」）；
 /// 否则有 `$DISPLAY` ⇒ X11；都没有 ⇒ 不支持。空串当没有。
+#[cfg(not(windows))]
 pub fn session_from(
     session_type: Option<&str>,
     wayland_display: Option<&str>,

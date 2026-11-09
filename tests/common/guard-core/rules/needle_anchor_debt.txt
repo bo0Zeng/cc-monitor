@@ -17,7 +17,6 @@ tests/backend/assets/aliases/block_tests.rs	after.matches("# === cc-monitor BEGI
 tests/backend/assets/aliases/block_tests.rs	stripped.contains("cc-monitor remote ccm"
 tests/backend/assets/ext_tests.rs	written.contains("secret-A"
 tests/backend/assets/ext_tests.rs	written.contains("typed-B"
-tests/backend/assets/pubkey_tests.rs	content.contains("AAAAEXISTINGssh-ed25519"
 tests/backend/control/ccm/plan_tests.rs	said.contains("sid-1"
 tests/backend/control/ccm/plan_tests.rs	said.contains("sid-1"
 tests/backend/control/deploy_plan_tests.rs	body.find("\n]"

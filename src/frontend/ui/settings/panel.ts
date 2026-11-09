@@ -8,7 +8,7 @@
 import { onLocalBackend, onMachineState } from "../machine-feed";
 import type { LocalBackend } from "../generated/LocalBackend";
 import { buildTerminalRow } from "./terminal-row";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { openFileDialog } from "../ipc/commands";
 import {
   applyTheme,
   applyThemeToken,
@@ -733,7 +733,7 @@ export class SettingsPanel {
 
   private async pickClaudeDir(): Promise<void> {
     try {
-      const selected = await openDialog({
+      const selected = await openFileDialog({
         directory: true,
         multiple: false,
         title: copyText("settingsPanel.claudeDir.pickTitle"),

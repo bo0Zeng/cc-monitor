@@ -4,26 +4,42 @@
  * 两级：第一级（`estimateFromFacts`）只看后端索引给的宽度无关料 × 列宽；第二级（`refineItemOf` ＋ `refinedHeight`）把正文那一段
  * 交估高 Worker 用 pretext 排（精确钉版 1.x；同一份语料逐条量高对拍，判据在 `height-estimate.vitest.ts`）。Worker 排高只走 `pretextHeight` 这一句。
  * 估值只是占位：建了卡就是真高 ⇒ 求够准、绝不抛错，不求像素真值。
- * 宽度 / 字体常数镜像 styles.css 的 token（`--stream-max-width` / `--font-*`）；外框常数由 `skel-outer.vitest.ts` 对拍真浏览器的金样。
+ * 字号 · 字族 · 行高 · 回退列宽不另抄令牌的数：模块求值时读一次 `:root` 的计算样式（见 `token`）；外框常数由 `skel-outer.vitest.ts` 对拍真浏览器的金样。
  */
 import type { LineRecord } from "./generated/LineRecord";
 import type { Draw } from "./generated/Draw";
 import type { Doc } from "./generated/Doc";
 import type { Inl } from "./generated/Inl";
 import type { MdBlock } from "./generated/MdBlock";
+import TOKENS_CSS from "../../shared/theme/tokens.css?raw";
 
-// 镜像 styles.css 的字体 token(canvas font 接受完整 fallback 栈——必须逐字同栈,
-// 否则"装了 Source Serif Pro 没装 4"的机器上 DOM 与 canvas 各走各的字体,度量漂移)
-const FONT_PROSE =
-  '15px "Source Serif 4", "Source Serif Pro", "Iowan Old Style", "PingFang SC", "Microsoft YaHei", Georgia, serif';
-const FONT_BASE = 'Inter, "Segoe UI", system-ui, sans-serif';
-const LH_PROSE = 15 * 1.65; // --font-size-prose × --line-height-prose
-const LH_BASE = 14 * 1.55;
-const LH_MONO = 13 * 1.55;
+/** tokens.css 第一块 `:root` 的令牌（没有文档的地方 —— 估高 Worker · jsdom 没挂样式表 —— 照它）。 */
+const TOKEN_FILE: ReadonlyMap<string, string> = ((): Map<string, string> => {
+  const css = TOKENS_CSS.replace(/\/\*[\s\S]*?\*\//g, "");
+  const at = css.indexOf(":root {");
+  const body = css.slice(at, css.indexOf("}", at));
+  return new Map([...body.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/g)].map((m) => [m[1], m[2]]));
+})();
+const ROOT_STYLE = typeof document === "undefined" ? null : getComputedStyle(document.documentElement);
+/** 一个令牌此刻的值：`:root` 的计算样式；读出空串（没挂样式表）⇒ tokens.css 那一份。只在模块求值时读。 */
+function token(name: string): string {
+  const v = (ROOT_STYLE?.getPropertyValue(name) || TOKEN_FILE.get(name) || "").replace(/\s+/g, " ").trim();
+  if (!v) throw new Error(`theme token ${name} unreadable`);
+  return v;
+}
+const px = (name: string): number => parseFloat(token(name));
+
+// canvas font 接受完整 fallback 栈 —— 照令牌逐字同栈，否则「装了 Source Serif Pro 没装 4」的机器上 DOM 与 canvas 各走各的字体、度量漂移。
+const FS_PROSE = px("--font-size-prose");
+const FS_BASE = px("--font-size-base");
+const FONT_PROSE = `${FS_PROSE}px ${token("--font-prose")}`;
+const FONT_BASE = `${FS_BASE}px ${token("--font-base")}`;
+const LH_PROSE = FS_PROSE * Number(token("--line-height-prose"));
+const LH_BASE = FS_BASE * Number(token("--line-height-base"));
+const LH_MONO = px("--font-size-mono") * Number(token("--line-height-mono"));
 
 // 列宽：模块求值时在 `#message-stream` 里临时摆一个生产形状的 `.stream > .stream-content`（`.stream` 是名为 `stream` 的尺寸容器），
-// 量出 min(`--stream-max-width`, 流宽 − 两侧内边距) 立刻撤掉；量不到（jsdom / 没有消息流的窗口）才退回 780
-// （与 tokens.css 的 `--stream-max-width` 由 `css-ledger.vitest.ts` 格 ⑥ 对拍）。
+// 量出 min(`--stream-max-width`, 流宽 − 两侧内边距) 立刻撤掉；量不到（jsdom / 没有消息流的窗口）才退回 `--stream-max-width`。
 // 这是起始值：之后列宽变了由宿主现量、交账本 `relayout`（`tab-stream-view.ts::relayoutOnColumnChange`）。
 const COL_W: number = ((fallback: number): number => {
   const host = typeof document === "undefined" ? null : document.getElementById("message-stream");
@@ -38,7 +54,7 @@ const COL_W: number = ((fallback: number): number => {
   const w = col.getBoundingClientRect().width;
   probe.remove();
   return w > 0 ? w : fallback;
-})(780);
+})(px("--stream-max-width"));
 /** 起始列宽（上面量出来的那个；账本没交过列宽时就是它）。 */
 export function initialColumnWidth(): number {
   return COL_W;
@@ -174,12 +190,12 @@ export function estimateFromFacts(f: SkeletonFacts, colW: number = COL_W): numbe
   const folded = (f.fd ?? 0) * SUMMARY_H;
   if (f.t === "said") {
     const userW = colW * 0.8 - 34;
-    return factLines(f, 14, userW) * LH_BASE + factCode(f) + folded + SKEL_USER_CHROME;
+    return factLines(f, FS_BASE, userW) * LH_BASE + factCode(f) + folded + SKEL_USER_CHROME;
   }
   const paras = Math.max(0, (f.pl ?? 0) - 1) * P_GAP;
   return (
     CARD_HEADER_H +
-    factLines(f, 15, colW) * LH_PROSE +
+    factLines(f, FS_PROSE, colW) * LH_PROSE +
     paras +
     factCode(f) +
     folded +
@@ -385,7 +401,7 @@ export function refineItemOf(rec: LineRecord, colW: number = COL_W): RefineItem 
     return {
       text,
       scale,
-      font: `14px ${FONT_BASE}`,
+      font: FONT_BASE,
       lineHeightPx: LH_BASE,
       widthPx: colW * 0.8 - 34,
       fixed: code + folded * SUMMARY_H + SKEL_USER_CHROME,

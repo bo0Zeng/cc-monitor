@@ -1130,7 +1130,7 @@ fn chrono_like_today_at(h: i64, m: i64) -> u64 {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs() as i64);
-    let off = host_core::local_offset_at(now);
+    let off = platform_core::tz::offset_secs(now).unwrap_or(0);
     let day = (now + off).div_euclid(86_400) * 86_400;
     (day + h * 3600 + m * 60 - off) as u64
 }
@@ -1506,7 +1506,7 @@ async fn screenshot_for_the_shots_tool() {
             verb: batch_core::Verb::Copy,
             cmd: "transfer-copy",
             args: serde_json::json!({"to": "gpu-01", "to_dir": "/home/user/inbox", "items": [
-                {"remote_path": "report.pdf"}, {"remote_path": "notes.md"}, {"remote_path": "assets"}]}),
+                {"path": "report.pdf"}, {"path": "notes.md"}, {"path": "assets"}]}),
             names: vec!["report.pdf".into(), "notes.md".into(), "assets".into()],
             into: Some("gpu-01:/home/user/inbox".into()),
             machine: "devbox".into(),
@@ -1576,7 +1576,7 @@ async fn screenshot_for_the_shots_tool() {
             verb: batch_core::Verb::Copy,
             cmd: "transfer-copy",
             args: serde_json::json!({"to": "gpu-01", "to_dir": "/home/user/inbox", "items": [
-                {"remote_path": "report.pdf"}, {"remote_path": "notes.md"}, {"remote_path": "assets"}]}),
+                {"path": "report.pdf"}, {"path": "notes.md"}, {"path": "assets"}]}),
             names: vec!["report.pdf".into(), "notes.md".into(), "assets".into()],
             into: Some("gpu-01:/home/user/inbox".into()),
             machine: "devbox".into(),

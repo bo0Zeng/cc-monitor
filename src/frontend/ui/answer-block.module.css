@@ -2,8 +2,10 @@
 @layer components {
   .abBlock {
     position: absolute;
-    /* 浮在输入框上面（`--composer-room` 是输入框那么高） */
-    bottom: calc(var(--space-5) + var(--composer-room, 0px));
+    /* 浮在输入框上面（`--composer-room` 是输入框那么高）；与输入框之间那道缝是块自己的下外边距 ——
+       `answer-block.ts` 报 `--answer-room` 时连它一起报，消息流的视口照它止于块上沿。 */
+    bottom: var(--composer-room, 0);
+    margin-bottom: var(--space-5);
     left: 50%;
     /* 浮在流上：在场的那条流自己在 --z-sticky，同层时后建的流会盖住块（字透上来、点不着） */
     z-index: var(--z-float);

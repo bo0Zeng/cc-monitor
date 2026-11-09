@@ -8,7 +8,7 @@
 //! - [`terminal`]：给一台开终端那一条（`terminal-ssh`）的入参与回包；
 //! - [`deploy`]：装 · 卸远端后端那两条（`deploy-install` · `deploy-uninstall`）的入参与回包；
 //! - [`files`]：文件管理那一族（`files-*`）的入参与回包，路径走原始字节（[`files::WirePath`]）；
-//! - [`front`]：↗ 切到终端的线上那三型（浮层那一张 · 按钮 · 壳拉前交给出口的；结局与写字住 `face_core::front`）；
+//! - [`front`]：↗ 切到终端的线上那几型（浮层那一张 · 按钮 · 壳拉前交给出口的 · 窗口那一跳的结局码与它那一张；写字住 `face_core::front`）；
 //! - [`frame`]：后端发给客户端的帧（每种一个具名结构，记录那一格是类型参数）与一行解一帧的 [`frame::decode`]；
 //! - [`live`]：活卡（`live_card` 帧）的线上形与归一流里一块的种类（[`live::BlockKind`]）；
 //! - [`machine`]：「这一趟问的是哪台机器」的唯一类型 [`Machine`]（线上就是一个字符串，本机逐字 `"<local>"`）；
@@ -33,6 +33,7 @@
 //!   表由后端的判据从类型现算、写进 `src/shapes.rs`（过期即红），这里只是那份表本身。
 //! - [`groups`]：组那一族的线上形（一台那一片 · 几台合好的那一份）；几台合一份那一步住 `face_core::groups::merge`（本机后端与手机核心调同一份）；
 //! - [`search`]：全文搜索那一族的线上形（一台的回包 · 几台合好的那一份）；几台合一份那一步住 `face_core::search::merge`（本机后端与手机核心调同一份）；
+//! - [`resync`]：手动对齐（`resync`）的入参与回包（回包带那台当下的能力事实，壳读回它换进握手那一份）；
 //! - [`rewind`]：编辑已发的一句（发送时选怎么退）随那句带的那一份 · 发送那一下的选项（`session-rewind-options`）；
 //! - [`queue`]：会话输入队那三条（`session-queue-*`）的入参与回执 · 一条会话的名单（也是 `changed {session_queue}` 的体）；
 //! - [`tasks`]：`tasks-list` 的回包（一个会话的任务列表，也是 `changed {tasks}` 的体）；
@@ -79,6 +80,7 @@ pub mod plan;
 pub mod queue;
 pub mod quota;
 pub mod record;
+pub mod resync;
 pub mod rewind;
 pub mod rotation;
 pub mod search;

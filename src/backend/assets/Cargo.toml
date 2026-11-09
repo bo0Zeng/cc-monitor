@@ -28,8 +28,6 @@ backend-platform = { path = "../platform" }
 # 帧的线上形（客户端按同一份解）。
 cmd-wire = { path = "../../common/cmd-wire" }
 copy-core = { path = "../../common/copy-core" }
-# 这台的数据目录怎么推（同常驻后端 hello 回显的那一对）。
-creds-core = { path = "../../common/creds-core" }
 # 后端的门牌与家的契约（`~/.cc-monitor/` 下每一样的相对路径）。
 relay-route-core = { path = "../../common/relay-route-core" }
 # 有上限读（读上限 `Cap` · 同步整读）的唯一一份；零依赖。

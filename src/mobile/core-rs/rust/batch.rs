@@ -2027,6 +2027,7 @@ mod tests {
                 current: current.map(WirePath::from),
                 bytes_done: None,
                 bytes_total: None,
+                left_text: None,
             });
             serde_json::to_string(&f).unwrap()
         };
@@ -2134,6 +2135,7 @@ mod tests {
                                     current: None,
                                     bytes_done: None,
                                     bytes_total: None,
+                                    left_text: None,
                                 });
                                 Err(rebuff_of("devbox", "files-delete", CallError::Disconnected))
                             }

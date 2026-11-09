@@ -177,13 +177,13 @@ fn kept_oneshot_subcommands_are_still_subcommands() {
     }
 }
 use super::*;
-use crate::control::cli_args::{
+use crate::wire::cli_args::{
     read_input, MAX_ARGS_B64_LEN, MAX_CLI_STDIN, STDIN_LINE_FLAG, STDIN_QUIET,
 };
 use crate::wire::detail::failed_of;
 
-/// 帧面有、CLI 面没有的命令，**逐条登记理由**（不在这里的另两张在生产里：`STREAM_ONLY` 「结构上答不了」·
-/// `UI_ONLY` 「只有界面用得着」，理由同样是数据；这张只收帧面硬臂与占了 ccm 的词那几条）。
+/// 帧面有、CLI 面没有的命令，**逐条登记理由**（另两种写在那条命令的登记行上：`.stream_only(..)` 「结构上答不了」·
+/// `.ui_only(..)` 「只有界面用得着」，理由同样是数据；这张只收帧面硬臂与占了 ccm 的词那几条）。
 ///
 /// 把「为什么这条不上」写成**数据**，
 /// 好让机检对着它比 —— 散文里说一遍，下一个人加命令时看不见。
@@ -263,102 +263,6 @@ const NOT_ON_CLI: &[(&str, &str)] = &[
 
 ];
 
-/// [`STREAM_ONLY`] 每一条的理由（一次性进程里结构上答不了）。与生产那张表两向相等（`the_withheld_tables_…`）。
-const STREAM_ONLY_WHY: &[(&str, &str)] = &[
-    (
-        "quota-warm",
-        "「同一个号 15 分钟只发一次」那一本只住常驻进程的内存（轮换判完开窗也记在那里）；一次性进程每次是新的一本，答的 `sent` 是假话、还会重发。",
-    ),
-    (
-        "session-arrive",
-        "它等的是常驻进程那份 watcher 报出来的会话；一次性进程里没有 watcher，只能当场答「没见到」—— 那是假话。",
-    ),
-    (
-        "machine-menu",
-        "它的头是常驻进程那张机器状态表里那台的成品；一次性进程里那张表是空的，只能当场答「状态不明」—— 那是假话。",
-    ),
-    (
-        "machine-wake",
-        "它叫醒的是常驻进程手上那台的常驻流；一次性进程里一条都没有，只能当场答「叫醒了」—— 那是假话。",
-    ),
-    (
-        "machine-stop",
-        "它先停常驻进程手上那台的常驻流、再停那台：一次性进程里没有那一条，停完那台转眼又被常驻进程那一条 ensure 起来。",
-    ),
-    (
-        "machine-read",
-        "它读的是常驻进程那一张机器状态表；一次性进程里那张表是空的，只能答每台「还没有结论」—— 那是假话。",
-    ),
-    (
-        "login-finish",
-        "它找的登录作业住常驻进程那一份作业表里；一次性进程里那张表是空的，只能答「没有这份作业」—— 那是假话。",
-    ),
-    (
-        "login-cancel",
-        "它收的登录作业住常驻进程那一份作业表里；一次性进程里那张表是空的，只能答「本来就没有」—— 那是假话。",
-    ),
-    (
-        "resync",
-        "它对齐的是本进程里在跑的 watcher；一次性进程里一份都没有，只能答 `watchers: 0` —— 那是假话。",
-    ),
-    (
-        "accounts-list",
-        "每个号的徽章（API key 号「经中转 / 中转未运行」）读本进程的监听状态；一次性进程里没有中转，只能说「中转未运行」—— 那是假话。",
-    ),
-    (
-        "forward-start",
-        "转发账住常驻那一个进程：一次性进程开出来的转发随进程退出就没了 —— 口放掉、账也没了，回的 `id` 是个死号。",
-    ),
-    (
-        "forward-stop",
-        "同 `forward-start`：转发账住常驻进程，一次性进程里的账恒空，只会回 `not_found`。",
-    ),
-    (
-        "forward-list",
-        "同 `forward-start`：转发账住常驻进程，一次性进程里的账恒空，只能答 `forwards: []` —— 那是假话。",
-    ),
-    (
-        "ext-list",
-        "它按本进程的可达表认出每台叫什么、连没连上；一次性进程里那张表是空的 ⇒ 只剩本机、别的台全画成「没连上」，是假话。\
-         本机那一半另有 `ext-list-here`（同一份 `ext::answer_list`，目录先裁到这台一格 ⇒ 可达表无从参与），它上 CLI 面。",
-    ),
-    (
-        "ext-hub-preview",
-        "枢纽要经本进程的可达表够到来源那台与被写那台；一次性进程里那张表是空的 ⇒ 除了本机对本机什么都问不到。",
-    ),
-    (
-        "ext-hub-apply",
-        "同 `ext-hub-preview`：两头都要经本进程的可达表够到；一次性进程里那张表是空的。",
-    ),
-    (
-        "needs-answer",
-        "答的是**常驻进程里挂着的那一条**（`control::asks` 的登记表：答题 hook 经常驻那条连接挂进来、在那儿阻塞等）——\
-         一次性进程里那张表永远是空的，答哪一条都只能回 `not_found`，是假话 ⇒ 真依赖流语义。",
-    ),
-];
-
-/// [`UI_ONLY`] 每一条的理由（答得了，只是除了界面没人用得着）。与生产那张表两向相等。
-const UI_ONLY_WHY: &[(&str, &str)] = &[
-    (
-        "session-terminals",
-        "它答「此刻哪个终端在显示这个会话」，唯一的用处是界面点 ↗ 那一刻、本机后端经 `--resident-call` 问它（`session-window` 的远端一半），\
-         再把那个窗口拉到前面；只有能拉前桌面窗口的那一方用得着，第二个前端也不用。",
-    ),
-    (
-        "session-window",
-        "它答「这条会话在这台电脑上的哪儿」（窗口标签 · 进程链），只给界面接着找窗口、拉前用；\
-         同 `session-terminals`，只有能拉前桌面窗口的那一方用得着。",
-    ),
-    (
-        "deploy-install",
-        "给远端装后端是 monitor 部署预检与机器页［更新］那一步；手机直接调 `deploy` crate、不经命令，终端里敲 `ccm` 的人不在这条路上。",
-    ),
-    (
-        "deploy-uninstall",
-        "卸远端后端是机器页［卸载后端］那一步（与装同一条路：传一份暂存件、由它删）；终端里敲 `ccm` 的人不在这条路上。",
-    ),
-];
-
 /// ★ 帧面的每一条命令，**要么有 CLI 入口，要么在 [`NOT_ON_CLI`] 里写明为什么没有**。
 ///
 /// 钉的是**集合**，不是「加了 `--launch`」—— 后者选哪几条是我的主观，前者是数据对数据的镜子：
@@ -388,11 +292,11 @@ fn every_wire_command_is_either_on_the_cli_or_has_a_written_reason() {
         );
     }
     // ② 没上的，必须逐条有理由；且理由表里不许有**已经上了**的命令（那种是过期的理由）。
+    //    理由两处：这张 `NOT_ON_CLI` · 登记行上的 `.stream_only(..)` / `.ui_only(..)`。
     let reasons: Vec<&str> = NOT_ON_CLI
         .iter()
-        .chain(STREAM_ONLY_WHY)
-        .chain(UI_ONLY_WHY)
         .map(|(n, _)| *n)
+        .chain(withheld_on_the_registry_line().map(|s| s.name))
         .collect();
     let mut missing: Vec<&&str> = withheld.iter().filter(|n| !reasons.contains(n)).collect();
     missing.sort();
@@ -1013,71 +917,56 @@ fn the_protocol_doc_states_the_input_limits_the_code_enforces() {
     }
 }
 
-/// ★ 不上 CLI 面的理由分三种、各住一张表，**互不重叠**：`STREAM_ONLY`（一次性进程里结构上答不了：答出来是假话 / 活不过进程）·
-/// `UI_ONLY`（答得了，只是除了界面没人用得着 —— 这是关于调用方是谁的产品判断，第二个前端来了就该重看）· 测试里的 `NOT_ON_CLI`
-/// （帧面硬臂与占了 ccm 的词）。混成一张表时，后一种理由被读成前一种，第二个前端就够不着（审计 §4）。
+/// 登记行上写了不上 CLI 面的那几条（`.stream_only(..)` · `.ui_only(..)`）与它那一句理由。
+fn withheld_on_the_registry_line() -> impl Iterator<Item = &'static CommandSpec> {
+    REGISTRY
+        .iter()
+        .filter(|s| s.cli != crate::wire::spec::Cli::Open)
+}
+
+/// ★ 不上 CLI 面的理由分三种、**互不重叠**：登记行上的 `.stream_only(..)`（一次性进程里结构上答不了：答出来是假话 / 活不过进程）·
+/// `.ui_only(..)`（答得了，只是除了界面没人用得着 —— 这是关于调用方是谁的产品判断，第二个前端来了就该重看）· 测试里的 `NOT_ON_CLI`
+/// （帧面硬臂与占了 ccm 的词）。混成一种时，后一种理由被读成前一种，第二个前端就够不着（审计 §4）。
 #[test]
-fn the_withheld_tables_do_not_overlap_and_each_holds_its_own_kind() {
-    fn names(t: &[(&'static str, &'static str)]) -> Vec<&'static str> {
-        t.iter().map(|(n, _)| *n).collect()
-    }
-    let (s, u, n) = (
-        names(STREAM_ONLY_WHY),
-        names(UI_ONLY_WHY),
-        names(NOT_ON_CLI),
+fn the_withheld_reasons_do_not_overlap_and_each_holds_its_own_kind() {
+    use crate::wire::spec::Cli;
+    let on_line: Vec<_> = withheld_on_the_registry_line().collect();
+    assert!(
+        on_line.len() >= 10,
+        "登记行上写了不上 CLI 面的只有 {} 条 —— 本条在空转",
+        on_line.len()
     );
-    // 理由表与生产那两张表两向相等（一条都不多、一条都不少）。
-    let sorted = |mut v: Vec<&'static str>| {
-        v.sort_unstable();
-        v
-    };
-    assert_eq!(
-        sorted(s.clone()),
-        sorted(STREAM_ONLY.to_vec()),
-        "`STREAM_ONLY_WHY` 与生产的 `STREAM_ONLY` 对不上"
-    );
-    assert_eq!(
-        sorted(u.clone()),
-        sorted(UI_ONLY.to_vec()),
-        "`UI_ONLY_WHY` 与生产的 `UI_ONLY` 对不上"
-    );
-    for (a, an, b, bn) in [
-        (&s, "STREAM_ONLY", &u, "UI_ONLY"),
-        (&s, "STREAM_ONLY", &n, "NOT_ON_CLI"),
-        (&u, "UI_ONLY", &n, "NOT_ON_CLI"),
-    ] {
-        let both: Vec<_> = a.iter().filter(|x| b.contains(x)).collect();
-        assert!(
-            both.is_empty(),
-            "{an} 与 {bn} 都登记了 {both:?} —— 一条命令只有一种理由"
-        );
-    }
-    // 两张生产表收的都是**跑得起来**的命令（帧面硬臂那一种本来就跑不了，理由住 `NOT_ON_CLI`）。
-    for name in s.iter().chain(u.iter()) {
-        let spec = REGISTRY
-            .iter()
-            .find(|x| x.name == *name)
-            .unwrap_or_else(|| panic!("{name} 不在 REGISTRY 里 —— 过期的登记"));
+    for spec in &on_line {
+        let (name, cli) = (spec.name, &spec.cli);
+        // 登记行上那两种收的都是**跑得起来**的命令（帧面硬臂那一种本来就跑不了，理由住 `NOT_ON_CLI`）。
         assert!(
             !spec.run.on_frame_arm(),
             "{name} 是帧面硬臂，理由该住 `NOT_ON_CLI`"
         );
-    }
-    // `NOT_ON_CLI` 只收那两种。
-    for name in &n {
-        if let Some(spec) = REGISTRY.iter().find(|x| x.name == *name) {
+        assert!(
+            !NOT_ON_CLI.iter().any(|(n, _)| *n == name),
+            "{name} 登记行上写了理由、`NOT_ON_CLI` 里又写了一条 —— 一条命令只有一种理由"
+        );
+        let (Cli::StreamOnly(why) | Cli::UiOnly(why)) = cli else {
+            unreachable!("只收不上的那几条")
+        };
+        assert!(why.chars().count() >= 20, "{name} 的理由太短：{why:?}");
+        // 「只有界面用得着」那一种，理由**不许**是「命令行那一侧直接敲 `ccm` 就是它」—— 那挡的是第二个入口，挡不住第二个前端。
+        if matches!(cli, Cli::UiOnly(_)) {
             assert!(
-                spec.run.on_frame_arm() || crate::ccm_line::argv::is_ccm_word(&flag_of(name)),
-                "`NOT_ON_CLI` 里的 {name} 跑得起来、也不是 ccm 的词 —— 它的理由该住 `STREAM_ONLY` 或 `UI_ONLY`"
+                !why.contains("直接敲"),
+                "{name} 的 `.ui_only` 理由是「直接敲 ccm」那一种 —— 那不是理由"
             );
         }
     }
-    // 「只有界面用得着」那一张里，理由**不许**是「命令行那一侧直接敲 `ccm` 就是它」—— 那挡的是第二个入口，挡不住第二个前端。
-    for (name, why) in UI_ONLY_WHY {
-        assert!(
-            !why.contains("直接敲"),
-            "UI_ONLY 里 {name} 的理由是「直接敲 ccm」那一种 —— 那不是理由"
-        );
+    // `NOT_ON_CLI` 只收那两种。
+    for (name, _) in NOT_ON_CLI {
+        if let Some(spec) = REGISTRY.iter().find(|x| x.name == *name) {
+            assert!(
+                spec.run.on_frame_arm() || crate::ccm_line::argv::is_ccm_word(&flag_of(name)),
+                "`NOT_ON_CLI` 里的 {name} 跑得起来、也不是 ccm 的词 —— 它的理由该写在登记行上（`.stream_only` 或 `.ui_only`）"
+            );
+        }
     }
 }
 

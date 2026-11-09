@@ -2071,7 +2071,7 @@ fn a_row_says_why_it_cannot_be_picked_and_its_plate() {
             .into(),
             auth_ready: ready,
             selectable: acct_core::account_selectable(mode, ready, exists, dir.is_some()),
-            color: 0,
+            color: Some(0),
         };
     let why = |a: ScannedAccount| unselectable_of(&a, a.auth_kind == acct_core::AUTH_KIND_API_KEY);
     let t = |k: &str| Some(copy_core::copy_text(k, &[]));

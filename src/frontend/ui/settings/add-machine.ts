@@ -16,6 +16,7 @@ import { copyText } from "../copy-table";
 import type { MachineFault } from "../generated/MachineFault";
 import type { ImportGroup } from "../ssh-config-reads";
 import type { SshImported } from "../generated/SshImported";
+import { parseAddressLines, portOf, withPort } from "../remote-config";
 
 export interface AddMachineDeps {
   /** 这几台若现在加进去，机器表那一道过不过（后端试算；过 ⇒ `null`）。 */
@@ -31,19 +32,12 @@ export interface AddMachineDeps {
 const blank = (): Host => ({
   label: "",
   host: "",
-  port: 22,
   user: "",
   keyPath: "",
   addresses: [],
   jump: "",
   connect: true,
 });
-
-/** 端口框里的字 → 数（不是整数 ⇒ 0：交给后端判「端口不在 1–65535」，不在这里另判一遍）。 */
-const portNumber = (text: string): number => {
-  const n = Number(text.trim());
-  return Number.isInteger(n) ? n : 0;
-};
 
 interface SshRow {
   g: ImportGroup;
@@ -56,12 +50,12 @@ interface SshRow {
 
 /** 组 → 一台（成员多于一个时别名记在备用地址里）。 */
 function groupCfg(g: ImportGroup): Host {
-  return { ...blank(), label: g.label, host: g.host, port: g.port || 22, user: g.user, keyPath: g.keyPath ?? "", addresses: g.addresses, jump: g.jump ?? "" };
+  return { ...blank(), label: g.label, host: g.host, port: g.port, user: g.user, keyPath: g.keyPath ?? "", addresses: g.addresses, jump: g.jump ?? "" };
 }
 
 /** 拆开：每个成员一台。 */
 function memberCfgs(g: ImportGroup): Host[] {
-  return g.members.map((m) => ({ ...blank(), label: m.alias, host: m.host, port: m.port || 22, user: g.user, keyPath: g.keyPath ?? "", jump: m.proxyJump ?? "" }));
+  return g.members.map((m) => ({ ...blank(), label: m.alias, host: m.host, port: m.port, user: g.user, keyPath: g.keyPath ?? "", jump: m.proxyJump ?? "" }));
 }
 
 export function openAddMachine(deps: AddMachineDeps): Promise<boolean> {
@@ -211,7 +205,7 @@ export function openAddMachine(deps: AddMachineDeps): Promise<boolean> {
   const fName = field({ label: copyText("machineForm.field.name"), help: copyText("addMachine.field.nameHelp") });
   const fHost = field({ label: copyText("machineForm.field.host"), help: copyText("machineCard.field.hostHint") });
   const fUser = field({ label: copyText("machineForm.field.user"), help: copyText("addMachine.field.userHelp") });
-  const fPort = field({ label: copyText("machineForm.field.port"), value: "22", help: copyText("addMachine.field.portHelp") });
+  const fPort = field({ label: copyText("machineForm.field.port"), help: copyText("addMachine.field.portHelp") });
   const fKey = field({ label: copyText("mobIdentity.import.pem"), help: copyText("addMachine.field.keyHelp") });
   fKey.root.classList.add("add-machine-wide");
   grid.append(fName.root, fHost.root, fUser.root, fPort.root, fKey.root);
@@ -226,16 +220,19 @@ export function openAddMachine(deps: AddMachineDeps): Promise<boolean> {
   manualPane.append(grid, fold({ title: copyText("machineCard.conn.more"), open: false, body: moreBody }), manualAfter);
   for (const f of [fName, fHost, fUser, fPort, fKey, fAddrs, fJump]) f.input.addEventListener("input", update);
 
-  const manualCfg = (): Host => ({
-    ...blank(),
-    label: fName.input.value.trim(),
-    host: fHost.input.value.trim(),
-    user: fUser.input.value.trim(),
-    port: portNumber(fPort.input.value),
-    keyPath: fKey.input.value.trim(),
-    addresses: fAddrs.input.value.split("\n").map((x) => x.trim()).filter(Boolean),
-    jump: fJump.input.value.trim(),
-  });
+  const manualCfg = (): Host =>
+    withPort(
+      {
+        ...blank(),
+        label: fName.input.value.trim(),
+        host: fHost.input.value.trim(),
+        user: fUser.input.value.trim(),
+        keyPath: fKey.input.value.trim(),
+        addresses: parseAddressLines(fAddrs.input.value),
+        jump: fJump.input.value.trim(),
+      },
+      portOf(fPort.input.value),
+    );
 
   /** 后端对「这一框此刻要加的那几台」的回答；`asked` 是问的那一份（框里改过了 ⇒ 那个回答作废、等新的）。 */
   let verdict: { asked: string; fault: MachineFault | null } | null = null;

@@ -220,6 +220,12 @@ pub fn truncate_plain(s: &str, n: usize) -> String {
 /// 首条人说的话的摘录至多几个字（压过空白，截了接「…」）。
 pub(crate) const EXCERPT_CHARS: usize = 120;
 
+/// 首条人说的话（原文）⇒ 摘录：压空白、截到 [`EXCERPT_CHARS`] 字。各家只交原文，截 · 压只在这一处
+/// （记录树那一行 · 合成历史那一行 · 叫一条会话什么都调它）。
+pub(crate) fn excerpt_of(said: &str) -> String {
+    copy_core::clip_flat(said, EXCERPT_CHARS)
+}
+
 /// 叫一条会话什么时用到的那几样（[`session_label`] 的入参）。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LabelFacts {
@@ -288,7 +294,7 @@ pub fn session_line(facts: &LabelFacts) -> String {
     facts
         .project_dir
         .as_deref()
-        .and_then(project_name)
+        .and_then(plain_path_core::last_segment)
         .map(str::to_string)
         .into_iter()
         .chain(forked)
@@ -304,19 +310,16 @@ pub fn session_line(facts: &LabelFacts) -> String {
 /// [`TitleBy::Agent`]: crate::agents::record::TitleBy::Agent
 /// [`TitleBy::User`]: crate::agents::record::TitleBy::User
 pub fn heard(facts: &mut LabelFacts, body: &crate::agents::record::Body) -> bool {
-    use crate::agents::record::{Body, TitleBy};
+    use crate::agents::record::Body;
     use crate::agents::UserTextExt as _;
     match body {
-        Body::Title {
-            text,
-            by: TitleBy::Agent,
-        } if facts.title.as_deref() != Some(text) => {
+        Body::Title { text, by } if names_session(*by) && facts.title.as_deref() != Some(text) => {
             facts.title = Some(text.clone());
             true
         }
         Body::Said { who, .. } if facts.first.is_empty() => match who.speech() {
             Some(s) => {
-                facts.first = copy_core::clip_flat(&s, EXCERPT_CHARS);
+                facts.first = excerpt_of(&s);
                 true
             }
             None => false,
@@ -325,9 +328,12 @@ pub fn heard(facts: &mut LabelFacts, body: &crate::agents::record::Body) -> bool
     }
 }
 
-/// 项目目录的最后一截（两种分隔符都认，尾巴上的分隔符不算）；一截都没有 ⇒ `None`。
-pub(crate) fn project_name(dir: &str) -> Option<&str> {
-    dir.split(['/', '\\']).rfind(|s| !s.is_empty())
+/// 一条标题记录算不算这条会话的标题：只认 agent 起的（[`TitleBy::Agent`]）；人在 agent 里改的名不收，改名只认 monitor 那一格（`custom`）。
+/// 只此一处：读到一条记录（[`heard`]）与历史清单那一行的扫描（`listing_scan::SessionScan`）都调它。
+///
+/// [`TitleBy::Agent`]: crate::agents::record::TitleBy::Agent
+pub(crate) fn names_session(by: crate::agents::record::TitleBy) -> bool {
+    by == crate::agents::record::TitleBy::Agent
 }
 
 /// **这条会话叫什么那两格的唯一构造口**（帧上的 [`crate::wire::NameFace`]）：`label` ＝ [`session_label`]，`title` ＝ [`session_line`]。

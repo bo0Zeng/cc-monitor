@@ -8,7 +8,6 @@
 //! - [`capture_pane`]：抓一次某个窗格此刻那一屏（只读、只抓一次；`readonly_guard::capture_is_read_only` 逐元素钉 argv）。
 //! - [`kill`]：杀一个 tmux 会话，过三道门（Gate 3 = `windows==1` 只给它），对 `#{session_id}` 句柄下手。
 //! - [`launch`]：起 tmux 会话 / 往已有会话键入载荷（argv 直传不过 shell）；不 attach —— backend 在远端开不了你面前的窗。
-//! - [`cli_args`]：CLI 面读入参的唯一一处（`stream::cli` 经它读）。
 //! - [`cc_bus`]：cc-bus 的读命令（`bus-list` / `bus-inbox`），转调本机的 cc-bus 命令；不读 cc-bus 的任何数据文件，只把它的命令当接口。
 //! - [`cc_bus_envelope`]：cc-bus 信封的唯一一处校验（`bus-envelope`；`cc-bus send` 发之前问它，不合格当场拒）。
 //! - [`cc_bus_scope`]：cc-bus 的范围（组）：同组才送得到，名单读不到就拒。
@@ -69,7 +68,6 @@ pub(crate) mod cc_bus_envelope;
 pub mod cc_bus_scope; // cc-bus 的范围：组（`bus-envelope` 核完各格之后判）
 pub mod cc_bus_wire; // cc-bus 那三条帧命令的形状（入参 · 回包 · 码表 · 怎么跑）
 pub mod ccm;
-pub mod cli_args;
 pub mod deploy_plan;
 pub mod exit_policy;
 pub mod feeds; // 各台的常驻流（机器表里要连的那几台各一条；那一态直接进机器状态 · 装后端在 connect 那一支）
@@ -101,8 +99,7 @@ pub mod session_arrive; // 帧命令 `session-arrive`：等起好的会话报到
 pub mod session_batch;
 pub mod session_open;
 pub mod session_set; // 帧命令 `set-plan`：补足一组会话的判定（每行已有几个 · 再起几个 · 进哪个组）
-pub mod ship_text; // CLI `--text`：回包里写好的格（顶上 `text` · 每一处 `rows`）拼成字，所有命令通用
-                   // 起新会话那一趟的票（期限到了再问一次 ⇒ 认出同一趟，不起第二个）。
+                     // 起新会话那一趟的票（期限到了再问一次 ⇒ 认出同一趟，不起第二个）。
 pub(crate) mod session_new_ticket;
 // 终端管理 L1：名单 · 抓一屏 · 送字送键（两个前端共用，形状与宿主无关；这一版宿主是 tmux）。
 pub mod terminals;

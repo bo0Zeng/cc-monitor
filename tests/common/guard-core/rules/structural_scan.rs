@@ -1484,9 +1484,9 @@ fn the_verb_scan_reads_production_only_and_is_not_vacuous() {
     );
     // 真树上打一发：这个动词在真文件里确实有命中（恒空的扫描买不到任何东西）。
     assert!(
-        fn_names_starting_with(&text("src/frontend/shell/src/deploy.rs"), &["uninstall"])
-            .contains(&"uninstall_remote_backend".to_string()),
-        "真树上扫不到 `uninstall_remote_backend` —— 剥法或遍历坏了"
+        fn_names_starting_with(&text("src/backend/control/deploy_plan.rs"), &["uninstall"])
+            .contains(&"uninstall".to_string()),
+        "真树上扫不到后端 `deploy_plan.rs` 的 `uninstall` —— 剥法或遍历坏了"
     );
 }
 

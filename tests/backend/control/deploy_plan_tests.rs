@@ -18,15 +18,6 @@ fn installed_json(p: &Plan) -> Value {
     serde_json::to_value(super::installed_of(p)).unwrap()
 }
 
-fn slots_of(args: &Value) -> Result<Vec<deploy::Slot>, Said> {
-    #[derive(serde::Deserialize)]
-    struct Only {
-        slots: Vec<SlotRow>,
-    }
-    let only: Only = crate::wire::typed::take(args)?;
-    super::slots_of(&only.slots)
-}
-
 fn answer_place(args: &Value) -> Result<Value, Said> {
     let req: PlaceReq = crate::wire::typed::take(args)?;
     super::answer_place(&req).map(|r| serde_json::to_value(r).unwrap())
@@ -340,7 +331,12 @@ fn the_install_reply_has_exactly_the_golden_keys() {
             got["build"].as_str(),
             got["said"].as_str()
         ),
-        (Some("keep"), Some("p9b"), Some("w"))
+        (
+            Some("keep"),
+            Some("p9b"),
+            Some(copy_text("rsSftp.deploy.keptNotOlder", &[("why", "w")]).as_str())
+        ),
+        "Keep 那一句连出路由后端写全（壳与界面不再接句子）"
     );
     let un = serde_json::to_value(Uninstalled {
         removed: true,
@@ -350,23 +346,105 @@ fn the_install_reply_has_exactly_the_golden_keys() {
     assert_eq!(keys(&un), keys(&golden["uninstalled"]));
 }
 
+/// 槽名的拼与解只住契约 crate 的 `Key` 上：壳照它落槽、后端照它认槽。每一格拼出来都解得回去；认不出的名字 ⇒ 不算哪一格。
 #[test]
-fn slot_rows_outside_table_a_without_an_id_or_without_an_absolute_path_are_bad_args() {
-    let ok = serde_json::json!({"slots": [{"os": "Linux", "arch": "x86_64", "id": "p9a-x", "path": "/s/linux-x86_64"}]});
-    assert_eq!(slots_of(&ok).unwrap().len(), 1);
-    for bad in [
-        serde_json::json!({}),
-        serde_json::json!({"slots": [{"os": "Plan9", "arch": "x86_64", "id": "p9a-x", "path": "/s/x"}]}),
-        serde_json::json!({"slots": [{"os": "Linux", "arch": "x86_64", "id": "", "path": "/s/x"}]}),
-        serde_json::json!({"slots": [{"os": "Linux", "arch": "x86_64", "id": "p9a-x", "path": "s/x"}]}),
-        serde_json::json!({"slots": [{"os": "Linux", "arch": "x86_64", "id": "p9a-x"}]}),
-    ] {
-        assert_eq!(
-            slots_of(&bad).unwrap_err().code.as_deref(),
-            Some("bad_args"),
-            "{bad}"
-        );
+fn the_slot_name_round_trips_every_key() {
+    for os in [Os::Linux, Os::Windows, Os::Mac] {
+        for arch in [Arch::X86_64, Arch::Aarch64] {
+            let k = Key { os, arch };
+            assert_eq!(Key::of_slot_name(&k.slot_name()), Some(k), "{k:?}");
+        }
     }
+    assert_eq!(
+        Key {
+            os: Os::Linux,
+            arch: Arch::X86_64
+        }
+        .slot_name(),
+        "linux-x86_64",
+        "盘上那个名字变了 ⇒ 旧一版落的槽认不出"
+    );
+    for bad in ["solaris-sparc", "linux", "", "linux-x86_64-extra"] {
+        assert_eq!(Key::of_slot_name(bad), None, "{bad:?}");
+    }
+}
+
+/// 装 · 卸的入参只有那台的名字：带着哪几个槽是这台自己的事实（槽目录），不由调用方交；多交一格 ⇒ 解不开。名字空 ⇒ `bad_args`。
+#[tokio::test]
+async fn the_install_and_uninstall_requests_carry_only_the_machine() {
+    let one = serde_json::json!({"machine": "box"});
+    let req: DeployInstallReq = crate::wire::typed::take(&one).expect("只有 machine 的装解得开");
+    assert_eq!(req.machine, "box");
+    let un: DeployUninstallReq = crate::wire::typed::take(&one).expect("只有 machine 的卸解得开");
+    assert_eq!(un.machine, "box");
+    let extra = serde_json::json!({"machine": "box", "slots": []});
+    assert!(crate::wire::typed::take::<DeployInstallReq>(&extra).is_err());
+    let home = slots_home("empty-machine");
+    let f = Fake::linux(None);
+    let blank = DeployInstallReq {
+        machine: " ".into(),
+    };
+    assert_eq!(
+        super::install(&blank, &home, &f, &|_| {})
+            .await
+            .unwrap_err()
+            .code
+            .as_deref(),
+        Some("bad_args")
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 一个临时家目录（里面还没有槽目录）。
+fn slots_home(tag: &str) -> std::path::PathBuf {
+    let home = std::env::temp_dir().join(format!("ccm-slots-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    std::fs::create_dir_all(&home).unwrap();
+    home
+}
+
+/// 这台家目录里的槽目录（后端落点旁边那一层）。
+fn slots_dir(home: &std::path::Path) -> std::path::PathBuf {
+    let (landing_dir, _) = relay_route_core::BACKEND_LANDING_REL
+        .rsplit_once('/')
+        .unwrap();
+    home.join(landing_dir).join(deploy_contract::SLOTS_DIR)
+}
+
+/// 替身那一台给不出 SFTP（判据只走到计划那一步：跳过 · 没带着都不碰 SFTP）。
+impl deploy::Place for Fake {
+    fn sftp(&self) -> Fut<'_, Result<&ssh_dial::sftp::Session, Said>> {
+        Box::pin(async { Err(Said::new("io_failed", "替身没有 SFTP".to_string())) })
+    }
+}
+
+/// 🔴 只带 `machine` 的装 ⇒ 用这台槽目录里落好的那几个槽：槽目录空着 ⇒ 没带着那一格；落了那一格、落点上已是它 ⇒ 跳过。
+#[tokio::test]
+async fn an_install_with_only_the_machine_uses_the_slots_left_on_this_machine() {
+    let home = slots_home("install");
+    let at = slots_dir(&home);
+    std::fs::create_dir_all(&at).unwrap();
+    let req = DeployInstallReq {
+        machine: "box".into(),
+    };
+    let f = Fake::linux(Some("p9a-mine"));
+    let none = super::install(&req, &home, &f, &|_| {}).await;
+    assert!(none.is_err(), "槽目录空着 ⇒ 没带着那一格：{none:?}");
+    let k = Key {
+        os: Os::Linux,
+        arch: Arch::X86_64,
+    };
+    std::fs::write(
+        at.join(k.slot_name()),
+        format!("ELF..{}p9a-mine{}..", MARKS.open, MARKS.close),
+    )
+    .unwrap();
+    let got = super::install(&req, &home, &f, &|_| {})
+        .await
+        .expect("带着那一格 ⇒ 判得出");
+    assert_eq!(got.action, cmd_wire::deploy::ActionTag::Skip);
+    assert_eq!(got.build, "p9a-mine");
+    let _ = std::fs::remove_dir_all(&home);
 }
 
 /// 序键住 `deploy-core`，判据放在后端这一侧：读的历史表与 `BUILD_ID` 都在这一半。
@@ -836,15 +914,21 @@ fn the_promise_face_in_the_ledger_equals_the_code() {
     );
 }
 
-/// 各台的常驻流装后端那一步读 monitor 落在盘上的那几格（`slots/<os>-<arch>`，同 `deploy-install` 的 `slots`）：
+/// 装 · 卸读 monitor 落在这台盘上的那几个槽（槽目录 `SLOTS_DIR`，名字是 `Key::slot_name`）：
 /// 名字认得出、字节里恰好一个身份戳的才算带着，身份照字节自报；目录不在 ⇒ 那一句（这一轮不装），不装作带着零格。
 #[test]
 fn the_carried_slots_are_the_stamped_files_monitor_left_on_disk() {
     let home = std::env::temp_dir().join(format!("ccm-slots-dir-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&home);
     let err = carried_slots_in(&home).expect_err("目录不在 ⇒ 读不成");
-    assert!(err.contains("slots"), "{err}");
-    let at = home.join(".cc-monitor/bin/slots");
+    assert!(
+        err.raw
+            .as_deref()
+            .unwrap_or("")
+            .contains(deploy_contract::SLOTS_DIR),
+        "{err:?}"
+    );
+    let at = slots_dir(&home);
     std::fs::create_dir_all(&at).unwrap();
     let stamped = |id: &str| format!("ELF..{}{id}{}..", MARKS.open, MARKS.close);
     std::fs::write(at.join("linux-x86_64"), stamped("b1")).unwrap();
@@ -853,16 +937,15 @@ fn the_carried_slots_are_the_stamped_files_monitor_left_on_disk() {
     let rows = carried_slots_in(&home).expect("读得出那一格");
     assert_eq!(rows.len(), 1, "{rows:?}");
     assert_eq!(
+        (rows[0].key, rows[0].id.as_str(), rows[0].path.clone()),
         (
-            rows[0].os.as_str(),
-            rows[0].arch.as_str(),
-            rows[0].id.as_str()
-        ),
-        ("Linux", "x86_64", "b1")
-    );
-    assert!(
-        super::slots_of(&rows).is_ok(),
-        "读出来的那一行 `deploy-install` 认得"
+            Key {
+                os: Os::Linux,
+                arch: Arch::X86_64
+            },
+            "b1",
+            at.join("linux-x86_64")
+        )
     );
     let _ = std::fs::remove_dir_all(&home);
 }

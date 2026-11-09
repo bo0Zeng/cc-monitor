@@ -224,14 +224,16 @@
                 "face": {
                   "can": {
                     "attach": {
-                      "can": "yes",
-                      "from": "elsewhere"
+                      "can": "yes"
                     },
                     "close": {
                       "can": "no",
                       "why": "运行中"
                     },
                     "end": {
+                      "can": "yes"
+                    },
+                    "front": {
                       "can": "yes"
                     },
                     "model": {
@@ -258,18 +260,12 @@
                       "can": "no",
                       "why": "需手动"
                     },
-                    "terminal": {
-                      "far": {
-                        "go": "here",
-                        "open": {
-                          "kind": "attach"
-                        },
-                        "said": "在 cc-monitor 里打开它的终端"
+                    "view": {
+                      "can": "yes",
+                      "open": {
+                        "kind": "attach"
                       },
-                      "near": {
-                        "go": "front",
-                        "said": "切到它的终端窗口"
-                      }
+                      "said": "在 cc-monitor 里打开它的终端"
                     }
                   },
                   "dot": "needs-you",
@@ -383,11 +379,17 @@
               "session": {
                 "face": {
                   "can": {
+                    "attach": {
+                      "can": "yes"
+                    },
                     "close": {
                       "can": "no",
                       "why": "运行中"
                     },
                     "end": {
+                      "can": "yes"
+                    },
+                    "front": {
                       "can": "yes"
                     },
                     "model": {
@@ -414,18 +416,12 @@
                       "can": "no",
                       "why": "需手动"
                     },
-                    "terminal": {
-                      "far": {
-                        "go": "here",
-                        "open": {
-                          "kind": "attach"
-                        },
-                        "said": "在 cc-monitor 里打开它的终端"
+                    "view": {
+                      "can": "yes",
+                      "open": {
+                        "kind": "attach"
                       },
-                      "near": {
-                        "go": "front",
-                        "said": "切到它的终端窗口"
-                      }
+                      "said": "在 cc-monitor 里打开它的终端"
                     }
                   },
                   "dot": "needs-you",
@@ -544,11 +540,17 @@
               "session": {
                 "face": {
                   "can": {
+                    "attach": {
+                      "can": "yes"
+                    },
                     "close": {
                       "can": "no",
                       "why": "运行中"
                     },
                     "end": {
+                      "can": "yes"
+                    },
+                    "front": {
                       "can": "yes"
                     },
                     "model": {
@@ -575,18 +577,12 @@
                       "can": "no",
                       "why": "需手动"
                     },
-                    "terminal": {
-                      "far": {
-                        "go": "here",
-                        "open": {
-                          "kind": "attach"
-                        },
-                        "said": "在 cc-monitor 里打开它的终端"
+                    "view": {
+                      "can": "yes",
+                      "open": {
+                        "kind": "attach"
                       },
-                      "near": {
-                        "go": "front",
-                        "said": "切到它的终端窗口"
-                      }
+                      "said": "在 cc-monitor 里打开它的终端"
                     }
                   },
                   "dot": "needs-you",
@@ -638,11 +634,17 @@
               "session": {
                 "face": {
                   "can": {
+                    "attach": {
+                      "can": "yes"
+                    },
                     "close": {
                       "can": "no",
                       "why": "运行中"
                     },
                     "end": {
+                      "can": "yes"
+                    },
+                    "front": {
                       "can": "yes"
                     },
                     "model": {
@@ -669,18 +671,12 @@
                       "can": "no",
                       "why": "需手动"
                     },
-                    "terminal": {
-                      "far": {
-                        "go": "here",
-                        "open": {
-                          "kind": "attach"
-                        },
-                        "said": "在 cc-monitor 里打开它的终端"
+                    "view": {
+                      "can": "yes",
+                      "open": {
+                        "kind": "attach"
                       },
-                      "near": {
-                        "go": "front",
-                        "said": "切到它的终端窗口"
-                      }
+                      "said": "在 cc-monitor 里打开它的终端"
                     }
                   },
                   "dot": "needs-you",
@@ -731,11 +727,17 @@
               "session": {
                 "face": {
                   "can": {
+                    "attach": {
+                      "can": "yes"
+                    },
                     "close": {
                       "can": "no",
                       "why": "运行中"
                     },
                     "end": {
+                      "can": "yes"
+                    },
+                    "front": {
                       "can": "yes"
                     },
                     "model": {
@@ -762,18 +764,12 @@
                       "can": "no",
                       "why": "需手动"
                     },
-                    "terminal": {
-                      "far": {
-                        "go": "here",
-                        "open": {
-                          "kind": "attach"
-                        },
-                        "said": "在 cc-monitor 里打开它的终端"
+                    "view": {
+                      "can": "yes",
+                      "open": {
+                        "kind": "attach"
                       },
-                      "near": {
-                        "go": "front",
-                        "said": "切到它的终端窗口"
-                      }
+                      "said": "在 cc-monitor 里打开它的终端"
                     }
                   },
                   "dot": "needs-you",
@@ -828,11 +824,17 @@
               "session": {
                 "face": {
                   "can": {
+                    "attach": {
+                      "can": "yes"
+                    },
                     "close": {
                       "can": "no",
                       "why": "运行中"
                     },
                     "end": {
+                      "can": "yes"
+                    },
+                    "front": {
                       "can": "yes"
                     },
                     "model": {
@@ -859,18 +861,12 @@
                       "can": "no",
                       "why": "需手动"
                     },
-                    "terminal": {
-                      "far": {
-                        "go": "here",
-                        "open": {
-                          "kind": "attach"
-                        },
-                        "said": "在 cc-monitor 里打开它的终端"
+                    "view": {
+                      "can": "yes",
+                      "open": {
+                        "kind": "attach"
                       },
-                      "near": {
-                        "go": "front",
-                        "said": "切到它的终端窗口"
-                      }
+                      "said": "在 cc-monitor 里打开它的终端"
                     }
                   },
                   "dot": "needs-you",
@@ -923,11 +919,17 @@
               "session": {
                 "face": {
                   "can": {
+                    "attach": {
+                      "can": "yes"
+                    },
                     "close": {
                       "can": "no",
                       "why": "运行中"
                     },
                     "end": {
+                      "can": "yes"
+                    },
+                    "front": {
                       "can": "yes"
                     },
                     "model": {
@@ -954,18 +956,12 @@
                       "can": "no",
                       "why": "需手动"
                     },
-                    "terminal": {
-                      "far": {
-                        "go": "here",
-                        "open": {
-                          "kind": "attach"
-                        },
-                        "said": "在 cc-monitor 里打开它的终端"
+                    "view": {
+                      "can": "yes",
+                      "open": {
+                        "kind": "attach"
                       },
-                      "near": {
-                        "go": "front",
-                        "said": "切到它的终端窗口"
-                      }
+                      "said": "在 cc-monitor 里打开它的终端"
                     }
                   },
                   "dot": "needs-you",
@@ -1061,11 +1057,17 @@
               "session": {
                 "face": {
                   "can": {
+                    "attach": {
+                      "can": "yes"
+                    },
                     "close": {
                       "can": "no",
                       "why": "运行中"
                     },
                     "end": {
+                      "can": "yes"
+                    },
+                    "front": {
                       "can": "yes"
                     },
                     "model": {
@@ -1092,18 +1094,12 @@
                       "can": "no",
                       "why": "需手动"
                     },
-                    "terminal": {
-                      "far": {
-                        "go": "here",
-                        "open": {
-                          "kind": "attach"
-                        },
-                        "said": "在 cc-monitor 里打开它的终端"
+                    "view": {
+                      "can": "yes",
+                      "open": {
+                        "kind": "attach"
                       },
-                      "near": {
-                        "go": "front",
-                        "said": "切到它的终端窗口"
-                      }
+                      "said": "在 cc-monitor 里打开它的终端"
                     }
                   },
                   "dot": "needs-you",
@@ -1201,11 +1197,17 @@
               "session": {
                 "face": {
                   "can": {
+                    "attach": {
+                      "can": "yes"
+                    },
                     "close": {
                       "can": "no",
                       "why": "运行中"
                     },
                     "end": {
+                      "can": "yes"
+                    },
+                    "front": {
                       "can": "yes"
                     },
                     "model": {
@@ -1232,18 +1234,12 @@
                       "can": "no",
                       "why": "需手动"
                     },
-                    "terminal": {
-                      "far": {
-                        "go": "here",
-                        "open": {
-                          "kind": "attach"
-                        },
-                        "said": "在 cc-monitor 里打开它的终端"
+                    "view": {
+                      "can": "yes",
+                      "open": {
+                        "kind": "attach"
                       },
-                      "near": {
-                        "go": "front",
-                        "said": "切到它的终端窗口"
-                      }
+                      "said": "在 cc-monitor 里打开它的终端"
                     }
                   },
                   "dot": "needs-you",
@@ -1319,11 +1315,17 @@
               "session": {
                 "face": {
                   "can": {
+                    "attach": {
+                      "can": "yes"
+                    },
                     "close": {
                       "can": "no",
                       "why": "运行中"
                     },
                     "end": {
+                      "can": "yes"
+                    },
+                    "front": {
                       "can": "yes"
                     },
                     "model": {
@@ -1350,18 +1352,12 @@
                       "can": "no",
                       "why": "需手动"
                     },
-                    "terminal": {
-                      "far": {
-                        "go": "here",
-                        "open": {
-                          "kind": "attach"
-                        },
-                        "said": "在 cc-monitor 里打开它的终端"
+                    "view": {
+                      "can": "yes",
+                      "open": {
+                        "kind": "attach"
                       },
-                      "near": {
-                        "go": "front",
-                        "said": "切到它的终端窗口"
-                      }
+                      "said": "在 cc-monitor 里打开它的终端"
                     }
                   },
                   "dot": "needs-you",
@@ -1435,11 +1431,17 @@
               "session": {
                 "face": {
                   "can": {
+                    "attach": {
+                      "can": "yes"
+                    },
                     "close": {
                       "can": "no",
                       "why": "运行中"
                     },
                     "end": {
+                      "can": "yes"
+                    },
+                    "front": {
                       "can": "yes"
                     },
                     "model": {
@@ -1466,18 +1468,12 @@
                       "can": "no",
                       "why": "需手动"
                     },
-                    "terminal": {
-                      "far": {
-                        "go": "here",
-                        "open": {
-                          "kind": "attach"
-                        },
-                        "said": "在 cc-monitor 里打开它的终端"
+                    "view": {
+                      "can": "yes",
+                      "open": {
+                        "kind": "attach"
                       },
-                      "near": {
-                        "go": "front",
-                        "said": "切到它的终端窗口"
-                      }
+                      "said": "在 cc-monitor 里打开它的终端"
                     }
                   },
                   "dot": "needs-you",
@@ -1546,11 +1542,17 @@
               "session": {
                 "face": {
                   "can": {
+                    "attach": {
+                      "can": "yes"
+                    },
                     "close": {
                       "can": "no",
                       "why": "运行中"
                     },
                     "end": {
+                      "can": "yes"
+                    },
+                    "front": {
                       "can": "yes"
                     },
                     "model": {
@@ -1577,18 +1579,12 @@
                       "can": "no",
                       "why": "需手动"
                     },
-                    "terminal": {
-                      "far": {
-                        "go": "here",
-                        "open": {
-                          "kind": "attach"
-                        },
-                        "said": "在 cc-monitor 里打开它的终端"
+                    "view": {
+                      "can": "yes",
+                      "open": {
+                        "kind": "attach"
                       },
-                      "near": {
-                        "go": "front",
-                        "said": "切到它的终端窗口"
-                      }
+                      "said": "在 cc-monitor 里打开它的终端"
                     }
                   },
                   "dot": "needs-you",
@@ -1662,11 +1658,17 @@
               "session": {
                 "face": {
                   "can": {
+                    "attach": {
+                      "can": "yes"
+                    },
                     "close": {
                       "can": "no",
                       "why": "运行中"
                     },
                     "end": {
+                      "can": "yes"
+                    },
+                    "front": {
                       "can": "yes"
                     },
                     "model": {
@@ -1693,18 +1695,12 @@
                       "can": "no",
                       "why": "需手动"
                     },
-                    "terminal": {
-                      "far": {
-                        "go": "here",
-                        "open": {
-                          "kind": "attach"
-                        },
-                        "said": "在 cc-monitor 里打开它的终端"
+                    "view": {
+                      "can": "yes",
+                      "open": {
+                        "kind": "attach"
                       },
-                      "near": {
-                        "go": "front",
-                        "said": "切到它的终端窗口"
-                      }
+                      "said": "在 cc-monitor 里打开它的终端"
                     }
                   },
                   "dot": "needs-you",
@@ -1755,11 +1751,17 @@
               "session": {
                 "face": {
                   "can": {
+                    "attach": {
+                      "can": "yes"
+                    },
                     "close": {
                       "can": "no",
                       "why": "运行中"
                     },
                     "end": {
+                      "can": "yes"
+                    },
+                    "front": {
                       "can": "yes"
                     },
                     "model": {
@@ -1786,18 +1788,12 @@
                       "can": "no",
                       "why": "需手动"
                     },
-                    "terminal": {
-                      "far": {
-                        "go": "here",
-                        "open": {
-                          "kind": "attach"
-                        },
-                        "said": "在 cc-monitor 里打开它的终端"
+                    "view": {
+                      "can": "yes",
+                      "open": {
+                        "kind": "attach"
                       },
-                      "near": {
-                        "go": "front",
-                        "said": "切到它的终端窗口"
-                      }
+                      "said": "在 cc-monitor 里打开它的终端"
                     }
                   },
                   "dot": "needs-you",
@@ -1850,11 +1846,17 @@
               "session": {
                 "face": {
                   "can": {
+                    "attach": {
+                      "can": "yes"
+                    },
                     "close": {
                       "can": "no",
                       "why": "运行中"
                     },
                     "end": {
+                      "can": "yes"
+                    },
+                    "front": {
                       "can": "yes"
                     },
                     "model": {
@@ -1881,18 +1883,12 @@
                       "can": "no",
                       "why": "需手动"
                     },
-                    "terminal": {
-                      "far": {
-                        "go": "here",
-                        "open": {
-                          "kind": "attach"
-                        },
-                        "said": "在 cc-monitor 里打开它的终端"
+                    "view": {
+                      "can": "yes",
+                      "open": {
+                        "kind": "attach"
                       },
-                      "near": {
-                        "go": "front",
-                        "said": "切到它的终端窗口"
-                      }
+                      "said": "在 cc-monitor 里打开它的终端"
                     }
                   },
                   "dot": "needs-you",
@@ -1932,11 +1928,17 @@
               "session": {
                 "face": {
                   "can": {
+                    "attach": {
+                      "can": "yes"
+                    },
                     "close": {
                       "can": "no",
                       "why": "运行中"
                     },
                     "end": {
+                      "can": "yes"
+                    },
+                    "front": {
                       "can": "yes"
                     },
                     "model": {
@@ -1963,18 +1965,12 @@
                       "can": "no",
                       "why": "需手动"
                     },
-                    "terminal": {
-                      "far": {
-                        "go": "here",
-                        "open": {
-                          "kind": "attach"
-                        },
-                        "said": "在 cc-monitor 里打开它的终端"
+                    "view": {
+                      "can": "yes",
+                      "open": {
+                        "kind": "attach"
                       },
-                      "near": {
-                        "go": "front",
-                        "said": "切到它的终端窗口"
-                      }
+                      "said": "在 cc-monitor 里打开它的终端"
                     }
                   },
                   "dot": "needs-you",
@@ -2025,11 +2021,17 @@
               "session": {
                 "face": {
                   "can": {
+                    "attach": {
+                      "can": "yes"
+                    },
                     "close": {
                       "can": "no",
                       "why": "运行中"
                     },
                     "end": {
+                      "can": "yes"
+                    },
+                    "front": {
                       "can": "yes"
                     },
                     "model": {
@@ -2056,18 +2058,12 @@
                       "can": "no",
                       "why": "需手动"
                     },
-                    "terminal": {
-                      "far": {
-                        "go": "here",
-                        "open": {
-                          "kind": "attach"
-                        },
-                        "said": "在 cc-monitor 里打开它的终端"
+                    "view": {
+                      "can": "yes",
+                      "open": {
+                        "kind": "attach"
                       },
-                      "near": {
-                        "go": "front",
-                        "said": "切到它的终端窗口"
-                      }
+                      "said": "在 cc-monitor 里打开它的终端"
                     }
                   },
                   "dot": "needs-you",
@@ -2110,11 +2106,17 @@
               "session": {
                 "face": {
                   "can": {
+                    "attach": {
+                      "can": "yes"
+                    },
                     "close": {
                       "can": "no",
                       "why": "运行中"
                     },
                     "end": {
+                      "can": "yes"
+                    },
+                    "front": {
                       "can": "yes"
                     },
                     "model": {
@@ -2141,18 +2143,12 @@
                       "can": "no",
                       "why": "需手动"
                     },
-                    "terminal": {
-                      "far": {
-                        "go": "here",
-                        "open": {
-                          "kind": "attach"
-                        },
-                        "said": "在 cc-monitor 里打开它的终端"
+                    "view": {
+                      "can": "yes",
+                      "open": {
+                        "kind": "attach"
                       },
-                      "near": {
-                        "go": "front",
-                        "said": "切到它的终端窗口"
-                      }
+                      "said": "在 cc-monitor 里打开它的终端"
                     }
                   },
                   "dot": "needs-you",
@@ -2205,11 +2201,17 @@
               "session": {
                 "face": {
                   "can": {
+                    "attach": {
+                      "can": "yes"
+                    },
                     "close": {
                       "can": "no",
                       "why": "运行中"
                     },
                     "end": {
+                      "can": "yes"
+                    },
+                    "front": {
                       "can": "yes"
                     },
                     "model": {
@@ -2236,18 +2238,12 @@
                       "can": "no",
                       "why": "需手动"
                     },
-                    "terminal": {
-                      "far": {
-                        "go": "here",
-                        "open": {
-                          "kind": "attach"
-                        },
-                        "said": "在 cc-monitor 里打开它的终端"
+                    "view": {
+                      "can": "yes",
+                      "open": {
+                        "kind": "attach"
                       },
-                      "near": {
-                        "go": "front",
-                        "said": "切到它的终端窗口"
-                      }
+                      "said": "在 cc-monitor 里打开它的终端"
                     }
                   },
                   "dot": "needs-you",
@@ -2298,11 +2294,17 @@
               "session": {
                 "face": {
                   "can": {
+                    "attach": {
+                      "can": "yes"
+                    },
                     "close": {
                       "can": "no",
                       "why": "运行中"
                     },
                     "end": {
+                      "can": "yes"
+                    },
+                    "front": {
                       "can": "yes"
                     },
                     "model": {
@@ -2329,18 +2331,12 @@
                       "can": "no",
                       "why": "需手动"
                     },
-                    "terminal": {
-                      "far": {
-                        "go": "here",
-                        "open": {
-                          "kind": "attach"
-                        },
-                        "said": "在 cc-monitor 里打开它的终端"
+                    "view": {
+                      "can": "yes",
+                      "open": {
+                        "kind": "attach"
                       },
-                      "near": {
-                        "go": "front",
-                        "said": "切到它的终端窗口"
-                      }
+                      "said": "在 cc-monitor 里打开它的终端"
                     }
                   },
                   "dot": "needs-you",
@@ -2393,11 +2389,17 @@
               "session": {
                 "face": {
                   "can": {
+                    "attach": {
+                      "can": "yes"
+                    },
                     "close": {
                       "can": "no",
                       "why": "运行中"
                     },
                     "end": {
+                      "can": "yes"
+                    },
+                    "front": {
                       "can": "yes"
                     },
                     "model": {
@@ -2424,18 +2426,12 @@
                       "can": "no",
                       "why": "需手动"
                     },
-                    "terminal": {
-                      "far": {
-                        "go": "here",
-                        "open": {
-                          "kind": "attach"
-                        },
-                        "said": "在 cc-monitor 里打开它的终端"
+                    "view": {
+                      "can": "yes",
+                      "open": {
+                        "kind": "attach"
                       },
-                      "near": {
-                        "go": "front",
-                        "said": "切到它的终端窗口"
-                      }
+                      "said": "在 cc-monitor 里打开它的终端"
                     }
                   },
                   "dot": "needs-you",
@@ -2486,11 +2482,17 @@
               "session": {
                 "face": {
                   "can": {
+                    "attach": {
+                      "can": "yes"
+                    },
                     "close": {
                       "can": "no",
                       "why": "运行中"
                     },
                     "end": {
+                      "can": "yes"
+                    },
+                    "front": {
                       "can": "yes"
                     },
                     "model": {
@@ -2517,18 +2519,12 @@
                       "can": "no",
                       "why": "需手动"
                     },
-                    "terminal": {
-                      "far": {
-                        "go": "here",
-                        "open": {
-                          "kind": "attach"
-                        },
-                        "said": "在 cc-monitor 里打开它的终端"
+                    "view": {
+                      "can": "yes",
+                      "open": {
+                        "kind": "attach"
                       },
-                      "near": {
-                        "go": "front",
-                        "said": "切到它的终端窗口"
-                      }
+                      "said": "在 cc-monitor 里打开它的终端"
                     }
                   },
                   "dot": "needs-you",
@@ -2581,11 +2577,17 @@
               "session": {
                 "face": {
                   "can": {
+                    "attach": {
+                      "can": "yes"
+                    },
                     "close": {
                       "can": "no",
                       "why": "运行中"
                     },
                     "end": {
+                      "can": "yes"
+                    },
+                    "front": {
                       "can": "yes"
                     },
                     "model": {
@@ -2612,18 +2614,12 @@
                       "can": "no",
                       "why": "需手动"
                     },
-                    "terminal": {
-                      "far": {
-                        "go": "here",
-                        "open": {
-                          "kind": "attach"
-                        },
-                        "said": "在 cc-monitor 里打开它的终端"
+                    "view": {
+                      "can": "yes",
+                      "open": {
+                        "kind": "attach"
                       },
-                      "near": {
-                        "go": "front",
-                        "said": "切到它的终端窗口"
-                      }
+                      "said": "在 cc-monitor 里打开它的终端"
                     }
                   },
                   "dot": "needs-you",
@@ -2705,11 +2701,17 @@
               "session": {
                 "face": {
                   "can": {
+                    "attach": {
+                      "can": "yes"
+                    },
                     "close": {
                       "can": "no",
                       "why": "运行中"
                     },
                     "end": {
+                      "can": "yes"
+                    },
+                    "front": {
                       "can": "yes"
                     },
                     "model": {
@@ -2736,18 +2738,12 @@
                       "can": "no",
                       "why": "需手动"
                     },
-                    "terminal": {
-                      "far": {
-                        "go": "here",
-                        "open": {
-                          "kind": "attach"
-                        },
-                        "said": "在 cc-monitor 里打开它的终端"
+                    "view": {
+                      "can": "yes",
+                      "open": {
+                        "kind": "attach"
                       },
-                      "near": {
-                        "go": "front",
-                        "said": "切到它的终端窗口"
-                      }
+                      "said": "在 cc-monitor 里打开它的终端"
                     }
                   },
                   "dot": "needs-you",
@@ -2827,11 +2823,17 @@
               "session": {
                 "face": {
                   "can": {
+                    "attach": {
+                      "can": "yes"
+                    },
                     "close": {
                       "can": "no",
                       "why": "运行中"
                     },
                     "end": {
+                      "can": "yes"
+                    },
+                    "front": {
                       "can": "yes"
                     },
                     "model": {
@@ -2858,18 +2860,12 @@
                       "can": "no",
                       "why": "需手动"
                     },
-                    "terminal": {
-                      "far": {
-                        "go": "here",
-                        "open": {
-                          "kind": "attach"
-                        },
-                        "said": "在 cc-monitor 里打开它的终端"
+                    "view": {
+                      "can": "yes",
+                      "open": {
+                        "kind": "attach"
                       },
-                      "near": {
-                        "go": "front",
-                        "said": "切到它的终端窗口"
-                      }
+                      "said": "在 cc-monitor 里打开它的终端"
                     }
                   },
                   "dot": "needs-you",
@@ -2983,11 +2979,17 @@
               "session": {
                 "face": {
                   "can": {
+                    "attach": {
+                      "can": "yes"
+                    },
                     "close": {
                       "can": "no",
                       "why": "运行中"
                     },
                     "end": {
+                      "can": "yes"
+                    },
+                    "front": {
                       "can": "yes"
                     },
                     "model": {
@@ -3014,18 +3016,12 @@
                       "can": "no",
                       "why": "需手动"
                     },
-                    "terminal": {
-                      "far": {
-                        "go": "here",
-                        "open": {
-                          "kind": "attach"
-                        },
-                        "said": "在 cc-monitor 里打开它的终端"
+                    "view": {
+                      "can": "yes",
+                      "open": {
+                        "kind": "attach"
                       },
-                      "near": {
-                        "go": "front",
-                        "said": "切到它的终端窗口"
-                      }
+                      "said": "在 cc-monitor 里打开它的终端"
                     }
                   },
                   "dot": "needs-you",

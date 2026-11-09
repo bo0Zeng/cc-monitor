@@ -8,7 +8,7 @@
 use std::collections::BTreeMap;
 
 use cmd_wire::cells::{Tone, Words};
-use cmd_wire::frame::{Allow, CanClose, CanSay, CanTerminal, SessionCan, SessionDot, TermWay};
+use cmd_wire::frame::{Allow, CanClose, CanSay, CanView, SessionCan, SessionDot};
 use cmd_wire::frame::{Frame, Life, SessionAdded, SessionFace, SessionLeft, SessionRuns};
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
@@ -34,10 +34,9 @@ pub fn unseen(offline: Words) -> SessionFace {
             resume: Allow::No {
                 why: Words(copy_text("sessionState.unseen.noResume", &[])),
             },
-            terminal: CanTerminal {
-                near: TermWay::No { why: tip.clone() },
-                far: TermWay::No { why: tip.clone() },
-            },
+            front: no(&tip),
+            attach: no(&tip),
+            view: CanView::No { why: tip.clone() },
             reattach: no(&tip),
             model: no(&tip),
             permission: no(&tip),

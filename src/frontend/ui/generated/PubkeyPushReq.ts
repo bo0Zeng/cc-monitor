@@ -2,11 +2,11 @@
 import type { Host } from "./Host";
 
 /**
- * `pubkey-push` 的入参：那一台的配置（同 `remote-probe`：测的是可能还没存的那一台，跳板照机器表按名字找）＋ 本机那份 `.pub` 的路径。
+ * `pubkey-push` 的入参：那一台（按它的名字照机器表问；私钥那一格给默认的 `.pub`）＋ 本机那份 `.pub` 的路径。
  */
 export type PubkeyPushReq = { 
 /**
- * 那台的配置（设置页表单里那台，可能还没保存）。
+ * 设置页表单里那台（问的是机器表里同名那一台）。
  */
 machine: Host, 
 /**

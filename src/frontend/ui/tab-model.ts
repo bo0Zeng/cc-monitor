@@ -47,6 +47,11 @@ export interface Tab {
    */
   cwdShown: string | null;
   /**
+   * 项目名：项目目录的最后一段，那台后端切好的（会话事实的 `projectName`，与历史清单 · 搜索行同一个函数）；界面不切路径。
+   * 事实还没到 / 那台还没读到目录 ⇒ `null`。
+   */
+  projectName: string | null;
+  /**
    * 这个会话是哪一家（线上的 kind）：只来自后端（会话事实的 `agent`，那台按记录认）。恢复 · 接回 · 选号 · 账号面板 · 卡头都按它；
    * `null` ＝ 事实还没到 / 认不出 ⇒ 要分家的那几项灰着，不落哪一家。
    */
@@ -213,10 +218,4 @@ export interface TabsSummary {
   live: number;
   dead: number;
   faces: string;
-}
-
-export function projectNameFromCwd(dir: string): string | null {
-  const normalized = dir.replace(/\\/g, "/").replace(/\/+$/, "");
-  const last = normalized.split("/").filter(Boolean).pop();
-  return last ?? null;
 }

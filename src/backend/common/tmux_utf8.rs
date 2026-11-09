@@ -76,10 +76,21 @@ pub const UTF8_CLIENT_FLAG: &str = "-u";
 ///
 /// 渲给客户端的每一条 tmux 子命令都带旗：判据 `every_tmux_subcommand_rendered_for_a_client_is_a_utf8_client`。
 pub fn join_session(name: &str) -> String {
-    let t = shell_quote_core::posix_quote(&format!("={name}:"));
+    let t = shell_quote_core::posix_quote(&exact_target(name));
     format!(
         "case x${{TMUX:-}} in x) tmux -u attach -t {t};; *) tmux -u switch-client -t {t};; esac"
     )
+}
+
+/// **tmux `-t` 的精确目标 `=<名>:` —— 全仓唯一一处拼法**（`INVARIANTS §31a`）。
+///
+/// 裸 `-t <名>` 按「精确 → 名字开头 → glob」解析：只有 `sib-2` 存在时 `kill-session -t sib` **杀掉 `sib-2` 且 rc=0**。
+/// `=` 前缀只在 target-**session** 解析路径上被识别；`send-keys` 收的是 target-**pane**，`=name` 会直接 `can't find pane`。
+/// 尾冒号把串强制成 `session:` 形态，`=` 才落对位置。
+///
+/// 回的是 argv 那一格，**不引号化**（引号化了就成了名字的一部分）；拼进 shell 那一行的调用方自己引。
+pub fn exact_target(name: &str) -> String {
+    format!("={name}:")
 }
 
 /// **UTF-8 客户端 env（env 形）** —— 同一个口径的另一种表示，`(变量名, 值)`。
@@ -90,6 +101,18 @@ pub fn join_session(name: &str) -> String {
 /// 实测 `zz_ZZ.UTF-8`（这个 locale 根本不存在）照样干净，而 `C` / `LC_ALL=''` 脏。
 /// ⇒ 「`C.UTF-8` 万一没装」不是本条的失效面；「挂成空串」「忘了挂」才是，而那两种都是静默的。
 pub const UTF8_CLIENT_ENV: (&str, &str) = ("LC_ALL", "C.UTF-8");
+
+/// tmux 注给窗格里每个进程的两个变量：所在 server（`socket,pid,session`）· 所在窗格（`%N`）。
+pub const TMUX_ENV: &str = "TMUX";
+/// 见 [`TMUX_ENV`]。
+pub const TMUX_PANE_ENV: &str = "TMUX_PANE";
+/// 起子进程时不往下传的那两个（里面那一趟不在这个 tmux 窗格里：当成嵌套会被 tmux 拒、或认错窗格）。
+pub const TMUX_INHERITED_ENV: [&str; 2] = [TMUX_ENV, TMUX_PANE_ENV];
+
+/// 摘掉 [`TMUX_INHERITED_ENV`] —— 后端起子进程「不当成在 tmux 里」只经这一处。
+pub fn unnested(c: crate::platform::child::Child) -> crate::platform::child::Child {
+    TMUX_INHERITED_ENV.iter().fold(c, |c, k| c.env_remove(k))
+}
 
 /// ★★ **段数下溢 —— 「拆不出段」不许长得像「字段是空的」。**
 ///

@@ -403,8 +403,10 @@ pub struct ScannedAccount {
     pub auth_ready: bool,
     /// 能拿来起会话 / 选为默认（`acct_core::account_selectable`）。
     pub selectable: bool,
-    /// 号色（`--acct-c0..c7` 第几格，账号库里的事实），界面只画它。
-    pub color: u8,
+    /// 号色（`--acct-c0..c7` 第几格，账号库里的事实），界面只画它；库里没给 ⇒ 缺（画中性）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub color: Option<u8>,
 }
 
 /// `accounts-list` 每个号一行。

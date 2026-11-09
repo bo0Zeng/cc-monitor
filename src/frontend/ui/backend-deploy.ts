@@ -1,15 +1,20 @@
 /**
- * 远端后端的装 / 卸：全前端只这一处调这两条命令（`deploy_remote_backend` · `uninstall_remote_backend`）。
+ * 远端后端的装 / 卸：全前端只这一处问本机后端这两条帧命令（`deploy-install` · `deploy-uninstall`，入参只交那台的名字；
+ * 带着哪几个槽是本机后端自己的事实，那一句也由它写全）。
  * 换上这一版：机器卡问题行［更新］与主窗口 ↗ 浮层［更新］都经这里 —— 先问会打断什么（有才弹框，确认键「更新」），再部署；
  * 本机那一台的［更新］（口上是上一版 app 留下的后端）也经这里、同一个框：确认后先停（壳拿这一版的落点停口上那一位）再起这一版。
  * 卸载：机器卡「卸载后端」（确认框住机器卡）。做的过程与结局由调用方在原处说。
  */
 import { commands } from "./ipc/commands";
+import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { confirmDialog } from "./kit/dialog";
 import { copyText } from "./copy-table";
-import { isLocalOrigin } from "./ipc/origin";
+import { isLocalOrigin, LOCAL } from "./ipc/origin";
 import { resolveRemoteConfigByOrigin } from "./remote-config";
 import { askInterrupts, interruptRows } from "./settings/interrupts";
+
+/** 期限（值归发起方，DL1）：问几次那台 ＋ 推一份 MB 级的字节 ＋ 读回。 */
+const INSTALL_BUDGET_MS = 600_000;
 
 /**
  * 名字叫 `origin` 的那台换上这一版（也是问会打断什么时认那台的键），`machine` 是框里显示的名字。
@@ -25,7 +30,9 @@ export async function updateBackend(origin: string, machine: string, onStart?: (
     return null;
   }
   onStart?.();
-  if (!isLocalOrigin(origin)) return commands.deploy_remote_backend({ origin });
+  if (!isLocalOrigin(origin)) {
+    return (await callTyped(LOCAL, "deploy-install", { machine: origin }, budgetWithin(INSTALL_BUDGET_MS))).said;
+  }
   await commands.backend_stop({ origin });
   await commands.backend_start({ origin });
   return "";
@@ -39,6 +46,6 @@ export async function updateBackendOf(origin: string, machine: string, onStart?:
 }
 
 /** 卸掉那台的后端（确认框与结果区住机器卡）。 */
-export function uninstallBackend(origin: string): Promise<string> {
-  return commands.uninstall_remote_backend({ origin });
+export async function uninstallBackend(origin: string): Promise<string> {
+  return (await callTyped(LOCAL, "deploy-uninstall", { machine: origin }, budgetWithin(INSTALL_BUDGET_MS))).said;
 }

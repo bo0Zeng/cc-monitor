@@ -351,30 +351,15 @@ export function autoScrollStep(y: number, top: number, bottom: number): number {
   return 0;
 }
 
-/**
- * 两个 cwd **完全相同** ⇒ 那个目录名；否则 `null`（只共前缀不算：`/work/docs` 与 `/work/cli` 得出「work」没意义）。
- * 两种分隔符都认（客户端常在 Windows 上、会话可能来自 Linux 远端）；盘符（`C:`）不当名字。
- */
-export function sameDirName(a: string | null, b: string | null): string | null {
-  if (!a || !b) return null;
-  const seg = (p: string): string[] => p.split(/[/\\]+/).filter((s) => s !== "");
-  const sa = seg(a);
-  const sb = seg(b);
-  if (sa.length === 0 || sa.length !== sb.length || sa.some((s, i) => s !== sb[i])) return null;
-  const last = sa[sa.length - 1];
-  return /^[A-Za-z]:$/.test(last) ? null : last;
-}
+/** 建组那两个 tab 各自的项目目录与项目名（都来自后端：会话宣告 / 会话事实）。 */
+export type GroupSeed = { projectDir: string | null; projectName: string | null };
 
 /**
- * 新组叫什么：两个 cwd 相同 ⇒ 目录名；否则「分组 N」（N ＝ 现有默认名的最大号 ＋1）。
+ * 新组叫什么：两个 tab 的项目目录相同 ⇒ 会话事实里的项目名（后端切好的，界面不切路径）；否则「分组 N」（N ＝ 现有默认名的最大号 ＋1）。
  * 建完组头名字框立刻打开（`TabBarView.renameGroupNow`），打字即改。
  */
-export function defaultGroupName(
-  cwdA: string | null,
-  cwdB: string | null,
-  existingNames: readonly string[],
-): string {
-  const dir = sameDirName(cwdA, cwdB);
+export function defaultGroupName(a: GroupSeed | null, b: GroupSeed | null, existingNames: readonly string[]): string {
+  const dir = a?.projectDir && a.projectDir === b?.projectDir ? (a.projectName ?? b.projectName) : null;
   if (dir) return dir;
   let max = 0;
   for (const name of existingNames) {

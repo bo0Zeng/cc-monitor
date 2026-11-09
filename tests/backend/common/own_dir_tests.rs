@@ -93,6 +93,12 @@ const DIR_CREATORS: &[(&str, &str, &str)] = &[
         "mint",
         "附件目录里一份一个的编号目录（`session-attachment-commit`）",
     ),
+    // 传输落点是本机（`transfer-copy` 的本机那一端）+1：用户的目录，经 `Face::make_dir`。
+    (
+        "control/transfer_copy.rs",
+        "mkdir",
+        "用户的目录（`transfer-copy` 落点是本机时逐层建）",
+    ),
     // 解压两处，按实数 +2：都是用户的目录，不是 `~/.cc-monitor` 一族。
     (
         "files/extract.rs",

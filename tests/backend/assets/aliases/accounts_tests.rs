@@ -19,9 +19,9 @@ fn with_no_user_profiles_the_book_has_the_three_entries_and_three_per_account() 
     assert_eq!(names(&b), ["cc", "cct", "cch", "labcc", "labcct", "labcch"]);
     assert!(b.profiles.iter().all(|p| p.builtin));
     let form = |n: &str| form_of(&b, b.find(n).unwrap());
-    assert_eq!(form("labcc"), Some(("lab".into(), Form::Plain)));
-    assert_eq!(form("labcct"), Some(("lab".into(), Form::Tmux)));
-    assert_eq!(form("labcch"), Some(("lab".into(), Form::Hosted)));
+    assert_eq!(form("labcc"), Some(("lab".into(), Launch::Direct)));
+    assert_eq!(form("labcct"), Some(("lab".into(), Launch::Tmux)));
+    assert_eq!(form("labcch"), Some(("lab".into(), Launch::Managed)));
     // 号的三条各基于同一形的入口。
     let from = |n: &str| b.find(n).unwrap().from.clone();
     assert_eq!(from("labcct").as_deref(), Some("cct"));
@@ -95,10 +95,10 @@ fn the_account_form_is_own_account_plus_maybe_tmux_or_hosted_judged_on_the_merge
         true,
     );
     let form = |n: &str| form_of(&b, b.find(n).unwrap());
-    assert_eq!(form("workcc"), Some(("work".into(), Form::Plain)));
-    assert_eq!(form("workcct"), Some(("work".into(), Form::Tmux)));
-    assert_eq!(form("workcch"), Some(("work".into(), Form::Hosted)));
-    assert_eq!(form("own"), Some(("work".into(), Form::Hosted)));
+    assert_eq!(form("workcc"), Some(("work".into(), Launch::Direct)));
+    assert_eq!(form("workcct"), Some(("work".into(), Launch::Tmux)));
+    assert_eq!(form("workcch"), Some(("work".into(), Launch::Managed)));
+    assert_eq!(form("own"), Some(("work".into(), Launch::Managed)));
     assert_eq!(form("mixed"), None);
     assert_eq!(form("talk"), None);
     assert_eq!(form("cct"), None);

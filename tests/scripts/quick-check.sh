@@ -24,7 +24,9 @@
 #   cargo 那四段起锁时另带 `CCM_BUILD_REMOTE_OK`：这一段可以派去别的机器跑（锁脚本认它才派，不认 ⇒ 照旧本机）；值是这一段
 #   写在同步的树以外的几个目录（沙箱家 · 沙箱 tmux 目录 · cargo 的临时目录，空格分隔）：那边照同一路径建好，跑完把里面剩的拉回这几个目录，
 #   tmp-left 照旧在本机判。手机那一段不带（gradle 的工具链只认本机）。
-#   整趟 quick-check 别再套在锁里（锁只一个位时里外互等）。
+#   整趟外派：`bash "$CCM_BUILD_LOCK" env -u CCM_BUILD_LOCK bash tests/scripts/quick-check.sh`（摘掉锁变量：那一趟里各段不再排一次）。
+#   编译调度在远端起命令时设 `BUILDSCHED_TAG`（本机没有）⇒ 手机与 win-check 两格不跑、各印一行「远端跳过，本机单跑」
+#   （远端没装 Android 工具链与 Windows 目标），本机另跑 `--only mobile` · `--only win-check` 补上；其余各格照跑。
 # 收尾修剪 `.build`：每棵 cargo 树每一档的 `incremental/` 下同一个 crate 的会话目录、`deps/` 下同名的测试二进制（无扩展名的可执行文件，
 #   连同它的 `.d`）按名字成组，比同组最新那一份旧出 6 小时的删掉。同一个 crate 同时有几种现役变体（lib · lib 测试 · clippy · 各 bin），
 #   同一趟编出来、时刻挨着，所以按窗口留、不只留最新一份；锁或特性集一变换了哈希的旧变体落在窗口外。`.fingerprint` · `build/` · rlib 不碰。
@@ -96,6 +98,11 @@ else
   esac
 fi
 skip_why="相对 $base_ref 的改动没有一条落在它读的面上（gate-affected/map）"
+# 只本机的两格（mobile · win-check）在远端那一趟（编译调度设了 BUILDSCHED_TAG）不跑：印一行，本机另跑 --only 那一格
+local_only_skipped() {
+  [ -n "${BUILDSCHED_TAG:-}" ] || return 1
+  printf '  --   %-16s 远端跳过，本机单跑：--only %s\n' "$1" "$1"
+}
 if [ "$mode" = plan ]; then
   for s in "${segs[@]}"; do s=${s%%:*}
     if [ -n "${seg_why[$s]:-}" ]; then echo "${s^^}: 跑 —— ${seg_why[$s]}"; else echo "${s^^}: 不跑 —— $skip_why"; fi
@@ -172,6 +179,7 @@ seg_go() {
 }
 # 手机那一段：条数读这一趟 .build/mobile/*/test-results（先清掉旧的）。手机读的仓外路径由判据 flow_scripts_guard 对着手机树里字面写到的核表。
 mobile_step() {
+  local_only_skipped mobile && { skipped+=(mobile); return 0; }
   seg_go mobile || return 0
   step mobile locked env REAL_HOME="$real_home" bash "$HERE/heavy.sh" bash -c '
     out="$PWD/.build/mobile"; cd src/mobile || exit 1
@@ -213,6 +221,7 @@ doc_step() {
 #   只在本机：经锁起但不带 CCM_BUILD_REMOTE_OK（外面带进来的也摘掉）—— 别的机器没装这个目标。目标没装 ⇒ 照实报没装、算红。
 win_target=x86_64-pc-windows-gnu
 win_check_step() {
+  local_only_skipped win-check && return 0
   local sysroot; sysroot=$(rustc --print sysroot 2>/dev/null)
   if [ -z "$sysroot" ] || [ ! -d "$sysroot/lib/rustlib/$win_target" ]; then
     printf '  红   %-16s 本机工具链没装 %s 目标（rustup target add %s）—— 判不了\n' win-check "$win_target" "$win_target"; fails+=(win-check); return

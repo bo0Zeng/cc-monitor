@@ -3,7 +3,7 @@
 //! ★ 本机会话与远端会话同一个形：远端 ⇒ 本机后端经 `--resident-call` 问那台的 `session-terminals`，
 //! 那台报来的终端连接拿本机的连接表对出进程链；本机 ⇒ 链从显示它的那个终端进程（tmux 客户端 · 不在 tmux 里就是它自己）起。
 //! 两边的原因照搬、用那台的名字写成那一张（`face_core::front::Unplaced::face`，句子在 `face-core` 的 `front_tests.rs` 判）；
-//! 那台没问到 ⇒ 连接层那一句照摆。`tmux` 那一格照带（窗口关了时壳才给［在终端里打开］）。
+//! 那台没问到 ⇒ 连接层那一句照摆。在不在 tmux 里写进 `missed`（窗口关了那张才带［在终端里打开］）。
 
 use super::*;
 use crate::dial::remote_ask::test_peers::{until, Peers};
@@ -19,6 +19,11 @@ fn req(machine: &str) -> SessionWindowReq {
 /// 那一张照线上形（判这里选了哪一种原因、用了哪台的名字）。
 fn face_of(why: Unplaced, machine: &str) -> serde_json::Value {
     serde_json::to_value(why.face(machine)).unwrap()
+}
+
+/// 窗口那一跳没成的那几张照线上形（判这里照会话在不在 tmux 写了哪一份）。
+fn missed_of(tmux: bool) -> serde_json::Value {
+    serde_json::to_value(face_core::front::missed_faces(tmux)).unwrap()
 }
 
 /// 这台的连接表 ＋ 进程表：700（ssh）开着 192.0.2.5:62414 → 192.0.2.9:22，往上 600（shell）· 500（终端）；4242 是 tmux 客户端。
@@ -99,7 +104,11 @@ async fn a_remote_session_asks_that_machines_resident_then_matches_the_connectio
     let v = serde_json::to_value(got.expect("答得出")).unwrap();
     assert_eq!(v["labels"], json!(["600-20"]), "{v}");
     assert_eq!(pids(&v), vec![700, 600, 500], "开着那条连接的进程往上：{v}");
-    assert_eq!(v["tmux"], json!(true), "那台说在 tmux 里 ⇒ 照带：{v}");
+    assert_eq!(
+        v["missed"],
+        missed_of(true),
+        "那台说在 tmux 里 ⇒ 窗口关了那张带［在终端里打开］：{v}"
+    );
     assert!(v.get("face").is_none(), "{v}");
     let asked = peers.asked();
     assert_eq!(asked.len(), 1, "只问那台一次");
@@ -120,7 +129,7 @@ async fn that_machines_reason_is_written_with_its_name_and_nothing_is_matched_he
         let v = serde_json::to_value(got.expect("答得出")).unwrap();
         assert_eq!(
             v,
-            json!({"labels": [], "chain": [], "tmux": tmux, "face": face_of(unplaced, "devbox")}),
+            json!({"labels": [], "chain": [], "missed": missed_of(tmux), "face": face_of(unplaced, "devbox")}),
             "{why}"
         );
     }
@@ -129,7 +138,10 @@ async fn that_machines_reason_is_written_with_its_name_and_nothing_is_matched_he
 #[tokio::test]
 async fn an_older_machine_without_the_tmux_cell_counts_as_not_in_tmux() {
     let (got, _) = remote_answer(json!({"terminals": [], "why": "no-terminal"})).await;
-    assert!(!got.expect("答得出").tmux);
+    assert_eq!(
+        serde_json::to_value(got.expect("答得出")).unwrap()["missed"],
+        missed_of(false)
+    );
 }
 
 #[tokio::test]
@@ -143,7 +155,7 @@ async fn a_connection_not_opened_here_keeps_the_labels_and_says_why() {
         json!({
             "labels": ["600-20"],
             "chain": [],
-            "tmux": false,
+            "missed": missed_of(false),
             "face": face_of(Unplaced::Elsewhere { addr: "203.0.113.8".into() }, "devbox"),
         }),
         "标签照带（壳先按它找）；链对不上说为什么"
@@ -243,7 +255,7 @@ async fn a_local_session_starts_the_chain_at_the_terminal_showing_it_and_asks_no
     let v = serde_json::to_value(got.expect("答得出")).unwrap();
     assert_eq!(v["labels"], json!(["600-20"]), "{v}");
     assert_eq!(pids(&v), vec![4242, 600, 500], "链从 tmux 客户端起：{v}");
-    assert_eq!(v["tmux"], json!(true), "{v}");
+    assert_eq!(v["missed"], missed_of(true), "{v}");
     assert!(peers.asked().is_empty(), "本机会话不问别的台");
 }
 
@@ -258,7 +270,7 @@ async fn a_local_session_nobody_is_attached_to_is_detached_in_tmux() {
     let here = copy_core::local_machine();
     assert_eq!(
         v,
-        json!({"labels": [], "chain": [], "tmux": true, "face": face_of(Unplaced::Detached, &here)})
+        json!({"labels": [], "chain": [], "missed": missed_of(true), "face": face_of(Unplaced::Detached, &here)})
     );
 }
 
@@ -268,7 +280,7 @@ async fn a_local_session_not_running_is_that_face_not_a_code() {
     let here = copy_core::local_machine();
     assert_eq!(
         v,
-        json!({"labels": [], "chain": [], "tmux": false, "face": face_of(Unplaced::NotLive, &here)})
+        json!({"labels": [], "chain": [], "missed": missed_of(false), "face": face_of(Unplaced::NotLive, &here)})
     );
 }
 
@@ -290,7 +302,7 @@ async fn a_local_terminal_process_missing_from_the_table_is_query_failed() {
     let here = copy_core::local_machine();
     assert_eq!(
         v,
-        json!({"labels": [], "chain": [], "tmux": false, "face": face_of(Unplaced::QueryFailed, &here)})
+        json!({"labels": [], "chain": [], "missed": missed_of(false), "face": face_of(Unplaced::QueryFailed, &here)})
     );
 }
 
@@ -411,7 +423,11 @@ async fn a_record_written_for_another_machine_is_not_used() {
     let shelf = Shelf::holding("600-20", "elsewhere");
     let (got, peers) = remote_answer_with(shelf.clone()).await;
     assert_eq!(peers.asked().len(), 1, "照今天问那台");
-    assert!(got.tmux, "那台的答话照用");
+    assert_eq!(
+        serde_json::to_value(&got).unwrap()["missed"],
+        missed_of(true),
+        "那台的答话照用"
+    );
     assert!(shelf.forgot().is_empty(), "别台的那一份不删");
 }
 

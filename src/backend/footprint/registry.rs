@@ -393,7 +393,7 @@ pub(crate) const UNMANAGED_ENV: &[(OnPlatform, UnmanagedEnv)] = &[
             probe: EnvProbe::OnPath,
             named: "xdg-open",
             host: HostScope::Client,
-            site: "lib.rs::open_with_os",
+            site: "platform/proc.rs::os_opener",
         },
     ),
     // Windows 那一台的终端是 PowerShell：新终端的 `PATH` 读注册表，不经登录 bash。

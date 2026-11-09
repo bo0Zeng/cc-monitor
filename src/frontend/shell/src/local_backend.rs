@@ -1128,7 +1128,7 @@ pub fn extract_embedded_to(
 }
 
 /// **把一份没有身份戳的本机程序放到 `<落点>/<file>`**（落点由调用方给的句柄定：`~/.cc-monitor/bin`，或它底下的 `slots`）。调用方：
-/// 文件窗口程序（`filewin::proc::resolve_window_bin`，monitor 旁边没有它时）· 这一版带着的那几格后端（`deploy::slot_rows`）。
+/// 文件窗口程序（`filewin::proc::resolve_window_bin`，monitor 旁边没有它时）· 这一版带着的那几格后端（`deploy::place_slots`）。
 ///
 /// 与 [`extract_embedded_to`] 同一套落盘（`OwnBin::place`）：暂存旁名 `.<file>.<pid>.partial` → 置可执行位
 /// → 上位（Windows 上旧的那份正在跑 ⇒ 先挪开再上位，挪开的下次放置时收）。半截文件不许被当成可执行的程序起起来。

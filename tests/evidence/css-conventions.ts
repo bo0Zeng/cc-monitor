@@ -187,6 +187,20 @@ export function setPropertyVars(root: string): Map<string, string[]> {
   return out;
 }
 
+/**
+ * TS 里按格号拼出来读的令牌族：`` `var(--acct-c${格})` `` 那一形 → 前缀（`--acct-c`）→ 住址。
+ * 这一族的令牌（前缀后面紧跟数字的那几个）由 TS 照运行时的格号读，CSS 里没有逐格的 `var()`。
+ */
+export function tsVarFamilies(root: string): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const s of tsSources(root)) {
+    for (const m of s.text.matchAll(/var\(\s*(--[A-Za-z0-9_-]+?)\$\{/g)) {
+      pushSite(out, m[1], `${s.rel}:${lineAt(s.text, m.index)}`);
+    }
+  }
+  return out;
+}
+
 /** `src/frontend/ui/theme.ts` 的 `TOKEN_MAP` 暴露给用户调的那几个 `cssVar`（按出现顺序）。 */
 export function themeTokens(root: string): string[] {
   const text = readFileSync(join(root, "src", "frontend", "ui", "theme.ts"), "utf8");

@@ -56,7 +56,10 @@ fn ctx(root: &std::path::Path) -> crate::faces::rotation_face::Ctx {
                         .collect(),
                 })
             }),
-            Arc::new(Default::default),
+            crate::accounts::upstream_select::rotate::HistoryPorts {
+                live: Arc::new(Default::default),
+                ring: Arc::new(|| {}),
+            },
             None,
         ),
         rows: Box::new(|_, a| (a == "api").then_some(true)),

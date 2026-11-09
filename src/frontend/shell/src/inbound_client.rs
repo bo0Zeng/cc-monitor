@@ -36,11 +36,16 @@ fn slot() -> &'static Mutex<Option<Arc<InboundClient>>> {
     &S
 }
 
+/// 看的这一台（就是这台）的时区名：请求信封与本机 attach 行的 `tz` 都交它。壳不带时区库 ⇒ 只看长相（[`platform_core::tz::looks_iana`]）。
+pub(crate) fn viewer_tz() -> Option<String> {
+    platform_core::tz::iana_name(platform_core::tz::looks_iana)
+}
+
 /// 登记本机这条连接的客户端（重连 ⇒ 换掉旧的）。
 pub fn register(client: Arc<InboundClient>) {
     // 记下它通往哪台：形状对不上那一句按这个名字说；看的这一台的时区，每条请求信封都带。
     client.name_machine(cmd_wire::LOCAL);
-    client.set_viewer_tz(host_core::viewer_tz());
+    client.set_viewer_tz(viewer_tz());
     // **先放锁再 shutdown** —— 与 `unregister` 对称。
     let old = lock(slot()).replace(client);
     if let Some(old) = old {

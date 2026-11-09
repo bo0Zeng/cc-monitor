@@ -89,10 +89,13 @@ class ThemeLedgerTest {
         val colors = colorTokens()
         assertTrue("tokens.css 里一个颜色令牌都没认出来（判据自己失效了）", colors.size > 40)
         val byPascal = rootTokens().keys.associateBy(::pascal)
-        val used =
+        val named =
             mappingFiles
                 .flatMap { f -> Regex("""\bThemeTokens\.([A-Z][A-Za-z0-9]*)""").findAll(KotlinSourceScanner.codeOnlyDroppingLiterals(read(f))).map { it.groupValues[1] }.toList() }
                 .toSet()
+        // `ThemeTokens.Acct` ＝ 生成器照 `--acct-c<n>` · `--acct-ink<n>` 成对出的号色列表：引了它就是引了那几对。
+        val acctPairs = byPascal.keys.filter { Regex("""^Acct(C|Ink)\d+$""").matches(it) }
+        val used = (named - "Acct") + if ("Acct" in named) acctPairs else emptyList()
         val unknown = used.filterNot(byPascal::containsKey)
         assertEquals("映射引了 tokens.css 里没有的令牌", emptyList<String>(), unknown)
         val usedTokens = used.mapNotNull(byPascal::get).toSet()

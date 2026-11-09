@@ -112,7 +112,7 @@ export const ACTIONS: ReadonlyArray<Action> = [
   { id: "tabBar.focus-cycle", label: copyText("keybindingActions.tabBar.focusCycle"), category: "Tab", default: "F6", available: true, scope: "any" },
 
   // ===== Terminal =====
-  { id: "session.terminal", label: copyText("mobDrawer.item.terminal"), category: "Term", default: "Backquote", available: true, scope: "bare" },
+  { id: "terminal.bring-front", label: copyText("terminal.head.front"), category: "Term", default: "Backquote", available: true, scope: "bare" },
 
   // ===== App =====
   { id: "app.open-settings", label: copyText("mobDrawer.settings.aria"), category: "App", default: "Comma", available: true, scope: "bare" },
@@ -140,6 +140,7 @@ export const ACTIONS: ReadonlyArray<Action> = [
   // ===== Panel =====
   { id: "panel.toggle-tasks", label: copyText("tasksPanel.page.title"), category: "Panel", default: "KeyT", available: true, scope: "bare" },
   { id: "panel.toggle-agents", label: copyText("beProfile.slot.agent"), category: "Panel", default: "KeyA", available: true, scope: "bare" },
+  { id: "panel.toggle-terminal", label: copyText("sessionHead.act.terminal"), category: "Panel", default: "Ctrl+Backquote", available: true, scope: "any" },
 ] as const;
 
 /** 全部已注册 action 的 id 联合类型；调用方 `bind(id, ...)` 时 TS 检查拼写 */

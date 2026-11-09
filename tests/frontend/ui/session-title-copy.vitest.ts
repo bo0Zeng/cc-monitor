@@ -70,7 +70,7 @@ describe("会话标题：后端写好的一行，界面照抄", () => {
     expect(document.querySelector(".tab-title")?.textContent).toBe(LINE);
     expect(view.hoverCard(t.sessionId)?.firstElementChild?.textContent).toBe(LINE);
 
-    const host = { active: () => t, openCwd: vi.fn(), terminal: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), planMark: () => null, menuItem: () => null, displayItems: () => [], tabOf: () => null, switchTo: vi.fn(), switching: { active: () => null, facts: () => new Promise<never>(() => {}), send: vi.fn(), unavailable: () => null, reread: vi.fn(), toast: vi.fn() } };
+    const host = { active: () => t, openCwd: vi.fn(), front: vi.fn(), view: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), planMark: () => null, menuItem: () => null, displayItems: () => [], tabOf: () => null, switchTo: vi.fn(), switching: { active: () => null, facts: () => new Promise<never>(() => {}), send: vi.fn(), unavailable: () => null, reread: vi.fn(), toast: vi.fn() } };
     const h = new SessionHead(host);
     document.body.appendChild(h.el);
     h.render(NOW);

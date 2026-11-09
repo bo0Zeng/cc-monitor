@@ -16,7 +16,7 @@
  * （后端没说 ⇒ 块收起、不补字）。`askEnd.stays`（替人答了那一种）⇒ 同一行切走再回来也在，那条会话下一次挂上请求才换掉。
  *
  * 限高与收起（只是这个块的视图状态，不进后端）：
- * - 块最高约会话区四成（CSS），头一行不滚，底下那一截（全文 · 题 · 选项）块内滚；`room` 报的就是封顶后的高；
+ * - 块最高约会话区四成（CSS），头一行不滚，底下那一截（全文 · 题 · 选项）块内滚；`room` 报的是封顶后的高 ＋ 块下那道缝（下外边距）；
  * - 挂着请求时头一行末尾一颗［收起］：收着只剩头一行（核心那一句 ＋ 已等），点头一行任一处展开。每个会话记收着的是哪一条请求：
  *   切走再回来仍收着；那个会话换上来新的一条 ⇒ 展开；从「需手动」入口跳过来（`focusFor`）⇒ 展开；
  * - 多题只展开正在答的那一题，别的收成一行（题头 ＋ 选了什么 / 题目），点那一行换过去；单选点了跳到下一道没答的；
@@ -48,7 +48,7 @@ export interface AnswerHost {
   /** 再问一次这个会话的事实（needs 跟着换）。 */
   reread(sid: string): void;
   toast(title: string, detail?: string): void;
-  /** 块高了 / 收了：消息流底部给它让出多高（像素；收起 ⇒ 0）。 */
+  /** 块高了 / 收了：消息流的视口在输入栏之上再让出多高（块高 ＋ 它与输入栏之间那道缝，像素；收起 ⇒ 0）。 */
   room?(px: number): void;
 }
 
@@ -157,7 +157,7 @@ export class AnswerBlock {
     const waited = waitedNow(n, now);
     if (this.since) this.since.textContent = waited ? copyText("askBlock.head.since", { waited }) : "";
     this.takeFocus();
-    this.host.room?.(this.el.offsetHeight);
+    this.reportRoom();
   }
 
   /** 画着的那几格不再作数（块空了 / 只剩一行）。 */
@@ -182,7 +182,13 @@ export class AnswerBlock {
     this.el.dataset.goneOnly = "true";
     delete this.el.dataset.folded;
     this.el.replaceChildren(this.goneRow(said));
-    this.host.room?.(this.el.offsetHeight);
+    this.reportRoom();
+  }
+
+  /** 报给宿主：消息流的视口在输入栏之上还要再让出多高 ＝ 块高 ＋ 块与输入栏之间那道缝（块自己的下外边距）。 */
+  private reportRoom(): void {
+    const gap = parseFloat(getComputedStyle(this.el).marginBottom) || 0;
+    this.host.room?.(this.el.offsetHeight + gap);
   }
 
   private goneRow(said: string): HTMLElement {
@@ -214,7 +220,7 @@ export class AnswerBlock {
       this.foldBtn.dataset.fold = on ? "expand" : "collapse";
       this.foldBtn.setAttribute("aria-expanded", String(!on));
     }
-    this.host.room?.(this.el.offsetHeight);
+    this.reportRoom();
   }
 
   private setFolded(on: boolean): void {
@@ -460,7 +466,7 @@ export class AnswerBlock {
     this.current = id;
     this.paintQuestions();
     this.measureClamp();
-    this.host.room?.(this.el.offsetHeight);
+    this.reportRoom();
   }
 
   /** 正在答的那一题展开，别的收成一行：题头 ＋ 选了什么（没答的写题目）；字全是核心那几样，拼接只用分隔符。 */
@@ -491,7 +497,7 @@ export class AnswerBlock {
       onClick: () => {
         delete t.dataset.clamped;
         wrap.remove();
-        this.host.room?.(this.el.offsetHeight);
+        this.reportRoom();
       },
     });
     full.dataset.part = "qfull";

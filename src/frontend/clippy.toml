@@ -47,7 +47,7 @@ disallowed-methods = [
   { path = "std::process::Command::new", reason = "壳起进程只经 `spawn_managed`（环境 · 句柄 · 窗口三条策略只定一处）" },
   { path = "tokio::process::Command::new", reason = "壳起进程只经 `spawn_managed`（环境 · 句柄 · 窗口三条策略只定一处）" },
   # 取家目录那一组：壳里家目录只在 `shell/src/data_paths.rs` 取，别处拿它给的路径。
-  { path = "creds_core::store::home_dir", reason = "壳取家目录只在 `data_paths`；别处用它给的路径" },
+  { path = "relay_route_core::home_dir", reason = "壳取家目录只在 `data_paths`；别处用它给的路径" },
   { path = "std::env::home_dir", reason = "壳取家目录只在 `data_paths`；别处用它给的路径" },
   { path = "dirs::home_dir", reason = "壳取家目录只在 `data_paths`；别处用它给的路径", allow-invalid = true },
 ]

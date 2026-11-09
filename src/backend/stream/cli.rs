@@ -16,13 +16,13 @@
 //!
 //! - 入：那条命令的 `args`（一段 JSON；空 = `{}`），两个口**二选一**，都是一处读（[`read_args`]，住 `cli_args`），每条子命令自动都有：
 //!   - stdin：默认读到 EOF；带 [`crate::wire::cli_words::STDIN_LINE_FLAG`]（任意位置）⇒ 只读一行（给 stdin 关不掉的调用方：远端命令经 capture 那一跳交载荷，
-//!     capture 不关远端 stdin）。stdin 开着却 [`super::cli_args::STDIN_QUIET`] 内一个字节都没来 ⇒ `no_input`，不挂住。
+//!     capture 不关远端 stdin）。stdin 开着却 [`crate::wire::cli_args::STDIN_QUIET`] 内一个字节都没来 ⇒ `no_input`，不挂住。
 //!   - argv：[`crate::wire::cli_words::ARGS_B64_FLAG`] `<base64 的 JSON>`（任意位置；给写不了 stdin 的调用方：第二个前端的执行通道只有 stdout）。
 //!     给了它就**不碰 stdin**；与 [`crate::wire::cli_words::STDIN_LINE_FLAG`] 一起给 ⇒ `bad_args`。
 //!
-//!   上限：stdin [`super::cli_args::MAX_CLI_STDIN`]；argv [`super::cli_args::MAX_ARGS_B64_LEN`]（编码后，留在系统单个参数的上限之内）。超了 `args_too_large`，不截断。
+//!   上限：stdin [`crate::wire::cli_args::MAX_CLI_STDIN`]；argv [`crate::wire::cli_args::MAX_ARGS_B64_LEN`]（编码后，留在系统单个参数的上限之内）。超了 `args_too_large`，不截断。
 //! - 出：stdout 一行紧凑 JSON（命令没有返回值时是 `{}`），exit 0。例外是 [`crate::wire::cli_words::TEXT_FLAG`]（所有命令通用）：
-//!   同一份回包里核心写好的那几格（顶上的 `text` · 每一处 `rows`）拼成给人看的字（`control/ship_text.rs`，不按业务写）。
+//!   同一份回包里核心写好的那几格（顶上的 `text` · 每一处 `rows`）拼成给人看的字（`wire/ship_text.rs`，不按业务写）。
 //! - 期限：[`crate::wire::cli_words::WITHIN_MS_FLAG`] `<毫秒>`（任意位置）与帧面请求信封的 `within_ms` 同名同义，到点回的是同一个码。
 //! - 时区：[`crate::wire::cli_words::TZ_FLAG`] `<IANA 名>`（任意位置）与帧面请求信封的 `tz` 同名同义：回包里「几点」按看的那一台的钟写；没带 ⇒ 这一台的钟（[`crate::common::time::Tz::here`]）；缺值 · 认不得 ⇒ UTC。
 //! - 错：exit 2 + stderr 一行 `{code, said, detail, data?}` —— 与帧面失败应答同一份（[`Failed`]）；带 [`crate::wire::cli_words::TEXT_FLAG`] ⇒ 那一句 ＋ 复制详情。
@@ -39,8 +39,8 @@ use copy_core::discard::{Discard, Why};
 use std::io::{Read, Write};
 use std::time::Duration;
 
-/// 读入参（两个口 · 上限 · 静默窗 · 码）住 [`crate::control::cli_args`]。
-use crate::control::cli_args::{bad_args, read_args, within_of, STDIN_QUIET};
+/// 读入参（两个口 · 上限 · 静默窗 · 码）住 [`crate::wire::cli_args`]。
+use crate::wire::cli_args::{bad_args, read_args, within_of, STDIN_QUIET};
 
 /// 本入口回显给命令的 `id`。**帧面的 `id` 由客户端发号且不透明**，而一次性 exec
 /// 天然 1:1、没有并发的第二条请求可混淆 ⇒ 这里给一个固定值，不假装有号段。
@@ -53,14 +53,15 @@ const CLI_REQUEST_ID: &str = "cli";
 ///
 /// 另一条：派生出来的名字是 ccm 自己的诊断口（`--ccm-print` 这类）⇒ 不上。二进制叫 `ccm` 时
 /// 按子命令集合分流（`control::ccm::route`），占了 ccm 的词就把 `ccm --ccm-print` 抢进后端。
-/// 第三条：[`STREAM_ONLY`] 那几条能跑，但在一次性进程里结构上答不了 ⇒ 不上；[`UI_ONLY`] 那几条答得了、只是除了界面没人用 ⇒ 暂不上。
+/// 第三条：登记行上写了 `.stream_only(..)`（一次性进程里结构上答不了）或 `.ui_only(..)`（答得了、只是除了界面没人用）⇒ 不上，
+/// 理由就写在那一行（[`crate::wire::spec::Cli`]）。
 pub(crate) fn cli_exposed(spec: &CommandSpec) -> bool {
     runs_once(spec) && !crate::ccm_line::argv::is_ccm_word(&flag_of(spec.name))
 }
 
 /// [`cli_exposed`] 除掉「是不是 ccm 的词」那一问：一次性进程里跑得了、也不是只给界面的。
 fn runs_once(spec: &CommandSpec) -> bool {
-    !spec.run.on_frame_arm() && !STREAM_ONLY.contains(&spec.name) && !UI_ONLY.contains(&spec.name)
+    !spec.run.on_frame_arm() && spec.cli == crate::wire::spec::Cli::Open
 }
 
 /// 手写的那几条一次性子命令（不从 `REGISTRY` 派生的）：`stream::oneshot::ONESHOTS` 那张表。
@@ -72,45 +73,6 @@ fn cli_only(word: &str) -> bool {
 pub fn is_subcommand(word: &str) -> bool {
     cli_only(word) || handles(word)
 }
-
-/// **一次性进程里结构上答不了**的命令：答出来是假话（读的是常驻进程才有的状态：watcher · 中转监听 · 转发账 · 可达表），
-/// 或做的事活不过这个进程（换号重启要拿退出排空的票钉住常驻进程）。逐条理由是数据，住测试那一侧的 `STREAM_ONLY_WHY`（两向相等）。
-///
-/// 只收这一种理由。「答得了，只是除了界面没人用」是另一种，住 [`UI_ONLY`] —— 两种混在一张表里时，
-/// 后一种被读成前一种，第二个前端（只有一次性 CLI 与流两条路进后端）就够不着。
-pub(crate) const STREAM_ONLY: &[&str] = &[
-    "quota-warm",
-    "resync",
-    "accounts-list",
-    "forward-start",
-    "forward-stop",
-    "forward-list",
-    "ext-list",
-    "ext-hub-preview",
-    "ext-hub-apply",
-    "needs-answer",
-    "login-finish",
-    "login-cancel",
-    "machine-read",
-    "machine-menu",
-    "machine-wake",
-    "machine-stop",
-    "session-arrive",
-];
-
-/// **答得出真话、只是除了界面没人用得着**的命令。这是关于「调用方是谁」的产品判断，不是结构限制 ——
-/// 有新的调用方（第二个前端）要它，就挪出去。理由不许是「命令行那一侧直接敲 `ccm` 就是它」：那挡的是第二个**入口**，挡不住第二个**前端**。
-/// 逐条理由住测试那一侧的 `UI_ONLY_WHY`（两向相等）。
-///
-/// 2026-10-09 复核（第二个前端的审计 §4）：起新会话框三问 · tab 栏批量停 / 起 / 问样子 · 铸终端名 · 开终端那一串 · 各台搜索结果合并
-/// 九条放出（事实全在这台：tmux 名单现探、会话快照问一次重探一次、记录在不在现读、合并是纯计算 ⇒ 一次性进程答的与常驻那一个同样是真话）。
-/// 留下的两条是 ↗ 拉前那一问（本机后端答 `session-window`，远端那一半问那台的 `session-terminals`），只有能拉前桌面窗口的那一方用得着，第二个前端自己也说不用。
-pub(crate) const UI_ONLY: &[&str] = &[
-    "session-terminals",
-    "session-window",
-    "deploy-install",
-    "deploy-uninstall",
-];
 
 /// 命令名 → CLI 子命令（`launch` → `--launch`）。
 pub(crate) fn flag_of(name: &str) -> String {
@@ -210,7 +172,7 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
 ) -> i32 {
     let flag = args.first().map(String::as_str).unwrap_or_default();
     let opts = &args[1..];
-    // 「给人看」那一形：成功 ＝ 回包里写好的格拼成字（`control/ship_text.rs`，不分命令）；失败那一形 ＝ 那一句 ＋ 复制详情。
+    // 「给人看」那一形：成功 ＝ 回包里写好的格拼成字（`wire/ship_text.rs`，不分命令）；失败那一形 ＝ 那一句 ＋ 复制详情。
     let text = opts.iter().any(|a| a == crate::wire::cli_words::TEXT_FLAG);
     let Some(spec) = spec_for(flag) else {
         // 走不到（`main` 只把已知 flag 派到这里），但**不许 panic**：与 `main` 那条 `_` 臂同一形。
@@ -297,7 +259,7 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
             let v = plan.apply(v).unwrap_or_else(|| serde_json::json!({}));
             // 成功的回包里也可能带复制详情（读不出那一形的 `detail`）：那一行时刻按 `--tz` 填。
             let line = if text {
-                crate::control::ship_text::ship_text(&v)
+                crate::wire::ship_text::ship_text(&v)
             } else {
                 v.to_string()
             };
@@ -372,10 +334,7 @@ pub fn split_stream_flags(mut args: Vec<String>) -> Result<(Vec<String>, StreamW
     {
         let v = args.get(i + 1).filter(|v| !v.starts_with("--")).cloned();
         args.drain(i..i + 1 + usize::from(v.is_some()));
-        wants.tz = v
-            .as_deref()
-            .and_then(crate::common::time::Tz::named)
-            .unwrap_or_default();
+        wants.tz = crate::common::time::Tz::of(v.as_deref());
     }
     let subcommand = args.first().is_some_and(|a| is_subcommand(a));
     if !subcommand && args.iter().any(|a| a == crate::wire::cli_words::VIEW_FLAG) {

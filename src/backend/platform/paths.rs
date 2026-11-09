@@ -249,9 +249,9 @@ pub fn expand_tilde(p: &str) -> String {
 }
 
 /// **这台后端的家目录只在这里答** ——规矩（哪个环境变量算家、按平台的先后）是两侧的契约，
-/// 住 `creds_core::store::home_dir_from`（monitor 同调它）；都没有 ⇒ `None`（调用方明说）。判据 `shell_home_guard.rs::the_home_directory_is_read_in_one_place`。
+/// 住契约包 `relay_route_core::home_dir_on`（monitor 同调它）；都没有 ⇒ `None`（调用方明说）。判据 `shell_home_guard.rs::the_home_directory_is_read_in_one_place`。
 pub fn home_dir() -> Option<PathBuf> {
-    creds_core::store::home_dir()
+    relay_route_core::home_dir()
 }
 
 /// 这台后端自己在盘上的入口 `<家>/.cc-monitor/bin/ccm[.exe]`（后端落点，本机远端同一处）。起会话那一行直接叫它：
@@ -283,19 +283,30 @@ pub fn installed_ccm_dir() -> Option<String> {
     Path::new(&entry).parent().map(|d| d.display().to_string())
 }
 
-/// 这台后端的数据目录（`CCM_DATA_DIR` 优先，否则 `<家>/.cc-monitor`；规矩住 `creds_core::store::monitor_data_dir`）。
+/// 这台后端的数据目录（`CCM_DATA_DIR` 优先，否则 `<家>/.cc-monitor`；规矩住 `relay_route_core::monitor_data_dir`）。
 pub fn data_home() -> Option<PathBuf> {
-    creds_core::store::monitor_data_dir(
-        std::env::var(creds_core::store::DATA_DIR_ENV)
-            .ok()
-            .as_deref(),
+    data_home_of(
+        std::env::var(relay_route_core::DATA_DIR_ENV).ok(),
         home_dir(),
     )
 }
 
-/// 同上，环境由 `get` 答（判据喂夹具、不改进程环境的那几个调用方用）。
+/// 同上，环境由 `get` 答（启动入口 · 判据喂注入的环境）。
+pub fn data_home_from(get: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
+    data_home_of(
+        get(relay_route_core::DATA_DIR_ENV),
+        home_dir_from(&|k| get(k).map(Into::into)),
+    )
+}
+
+/// **后端推数据目录只在这里**（判据 `shell_home_guard.rs::the_data_home_is_derived_in_one_place`）：覆盖变量的值 ＋ 家 ⇒ 数据目录。
+fn data_home_of(env_val: Option<String>, home: Option<PathBuf>) -> Option<PathBuf> {
+    relay_route_core::monitor_data_dir(env_val.as_deref(), home)
+}
+
+/// 同 [`home_dir`]，环境由 `get` 答（判据喂夹具、不改进程环境的那几个调用方用）。
 pub fn home_dir_from(get: &dyn Fn(&str) -> Option<std::ffi::OsString>) -> Option<PathBuf> {
-    creds_core::store::home_dir_from(get)
+    relay_route_core::home_dir_from(get)
 }
 
 /// 一段名字（不是路径）为什么不能在这台当名字用。
@@ -348,6 +359,44 @@ pub fn unix_name_problem(name: &[u8]) -> Option<NameProblem> {
     name.iter()
         .find(|b| **b == b'/' || **b == 0)
         .map(|b| NameProblem::BadChar(char::from(*b)))
+}
+
+/// 别处来的一段名字（另一台的原始字节）⇒ **这台**落得下的名字：照 [`name_problem`] 那两套改，不拒。
+/// unix：字节原样（`/` 与 NUL 换 `_`）；Windows：先按 UTF-8 有损读，再过 [`windows_legal_name`]。
+pub fn legal_name(name: &[u8]) -> std::ffi::OsString {
+    let fixed = |b: &u8| if *b == b'/' || *b == 0 { b'_' } else { *b };
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStringExt as _;
+        std::ffi::OsString::from_vec(name.iter().map(fixed).collect())
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = fixed;
+        windows_legal_name(&String::from_utf8_lossy(name)).into()
+    }
+}
+
+/// Windows 那一套的改法（[`windows_name_problem`] 拒的那三样各改一下）：不认的字换 `_` · 去掉结尾的点与空格（剩空 ⇒ `_`）·
+/// 保留设备名前加 `_`。
+pub fn windows_legal_name(name: &str) -> String {
+    let mut out: String = name
+        .chars()
+        .map(|c| match windows_name_problem(&c.to_string()) {
+            Some(NameProblem::BadChar(_)) => '_',
+            _ => c,
+        })
+        .collect();
+    while out.ends_with(['.', ' ']) {
+        out.pop();
+    }
+    if out.is_empty() {
+        out.push('_');
+    }
+    if windows_name_problem(&out) == Some(NameProblem::Reserved) {
+        out.insert(0, '_');
+    }
+    out
 }
 
 #[cfg(test)]

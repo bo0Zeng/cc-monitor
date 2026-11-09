@@ -74,7 +74,7 @@
   `a.*` 以 id 为键的表每项 · `a[k=v]` 列表里按判别格挑的那一种 · `a{k=v}` 非列表的那一种（根上写 `{k=v}`）；**不写挑法 ＝ 每一种都算**
   （`blocks[type=tool_use].input` 同时管 `said` 与 `reply` 两类记录的 `blocks`）。点到某一格的上一层 ＝ 那一层整个；以 `a[]` / `a.*` 收尾 ＝ `a` 这一格整个；
   去掉的格是**删掉**，不置空。认不出的词 · 成品 · 格（往透传的一团里再点格也算）· 或点了这条命令不出的成品 ⇒ 开跑之前就回 `bad_args`，
-  认不出的那几处写进 `detail`。出成品、收 `view` 的命令与成品住处（`stream/inbound/views.rs::PLACES`）：`history-read`（`rows[]` 是 `read_row`，其中 `record` 是 `record`）·
+  认不出的那几处写进 `detail`。出成品、收 `view` 的命令与成品住处（写在各命令的登记行上，`.places(..)`）：`history-read`（`rows[]` 是 `read_row`，其中 `record` 是 `record`）·
   `history-page` / `history-lines`（`lines[].record`）· `history-run`（`rows[].record`）· `history-facts`（整份应答是 `facts`）；别的命令带 `view` 一律 `bad_args`。
   投影只是「这一次不发」：成品与格目录（冻结的那几件也一样）一格不动。
 - **`tz`（时刻按谁的钟）**：看的那一台（桌面 · 手机）的时区，IANA 名。回包里写成字的时刻（`…Text` · `timeText` · `tsText` · `startText` · `mtime_text` · 今天 / 昨天那几格）**一律按它写**，不按答话那台后端自己的钟；远端那一跳（这台替看的人问另一台）回来的原始时刻也由这台按它写。

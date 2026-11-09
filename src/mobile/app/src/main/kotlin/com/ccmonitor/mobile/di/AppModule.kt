@@ -31,6 +31,7 @@ import com.ccmonitor.mobile.ui.needs.NeedsSource
 import com.ccmonitor.mobile.ui.session.SessionTabManager
 import com.ccmonitor.mobile.ui.session.SessionViewModel
 import com.ccmonitor.mobile.ui.session.keys.KeysEditorViewModel
+import com.ccmonitor.mobile.ui.session.systemClipboard
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -159,6 +160,7 @@ val appModule =
                 identityRepo = get(),
                 hostConnector = get(),
                 backends = get(), // 这台的常驻流：终端那几件问那台核心
+                copyToClipboard = systemClipboard(androidContext()),
             )
         }
         // 文件屏的浏览状态 VM：读写问那台后端（这台的常驻流）；SSH 连接与终端共用，按持有者计数保活。

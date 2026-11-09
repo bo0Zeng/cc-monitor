@@ -1663,44 +1663,23 @@ fn plain_lifecycle_regression() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// 宣告那张脸带上这条会话跑在哪个号下（会话进程环境里的配置目录对上账号库里那个号）：界面徽章只读这一格，起停不再回头问。
-/// 进程环境读不出号（没设、账号库里也没有账号 0）⇒ 那一格不上线。
+/// 宣告那张脸带上这条会话跑在哪个号下（宣告那一刻问 [`Reactions::account_of`] 一声）：界面徽章只读这一格，起停不再回头问。
+/// 判不出号（没接上判号那一手 / 它说不知道）⇒ 那一格不上线。真判号（进程环境对账号库）的判据住账号库那一侧
+/// （`library_tests::an_announced_process_is_attributed_to_the_account_whose_dir_it_runs_under`）。
 #[cfg(target_os = "linux")]
 #[test]
 fn the_announcement_says_which_account_the_session_runs_under() {
     let dir = std::env::temp_dir().join(format!("ccm-acctannounce-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let cfg = dir.join("acct-b");
-    let accts = dir.join("accts");
-    std::fs::create_dir_all(&accts).unwrap();
-    std::fs::write(
-        accts.join("accounts.json"),
-        format!(
-            r#"{{"version":1,"accounts":[{{"name":"b","configDir":"{}"}}]}}"#,
-            cfg.display()
-        ),
-    )
-    .unwrap();
-    let announce = |child_env: Option<&std::path::Path>, sid: &str| {
-        let mut cmd = std::process::Command::new("sleep");
-        cmd.arg("30")
-            .env_remove("CLAUDE_CONFIG_DIR")
-            .stdin(std::process::Stdio::null());
-        if let Some(c) = child_env {
-            cmd.env("CLAUDE_CONFIG_DIR", c);
-        }
-        let mut child = cmd.spawn().expect("spawn sleep");
-        let pid = child.id();
-        // 环境与 cmdline 同一刻摆上：看见 cmdline 就读得到环境。
-        while !std::fs::read(format!("/proc/{pid}/cmdline")).is_ok_and(|c| c.starts_with(b"sleep"))
-        {
-            std::thread::yield_now();
-        }
-        let ticks = proc_starttime(pid).expect("child starttime");
+    let pid = std::process::id();
+    let ticks = proc_starttime(pid).expect("own starttime");
+    let announce = |account_of: Option<AccountOf>, sid: &str| {
         let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
         let mut sink = FrameSink::new(tx);
         let mut state = ReaderState::new(dir.join("projects"));
-        state.accts_dir = accts.clone();
+        if let Some(f) = account_of {
+            state.account_of = f;
+        }
         let path = dir.join(format!("{pid}.json"));
         std::fs::write(
             &path,
@@ -1714,16 +1693,22 @@ fn the_announcement_says_which_account_the_session_runs_under() {
         };
         // 之后那几张活的脸（在干什么变了）照旧带宣告时判的号。
         let later = state.live_face(sid, None).account;
-        let _ = child.kill();
-        let _ = child.wait();
         (got, later)
     };
     let b = Some("b".to_string());
-    assert_eq!(announce(Some(&cfg), "acct-b"), (b.clone(), b));
     assert_eq!(
-        announce(None, "acct-none"),
+        announce(Some(|_, _| Some("b".to_string())), "acct-b"),
+        (b.clone(), b)
+    );
+    assert_eq!(
+        announce(Some(|_, _| None), "acct-unknown"),
         (None, None),
-        "没设配置目录、账号库里也没有账号 0 ⇒ 不说"
+        "判号那一手说不知道 ⇒ 不说"
+    );
+    assert_eq!(
+        announce(None, "acct-unjudged"),
+        (None, None),
+        "没接上判号那一手（夹具缺省）⇒ 不说"
     );
     std::fs::remove_dir_all(&dir).ok();
 }

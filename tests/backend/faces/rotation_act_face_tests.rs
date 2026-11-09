@@ -9,6 +9,7 @@ fn temp(ctx: &Ctx, home: &Home, op: RotTempOp) -> Result<RotationTempReply, Rota
         &home.own(),
         &RotationTempReq { sid: S1.into(), op },
         now(),
+        &crate::common::time::Tz::default(),
     )
 }
 
@@ -77,7 +78,8 @@ fn a_row_dragged_in_the_order_is_moved_there() {
     assert_eq!(ctx.hop.store.now().sessions[S1].current, "api");
 }
 
-/// ★ 「现在用」：事实上发得出去 ⇒ 当场换过去、放进拖出来的顺序最前、记一条；发不出去（被拒）⇒ 不换、说几点恢复。
+/// ★ 「现在用」：事实上发得出去 ⇒ 当场换过去、放进拖出来的顺序最前、记一条；发不出去（被拒）⇒ 不换，
+/// 拒的那一句整句写好（号名 ＋ 那个号事实上的那一句，两端照摆）。
 /// 策略的上限不拦它（a 用到 85 也照换回 a）。
 #[test]
 fn use_now_is_stopped_only_by_facts() {
@@ -95,10 +97,25 @@ fn use_now_is_stopped_only_by_facts() {
                 account: account.into(),
             },
             now(),
+            &crate::common::time::Tz::default(),
         )
     };
+    let agent = ctx.hop.store.now().sessions[S1].agent.clone();
+    let fact = ctx.hop.fact_one(
+        &agent,
+        &ctx.hop.book(),
+        "b",
+        &ctx.row(&agent),
+        now(),
+        &crate::common::time::Tz::default(),
+    );
+    let why = fact.blocked.expect("b 事实上发不出去").text;
     match go("b") {
-        Err(RotationUseNowErr::Unusable(_, u)) => assert_eq!(u.until, Some(back)),
+        Err(RotationUseNowErr::Unusable(said)) => assert_eq!(
+            said,
+            copy_text("rot.acct.refused", &[("account", "b"), ("why", &why)]),
+            "拒的那一句是整句：号名 ＋ 事实那一句"
+        ),
         other => panic!("该拒：{other:?}"),
     }
     assert_eq!(ctx.hop.store.now().sessions[S1].current, "a");
@@ -139,6 +156,7 @@ fn use_now_refuses_the_bare_account() {
             account: acct_core::BARE_ACCOUNT.into(),
         },
         now(),
+        &crate::common::time::Tz::default(),
     );
     assert!(matches!(r, Err(RotationUseNowErr::NotListed(_))), "{r:?}");
     assert_eq!(ctx.hop.store.now().sessions[S1].current, "a");
@@ -159,6 +177,7 @@ fn use_now_works_without_a_strategy() {
             account: "b".into(),
         },
         now(),
+        &crate::common::time::Tz::default(),
     )
     .expect("不轮换也换得了");
     let s = ctx.hop.store.now().sessions[S1].clone();
@@ -222,8 +241,9 @@ fn an_account_left_out_for_this_session_is_not_used() {
             account: "b".into(),
         },
         now(),
+        &crate::common::time::Tz::default(),
     ) {
-        Err(RotationUseNowErr::Unusable(said, _)) => {
+        Err(RotationUseNowErr::Unusable(said)) => {
             assert_eq!(said, copy_text("beRotation.edit.offNow", &[("acct", "b")]))
         }
         other => panic!("该拦：{other:?}"),

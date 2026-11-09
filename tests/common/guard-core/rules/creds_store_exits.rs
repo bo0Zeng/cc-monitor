@@ -21,11 +21,7 @@ const PLAINTEXT_SCAN_TREES: &[&str] = &[
 const SECRET_HOLDER: (&str, &str) = ("src/common/creds-core/src/lib.rs", "SecretKey");
 
 /// 长得像装秘密的类型、装的却不是秘密的那几个：`(文件, 类型名, 装的是什么)`。加一行就是在放宽。
-const NOT_SECRET_HOLDERS: &[(&str, &str, &str)] = &[(
-    "src/backend/dial/mod.rs",
-    "Held",
-    "活流计数的把手：装那台的机器名，丢掉时把计数减一",
-)];
+const NOT_SECRET_HOLDERS: &[(&str, &str, &str)] = &[];
 
 /// 生产段里每一个「字段私有、只包一个 `String`、不派生 `Debug`」的元组结构的名字 —— 装秘密的类型那副样子
 /// （派生 `Debug` 会把内层原样印出来，装秘密的不会派生它）。属性取的是上一个 item 收尾到 `struct` 之间那一段。

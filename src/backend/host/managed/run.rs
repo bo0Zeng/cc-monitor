@@ -25,8 +25,6 @@ pub(crate) const DEFAULT_SIZE: Size = Size { rows: 24, cols: 80 };
 /// 托管进程里那个子进程的环境：`CCM_HOST` 让里面的 ccm 写便条时带上宿主（A3-3-4）；终端型号照 tmux 的 `default-terminal` 那一类给。
 pub const HOST_ENV: &str = "CCM_HOST";
 const CHILD_ENV: [(&str, &str); 2] = [("TERM", "xterm-256color"), ("COLORTERM", "truecolor")];
-/// 不往下传：里面不是 tmux。
-const CHILD_ENV_REMOVED: [&str; 2] = ["TMUX", "TMUX_PANE"];
 
 /// 起一个托管终端要的那几样。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -204,9 +202,8 @@ pub(crate) async fn serve(
     for (k, v) in CHILD_ENV {
         child = child.env(k, v);
     }
-    for k in CHILD_ENV_REMOVED {
-        child = child.env_remove(k);
-    }
+    // 不往下传 `TMUX` · `TMUX_PANE`：里面不是 tmux。
+    child = crate::common::tmux_utf8::unnested(child);
     if !spec.cwd.is_empty() {
         child = child.current_dir(&spec.cwd);
     }

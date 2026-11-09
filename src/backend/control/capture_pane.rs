@@ -23,7 +23,7 @@
 //! | 成功 | 退出码 0 | `Ok(那一屏)` |
 //!
 //! 空屏是合法的成功（刚建起来的 pane 抓回来就是空串、退出码 0）⇒ 「抓不到」靠退出码判，不靠输出空不空
-//! （与 [`super::gate::probe`] 相反：`display-message` 对不存在的目标是 rc=0 + 空输出）。
+//! （与 [`super::gate::probe_with`] 相反：`display-message` 对不存在的目标是 rc=0 + 空输出）。
 //! tmux 换了措辞 ⇒ 两张针都不命中 ⇒ 落 `capture_failed` 并带 stderr 原样：说不清，但不拿一个具体而错误的答案冒充。
 //! 句子里只留原因词；stderr 与退出码三档都不上句子，跟着失败走进复制详情（原话那一项）。
 //!
@@ -123,7 +123,7 @@ pub(crate) struct RawCapture {
 }
 
 /// 「tmux 这个程序起不来」那一档的造句（家在宿主口 tmux 那一形）。
-pub(crate) use crate::host::tmux::tmux_unavailable;
+use crate::host::tmux::tmux_unavailable;
 
 /// 把一次原始读数判成结局。**纯函数。**
 ///

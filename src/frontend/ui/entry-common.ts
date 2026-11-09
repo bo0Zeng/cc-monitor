@@ -8,7 +8,7 @@
  * | `viewer.html` | `entry-viewer.ts` | 只含 tab 管理 ＋ 渲染栈 |
  *
  * 🔴 **本文件会进三个窗口的模块图** ⇒ 它只许 import 三个窗口都该有的东西。
- * 今天五个：`@tauri-apps/plugin-opener`（外链走系统浏览器）· `css-marks.ts`（CSS 里的符号从文案表来，文案表本来就在三个窗口里）·
+ * 今天五个：`ipc/commands.ts`（外链经壳命令 `os_open` 走系统浏览器）· `css-marks.ts`（CSS 里的符号从文案表来，文案表本来就在三个窗口里）·
  * `kit/tooltip.ts`（元素上的 `title` 改走 kit 的悬停提示；kit 本来就在三个窗口里）· `settings/host-os.ts`（根元素标系统，纯函数，零依赖）·
  * `kit/status-dot.ts`（窗口不在前台时运行中的点不呼吸；kit 本来就在三个窗口里）。代码块「复制」那半只有主窗与
  * viewer 要，住 `entry-render-common.ts`。往这里加一个 import，
@@ -17,7 +17,7 @@
  *
  * 原先这几件住 `main.ts`，三个窗口都加载 `main.ts`，所以顺带都有；拆开之后要显式共用。
  */
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { commands } from "./ipc/commands";
 import { installCssMarks } from "./css-marks";
 import { adoptNativeTitles } from "./kit/tooltip";
 import { markHostOs } from "./settings/host-os";
@@ -53,7 +53,7 @@ window.addEventListener("unhandledrejection", (e) => {
 
 /**
  * 外链的全局 click 代理。三个窗口共用（设置窗里也有外链）。
- * - 外链（render.ts 标 data-external）：preventDefault + openUrl 走系统浏览器，
+ * - 外链（render.ts 标 data-external）：preventDefault + 壳命令 `os_open` 走系统浏览器，
  *   避免 WebView2 把 UI 替换成外站。capture 阶段顶层接管防被卡片 handler 抢先。
  */
 export function installExternalLinkDelegation(): void {
@@ -67,8 +67,8 @@ export function installExternalLinkDelegation(): void {
       const href = a.getAttribute("href") ?? "";
       if (!href) return;
       e.preventDefault();
-      void openUrl(href).catch((err) => {
-        console.warn("[external link] openUrl failed:", href, err);
+      void commands.os_open({ kind: "url", url: href }).catch((err: unknown) => {
+        console.warn("[external link] os_open failed:", href, err);
       });
     },
     true,

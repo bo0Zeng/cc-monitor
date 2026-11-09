@@ -19,7 +19,7 @@ fn main_production_section_keeps_its_load_bearing_items() {
         for anchor in [
             format!("const BUILD{}", "_ID"),
             format!("static CC_MONITOR_BUILD{}", "_STAMP"),
-            format!("fn stamp_detail{}", "_slots"),
+            format!("use backend_faces as fac{}", "es;"),
             format!("use backend_observe as obser{}", "ve;"),
             format!("use backend_control as contr{}", "ol;"),
         ] {

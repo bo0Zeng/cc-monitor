@@ -86,9 +86,6 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   （`transfer-*` 四条，传输台住那里）。没有第二条路可回落（`D11`：不进程内开 SFTP），
     //   后端说的码原样带回窗口；**照样走分流器**，理由与 `frame_query.rs` 那一行逐字相同。
     ("transfer_relay.rs", Verdict::UsesRouter),
-    // ★ 装后端：把「怎么够到那台 ＋ 这一版带着的那几格落在哪」交给**本机**后端 `deploy-install`，
-    //   经 `deploy.rs::install_for` 这一口；那一趟住后端，没有第二条路可回落。形状与理由同上几条。
-    ("deploy.rs", Verdict::UsesRouter),
     // 终端画面流撤掉时会话流句柄替界面向那台退订（`event_replay.rs::unfollow`）：发出去就不管，没成只记一行日志 ——
     //   连接走时那台整张票表本来就收；没有第二条路，也不把成败交给任何人。
     ("event_replay.rs", Verdict::ProbeOnlyNoFallbackDecision),
@@ -101,7 +98,7 @@ const SENDERS: &[(&str, Verdict)] = &[
     // `backend_control.rs` 那一行退役了：［重新连接］叫醒那台（`machine-wake`）改经 `frame_query::call`（走分流器），
     //   拒了那一句回给界面，壳那一份不再直连 `inbound_client`，发现阶段扫不到它。
     // ★ 机器页「停」：请**本机**后端 `machine-stop`（先停它那一条、再在那台跑 `--resident-stop`），经 `remote_resident.rs::stop` 这一口；
-    //   没有第二条路可回落（停那台只经本机后端那条 SSH），失败经共用分流器翻成人话。形状与 `deploy.rs` 那一行同。
+    //   没有第二条路可回落（停那台只经本机后端那条 SSH），失败经共用分流器翻成人话。形状与 `transfer_relay.rs` 那一行同。
     ("remote_resident.rs", Verdict::UsesRouter),
     // 「复制诊断信息」：整段请**本机**后端 `diagnostics-report` 出，经 `diagnostics_report.rs::diagnostics_report` 这一口；
     //   没有第二条路可回落（后端不在，这件事就不发生），失败经共用分流器翻成人话。形状与 `remote_resident.rs` 那一行同。

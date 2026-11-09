@@ -64,94 +64,23 @@ const PROBE_FMT: &str = "#{session_id}\t#{@ccm_sid}\t#{session_windows}\t#{@ccm_
 /// 有人把 `@ccm_sid` 手工设成含 TAB 的值、或格式串被改 —— 两种都拒（fail-closed）。
 const PROBE_FMT_FIELDS: usize = 4;
 
-/// 跑一次 `tmux display-message -p -t <target> '<fmt>'` 并把 stdout 取回来。
-///
-/// `Ok(None)` = 目标不存在（输出为空，见模块头注：不看退出码）。
-///
-/// `target` 不限于会话名：pane id（`%N`）也会被归到它所属的会话上，[`super::identity_tag`] 就拿 `TMUX_PANE` 当 target 调它。
-/// 空串 target 会被 tmux 静默解析成「某个会话」，调用方必须自己挡（`identity_tag::pane_is_safe`）。
-pub(crate) fn probe(target: &str) -> Result<Option<Probed>, Said> {
-    probe_with(tmux_on(None), target)
-}
-
-/// 本模块起 tmux 的那一处（经宿主口 `host::tmux::child`）。`socket`：`None` = 让 tmux 按环境解析默认 socket（**生产恒 `None`**）；
-/// `Some(p)` = 显式 `-S <p>`（只为让「按 sid 找窗格」在隔离的 tmux server 上测得出来）。
+/// 本模块起 tmux 的那一处（经宿主口 `host::tmux::child`）。`socket`：`None` = 让 tmux 按环境解析默认 socket；
+/// `Some(p)` = 显式 `-S <p>`（问的是列名单的那一台：终端名单 · 判据的隔离 server）。
 #[expect(
     clippy::disallowed_methods,
-    reason = "三道门里身份那一探（取 `@ccm_sid`）与按 sid 找窗格：只读 tmux，不改任何状态"
+    reason = "三道门里身份那一探（取 `@ccm_sid`）：只读 tmux，不改任何状态"
 )]
 fn tmux_on(socket: Option<&str>) -> Child {
     crate::host::tmux::child(socket)
 }
 
-/// 一个会话里的一个窗格（[`panes_on`] 的一行）。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PaneTag {
-    /// `#{pane_id}`（`%N`，server 生命周期内不复用 ⇒ 对它下手同对 `#{session_id}` 下手一样关得住 TOCTOU）。
-    pub(crate) pane: String,
-    /// 根进程 pid（杀成之后按它认 cc-bus 名册）。
-    pub(crate) pid: u32,
-    /// 它挂着的 `@ccm_sid`（窗格上的；没有就是会话那一级的；都没有 ⇒ 空串）。
-    pub(crate) sid: String,
-    /// 是不是会话此刻的当前窗格（当前窗口的活动窗格）。
-    pub(crate) current: bool,
-}
-
-/// 列一个会话全部窗格的格式：句柄 · 根进程 pid · `@ccm_sid` · 是不是当前窗格（窗格活动、窗口也活动 ⇒ `11`）。
-const PANES_FMT: &str = "#{pane_id}\t#{pane_pid}\t#{@ccm_sid}\t#{pane_active}#{window_active}";
-
-/// 这个会话（`#{session_id}` 或 `=名:`）的全部窗格。只读 tmux；问不到 ⇒ 空。
-pub(crate) fn panes_on(socket: Option<&str>, session: &str) -> Vec<PaneTag> {
-    panes_with(tmux_on(socket), session)
-}
-
-/// [`panes_on`] 的本体，`tmux` 由调用方造（同 [`probe_with`]）。
-fn panes_with(tmux: Child, session: &str) -> Vec<PaneTag> {
-    tmux.args([
-        UTF8_CLIENT_FLAG,
-        "list-panes",
-        "-F",
-        PANES_FMT,
-        "-s",
-        "-t",
-        session,
-    ])
-    .run(crate::host::tmux::TMUX_WITHIN)
-    .map(|o| parse_panes(&String::from_utf8_lossy(&o.stdout)))
-    .unwrap_or_default()
-}
-
-/// [`panes_on`] 的原文 ⇒ 行（纯函数）。读不懂的行丢掉（段数不对 = 打印通道被改写，宁可当它不在）。
-pub(crate) fn parse_panes(text: &str) -> Vec<PaneTag> {
-    text.lines()
-        .filter_map(|l| {
-            let f: Vec<&str> = l.split('\t').collect();
-            match f.as_slice() {
-                [pane, pid, sid, cur] if pane.starts_with('%') => Some(PaneTag {
-                    pane: pane.to_string(),
-                    pid: pid.trim().parse().ok()?,
-                    sid: sid.to_string(),
-                    current: *cur == "11",
-                }),
-                _ => None,
-            }
-        })
-        .collect()
-}
-
-/// 挂着 `sid` 的那个窗格：同一个 sid 挂在几个窗格上（会话那一级的旧标签往下透）⇒ 当前窗格那个，否则第一个。
-/// 空 `sid` ⇒ 没有（没挂标签的窗格不算「挂着空 sid」）。
-pub(crate) fn carrier<'a>(panes: &'a [PaneTag], sid: &str) -> Option<&'a PaneTag> {
-    if sid.is_empty() {
-        return None;
-    }
-    let mut hits = panes.iter().filter(|p| p.sid == sid);
-    let first = hits.clone().next();
-    hits.find(|p| p.current).or(first)
-}
-
-/// [`probe`] 的本体，`tmux` 由调用方造：[`super::identity_tag`] 经它自己那一个口递进来
-/// （测试构建里那个口是注入的假 tmux，`INVARIANTS §48.3`）。
+/// **探一次**：跑 `tmux display-message -p -t <target> '<fmt>'` 并把 stdout 取回来；`tmux` 由调用方造（门问它那一台，
+/// [`super::identity_tag`] 经它自己那一个口递进来，测试构建里那个口是注入的假 tmux，`INVARIANTS §48.3`）。
+///
+/// `Ok(None)` = 目标不存在（输出为空，见模块头注：不看退出码）。
+///
+/// `target` 不限于会话：pane id（`%N`）也会被归到它所属的会话上，[`super::identity_tag`] 就拿 `TMUX_PANE` 当 target 调它。
+/// 空串 target 会被 tmux 静默解析成「某个会话」，调用方必须自己挡（`host::tmux::pane_id_ok`）。
 pub(crate) fn probe_with(tmux: Child, target: &str) -> Result<Option<Probed>, Said> {
     let out = tmux
         // `-u` 必须在子命令之前（`display-message -u -p` 是 rc=1 的响错）。
@@ -164,13 +93,8 @@ pub(crate) fn probe_with(tmux: Child, target: &str) -> Result<Option<Probed>, Sa
             PROBE_FMT,
         ])
         .run(crate::host::tmux::TMUX_WITHIN)
-        .map_err(|e| {
-            // 句子只说原因词；系统原话进原话位（复制详情）。
-            let (c, s) = e.into_cmd_said("no_tmux", |why| {
-                copy_text("reason.tmux.startFailed", &[("why", why)])
-            });
-            crate::wire::spec::fail(c, s)
-        })?;
+        // 句子只说原因词；系统原话进原话位（复制详情）。
+        .map_err(crate::host::tmux::tmux_unavailable)?;
     let text = String::from_utf8_lossy(&out.stdout);
     let line = text.trim_end_matches(['\n', '\r']);
     if line.is_empty() {
@@ -287,7 +211,7 @@ pub(crate) enum Barred {
 /// **过门。** 通过则返回令牌：后续该用的目标句柄（`#{session_id}`；给了 `sid` ⇒ 挂着它的那个窗格的 `#{pane_id}`）。
 ///
 /// `name` 是用户/调用方给的会话名（Gate 2 的本地半支按它判）；
-/// `target` 是 `launch::exact_target(name)` 产出的精确目标（`=name:`）。
+/// `target` 是 `common::tmux_utf8::exact_target(name)` 产出的精确目标（`=name:`）。
 /// `sid` ＝ 要的是这个会话里挂着它的那个窗格（一个 tmux 会话里可以有几个 claude 窗格）。
 ///
 /// 三种结局：
@@ -302,7 +226,13 @@ pub(crate) fn admit(
     sid: Option<&str>,
     requester: Option<&str>,
 ) -> Result<Admitted, Said> {
-    let said = match admit_with(&|| tmux_on(None), name, target, sid, requester)? {
+    let said = match admit_with(
+        crate::host::tmux::On::default(),
+        name,
+        target,
+        sid,
+        requester,
+    )? {
         Ok(a) => return Ok(a),
         Err(Barred::Gone) => {
             return Err(crate::common::said::Said::new(
@@ -319,32 +249,35 @@ pub(crate) fn admit(
     Err(crate::common::said::Said::new("wrong_owner", said))
 }
 
-/// [`admit`] 的本体，`tmux` 由调用方造（终端送字那一路问它自己那台 tmux）：探 → 按 `sid` 找窗格 → 判身份 → 令牌。
+/// [`admit`] 的本体，问哪台 tmux 由调用方给（终端送字那一路问它自己那台）：探 → 按 `sid` 找窗格 → 判身份 → 令牌。
 /// 给了 sid ⇒ 落在挂着它的那个窗格、身份也按它判（活动窗格是谁不算数）。
 pub(crate) fn admit_with(
-    tmux: &dyn Fn() -> Child,
+    on: crate::host::tmux::On<'_>,
     name: &str,
     target: &str,
     sid: Option<&str>,
     requester: Option<&str>,
 ) -> Result<Result<Admitted, Barred>, Said> {
-    let Some(p) = probe_with(tmux(), target)? else {
-        return Ok(Err(Barred::Gone));
+    let judge = || -> Result<Result<Admitted, Barred>, Said> {
+        let Some(p) = probe_with(tmux_on(on.socket), target)? else {
+            return Ok(Err(Barred::Gone));
+        };
+        let (ccm_sid, at) = match sid {
+            None => (p.ccm_sid, p.session_id),
+            Some(s) => {
+                let panes = crate::host::tmux::panes_on(on, &p.session_id);
+                let Some(c) = crate::host::tmux::carrier(&panes, s) else {
+                    return Ok(Err(Barred::OtherSid));
+                };
+                (c.sid.clone(), c.pane.clone())
+            }
+        };
+        Ok(match identity(name, &p.client, &ccm_sid, requester) {
+            Who::Pass => Ok(Admitted(at)),
+            no => Err(Barred::Not(no)),
+        })
     };
-    let (ccm_sid, at) = match sid {
-        None => (p.ccm_sid, p.session_id),
-        Some(s) => {
-            let panes = panes_with(tmux(), &p.session_id);
-            let Some(c) = carrier(&panes, s) else {
-                return Ok(Err(Barred::OtherSid));
-            };
-            (c.sid.clone(), c.pane.clone())
-        }
-    };
-    Ok(match identity(name, &p.client, &ccm_sid, requester) {
-        Who::Pass => Ok(Admitted(at)),
-        no => Err(Barred::Not(no)),
-    })
+    retagged(judge)
 }
 
 /// 破坏性动作的门：Gate 2（身份）再加 Gate 3（`windows == 1`）。
@@ -353,67 +286,92 @@ pub(crate) fn admit_with(
 /// 多窗口 ⇒ 拒绝（`CCM_GUARD_REJECTED windows=<n>`），让用户自己去那个 tmux 里处理。
 /// Gate 3 只给破坏性动作：`send-keys` 不删东西，给它加 Gate 3 会误拒「往多窗口会话里打字」—— 所以与 [`admit`] 是两个入口。
 ///
-/// 给了 `sid` ⇒ 按挂着它的那个窗格认（[`panes_on`]）：哪个窗格都不挂它 ⇒ 认完换了人（`wrong_owner`）；身份按那个窗格判；
+/// **按名单那一行的句柄探**（`row.id`，tmux 的 `#{session_id}`，不复用），在列名单的同一台 tmux（`on`）上：列名单之后那个会话没了 ⇒
+/// `no_such_session`，同名又起的那一个不会被认成它（不按名字再认一次）。名字只拿来说话与判名字规则（Gate 2）。
+///
+/// 这一行挂着 sid 的窗格（`row.pane`）⇒ 按挂着那个 sid 的窗格认（`host::tmux::panes_on`）：哪个窗格都不挂它 ⇒ 认完换了人（`wrong_owner`）；身份按那个窗格判；
 /// 会话里还有窗格挂着别的 sid（别的 claude）⇒ 只结束挂着它的窗格（不关整个会话，Gate 3 不适用）；没有 ⇒ 整个会话（照常过 Gate 3）。
 pub(crate) fn admit_destructive(
-    name: &str,
-    target: &str,
-    sid: Option<&str>,
+    on: crate::host::tmux::On<'_>,
+    row: &crate::host::TermRow,
     requester: Option<&str>,
 ) -> Result<Doomed, Said> {
-    let Some(p) = probe(target)? else {
-        return Err(crate::common::said::Said::new(
+    let name = row.name.as_str();
+    let sid = row.pane.as_ref().map(|_| row.sid.as_str());
+    let judge = || -> Result<Result<Doomed, Barred>, Said> {
+        let Some(p) = probe_with(tmux_on(on.socket), &row.id)? else {
+            return Ok(Err(Barred::Gone));
+        };
+        let (who, only) = match sid {
+            None => (p.ccm_sid.clone(), Vec::new()),
+            Some(s) => {
+                let tags = crate::host::tmux::panes_on(on, &p.session_id);
+                let carrying: Vec<String> = tags
+                    .iter()
+                    .filter(|t| t.sid == s)
+                    .map(|t| t.pane.clone())
+                    .collect();
+                if carrying.is_empty() {
+                    return Ok(Err(Barred::OtherSid));
+                }
+                let others = tags.iter().any(|t| !t.sid.is_empty() && t.sid != s);
+                (s.to_string(), if others { carrying } else { Vec::new() })
+            }
+        };
+        match identity(name, &p.client, &who, requester) {
+            Who::Pass => {}
+            no => return Ok(Err(Barred::Not(no))),
+        }
+        if !only.is_empty() {
+            return Ok(Ok(Doomed(EndAt::Panes(p.session_id, only))));
+        }
+        if p.windows != 1 {
+            return Err(crate::common::said::Said::new(
+                "too_many_windows",
+                copy_text(
+                    "beGate.admitDestructive.manyWindows",
+                    &[("name", name), ("n", &p.windows.to_string())],
+                ),
+            ));
+        }
+        Ok(Ok(Doomed(EndAt::Session(p.session_id))))
+    };
+    let barred = match retagged(judge)? {
+        Ok(d) => return Ok(d),
+        Err(b) => b,
+    };
+    Err(match barred {
+        Barred::Gone => crate::common::said::Said::new(
             "no_such_session",
             copy_text("beGate.admitDestructive.noSession", &[("name", name)]),
-        ));
-    };
-    let (who, only) = match sid {
-        None => (p.ccm_sid.clone(), Vec::new()),
-        Some(s) => {
-            let tags = panes_on(None, &p.session_id);
-            let carrying: Vec<String> = tags
-                .iter()
-                .filter(|t| t.sid == s)
-                .map(|t| t.pane.clone())
-                .collect();
-            if carrying.is_empty() {
-                return Err(crate::common::said::Said::new(
-                    "wrong_owner",
-                    copy_text("beGate.admitDestructive.otherSession", &[("name", name)]),
-                ));
-            }
-            let others = tags.iter().any(|t| !t.sid.is_empty() && t.sid != s);
-            (s.to_string(), if others { carrying } else { Vec::new() })
+        ),
+        Barred::OtherSid => crate::common::said::Said::new(
+            "wrong_owner",
+            copy_text("beGate.admitDestructive.otherSession", &[("name", name)]),
+        ),
+        Barred::Not(Who::OtherClient) => crate::common::said::Said::new(
+            "wrong_owner",
+            copy_text("beGate.admitDestructive.otherClient", &[("name", name)]),
+        ),
+        Barred::Not(_) => crate::common::said::Said::new(
+            "wrong_owner",
+            copy_text("beGate.admitDestructive.notOurs", &[("name", name)]),
+        ),
+    })
+}
+
+/// 判一次；身份那一道说「不是我们的」（没设 `@ccm_sid` · 哪个窗格都不挂那个 sid）⇒ 先补打上一回没打上的身份标
+/// （`identity_tag::retag_pending`，等正在打的那一趟打完），再探一次重判。别的结局（没了 · 别的前端的 · 放行）原样回。
+fn retagged<T>(
+    judge: impl Fn() -> Result<Result<T, Barred>, Said>,
+) -> Result<Result<T, Barred>, Said> {
+    match judge()? {
+        Err(Barred::OtherSid | Barred::Not(Who::NotOurs)) => {
+            super::identity_tag::retag_pending();
+            judge()
         }
-    };
-    match identity(name, &p.client, &who, requester) {
-        Who::Pass => {}
-        Who::NotOurs => {
-            return Err(crate::common::said::Said::new(
-                "wrong_owner",
-                copy_text("beGate.admitDestructive.notOurs", &[("name", name)]),
-            ))
-        }
-        Who::OtherClient => {
-            return Err(crate::common::said::Said::new(
-                "wrong_owner",
-                copy_text("beGate.admitDestructive.otherClient", &[("name", name)]),
-            ))
-        }
+        r => Ok(r),
     }
-    if !only.is_empty() {
-        return Ok(Doomed(EndAt::Panes(p.session_id, only)));
-    }
-    if p.windows != 1 {
-        return Err(crate::common::said::Said::new(
-            "too_many_windows",
-            copy_text(
-                "beGate.admitDestructive.manyWindows",
-                &[("name", name), ("n", &p.windows.to_string())],
-            ),
-        ));
-    }
-    Ok(Doomed(EndAt::Session(p.session_id)))
 }
 
 /// 破坏性动作的令牌：字段私有、不能复制 ⇒ 只有本模块造得出，结束会话只收它。

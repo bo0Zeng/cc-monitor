@@ -52,24 +52,6 @@ fn home() -> Option<PathBuf> {
     crate::platform::paths::home_dir()
 }
 
-/// 这台的家：门牌（口 · 钥匙 · 谁在听）只跟着它走。规矩与 monitor 同一份（`creds_core::store::monitor_data_dir`）。
-fn data_home() -> Option<PathBuf> {
-    creds_core::store::monitor_data_dir(
-        std::env::var(creds_core::store::DATA_DIR_ENV)
-            .ok()
-            .as_deref(),
-        home(),
-    )
-}
-
-/// 按交进来的环境算这台的家（`CCM_DATA_DIR`，否则 `$HOME/.cc-monitor`）：常驻载体认门牌用（`stream/claim.rs::claim_then_log`，环境是注入的）。
-pub fn data_home_from(get: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
-    creds_core::store::monitor_data_dir(
-        get(creds_core::store::DATA_DIR_ENV).as_deref(),
-        crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into)),
-    )
-}
-
 /// 本账号在账号数据库里的家目录（不看 `$HOME`；沙箱那一判的对照物）。
 pub fn account_home() -> Option<PathBuf> {
     crate::platform::paths::account_home()
@@ -89,7 +71,7 @@ fn fail(cmd: &str, code: &str, said: impl Into<copy_core::said::Said>) -> i32 {
 /// `--resident-ensure [--replace]`。`hosted`：[`ensure`] 备好的额外环境 —— 中转口 · 诊断文件那两格
 /// （控制面不引中转宿主那一包）。
 pub(crate) fn run_ensure(args: &[String], hosted: &[(&str, String)], own: &Own) -> i32 {
-    let (Some(home), Some(dh)) = (home(), data_home()) else {
+    let (Some(home), Some(dh)) = (home(), crate::platform::paths::data_home()) else {
         return fail(ENSURE, "no_home", copy_text("beResident.home.missing", &[]));
     };
     let replace = args.iter().any(|a| a == "--replace");
@@ -169,7 +151,7 @@ pub(crate) fn run_ensure(args: &[String], hosted: &[(&str, String)], own: &Own) 
 /// `--resident-attach`：小中继。连这台的套接字，两向原样对拷，任一边断就退（退出码 0）；
 /// 断开 ⇒ stdout 一行拒绝（理由闭集，`listen::refusal_line`）、退出 2。
 pub async fn attach() -> i32 {
-    let Some(dh) = data_home() else {
+    let Some(dh) = crate::platform::paths::data_home() else {
         return fail(ATTACH, "no_home", copy_text("beResident.home.missing", &[]));
     };
     let sock = match own_chan::connect(&relay_route_core::listen_socket_for(&dh)).await {
@@ -225,10 +207,10 @@ pub async fn call(args: &[String], tz: &crate::common::time::Tz) -> i32 {
             return refuse(&code, s.said);
         }
     };
-    let line = match crate::control::cli_args::read_args(
+    let line = match crate::wire::cli_args::read_args(
         args,
         std::io::stdin(),
-        crate::control::cli_args::STDIN_QUIET,
+        crate::wire::cli_args::STDIN_QUIET,
     ) {
         Ok(l) => l,
         Err(s) => {
@@ -245,7 +227,7 @@ pub async fn call(args: &[String], tz: &crate::common::time::Tz) -> i32 {
             )
         }
     };
-    let Some(dh) = data_home() else {
+    let Some(dh) = crate::platform::paths::data_home() else {
         return refuse("no_home", copy_text("beResident.home.missing", &[]));
     };
     match call_while(&dh, &asked, Some(within_ms), tz, total, asker_gone()).await {
@@ -311,8 +293,8 @@ const ASKER_GONE_EXIT: i32 = 2;
 /// 不给 · 给的不是正整数 ⇒ `bad_args`，这里不自己定一个。
 pub(crate) fn deadline_of(args: &[String]) -> Result<(u64, Deadline), crate::common::said::Said> {
     let flag = crate::wire::cli_words::WITHIN_MS_FLAG;
-    let ms = crate::control::cli_args::within_of(args)?.ok_or_else(|| {
-        crate::control::cli_args::bad_args(&format!(
+    let ms = crate::wire::cli_args::within_of(args)?.ok_or_else(|| {
+        crate::wire::cli_args::bad_args(&format!(
             "{flag} <ms> is required: how long to wait belongs to the asker"
         ))
     })?;
@@ -477,9 +459,9 @@ impl Here {
 pub(crate) fn relay_refusal(kind: std::io::ErrorKind) -> &'static str {
     match kind {
         std::io::ErrorKind::NotFound | std::io::ErrorKind::ConnectionRefused => {
-            crate::wire::listen::REFUSE_ABSENT
+            cmd_wire::attach::REFUSE_ABSENT
         }
-        _ => crate::wire::listen::REFUSE_UNREACHABLE,
+        _ => cmd_wire::attach::REFUSE_UNREACHABLE,
     }
 }
 
@@ -649,7 +631,7 @@ fn spawn_detached(
         clippy::disallowed_methods,
         reason = "`--resident-ensure` 起本二进制自己当远端那台的常驻载体（只留一根回信管道、自成进程组）：被起的流模式那一臂照样归本仓的守法管；不许加第二种用途"
     )]
-    let mut cmd = Child::new(exe).args(DEFAULT_STREAM_ARGS).env_remove("TMUX");
+    let mut cmd = crate::common::tmux_utf8::unnested(Child::new(exe).args(DEFAULT_STREAM_ARGS));
     for (k, v) in env {
         cmd = if OWN_ENVS.contains(&k.as_str()) {
             cmd.pass_own(k, v)

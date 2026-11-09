@@ -1,7 +1,19 @@
 //! 监听口拒绝理由那一条：喂给 `refusal_line` 的实参只许来自闭集 —— 两处调用点里小中继那一处住控制面（`control/resident.rs`），
 //! 本条要问它的 `relay_refusal` ⇒ 挂在 `control` 底下（帧面零件是独立的包、够不到上层）。其余监听判定的判据住 `listen_tests.rs`。
 
-use crate::wire::listen::{refusal_line, REFUSE_ABSENT, REFUSE_MALFORMED, REFUSE_UNREACHABLE};
+use crate::wire::listen::refusal_line;
+use cmd_wire::attach::{REFUSE_ABSENT, REFUSE_MALFORMED, REFUSE_UNREACHABLE};
+
+/// ★ 理由词两端同一份：后端写出的拒绝行，客户端（`resident-client`，桌面与手机同一份读法）读回来就是契约里那个词。
+#[test]
+fn the_client_reads_back_the_contract_word_the_backend_wrote() {
+    for r in [REFUSE_ABSENT, REFUSE_UNREACHABLE] {
+        assert_eq!(
+            resident_client::attach::relay_refusal(refusal_line(r).trim()).as_deref(),
+            Some(r)
+        );
+    }
+}
 
 /// 拒绝理由是闭集，且拼出来的每一行都是**合法 JSON**。
 ///

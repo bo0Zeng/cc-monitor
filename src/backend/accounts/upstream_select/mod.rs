@@ -206,15 +206,17 @@ impl Upstreams {
 ///
 /// `book`：这台的号表怎么读（宿主交进来 —— 上游选择不认识账号库管理）；换号要它找各号的配置目录。
 /// `own`：写自家状态的句柄（启动时造的那一份）；额度账 · 轮换 · 血缘 · 中转钥匙的写都经它。
+/// `history`：这台活着的会话 · 需手动的铃（宿主交进来 —— 上游选择不认识 history）。
 pub fn host_relay(
     book: rotate::BookAt,
     adoptions: crate::accounts::quota::rules::AdoptionsAt,
+    history: rotate::HistoryPorts,
     tap: std::sync::Arc<dyn crate::relay::TapPort>,
     own: crate::platform::fs::Own,
 ) -> String {
     crate::relay::host(
         &|k| std::env::var(k).ok(),
-        &Rotating(book, own.clone(), adoptions),
+        &Rotating(book, own.clone(), adoptions, history),
         tap,
         &own,
         // 中转开上游那一口按来处取那条会话的出网描述（`ccm` 起会话时留的那一份）。
@@ -229,11 +231,13 @@ pub fn host_relay(
 /// `Startup` / `Ready` / `Destinations` 三个契约口。钉这一条的判据：`upstream_selection_guard`（㈢ 零命中）。
 /// 上游选择在中转启动路径上交给中转的那一只手（[`Startup`]）：装上换号（额度满了换到轮换里下一个号），
 /// 带着这台的账号库怎么读。判据交一份空账号库 ⇒ 永远只走起会话那个号。
-/// 第二格是写自家状态的句柄（启动时造的那一份）；第三格是会话用哪份策略问谁（宿主交进来 —— 上游选择不认识策略文件）。
+/// 第二格是写自家状态的句柄（启动时造的那一份）；第三格是会话用哪份策略问谁（宿主交进来 —— 上游选择不认识策略文件）；
+/// 第四格是 history 那两口（宿主交进来 —— 上游选择不认识 history）。
 pub struct Rotating(
     pub rotate::BookAt,
     pub crate::platform::fs::Own,
     pub crate::accounts::quota::rules::AdoptionsAt,
+    pub rotate::HistoryPorts,
 );
 
 impl Startup for Rotating {
@@ -244,6 +248,7 @@ impl Startup for Rotating {
                 book: std::sync::Arc::clone(&self.0),
                 own: self.1.clone(),
                 adoptions: std::sync::Arc::clone(&self.2),
+                history: self.3.clone(),
             }) as Box<dyn Ready>
         })
     }
@@ -255,6 +260,7 @@ pub(crate) struct Booted {
     book: rotate::BookAt,
     own: crate::platform::fs::Own,
     adoptions: crate::accounts::quota::rules::AdoptionsAt,
+    history: rotate::HistoryPorts,
 }
 
 impl Ready for Booted {
@@ -271,33 +277,25 @@ impl Ready for Booted {
             book,
             own,
             adoptions,
+            history,
         } = *self;
         let (table, source) = load_credentials(get, &upstreams, out);
         // `D1 阻-2`：把重载源接上 —— 没有这一行，那张表就是一张**启动快照**，
         // 用户在界面上配完 key 必须重启中转才生效（而不重启的症状是一个静默的 404）。
         // 推不出那份文件在哪 ⇒ 空表、无重载源（那句话装表时已经说了）。
-        let quota = std::sync::Arc::new(Ledger::at(
-            own.path(ledger::FILE_NAME)
-                .ok()
-                .map(|p| p.as_path().to_path_buf()),
-        ));
-        let mut accounts = Accounts::new(table, upstreams, own.clone())
-            .recording_to(std::sync::Arc::clone(&quota));
-        let store = std::sync::Arc::new(crate::accounts::quota::rotation::RotationStore::at(
-            crate::accounts::quota::rotation::path_from(get),
-        ));
-        // 换号的账本与「会话用哪份策略问谁」都跟着这份 `rotation.json`。
+        // 额度账与换号的账本（「会话用哪份策略问谁」也跟着这份 `rotation.json`）都住自家的数据目录。
         let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into));
-        accounts = accounts
-            .rotating_with(rotate::Hop::new(
-                store,
-                &adoptions,
-                quota,
-                home,
-                book,
-                std::sync::Arc::new(crate::history::live_table::live_here),
-                None,
-            ))
+        let data = own.root();
+        let hop = rotate::Hop::here(
+            data.as_ref().map(|d| d.as_path()),
+            home,
+            book,
+            &adoptions,
+            history,
+        );
+        let accounts = Accounts::new(table, upstreams, own.clone())
+            .recording_to(std::sync::Arc::clone(&hop.quota))
+            .rotating_with(hop)
             .tracing_lineage(std::sync::Arc::new(crate::lineage::LineageStore::at(
                 own.path(crate::lineage::FILE_NAME)
                     .ok()

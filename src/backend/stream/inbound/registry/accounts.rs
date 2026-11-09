@@ -4,12 +4,17 @@ use crate::wire::spec::CommandSpec;
 
 pub(super) const SPECS: &[CommandSpec] = &[
     super::typed::blocking::<crate::faces::rotation_face::QuotaReadCmd>("这台的额度账"),
-    // 用某个号查一次额度（帧面宿主 `faces/quota_probe_face.rs`）：起官方客户端、等它 ⇒ 阻塞档，总期限登记在 `caps.rs`。
+    // 用某个号查一次额度（帧面宿主 `faces/quota_probe_face.rs`）：起官方客户端、等它 ⇒ 阻塞档，总期限写在登记行上（`.capped`）。
     super::typed::blocking::<crate::faces::quota_probe_face::QuotaProbe>(
         "用某个号查一次额度",
-    ),
-    // 用某个号发一句、让它的 5 小时窗开始计时（宿主 `accounts/quota/warm.rs`，与轮换判完开窗同一处）：等那一发说完 ⇒ 阻塞档，总期限登记在 `caps.rs`。
-    super::typed::blocking::<crate::accounts::quota::warm::QuotaWarm>("给一个号开窗"),
+    )
+    .capped(crate::faces::quota_probe_face::PROBE_CAP),
+    // 用某个号发一句、让它的 5 小时窗开始计时（宿主 `accounts/quota/warm.rs`，与轮换判完开窗同一处）：等那一发说完 ⇒ 阻塞档，带总期限。
+    super::typed::blocking::<crate::accounts::quota::warm::QuotaWarm>("给一个号开窗")
+        .capped(crate::accounts::quota::warm::WARM_CAP)
+        .stream_only(
+            "「同一个号 15 分钟只发一次」那一本只住常驻进程的内存（轮换判完开窗也记在那里）；一次性进程每次是新的一本，答的 `sent` 是假话、还会重发。",
+        ),
     // 轮换第五版：每个号此刻的事实（typed）。只读。
     super::typed::blocking::<crate::faces::rotation_facts_face::RotationFacts>(
         "每个号此刻的事实",
@@ -52,7 +57,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
         "给一个账号写 key，写完读回",
     ),
     // 出成品：`{meta, accounts, notice}`，并上这台机器自己那份 apikey 表；`agent` 随请求带（必填）。
-    super::typed::blocking::<crate::faces::read_face::AccountsListCmd>("账号清单"),
+    super::typed::blocking::<crate::faces::read_face::AccountsListCmd>("账号清单").stream_only(
+        "每个号的徽章（API key 号「经中转 / 中转未运行」）读本进程的监听状态；一次性进程里没有中转，只能说「中转未运行」—— 那是假话。",
+    ),
     // 停 / 重启 / 更新 / 卸载一台的 cc-monitor 之前会打断什么：界面只问本机后端这一条，别的台那一份由它经那台的常驻流问到、
     //   并好再答（`read_face::interrupts_hub`）⇒ 异步档（这台自己那一份读 pidfile，在阻塞池里出）。只读。
     super::typed::asynchronous::<crate::faces::read_face::MachineInterrupts>(
@@ -84,8 +91,14 @@ pub(super) const SPECS: &[CommandSpec] = &[
     ),
     super::typed::blocking::<crate::faces::login_face::LoginFinish>(
         "把粘回来的那一段（登录页上的码 · 浏览器回跳的地址）交给那份登录作业，等那一家换完",
+    )
+    .stream_only(
+        "它找的登录作业住常驻进程那一份作业表里；一次性进程里那张表是空的，只能答「没有这份作业」—— 那是假话。",
     ),
     super::typed::blocking::<crate::faces::login_face::LoginCancel>(
         "收一份登录作业",
+    )
+    .stream_only(
+        "它收的登录作业住常驻进程那一份作业表里；一次性进程里那张表是空的，只能答「本来就没有」—— 那是假话。",
     ),
 ];

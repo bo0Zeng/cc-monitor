@@ -104,10 +104,10 @@ impl Ssh for Fake {
         })
     }
 
-    fn install(&self, _machine: &str) -> Boxed<'_, ()> {
+    fn install(&self, _machine: &str) -> Boxed<'_, bool> {
         self.installs.fetch_add(1, Ordering::SeqCst);
         self.words.lock().unwrap().push("install".into());
-        Box::pin(async {})
+        Box::pin(async { true })
     }
 
     fn far(&self, _machine: &str) -> bool {
@@ -188,7 +188,7 @@ async fn until(what: &str, mut f: impl FnMut() -> bool) {
 }
 
 /// 机器状态推出来的那一路（[`machine_state::changes`]，接之前订）。
-type Pushes = tokio::sync::broadcast::Receiver<(String, cmd_wire::machine::MachineState)>;
+type Pushes = tokio::sync::broadcast::Receiver<machine_state::Moved>;
 
 /// 等那台推出成品是 `up` 的那一帧 `changed {machine}`（接上那一刻那一推）。等的是这一推，不读机器状态那张表：
 /// 那张表进程里只一份，同一进程里别的判据改机器表时照沙箱机器表把这几台摘掉（[`table_moved_elsewhere`]），读表就等不到了。
@@ -197,9 +197,11 @@ async fn up_pushed(changes: &mut Pushes, machine: &str) -> cmd_wire::machine::Ma
     let wait = async {
         loop {
             match changes.recv().await {
-                Ok((m, p))
-                    if m == machine && p.state == cmd_wire::machine::MachineStateKind::Up =>
-                {
+                Ok(machine_state::Moved {
+                    machine: m,
+                    state: p,
+                    ..
+                }) if m == machine && p.state == cmd_wire::machine::MachineStateKind::Up => {
                     return p
                 }
                 Ok(_) => {}
@@ -221,7 +223,12 @@ fn table_moved_elsewhere(machine: &str) -> tokio::task::JoinHandle<()> {
     let machine = machine.to_string();
     let mut seen = machine_state::changes().subscribe();
     tokio::spawn(async move {
-        while let Ok((m, p)) = seen.recv().await {
+        while let Ok(machine_state::Moved {
+            machine: m,
+            state: p,
+            ..
+        }) = seen.recv().await
+        {
             if m == machine && p.state == cmd_wire::machine::MachineStateKind::Up {
                 machine_state::table_moved_in(&[], &Default::default());
             }
@@ -598,7 +605,12 @@ async fn a_machines_stream_is_relayed_as_is_and_its_version_comes_from_its_hello
         "{seen:?}"
     );
     let mut up_version = None;
-    while let Ok((m, p)) = changes.try_recv() {
+    while let Ok(machine_state::Moved {
+        machine: m,
+        state: p,
+        ..
+    }) = changes.try_recv()
+    {
         if m == machine && p.state == cmd_wire::machine::MachineStateKind::Up {
             up_version = Some(p.version);
         }

@@ -115,6 +115,7 @@ function bar(tabs: Tab[], prefs: Partial<TabBarPrefs> = {}) {
     openMenu: vi.fn(),
     toggleSelect: vi.fn(),
     openMenuAt: vi.fn(),
+    front: vi.fn(),
     fixMachine: vi.fn(),
   } satisfies TabBarViewHost;
   const el = document.createElement("div");
@@ -435,7 +436,7 @@ describe("会话头：「由 X 启动」「子会话 N」读会话事实那两�
     const parent = tab("p");
     const kid = tab("k1");
     const t = tab("a", { hidden: SELF, lineage: { startedBy: { sid: "p", title: "主·名", face: LIVE_FACE, hidden: null }, children: [{ sid: "k1", title: "子·一", face: LIVE_FACE, hidden: BG }, { sid: "gone", title: "子·二", face: ENDED_FACE, hidden: null }], startedByText: "BY-LINE", childrenText: "KIDS-LINE" } });
-    const host = { active: () => t, openCwd: vi.fn(), terminal: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), reconnect: vi.fn(), planMark: () => null, menuItem: () => null, displayItems: () => [], tabOf: (sid: string) => (sid === "p" ? parent : sid === "k1" ? kid : null), switchTo: vi.fn(), switching: NO_SWITCHING };
+    const host = { active: () => t, openCwd: vi.fn(), front: vi.fn(), view: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), reconnect: vi.fn(), planMark: () => null, menuItem: () => null, displayItems: () => [], tabOf: (sid: string) => (sid === "p" ? parent : sid === "k1" ? kid : null), switchTo: vi.fn(), switching: NO_SWITCHING };
     const h = new SessionHead(host);
     document.body.appendChild(h.el);
     h.render(NOW);
@@ -455,7 +456,7 @@ describe("会话头：「由 X 启动」「子会话 N」读会话事实那两�
 
   it("没有血缘、不隐藏 ⇒ 一颗都不出", () => {
     const t = tab("a");
-    const h = new SessionHead({ active: () => t, openCwd: vi.fn(), terminal: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), planMark: () => null, menuItem: () => null, displayItems: () => [], tabOf: () => null, switchTo: vi.fn(), switching: NO_SWITCHING });
+    const h = new SessionHead({ active: () => t, openCwd: vi.fn(), front: vi.fn(), view: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), planMark: () => null, menuItem: () => null, displayItems: () => [], tabOf: () => null, switchTo: vi.fn(), switching: NO_SWITCHING });
     h.render(NOW);
     expect(h.el.querySelectorAll("[data-head=hidden], [data-head=parent], [data-head=children]").length).toBe(0);
   });

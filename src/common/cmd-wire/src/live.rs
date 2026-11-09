@@ -1,4 +1,4 @@
-//! 活卡（`live_card` 帧）的线上形 —— 两侧同一份：后端按这里的类型发（`stream::live` 出的成品，`wire::Frame::LiveCard`），
+//! 活卡（`live_card` 帧）的线上形 —— 两侧同一份：后端按这里的类型发（`observe::live` 出的成品，`wire::Frame::LiveCard`），
 //! 手机嵌的 Rust 核心与界面按这里的类型认（界面用从这里导出的类型，`src/frontend/ui/generated/`）。
 //! 归一流里一块是什么（[`BlockKind`]）也住这里：卡里每一块的种类就是它。
 //! 文字块交的是解析好的顶层块（[`MdBlock`]，后端解析一次）；每来一截字只交「前几块不变 ＋ 尾巴」（[`LiveOp::Text`]）。

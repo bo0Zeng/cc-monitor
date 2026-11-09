@@ -163,16 +163,20 @@ pub enum Early {
     Hosts,
 }
 
-/// 托管入口（被叫成一段写了 `--hosted` 的配置，如 `cch`）自己认的两个词：`ls` · `attach <名>`。
+/// 托管入口（被叫成一段写了 `--hosted` 的配置，如 `cch`）自己认的两个词：`ls` · `attach <名>`（短写 `a`，同 tmux）。
 pub mod hosted_word {
     pub const LS: &str = "ls";
     pub const ATTACH: &str = "attach";
+    pub const ATTACH_SHORT: &str = "a";
 }
 
 /// 托管入口那一串（名字后面那几个词）的第一个词是它的词 ⇒ 换成 ccm 的那一形（`ls` ⇒ `-- --hosts` ·
-/// `attach <名>` ⇒ `-- --attach <名>`）；缺名 · 多出词 ⇒ 说清。第一个词不是它的 ⇒ `None`（整串照旧交 `ccm @<名> …`）。
+/// `attach <名>` · `a <名>` ⇒ `-- --attach <名>`）；缺名 · 多出词 ⇒ 说清（短写说的同 `attach`）。第一个词不是它的 ⇒ `None`（整串照旧交 `ccm @<名> …`）。
 pub fn hosted_entry(rest: &[String]) -> Option<Result<Vec<String>, Die>> {
-    let first = rest.first()?.as_str();
+    let first = match rest.first()?.as_str() {
+        hosted_word::ATTACH_SHORT => hosted_word::ATTACH,
+        w => w,
+    };
     let extra = |n: usize| {
         Die(copy_text(
             "beArgv.hostedEntry.extra",

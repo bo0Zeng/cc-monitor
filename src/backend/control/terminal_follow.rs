@@ -661,18 +661,15 @@ fn open_client(
     // 控制模式客户端：只读、不改尺寸，挂在那个终端所在的 tmux 会话上。它自己不要 `$TMUX`（不当成嵌套），
     // 但要与别的几条问同一台 server：没给 socket 时照 `$TMUX` 里那一台。
     let socket = socket.map(str::to_string).or_else(|| {
-        std::env::var("TMUX")
+        std::env::var(crate::common::tmux_utf8::TMUX_ENV)
             .ok()
-            .and_then(|t| t.split(',').next().map(str::to_string))
-            .filter(|s| !s.is_empty())
+            .and_then(|t| crate::host::tmux::socket_of(&t).map(str::to_string))
     });
     #[expect(
         clippy::disallowed_methods,
         reason = "终端实时预览：起一个只读、不改尺寸的 tmux 控制模式客户端（`-C attach-session -f read-only,ignore-size`），只读它报的输出事件；不写文件，订阅一停就杀组收尸"
     )]
-    let child = crate::host::tmux::child(socket.as_deref())
-        .env_remove("TMUX")
-        .env_remove("TMUX_PANE")
+    let child = crate::common::tmux_utf8::unnested(crate::host::tmux::child(socket.as_deref()))
         .args([
             "-C",
             "attach-session",
@@ -685,7 +682,7 @@ fn open_client(
     let shift = SHIFT.lock().unwrap_or_else(|p| p.into_inner());
     let mut proc = child
         .stream()
-        .map_err(super::capture_pane::tmux_unavailable)?;
+        .map_err(crate::host::tmux::tmux_unavailable)?;
     let mut out = BufReader::new(proc.take_stdout().ok_or_else(|| {
         crate::wire::spec::fail(
             "unobservable",

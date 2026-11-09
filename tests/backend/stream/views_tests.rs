@@ -8,15 +8,18 @@ use tokio::sync::mpsc;
 #[test]
 fn every_place_names_a_registered_command_and_a_catalogued_product() {
     use crate::faces::cells_catalog::PRODUCTS;
-    let mut seen = std::collections::BTreeSet::new();
-    for (cmd, places) in PLACES {
-        assert!(seen.insert(*cmd), "`{cmd}` 登记了两遍");
-        assert!(
-            super::super::REGISTRY.iter().any(|s| s.name == *cmd),
-            "`{cmd}` 不在注册表里"
-        );
-        assert!(!places.is_empty(), "`{cmd}` 登记了空住处");
-        for (at, product) in *places {
+    let with_places: Vec<_> = super::super::REGISTRY
+        .iter()
+        .filter(|s| !s.places.is_empty())
+        .collect();
+    assert!(
+        with_places.len() >= 6,
+        "登记了成品住处的只有 {} 条 —— 本条在空转",
+        with_places.len()
+    );
+    for spec in with_places {
+        let cmd = spec.name;
+        for (at, product) in spec.places {
             assert!(
                 PRODUCTS.iter().any(|p| p.name == *product),
                 "`{cmd}` 的 `{at}` 登记的成品 `{product}` 不在格目录里"

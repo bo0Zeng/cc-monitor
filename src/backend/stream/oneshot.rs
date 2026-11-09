@@ -50,7 +50,7 @@ pub const ONESHOTS: &[(&str, &str, &str, Oneshot)] = &[
     ),
     // 远端常驻后端的起 · 找 · 问 · 停（`control/resident.rs` 头注）。
     (
-        "--resident-attach",
+        relay_route_core::RESIDENT_ATTACH,
         "",
         "小中继：连这台家里常驻后端的套接字，stdin → 套接字、套接字 → stdout 原样对拷，任一边断就退；断开 ⇒ stdout 一行 `{attach:\"refused\", reason: absent|unreachable}`、退出 2",
         |_| Box::pin(crate::control::resident::attach()),
@@ -62,13 +62,13 @@ pub const ONESHOTS: &[(&str, &str, &str, Oneshot)] = &[
         |c| Box::pin(crate::control::resident::call(&c.args[1..], c.tz)),
     ),
     (
-        "--resident-ensure",
+        relay_route_core::RESIDENT_ENSURE,
         "[--replace]",
         "确保这台的常驻后端在听：已在 ⇒ `{pid, replaced: false}`（pid 是套接字对端）；没在 ⇒ 起一个脱离的自己、回 `{pid, replaced}`；`--replace` 在听那一位比自己旧才停掉再起（只升不降）",
         |c| Box::pin(async move { crate::control::resident::ensure(&c.args[1..], c.own) }),
     ),
     (
-        "--resident-stop",
+        relay_route_core::RESIDENT_STOP,
         "[--grace <秒>]",
         "停这台的常驻后端：问套接字在听的是谁 → SIGTERM → 宽限（缺省 35 秒）→ SIGKILL；回 `{stopped: graceful|killed|not_running, pid}`",
         |c| Box::pin(async move { crate::control::resident::run_stop(&c.args[1..], c.own) }),

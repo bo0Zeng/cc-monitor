@@ -251,7 +251,7 @@ fn 同一份文件两件_整份含两件_各自的_diff_按现在的文件算() 
         installed: false,
         path: "/h/s.json".into(),
         text: Some(text),
-        items: vec![("Stop".into(), json!({"hooks": []}))],
+        items: vec![(vec!["hooks".into(), "Stop".into()], json!({"hooks": []}))],
     });
     let c = chores(&f);
     let whole: Value = serde_json::from_str(c[0]["whole"].as_str().unwrap()).unwrap();
@@ -597,4 +597,34 @@ fn 实时显示_已做但被项目里的设置盖住() {
         .unwrap()
         .contains("/w/app/.claude/settings.local.json"));
     assert_eq!(badge_of(&f), 0);
+}
+
+/// 藏钥匙：一行里每条插好钥匙的我们那一形地址，钥匙段换成 `…`、其余逐字不变；不是那一形的地址原样。
+#[test]
+fn hiding_the_key_replaces_only_the_key_segment_of_our_keyed_urls() {
+    let k1 = "0123456789abcdef".repeat(4);
+    let k2 = "fedcba9876543210".repeat(4);
+    let json =
+        format!(r#"    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8788/{k1}/t/claude-code/_","#);
+    assert_eq!(
+        hide_key(&json),
+        r#"    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8788/…/t/claude-code/_","#
+    );
+    let toml = format!(
+        "openai_base_url = \"http://127.0.0.1:8788/{k1}/s/codex/w\" # http://127.0.0.1:1/{k2}/t/a/b/~tok"
+    );
+    assert_eq!(
+        hide_key(&toml),
+        "openai_base_url = \"http://127.0.0.1:8788/…/s/codex/w\" # http://127.0.0.1:1/…/t/a/b/~tok"
+    );
+    for plain in [
+        format!("x http://127.0.0.1:8788/{}/t/claude-code/_ y", &k1[..63]),
+        format!("http://localhost:8788/{k1}/t/claude-code/_"),
+        format!("http://127.0.0.1:8788/{k1}/x/a/b"),
+        "http://127.0.0.1:8788/t/claude-code/_".to_string(),
+        format!("token = \"{k1}\""),
+        "中文 http://127.0.0.1:".to_string(),
+    ] {
+        assert_eq!(hide_key(&plain), plain, "不是那一形 ⇒ 原样");
+    }
 }

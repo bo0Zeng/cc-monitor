@@ -1,5 +1,5 @@
-//! 结束一个终端（改状态的 tmux 命令一律归 `control/`）：`terminal-end` 按名单里的句柄认那一行，tmux 那一形过三道门（Gate 1/2/3，
-//! [`super::gate::admit_destructive`]）、argv 直传不过 shell；托管那一形挂断子进程组。批量停（`sessions-stop`）· 换号重启停旧那一步同一条。
+//! 结束一个终端（改状态的 tmux 命令一律归 `control/`）：`terminal-end` 按名单里的句柄认那一行，tmux 那一形按那一行的句柄过身份门与窗口门（Gate 2/3，
+//! [`super::gate::admit_destructive`]）、argv 直传不过 shell；托管那一形不经 tmux、挂断子进程组。批量停（`sessions-stop`）· 换号重启停旧那一步同一条。
 //!
 //! # 杀的是句柄不是名字
 //!
@@ -30,17 +30,16 @@ pub fn said(target: &str, code: &str) -> String {
     }
 }
 
-/// 已有会话名的 Gate 1（结束 · 抓屏 · 送键共用）：规则只有一份 `crate::control::gate_rules::existing_tmux_name_issue`
-/// （空 · 控制符 · 视觉欺骗字符），外加 `:`（tmux 目标语法的分隔符，真会话名里不会有）。
-/// `=` 不拒：`=a=b:` 精确命中名叫 `a=b` 的会话。
+/// 已有会话名的 Gate 1（送键那一路 `launch::parse_request` 用；结束按名单句柄，不按名字）：规则只有一份 `crate::control::gate_rules::existing_tmux_name_issue`
+/// （空 · 控制符 · 视觉欺骗字符 · `:`）；本处只按它出声。
 pub(crate) fn admit_existing_name(name: &str) -> Result<(), Said> {
     use crate::control::gate_rules::TmuxNameIssue as I;
     match crate::control::gate_rules::existing_tmux_name_issue(name) {
-        None if name.contains(':') => Err(Said::new(
+        None => Ok(()),
+        Some(I::TargetSyntax(':')) => Err(Said::new(
             "bad_args",
             copy_text("beKill.name.colon", &[("name", &format!("{name:?}"))]),
         )),
-        None => Ok(()),
         Some(I::Empty) => Err(Said::new("bad_args", copy_text("beKill.name.empty", &[]))),
         Some(I::Control(_)) => Err(Said::new("bad_args", copy_text("beKill.name.control", &[]))),
         Some(I::Deceptive(c)) => Err(Said::new(
@@ -57,29 +56,21 @@ pub(crate) fn admit_existing_name(name: &str) -> Result<(), Said> {
     }
 }
 
-/// tmux 那一形真做事：过三道门 → 对**句柄**下 `kill-session`。`requester` ＝ 请求自报的前端（`gate::identity`）。
-/// 带 `sid`：要求此刻有窗格挂着它（认完名字换了人 ⇒ 不杀）；那个会话里还有别的 claude 窗格 ⇒ 只结束挂着它的窗格（`gate::admit_destructive` 说了算）。
-fn run_expecting(name: &str, sid: Option<&str>, requester: Option<&str>) -> Result<(), Said> {
-    let target = super::launch::exact_target(name);
-    // Gate 1（`=name:` 精确匹配，`exact_target` 内部）· Gate 2（身份）· Gate 3（windows==1）⇒ 通过后拿到令牌。
-    let doomed = super::gate::admit_destructive(name, &target, sid, requester)?;
-    end(Ending::Doomed(doomed))
-}
-
 /// 一发 tmux（`launch::run_with` 那一口的形状）。
 type Tmux<'a> = dyn Fn(&[&str]) -> Result<super::launch::Ran, Said> + 'a;
 
 /// 结束会话的两种令牌：门放行的（`terminal-end`），或本趟刚建、启动命令没送进的那个空壳（`ccm` 收掉它）。
 pub(crate) enum Ending<'a> {
-    Doomed(super::gate::Doomed),
+    /// 门放行的那一个，连同问的是哪台 tmux（与列名单、过门同一台）。
+    Doomed(crate::host::tmux::On<'a>, super::gate::Doomed),
     /// 只在仍是空壳时收；`tmux` 同 `launch::run_with` 那一口（判据交隔离 socket 上的）。
     Bare(super::launch::JustMade, &'a Tmux<'a>),
 }
 
 /// 结束会话的唯一一处：只收令牌（[`Ending`]），对令牌里的目标下手。
 pub(crate) fn end(ending: Ending<'_>) -> Result<(), Said> {
-    let doomed = match ending {
-        Ending::Doomed(d) => d,
+    let (on, doomed) = match ending {
+        Ending::Doomed(on, d) => (on, d),
         Ending::Bare(made, tmux) => return end_bare(made.target(), tmux),
     };
     let (handle, only) = match doomed.at() {
@@ -102,7 +93,7 @@ pub(crate) fn end(ending: Ending<'_>) -> Result<(), Said> {
         clippy::disallowed_methods,
         reason = "`kill-session` / `kill-pane`：破坏性，但改的是 tmux server 的运行期状态、不写文件，且先过三道门（单窗口）；本文件只这一处"
     )]
-    let out = crate::host::tmux::child(None)
+    let out = crate::host::tmux::child(on.socket)
         .args(&argv)
         .run(crate::host::tmux::TMUX_WITHIN)
         .map_err(tmux_unavailable)?;
@@ -131,13 +122,8 @@ fn end_bare(t: &str, tmux: &Tmux<'_>) -> Result<(), Said> {
     ))
 }
 
-/// tmux 这个程序起不来：句子只说原因词（未装 / 无权限 …），系统原话进复制详情；超时那一档照旧。
-pub(crate) fn tmux_unavailable(e: crate::platform::child::ChildFail) -> Said {
-    let (code, said) = e.into_cmd_said("no_tmux", |why| {
-        copy_text("reason.tmux.startFailed", &[("why", why)])
-    });
-    crate::wire::spec::fail(code, said)
-}
+/// tmux 这个程序起不来：那一句住宿主口（句子只说原因词，系统原话进复制详情；超时那一档照旧）。
+use crate::host::tmux::tmux_unavailable;
 
 /// tmux 起来了、但没杀成：句子说「tmux 报错」，tmux 自己说的那句进复制详情。
 pub(crate) fn kill_refused(stderr: &[u8]) -> Said {
@@ -231,46 +217,88 @@ pub fn end_terminal(
     managed: Option<&crate::platform::fs::Own>,
     req: &TerminalEndReq,
 ) -> Result<TerminalEnded, Said> {
-    use super::terminals::{find, target, Found};
+    let list = || {
+        crate::host::list_with(on, &|| {
+            managed
+                .map(crate::host::managed::listed_at)
+                .unwrap_or_default()
+        })
+    };
+    end_listed(on, managed, &list, req)
+}
+
+/// [`end_terminal`] 的本体，列名单那一下由调用方给（生产 = 两种宿主合一份；判据交一个头一次漏掉它的）。
+pub(crate) fn end_listed(
+    on: crate::host::tmux::On<'_>,
+    managed: Option<&crate::platform::fs::Own>,
+    list: &dyn Fn() -> Result<crate::host::tmux::Listed, Said>,
+    req: &TerminalEndReq,
+) -> Result<TerminalEnded, Said> {
+    use super::terminals::{find_one, target};
     let t = target(req.terminal.as_deref(), req.sid.as_deref())?;
     let requester = super::gate::requester(req.client.as_deref())?;
-    let (rows, _, _) = crate::host::list_with(on, &|| {
-        managed
-            .map(crate::host::managed::listed_at)
-            .unwrap_or_default()
+    // 托管名单里认得出它（句柄 · 挂着那个 sid 的唯一一个托管终端）⇒ 只读托管名单、挂断它，一发 tmux 都不起（这台的 tmux 卡住也照结束）。
+    // 一个 sid 只在一处跑：托管里认出来了就不再去 tmux 那边找第二个。
+    if let Some(own) = managed {
+        let (hosted, _) = crate::host::managed::listed_at(own);
+        if let Ok(row) = find_one(&hosted, &t) {
+            end_row(on, managed, row, requester.as_deref())?;
+            return Ok(TerminalEnded {
+                terminal: row.handle(),
+            });
+        }
+    }
+    let not_known = |f: &Said| f.code.as_deref() == Some("not_known");
+    let (mut rows, _, _) = list()?;
+    // 名单里一时没有它（刚起 · 列的那一刻 tmux 慢）⇒ 当场重读一次再判。
+    if find_one(&rows, &t).is_err_and(|f| not_known(&f)) {
+        rows = list()?.0;
+    }
+    let row = find_one(&rows, &t).map_err(|f| {
+        if not_known(&f) {
+            // 给人看的那一句说「已不在」；`find_one` 那一句（诊断）留在复制详情。
+            let asked = req
+                .terminal
+                .as_deref()
+                .or(req.sid.as_deref())
+                .unwrap_or_default();
+            Said {
+                said: copy_text("tmuxControl.kill.noSuchSession", &[("target", asked)]),
+                ..f
+            }
+        } else {
+            f
+        }
     })?;
-    let row = match find(&rows, &t) {
-        Found::One(r) => r,
-        Found::NotKnown => {
-            return Err(crate::wire::spec::fail(
-                "not_known",
-                crate::common::contract::malformed("no such terminal in the list right now"),
-            ))
-        }
-        Found::Ambiguous => {
-            return Err(crate::wire::spec::fail(
-                "ambiguous",
-                crate::common::contract::malformed(
-                    "more than one terminal carries this sid; point at one by `terminal`",
-                ),
-            ))
-        }
-    };
+    end_row(on, managed, row, requester.as_deref())?;
+    Ok(TerminalEnded {
+        terminal: row.handle(),
+    })
+}
+
+/// 结束名单里的那一行（[`end_terminal`] 认完目标之后）：tmux 那一形按这一行的句柄（`row.id`）在列名单的同一台 tmux 上过三道门、
+/// 杀句柄（`gate::admit_destructive`；不按名字再认一次）；托管那一形按行事实过身份门、挂断子进程组。
+pub(crate) fn end_row(
+    on: crate::host::tmux::On<'_>,
+    managed: Option<&crate::platform::fs::Own>,
+    row: &crate::host::TermRow,
+    requester: Option<&str>,
+) -> Result<(), Said> {
     match row.host {
         crate::wire::TerminalHost::Tmux => {
-            // 挂着 sid 的窗格 ⇒ 只结束它（会话里还有别的 claude 窗格时不关整个会话）。
-            let sid = row.pane.as_ref().map(|_| row.sid.as_str());
-            run_expecting(&row.name, sid, requester.as_deref()).map_err(|f| {
-                if f.code.as_deref() == Some("no_tmux") {
-                    crate::wire::spec::fail("kill_failed", copy_text("beKill.run.failed", &[]))
-                        .and_raw(Some(&f.said))
-                } else {
-                    f
-                }
-            })?;
+            super::gate::admit_destructive(on, row, requester)
+                .and_then(|doomed| end(Ending::Doomed(on, doomed)))
+                .map_err(|f| {
+                    if f.code.as_deref() == Some("no_tmux") {
+                        crate::wire::spec::fail("kill_failed", copy_text("beKill.run.failed", &[]))
+                            .and_raw(Some(&f.said))
+                    } else {
+                        f
+                    }
+                })?;
         }
         crate::wire::TerminalHost::Managed => {
-            if super::gate::identity_of(row, requester.as_deref()) != super::gate::Who::Pass {
+            if super::gate::identity_of(row, requester) != super::gate::Who::Pass {
                 return Err(crate::wire::spec::fail(
                     "wrong_owner",
                     copy_text("tmuxControl.kill.wrongOwner", &[("target", &row.name)]),
@@ -287,9 +315,7 @@ pub fn end_terminal(
             })?;
         }
     }
-    Ok(TerminalEnded {
-        terminal: row.handle(),
-    })
+    Ok(())
 }
 
 #[cfg(test)]

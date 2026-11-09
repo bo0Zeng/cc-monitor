@@ -542,11 +542,9 @@ impl Ledger {
     }
 }
 
-/// 这台的落点：`<家>/quota.json`（家与 API key 凭据同一个出处）。推不出 ⇒ `None`。
-pub fn path_from(get: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
-    let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into));
-    creds_core::store::monitor_data_dir(get(creds_core::store::DATA_DIR_ENV).as_deref(), home)
-        .map(|d| d.join(FILE_NAME))
+/// 落点：数据目录 `data` 底下的 `quota.json`（数据目录与 API key 凭据同一个出处；文件名只在这里拼）。
+pub fn path_under(data: &Path) -> PathBuf {
+    data.join(FILE_NAME)
 }
 
 /// 记一条观测（中转那一路的写口，来源 `headers`）。显示变了 ⇒ 发一件读数节点（带这一发的会话）、立刻落盘；没变 ⇒ 盘上的时刻落后够久才落。

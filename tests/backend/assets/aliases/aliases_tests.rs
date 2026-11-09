@@ -288,8 +288,14 @@ fn the_alias_blocks_only_wire_up_ccm() {
 #[test]
 fn the_generated_file_is_byte_stable() {
     let lines = vec!["workcc() { ccm --account 'work' \"$@\"; }".to_string()];
-    assert_eq!(render_file(P, &lines), render_file(P, &lines));
-    assert!(render_file(P, &[]).contains(copy_core::copy_static!("rsAccountAliases.file.empty")));
+    let hosted = vec!["cch".to_string()];
+    assert_eq!(
+        render_file(P, &lines, &hosted),
+        render_file(P, &lines, &hosted)
+    );
+    assert!(
+        render_file(P, &[], &[]).contains(copy_core::copy_static!("rsAccountAliases.file.empty"))
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -388,9 +394,8 @@ fn an_old_alias_file_is_not_turned_into_a_profiles_file() {
         !profiles_path(&h.0).exists(),
         "旧别名文件又被转成了配置文件"
     );
-    let builtin: Vec<String> = load(&door(&h))
-        .unwrap()
-        .book
+    let book = load(&door(&h)).unwrap().book;
+    let builtin: Vec<String> = book
         .profiles
         .iter()
         .filter(|p| wants_function(&p.name, P))
@@ -398,7 +403,7 @@ fn an_old_alias_file_is_not_turned_into_a_profiles_file() {
         .collect();
     assert_eq!(
         std::fs::read_to_string(&p).unwrap(),
-        render_file(P, &builtin),
+        render_file(P, &builtin, &hosted_names(&book)),
         "别名文件没照只有内置的清单重写"
     );
     assert!(
@@ -625,9 +630,8 @@ fn the_powershell_arm_writes_and_reads_back_the_same_list() {
     );
     let text = String::from_utf8(bytes).unwrap();
     // 合并后的清单：内置那几条在前，写进去的照写的先后。
-    let lines: Vec<String> = load(&door(&h))
-        .unwrap()
-        .book
+    let book = load(&door(&h)).unwrap().book;
+    let lines: Vec<String> = book
         .profiles
         .iter()
         .map(|p| render_line(&p.name, PS))
@@ -635,7 +639,7 @@ fn the_powershell_arm_writes_and_reads_back_the_same_list() {
     assert!(lines.len() > list.len(), "内置那几条没进别名文件");
     assert_eq!(
         text,
-        format!("\u{feff}{}", render_file(PS, &lines)),
+        format!("\u{feff}{}", render_file(PS, &lines, &hosted_names(&book))),
         "落盘的不是每条一个函数的那一份"
     );
     assert_eq!(names_on_disk(&h), ["workcc", "mine"]);

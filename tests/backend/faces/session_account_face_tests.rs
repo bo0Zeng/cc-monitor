@@ -52,7 +52,10 @@ fn quota(tag: &str) -> QuotaRead {
                         .collect(),
                 })
             }),
-            Arc::new(Default::default),
+            crate::accounts::upstream_select::rotate::HistoryPorts {
+                live: Arc::new(Default::default),
+                ring: Arc::new(|| {}),
+            },
             None,
         ),
         rows: Box::new(|_, _| None),

@@ -129,7 +129,7 @@ fn here_now() -> Result<GroupsHere, String> {
     let (table, book) = notes::load_all().unwrap_or_else(|| {
         Err(copy_core::copy_text(
             "beHistoryAnnotations.needPath.unknown",
-            &[("env", creds_core::store::DATA_DIR_ENV)],
+            &[("env", relay_route_core::DATA_DIR_ENV)],
         ))
     })?;
     // 清单读不了 ⇒ 每条照活会话表画、那几格缺（组照出，组员不漏）。

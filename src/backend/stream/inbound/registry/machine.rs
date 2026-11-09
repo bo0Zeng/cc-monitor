@@ -18,13 +18,22 @@ pub(super) const SPECS: &[CommandSpec] = &[
     ),
     // **给那台装 / 升级后端**：`{dial, slots, machine}` → `{action, said, build, os, ack}`；每走一步记进那台的状态成品（推 `changed {machine}`）。
     //   本体 `control/deploy_plan.rs`（编排住 `deploy` crate，手机同一份）。
-    super::typed::asynchronous::<crate::control::deploy_plan::DeployInstall>("给那台装 / 升级后端"),
+    super::typed::asynchronous::<crate::control::deploy_plan::DeployInstall>("给那台装 / 升级后端")
+        .ui_only(
+            "给远端装后端是 monitor 部署预检与机器页［更新］那一步；手机直接调 `deploy` crate、不经命令，终端里敲 `ccm` 的人不在这条路上。",
+        ),
     // **卸那台的后端**：入参同上 → `{removed, said}`（传一份暂存件、由它删落点那一份；拨号 · 等远端 ⇒ 异步档）。
-    super::typed::asynchronous::<crate::control::deploy_plan::DeployUninstall>("卸那台的后端"),
+    super::typed::asynchronous::<crate::control::deploy_plan::DeployUninstall>("卸那台的后端")
+        .ui_only(
+            "卸远端后端是机器页［卸载后端］那一步（与装同一条路：传一份暂存件、由它删）；终端里敲 `ccm` 的人不在这条路上。",
+        ),
     // **那台远端此刻的状态**：机器表里每台的成品（`machine-read`）。那台的常驻流归本后端（`control/feeds.rs`），每一轮自己记；
     //   判定在 `deploy::machine`，表在 `control/machine_state.rs`（进程里的状态 ⇒ 只在流上答）。
     super::typed::blocking::<crate::control::machine_state::MachineReadCmd>(
         "机器表里每台此刻的状态",
+    )
+    .stream_only(
+        "它读的是常驻进程那一张机器状态表；一次性进程里那张表是空的，只能答每台「还没有结论」—— 那是假话。",
     ),
     // **命令面板打机器名**（`control/machine_menu.rs`）：认那台 · 那台能做的几样（头是上面那份成品）。只读机器表与 `~/.ssh/config` ⇒ 阻塞档。
     super::typed::blocking::<crate::control::machine_menu::MachineFindCmd>(
@@ -32,19 +41,28 @@ pub(super) const SPECS: &[CommandSpec] = &[
     ),
     super::typed::blocking::<crate::control::machine_menu::MachineMenuCmd>(
         "那台此刻能做的几样（打开终端 · 新建会话 · 文件 · 机器状态 · 加入机器表）",
+    )
+    .stream_only(
+        "它的头是常驻进程那张机器状态表里那台的成品；一次性进程里那张表是空的，只能当场答「状态不明」—— 那是假话。",
     ),
     // **机器页「起」·［重试］/「停」**：那台的常驻流住本后端 ⇒ 叫醒它 / 先停它、再在那台跑 `--resident-stop`（拨号 ⇒ 异步档）。
     super::typed::asynchronous::<crate::control::feeds::MachineWake>(
         "叫醒那台的常驻流（不再停着、断着就马上再接）",
+    )
+    .stream_only(
+        "它叫醒的是常驻进程手上那台的常驻流；一次性进程里一条都没有，只能当场答「叫醒了」—— 那是假话。",
     ),
     super::typed::asynchronous::<crate::control::feeds::MachineStop>(
         "停那台的常驻流、再停那台的常驻后端",
+    )
+    .stream_only(
+        "它先停常驻进程手上那台的常驻流、再停那台：一次性进程里没有那一条，停完那台转眼又被常驻进程那一条 ensure 起来。",
     ),
     // **本机那一份放不放**：`{dest, machine}` → `{action: place|keep, why}`（只读落点那一个文件 ⇒ 阻塞档）。
     //   monitor 放本机后端之前还没有常驻后端 ⇒ 跑手上那份字节的 CLI 面问它（`--place-verdict`）。本体 `control/deploy_plan.rs::answer_place`。
     super::typed::blocking::<crate::control::deploy_plan::PlaceVerdict>("本机那一份放不放"),
     // **公钥一键推送**（本机常驻后端答）：`{machine, saved?, jump?, pubKeyPath?}` → `{said}`（那一句后端写好）。
-    //   那台在可达表里 ⇒ 问它 `authorized-keys-add`；不在 ⇒ 沿池里那条 SSH 一次 exec（只写这一件）。本体 `assets/pubkey.rs`。
+    //   一律问那台后端 `authorized-keys-add`（按名字照机器表找它）；问不到 ⇒ 没成，先装后端。本体 `assets/pubkey.rs`。
     super::typed::asynchronous::<crate::assets::pubkey::PubkeyPush>(
         "把本机公钥推进那台的 `authorized_keys`",
     ),
@@ -89,21 +107,30 @@ pub(super) const SPECS: &[CommandSpec] = &[
     ),
     // 端口转发（F58）的账住本机常驻后端（`dial/forwards.rs`；monitor 那三条 Tauri 命令退役）。
     //   起 = 真异步（查可达表 · 池里那条 SSH 上开 `use: forward` 链路 · 等 ack），`cancel` 能在 await 点打断；
-    //   停 / 列 = 纯内存（一把锁），不进阻塞档。三条都只在流面上有意义（`stream::cli::STREAM_ONLY`）。
-    super::typed::asynchronous::<crate::dial::forwards::ForwardStart>("起一条本地端口转发"),
+    //   停 / 列 = 纯内存（一把锁），不进阻塞档。三条都只在流面上有意义（登记行上写 `.stream_only`）。
+    super::typed::asynchronous::<crate::dial::forwards::ForwardStart>("起一条本地端口转发")
+        .stream_only(
+            "转发账住常驻那一个进程：一次性进程开出来的转发随进程退出就没了 —— 口放掉、账也没了，回的 `id` 是个死号。",
+        ),
     // 〔「后端持有全部 SSH」〕测试连接：
     //   真异步（拨号 · 读 hello · 控制通道往返；本后端零定时器，期限归发起方），`cancel` 能在 await 点打断；短命探活、不进连接池。
     // 进度边拨边推（`probe` 帧，走本连接的应答通道）⇒ `Run::Builtin`：只在帧面，分派在 `dispatch` 那条硬臂。
     super::typed::frame::<crate::dial::probe::RemoteProbe>("测试连接"),
-    super::typed::asynchronous::<crate::dial::forwards::ForwardStop>("停一条转发"),
-    super::typed::asynchronous::<crate::dial::forwards::ForwardList>("列转发"),
+    super::typed::asynchronous::<crate::dial::forwards::ForwardStop>("停一条转发").stream_only(
+        "同 `forward-start`：转发账住常驻进程，一次性进程里的账恒空，只会回 `not_found`。",
+    ),
+    super::typed::asynchronous::<crate::dial::forwards::ForwardList>("列转发").stream_only(
+        "同 `forward-start`：转发账住常驻进程，一次性进程里的账恒空，只能答 `forwards: []` —— 那是假话。",
+    ),
     super::typed::blocking::<crate::faces::read_face::BackendLog>("这台后端的 stderr 诊断文件尾部"),
     // 起一次那一代 PowerShell（同步子进程）⇒ 阻塞档。
     super::typed::blocking::<crate::assets::aliases::PowershellPolicySet>(
         "那一代 PowerShell 的执行策略设成当前用户 `RemoteSigned`",
-    ),
+    )
+    .capped(crate::assets::aliases::POLICY_SET_CAP),
     // `~/.ssh/config` 的解读（`dial/ssh_config.rs`）：读一份文件 ／ 逐个起 `ssh -G`（只读配置、不建连接）并等它退出 ⇒ 阻塞档。
-    super::typed::blocking::<crate::dial::ssh_config::SshConfigImport>("批量导入预览"),
+    super::typed::blocking::<crate::dial::ssh_config::SshConfigImport>("批量导入预览")
+        .capped(crate::dial::ssh_config::SSH_IMPORT_CAP),
 ];
 
 #[cfg(test)]

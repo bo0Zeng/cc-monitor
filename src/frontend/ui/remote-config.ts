@@ -20,6 +20,22 @@ export function parseAddressLines(text: string): string[] {
     .filter((l) => l.length > 0);
 }
 
+/**
+ * 端口框里的字 → `Host.port`（添加框 · 机器卡同读这一处）：空 ⇒ 不给（缺省只住拨号核心）；整数 ⇒ 那个数；
+ * 别的 ⇒ 0（交后端判「端口不在 1–65535」，不在这里另判一遍）。
+ */
+export function portOf(text: string): number | undefined {
+  const t = text.trim();
+  if (t === "") return undefined;
+  return /^\d+$/.test(t) ? Number(t) : 0;
+}
+
+/** 一台带上端口框那一格：空 ⇒ 不带 `port` 键。 */
+export function withPort(h: Host, port: number | undefined): Host {
+  const { port: _old, ...rest } = h;
+  return port === undefined ? rest : { ...rest, port };
+}
+
 /** 机器表：后端读回的那几行（照表里的先后）。 */
 export interface RemoteConfig {
   hosts: MachineRow[];
@@ -157,7 +173,8 @@ export function hostCellEdits(key: string, was: Host, now: Host): MachineEdit[] 
     op: "setin",
     where: hostWhere(k),
     field,
-    value: now[field],
+    // 这一格这回没有（端口框清空）⇒ `null`：写口拿掉那一格、回缺省。
+    value: now[field] ?? null,
   });
   const out: MachineEdit[] = [];
   let k = key;

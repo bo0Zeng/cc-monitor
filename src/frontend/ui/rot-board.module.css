@@ -491,54 +491,15 @@
     white-space: nowrap;
   }
 
+  /* 号色那一格由 `rot-board.ts` 现设 `--acct` / `--acct-ink`（取 tokens.css 那一格）；这一段没有号 ⇒ 次要字色。 */
   .rotSimUse {
-    --rot-c: var(--text-2);
-    --rot-ink: var(--bg);
+    --rot-c: var(--acct, var(--text-2));
+    --rot-ink: var(--acct-ink, var(--bg));
 
     background: var(--rot-c);
     color: var(--rot-ink);
     font-weight: var(--font-weight-strong);
     line-height: 20px;
-  }
-
-  .rotSimUse[data-c="0"] {
-    --rot-c: var(--acct-c0);
-    --rot-ink: var(--acct-ink0);
-  }
-
-  .rotSimUse[data-c="1"] {
-    --rot-c: var(--acct-c1);
-    --rot-ink: var(--acct-ink1);
-  }
-
-  .rotSimUse[data-c="2"] {
-    --rot-c: var(--acct-c2);
-    --rot-ink: var(--acct-ink2);
-  }
-
-  .rotSimUse[data-c="3"] {
-    --rot-c: var(--acct-c3);
-    --rot-ink: var(--acct-ink3);
-  }
-
-  .rotSimUse[data-c="4"] {
-    --rot-c: var(--acct-c4);
-    --rot-ink: var(--acct-ink4);
-  }
-
-  .rotSimUse[data-c="5"] {
-    --rot-c: var(--acct-c5);
-    --rot-ink: var(--acct-ink5);
-  }
-
-  .rotSimUse[data-c="6"] {
-    --rot-c: var(--acct-c6);
-    --rot-ink: var(--acct-ink6);
-  }
-
-  .rotSimUse[data-c="7"] {
-    --rot-c: var(--acct-c7);
-    --rot-ink: var(--acct-ink7);
   }
 
   .rotSimUse[data-future="true"] {

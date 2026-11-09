@@ -33,8 +33,9 @@ fn emitters(topic: &str) -> Vec<String> {
     let mut out = Vec::new();
     for rel in [
         "stream/tap.rs",
+        "accounts/quota/nodes.rs",
         "observe/watcher.rs",
-        "stream/inbound/mod.rs",
+        "faces/login_face.rs",
     ] {
         let src = std::fs::read_to_string(root.join(rel)).expect("读源码");
         let code = guard_core::production_code(&src);
@@ -45,25 +46,23 @@ fn emitters(topic: &str) -> Vec<String> {
     out
 }
 
-/// 可丢性跟着发的那条路走：可丢的从 tap 那条（`stream/tap.rs`）发、不可丢的从 watcher 的出方向（`observe/watcher.rs`）发。
-/// 表里改了可丢性却没换发端（或反过来）⇒ 红。
+/// 可丢性跟着发的那条路走：可丢的从 tap 那条发（`stream/tap.rs`，或轮换节点照自己现写、只经它推的 `accounts/quota/nodes.rs`）、
+/// 不可丢的从 watcher 的出方向（`observe/watcher.rs`）发。表里改了可丢性却没换发端（或反过来）⇒ 红。
 #[test]
 fn lossy_topics_go_out_on_the_tap_and_the_rest_on_the_watcher() {
+    const TAP: &[&str] = &["stream/tap.rs", "accounts/quota/nodes.rs"];
     for t in ALL {
         let variant = format!("{t:?}");
-        // 只推给发起它的那条连接的那一种（登录作业收了）走那条连接的应答通道（不丢）：发端在分派那一层。
-        let want = if t == Topic::Login {
-            "stream/inbound/mod.rs"
+        let got = emitters(&variant);
+        // 只推给发起它的那条连接的那一种（登录作业收了）走那条连接的应答通道（不丢）：发端在 `login-start` 的本体（分派只递通道）。
+        let ok = if t == Topic::Login {
+            got == ["faces/login_face.rs"]
         } else if t.spec().lossy {
-            "stream/tap.rs"
+            got.len() == 1 && TAP.contains(&got[0].as_str())
         } else {
-            "observe/watcher.rs"
+            got == ["observe/watcher.rs"]
         };
-        assert_eq!(
-            emitters(&variant),
-            vec![want.to_string()],
-            "{t:?} 的发端与可丢性对不上"
-        );
+        assert!(ok, "{t:?} 的发端与可丢性对不上：{got:?}");
     }
 }
 

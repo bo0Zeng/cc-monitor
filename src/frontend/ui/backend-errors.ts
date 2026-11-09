@@ -24,7 +24,7 @@ export function uiErrorActions(p: UiErrorPayload): ToastAction[] {
   }
   out.push({
     label: copyText("errorToast.showErrorToast.openLog"),
-    run: () => void commands.open_log_file().catch((err) => console.warn("open_log_file failed:", err)),
+    run: () => void commands.os_open({ kind: "logFile" }).catch((err) => console.warn("os_open logFile failed:", err)),
   });
   return out;
 }

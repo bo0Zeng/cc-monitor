@@ -42,8 +42,13 @@ pub enum CallError {
     /// backend 回了 `{"kind":"cancelled"}`。
     Cancelled,
     /// 握手时那台说过「这条我接得下、这台做不到」（`hello.unavailable`）⇒ **不发**，事前就拒。
-    /// `code` 与那台事后会回的同一个（如 `no_tmux`），调用方那张「码 → 人话」表不用另写。**别重试**（换台机器或装上再连）。
-    Unavailable { cmd: String, code: String },
+    /// `code` 与那台事后会回的同一个（如 `no_tmux`），调用方那张「码 → 人话」表不用另写；`said` 是给人看的那一句：照那个码、按这条连接登记的那台的名字写（`copy_core::unavailable`，同那台置灰句一个函数）。
+    /// **别重试**（换台机器或装上再连）。
+    Unavailable {
+        cmd: String,
+        code: String,
+        said: String,
+    },
     /// typed 命令两端形状对不上（握手时那台交的形状指纹跟本侧编进来的那一份不一样，或它没交：比这一版早）⇒ **不发**，事前就拒。
     /// `said` 是给人看的那一句，由比指纹的这一层写好、带上那台的称呼（`peerVersion.said.differs`）。**别重试**（那台换了版本再连）。
     Differs { cmd: String, said: String },
@@ -62,10 +67,8 @@ impl std::fmt::Display for CallError {
             }
             // 那一句是比指纹的那一层写好的（带那台的称呼）。
             CallError::Differs { said, .. } => write!(f, "{said}"),
-            // 码不上屏（调用方要按码分支的读 `code` 本身）。
-            CallError::Unavailable { .. } => {
-                write!(f, "{}", copy_text("rsInboundClient.error.unavailable", &[]))
-            }
+            // 那一句是客户端事前拒时按那台的名字写好的（带缘由）；码不上屏（调用方要按码分支的读 `code` 本身）。
+            CallError::Unavailable { said, .. } => write!(f, "{said}"),
             CallError::TooManyPending => write!(
                 f,
                 "{}",

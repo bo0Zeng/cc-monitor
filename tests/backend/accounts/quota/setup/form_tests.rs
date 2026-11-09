@@ -152,27 +152,41 @@ fn second_person_or_structure_words_in_labels_are_flagged() {
     }
 }
 
-/// ★ 分段上刷一截（`seg` 那一意图的算术）：刷进去、跨午夜拆两截、`null` 删那一截、连着一样的并成一段。
+/// ★ 分段上刷一截（`seg` 那一意图的算术）：刷进去、跨午夜拆两截、连着一样的并成一段。
 #[test]
 fn painting_a_span_splits_merges_and_wraps() {
-    assert_eq!(day_paint(&[], 1200, 1380, Some(0.0)), [(1200, 1380, 0.0)]);
+    assert_eq!(day_paint(&[], 1200, 1380, 0.0), [(1200, 1380, 0.0)]);
     assert_eq!(
-        day_paint(&[(0, 1440, 80.0)], 1320, 1440, Some(50.0)),
+        day_paint(&[(0, 1440, 80.0)], 1320, 1440, 50.0),
         [(0, 1320, 80.0), (1320, 1440, 50.0)]
     );
     assert_eq!(
-        day_paint(&[(0, 600, 80.0), (600, 1440, 0.0)], 600, 900, Some(80.0)),
+        day_paint(&[(0, 600, 80.0), (600, 1440, 0.0)], 600, 900, 80.0),
         [(0, 900, 80.0), (900, 1440, 0.0)]
     );
     assert_eq!(
-        day_paint(&[(0, 600, 80.0)], 300, 900, None),
-        [(0, 300, 80.0)]
-    );
-    assert_eq!(
-        day_paint(&[(0, 1440, 80.0)], 1320, 120, Some(50.0)),
+        day_paint(&[(0, 1440, 80.0)], 1320, 120, 50.0),
         [(0, 120, 50.0), (120, 1320, 80.0), (1320, 1440, 50.0)],
         "from > to ⇒ 跨午夜两截"
     );
+}
+
+/// ★ 放进一截不并（改第 at 段用）：别的段只让出那一截——整段盖住的没了、落在中间的拆两半、跨边界的两边各削一截；
+/// 跟新值一样的邻段照旧分开。结果排好、不重叠。
+#[test]
+fn cutting_in_a_span_only_clips_the_others() {
+    let three = [(0, 240, 50.0), (240, 780, 70.0), (780, 1440, 90.0)];
+    assert_eq!(
+        day_cut_in(&three, 200, 800, 90.0),
+        [(0, 200, 50.0), (200, 800, 90.0), (800, 1440, 90.0)],
+        "跨两段边界、整段盖住中间那段；同值邻段不并"
+    );
+    assert_eq!(
+        day_cut_in(&[(0, 1440, 80.0)], 600, 900, 80.0),
+        [(0, 600, 80.0), (600, 900, 80.0), (900, 1440, 80.0)],
+        "落在一段中间 ⇒ 那段拆两半"
+    );
+    assert_eq!(day_cut_in(&three, 600, 600, 1.0), three, "空的一截不放");
 }
 
 /// ★ 24 小时条上刷一段那一意图（`day`）没有了：分段只经 `seg` · `same` 改。
@@ -374,6 +388,53 @@ fn an_edit_is_applied_where_the_form_says() {
     ] {
         assert!(apply(&f, &s, &bad).is_err(), "{bad:?}");
     }
+}
+
+/// ★ 改第 at 段只动那一段：别的段原样留着，跟新值一样的邻段也不并进来（段数不变、往下照号改得到）。
+#[test]
+fn editing_one_segment_keeps_the_others() {
+    let f = full_form();
+    let three = json!([{"from": 0, "to": 240, "v": 50}, {"from": 240, "to": 780, "v": 70},
+                       {"from": 780, "to": 1440, "v": 90}]);
+    let s = json!({"caps": {"5h": three}});
+    let edit = |at: usize, from: &str, to: &str, v: f64| RotEdit::Seg {
+        key: "caps".into(),
+        row: None,
+        window: "5h".into(),
+        at: Some(at),
+        seg: Some(RotSeg {
+            from: from.into(),
+            to: to.into(),
+            v,
+        }),
+    };
+    for v in [60.0, 90.0, 50.0] {
+        let once = apply(&f, &s, &edit(1, "04:00", "13:00", v)).expect("ok");
+        let want = json!([{"from": 0, "to": 240, "v": 50}, {"from": 240, "to": 780, "v": v as i64},
+                          {"from": 780, "to": 1440, "v": 90}]);
+        assert_eq!(
+            once["caps"]["5h"], want,
+            "改第 1 段为 {v}：三段还在、头尾原样"
+        );
+        let twice = apply(&f, &once, &edit(2, "13:00", "24:00", 80.0)).expect("第 2 段还在");
+        assert_eq!(
+            twice["caps"]["5h"][2],
+            json!({"from": 780, "to": 1440, "v": 80})
+        );
+    }
+    let wrap = apply(&f, &s, &edit(1, "22:00", "02:00", 90.0)).expect("ok");
+    assert_eq!(
+        wrap["caps"]["5h"],
+        json!([{"from": 0, "to": 120, "v": 90}, {"from": 120, "to": 240, "v": 50},
+               {"from": 780, "to": 1320, "v": 90}, {"from": 1320, "to": 1440, "v": 90}]),
+        "跨午夜：两截各自放回，别的段只让出那两截"
+    );
+    assert!(check(&f, &wrap).is_empty(), "改完的分段过得了校验");
+    assert_eq!(
+        apply(&f, &s, &edit(3, "01:00", "02:00", 1.0)),
+        Err("no segment 3".into()),
+        "at 越界 ⇒ 入参不对"
+    );
 }
 
 /// 这一组的意图都不问账号库：号都当在库里。

@@ -567,7 +567,10 @@ impl Home {
             Arc::clone(&quota),
             Some(self.root.clone()),
             library,
-            Arc::new(std::collections::BTreeSet::new),
+            crate::accounts::upstream_select::rotate::HistoryPorts {
+                live: Arc::new(std::collections::BTreeSet::new),
+                ring: Arc::new(|| {}),
+            },
             Some(dead_token_endpoint()),
         );
         let accounts = Accounts::new(
@@ -593,7 +596,10 @@ impl Home {
             Arc::clone(&quota),
             Some(self.root.clone()),
             self.library(),
-            Arc::new(std::collections::BTreeSet::new),
+            crate::accounts::upstream_select::rotate::HistoryPorts {
+                live: Arc::new(std::collections::BTreeSet::new),
+                ring: Arc::new(|| {}),
+            },
             Some(dead_token_endpoint()),
         );
         let accounts = Accounts::new(
@@ -627,7 +633,10 @@ impl Home {
             Arc::clone(&quota),
             Some(self.root.clone()),
             self.library(),
-            Arc::new(std::collections::BTreeSet::new),
+            crate::accounts::upstream_select::rotate::HistoryPorts {
+                live: Arc::new(std::collections::BTreeSet::new),
+                ring: Arc::new(|| {}),
+            },
             Some(dead_token_endpoint()),
         );
         let accounts = Accounts::new(

@@ -245,5 +245,5 @@ pub fn within_of(opts: &[String]) -> Result<Option<u64>, crate::common::said::Sa
 }
 
 #[cfg(test)]
-#[path = "../../../tests/backend/control/cli_args_tests.rs"]
+#[path = "../../../tests/backend/wire/cli_args_tests.rs"]
 mod tests;

@@ -20,7 +20,7 @@ const VIEW: RotationViewReply = {
   now: 1_800_000_000,
   nowText: "14:30",
   title: null,
-  strategy: { id: "夹具策略", description: "", summary: "", rev: "h:1", inUse: [], forNew: false, tzUnknown: false, hand: false },
+  strategy: { id: "夹具策略", description: "", summary: "", rev: "h:1", remove: { enabled: true }, forNew: false, tzUnknown: false, hand: false },
   board: { all: [], rows: [] },
   start: "team",
   current: "team",

@@ -2,6 +2,7 @@
 import type { CopyFrom } from "./CopyFrom";
 import type { Decide } from "./Decide";
 import type { OnExists } from "./OnExists";
+import type { WirePath } from "./WirePath";
 
 /**
  * 窗口说的 `transfer-copy`：源那台 ＝ 寻址的那台（窗口看着的这一台），`to` ＝ 落点那台的名字；源那台的名字由 monitor 补上
@@ -11,4 +12,4 @@ export type TransferCopyAsk = {
 /**
  * 落点那台的名字（同窗口寻址用的那个名字）。
  */
-to: string, items: Array<CopyFrom>, to_dir: string, on_exists?: OnExists, decide?: { [key in string]: Decide }, ticket?: string, };
+to: string, items: Array<CopyFrom>, to_dir: WirePath, on_exists?: OnExists, decide?: { [key in string]: Decide }, ticket?: string, };

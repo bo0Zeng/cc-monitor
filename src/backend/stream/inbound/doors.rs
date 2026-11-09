@@ -1,4 +1,4 @@
-//! 本进程里几条帧命令对后端其余部分开的门：资产域够用户文件那一扇 · 两台之间枢纽问这台自己那一跳 · 各号 MCP 同步的监听器。
+//! 本进程里几条帧命令对后端其余部分开的门：资产域够用户文件那一扇（`stream/entry.rs` 起的那几样后台事也递它）· 两台之间枢纽问这台自己那一跳。
 
 use super::spec::{invoke, Prepared};
 use super::REGISTRY;
@@ -51,7 +51,7 @@ impl Door for LocalFiles {
 }
 
 /// 两台之间那几件的枢纽问**这台自己**的那一跳：本进程那几条内层命令本身（阻塞档，原样调它们的 `run`）。
-/// 限 [`HUB_INNER`] 那几条 —— 枢纽不是一扇通到任意命令的门。
+/// 限 `assets::hub_inner::NAMES` 那几条 —— 枢纽不是一扇通到任意命令的门。
 pub(crate) struct LocalFrames {
     /// 引起这一趟的请求信封里的时区（内层命令照它写「几点」，问别台时转过去）。
     tz: crate::common::time::Tz,
@@ -59,23 +59,11 @@ pub(crate) struct LocalFrames {
     own: crate::platform::Own,
 }
 
-/// 枢纽问得到的内层命令（来源那台读 · 被写那台判 / 写）。
-pub(crate) const HUB_INNER: &[&str] = &[
-    "cc-bus-install-state",
-    "cc-bus-install",
-    "mcp-sync-source",
-    "mcp-sync-preview",
-    "mcp-sync-apply",
-    "skill-read",
-    "skill-install-plan",
-    "skill-install-apply",
-];
-
 impl crate::wire::typed::Here for LocalFrames {
     fn ask(&self, cmd: &str, args: serde_json::Value) -> Result<serde_json::Value, Said> {
         let spec = REGISTRY
             .iter()
-            .find(|s| s.name == cmd && HUB_INNER.contains(&s.name))
+            .find(|s| s.name == cmd && crate::assets::hub_inner::NAMES.contains(&s.name))
             .ok_or_else(|| Said::new("unknown_command", cmd.to_string()))?;
         let req = Request {
             id: "in-process".to_string(),
@@ -105,38 +93,4 @@ pub(super) fn hub_here(
         tz: tz.clone(),
         own: own.clone(),
     })
-}
-
-/// 流那一路的后端里盯这台的 `rotation.json` · 策略目录 · `quota.json` · 账号库（别的进程写了也发节点、推 `changed`）。
-pub fn watch_rotation(own: &crate::platform::fs::Own) {
-    crate::accounts::quota::setup::uses::watch_here(own);
-    crate::accounts::quota::nodes::watch_logins_here(crate::faces::rotation_face::account_dirs());
-}
-
-/// 常驻后端里起「各号的配置文件 / 凭据文件一变就同步一趟用户级 MCP 与 MCP 登录」那个监听器
-/// （配置文件与共享集合写经 [`LocalFiles`]，与帧命令同一扇门；凭据文件经 `own` 铸的窄句柄写）。
-pub fn watch_account_mcp(own: &crate::platform::fs::Own) {
-    crate::accounts::manage::mcp_share_watch::start(&LocalFiles, own.clone());
-}
-
-/// 常驻后端里起会话输入队的投递线程（`faces::session_queue_deliver`；终端没了恢复那一支预标信任经 [`LocalFiles`]，与帧命令同一扇门）。
-/// 只由 `stream/entry.rs` 在占着常驻的那一个进程里调：一台只有一个投递的，同一条不会被两个进程各送一次。
-pub fn deliver_queues(own: &crate::platform::fs::Own) {
-    crate::faces::session_queue_deliver::start(own.clone(), &LocalFiles);
-}
-
-/// 这台的账号库补号色（一次，写经 [`LocalFiles`]，与帧命令同一扇门）：只由占着常驻的那一个进程起来时调
-/// （`stream/entry.rs` 接中转那一刻）。
-pub fn fill_account_colors() {
-    crate::accounts::manage::wire::colors_here(&LocalFiles);
-}
-
-/// 后端起来时那一次：账号库对齐 —— 按需才建的共用目录接上 · 各号缺的共享链接补上（同补号色那一扇门）。只由 `stream/entry.rs` 在常驻那一个里调。
-pub fn share_on_demand_dirs() {
-    crate::accounts::manage::wire::align_here(&LocalFiles);
-}
-
-/// 后端起来时那一次照配置文件对齐别名文件与链接（经本进程自己的文件管理面，写经 [`LocalFiles`]，与帧命令同一扇门）：只由 `stream/entry.rs` 调。
-pub fn align_aliases() {
-    crate::assets::aliases::align_here(&LocalFiles);
 }

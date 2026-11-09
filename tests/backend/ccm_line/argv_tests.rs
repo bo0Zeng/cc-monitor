@@ -367,3 +367,21 @@ fn the_hosted_entry_owns_only_ls_and_attach() {
         Some(Err(_))
     ));
 }
+
+/// `a` 是 `attach` 的短写（同 tmux）：`a <名>` ⇒ `-- --attach <名>`；缺名 · 多出词说的同 `attach` 那一句。
+#[test]
+fn the_hosted_entry_takes_a_as_attach() {
+    assert_eq!(
+        hosted_entry(&v(&["a", "code-picture-cc"])),
+        Some(Ok(v(&["--", "--attach", "code-picture-cc"])))
+    );
+    for (short, long) in [
+        (v(&["a"]), v(&["attach"])),
+        (v(&["a", "--x"]), v(&["attach", "--x"])),
+        (v(&["a", "x", "y"]), v(&["attach", "x", "y"])),
+    ] {
+        let said = hosted_entry(&short);
+        assert!(matches!(said, Some(Err(_))), "{short:?} 该说清：{said:?}");
+        assert_eq!(said, hosted_entry(&long), "{short:?} 说的该同 {long:?}");
+    }
+}

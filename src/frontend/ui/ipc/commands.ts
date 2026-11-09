@@ -68,9 +68,6 @@ import type { AutoLaunchConfig } from "../generated/AutoLaunchConfig";
 //（判据：`commands.vitest.ts` 末尾「TS 侧 origin 去 null」那一节）。
 import type { Machine } from "../generated/Machine";
 import type { FrontTold } from "../generated/FrontTold";
-import type { FrontFace } from "../generated/FrontFace";
-import type { FrontMiss } from "../generated/FrontMiss";
-import type { SessionWindow } from "../generated/SessionWindow";
 import type { TabSession } from "../generated/TabSession";
 import type { TerminalChoices } from "../generated/TerminalChoices";
 import type { ConfigEdit } from "../generated/ConfigEdit";
@@ -82,6 +79,14 @@ import type { FilewinTotals } from "../generated/FilewinTotals";
 import type { LogFileInfo } from "../generated/LogFileInfo";
 import type { RestartHint } from "../generated/RestartHint";
 import type { TerminalOpened } from "../generated/TerminalOpened";
+import type { OsOpen } from "../generated/OsOpen";
+
+/**
+ * 这台电脑上的系统窗口与路径（选文件框 · 家目录与拼路径）：界面里只这一处 import Tauri 插件与 `api/path`，别处从这里引。
+ * 「用系统程序打开 / 在文件夹中显示」不走插件，走壳命令 `commands.os_open`。
+ */
+export { open as openFileDialog } from "@tauri-apps/plugin-dialog";
+export { homeDir, join as joinLocalPath } from "@tauri-apps/api/path";
 
 /** 「停」的结局：三个词 ＋ 被停的 pid（没在跑 ⇒ `null`）。与 Rust `remote_resident::StopAnswer` 同形。 */
 export interface StopAnswer {
@@ -166,10 +171,6 @@ export const commands = {
   /** 退出 / 重启 cc-monitor 之前：各文件窗口手上没存的 · 在跑的加起来（壳现读它那张表）。 */
   filewin_interrupts: () => invoke<FilewinTotals>("filewin_interrupts"),
 
-  /** 部署远端后端（连同 `ccm` 入口，一次）。Rust 返回 `Result<String, String>`（人话结果）⇒ 原始类型。 */
-  deploy_remote_backend: (args: { origin: string }) =>
-    invoke<string>("deploy_remote_backend", args),
-
   /**
    * 「足迹」里 monitor 自己那台那几行（`HostScope::Client`）要的、只有 monitor 知道的事实（`footprint_client.rs`）：
    * 它自己进程的 `{home, path}`。成品由那台后端的帧命令 `data-report` 出（这一份原样带过去），
@@ -234,15 +235,12 @@ export const commands = {
   open_settings_window: (target: string | null = null) =>
     invoke<void>("open_settings_window", { target }),
 
-  /** 卸远端后端。Rust 返回 `Result<String, String>` ⇒ 原始类型。 */
-  uninstall_remote_backend: (args: { origin: string }) =>
-    invoke<string>("uninstall_remote_backend", args),
-
-  /** 用系统默认程序打开 monitor 的 log **目录**。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
-  open_log_dir: () => invoke<void>("open_log_dir"),
-
-  /** 用系统默认程序打开 monitor 的 log 文件。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
-  open_log_file: () => invoke<void>("open_log_file"),
+  /**
+   * 「用系统程序打开 / 在文件夹中显示」：本机一条绝对路径 · 一个网址（http · https · mailto）· monitor 的日志文件 / 日志目录。
+   * 壳起本机程序的那一门（`lib.rs::os_open`，挑程序住 `platform/proc.rs`）。**桶①**。
+   * 在文件夹中显示一律经 `reveal-in-folder.ts`；远端那台的路径走文件窗口（`file-window.ts::openOnMachine`）。
+   */
+  os_open: (what: OsOpen) => invoke<void>("os_open", { what }),
 
   /**
    * 把某会话在一个独立只读窗口（`viewer-<sid>`）里打开。`x`/`y` = 拖拽撕离的落点。**桶①**。
@@ -265,13 +263,9 @@ export const commands = {
   open_terminal_in_new_window: (args: { origin: Machine; terminal: string; name: string; title: string; windowTitle: string }) =>
     invoke<void>("open_terminal_in_new_window", args),
 
-  /** ↗ 拉前会话的终端窗口：本机后端 `session-window` 答的标签 · 进程链 · tmux 那一格原样交来，先按标签、再沿链；回切过去了或写好的那一张（标签没对上、链又空 ⇒ `null`）。**桶①**。 */
-  bring_terminal_to_front: (args: Pick<SessionWindow, "labels" | "chain" | "tmux">) =>
-    invoke<FrontTold | null>("bring_terminal_to_front", args),
-
-  /** ↗ 出口那一跳没成（界面挑哪一种）⇒ 浮层那一张，壳照 `face_core::front` 写；`machine` 是会话那台给人看的名字。**桶①**。 */
-  front_missed: (args: { machine: string; miss: FrontMiss }) =>
-    invoke<FrontFace>("front_missed", args),
+  /** ↗ 拉前会话的终端窗口：壳问本机后端 `session-window`、先按标签再沿链拉窗，回切过去了或本机后端写好的那一张（壳照结局码挑）；问后端没问成 ⇒ 拒。**桶①**。 */
+  bring_terminal_to_front: (args: { origin: Machine; sid: string }) =>
+    invoke<FrontTold>("bring_terminal_to_front", args),
 
   /** 关 tab 时让事件重放忘掉这个会话。**桶①**。 */
   forget_session: (args: { sessionId: string }) =>

@@ -1,4 +1,4 @@
-//! `live.rs`：活卡成品（对账 · 墓碑 · 子运行 · 上界 · 截头 · 名单 · 发件箱满了合成整卡）。
+//! `live.rs`：活卡成品（对账 · 墓碑 · 子运行 · 上界 · 截头 · 名单 · 发件箱满了合成整卡）；头一段是它与流归位共用的 `bounded.rs`。
 //! 流怎么折、归哪个运行住 `runs_guard.rs` / `run_route_tests.rs`；这里用假适配层的流形（`agents::fake::runs::STREAM`）。
 
 use super::*;
@@ -8,6 +8,45 @@ use crate::wire::LiveCard;
 
 /// 假的那一家自报运行的头（判据自己定的名字）。
 const RUN: &str = "x-run";
+
+/// 有界集合：先进先出挤最早的；已在里面的再放一次不改先后（不然下一次挤错人）。
+#[test]
+fn the_bounded_set_drops_the_oldest_and_a_repeat_keeps_its_place() {
+    use crate::observe::bounded::Bounded;
+    let mut b = Bounded::new(2);
+    b.add(1);
+    b.add(2);
+    b.add(1);
+    b.add(3);
+    assert!(!b.has(&1), "满了该挤最早进来的 1");
+    assert!(b.has(&2) && b.has(&3), "2 · 3 该还在");
+    b.add(4);
+    assert!(!b.has(&2) && b.has(&3) && b.has(&4), "再满一次挤 2");
+}
+
+/// 隔次说：同一种只在第 1、2、4、8 次回「该说」；各种各数；累计照 `{:?}` 印出来。
+#[test]
+fn the_tally_speaks_at_powers_of_two_per_kind() {
+    use crate::observe::bounded::Tally;
+    let mut t = Tally::default();
+    let said: Vec<Option<u64>> = (0..9).map(|_| t.bump("a")).collect();
+    assert_eq!(
+        said,
+        vec![
+            Some(1),
+            Some(2),
+            None,
+            Some(4),
+            None,
+            None,
+            None,
+            Some(8),
+            None
+        ]
+    );
+    assert_eq!(t.bump("b"), Some(1), "另一种从头数");
+    assert_eq!(format!("{t:?}"), r#"{"a": 9, "b": 1}"#);
+}
 
 fn live() -> Live {
     Live::new(
@@ -520,7 +559,7 @@ fn a_session_that_goes_takes_its_cards_with_it() {
 }
 
 /// 读数（不是判据）：两条会话各流同样一段、名单只报 A，这条连接收到的逐字流字节（改前用 `tap` 帧量过：408 帧 · 34148 字节）。
-/// 跑法：`cargo test --lib -- --ignored --nocapture stream::live::tests::live_bytes_reading`
+/// 跑法：`cargo test -p backend-observe --lib -- --ignored --nocapture live::tests::live_bytes_reading`
 #[test]
 #[ignore]
 fn live_bytes_reading() {

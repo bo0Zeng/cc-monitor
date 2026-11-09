@@ -265,8 +265,7 @@
       },
       {
         "accountShape": {
-          "account": "work",
-          "form": "plain"
+          "account": "work"
         },
         "agent": [],
         "badge": "内置",
@@ -352,8 +351,7 @@
       },
       {
         "accountShape": {
-          "account": "work",
-          "form": "hosted"
+          "account": "work"
         },
         "agent": [],
         "badge": "内置",
@@ -399,8 +397,7 @@
       },
       {
         "accountShape": {
-          "account": "team",
-          "form": "plain"
+          "account": "team"
         },
         "agent": [],
         "badge": "内置",
@@ -446,8 +443,7 @@
       },
       {
         "accountShape": {
-          "account": "team",
-          "form": "tmux"
+          "account": "team"
         },
         "agent": [],
         "badge": null,
@@ -497,8 +493,7 @@
       },
       {
         "accountShape": {
-          "account": "team",
-          "form": "hosted"
+          "account": "team"
         },
         "agent": [],
         "badge": "内置",

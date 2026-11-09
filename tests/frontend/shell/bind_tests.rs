@@ -435,7 +435,7 @@ fn a_console_is_shown_in_its_owner_window_or_in_itself() {
 #[test]
 fn a_known_window_wins_over_the_owners_window_list() {
     let chain: Vec<ChainLink> = serde_json::from_value(serde_json::json!([
-        { "pid": 500, "name": "WindowsTerminal.exe" },
+        { "pid": 500, "name": "WindowsTerminal.exe", "start": 0 },
     ]))
     .unwrap();
     assert_eq!(
@@ -451,6 +451,7 @@ fn a_known_window_wins_over_the_owners_window_list() {
 }
 
 /// ★ 会话由环境认：说了 Wayland 或挂着 `$WAYLAND_DISPLAY` ⇒ Wayland（哪怕也有 `$DISPLAY`：那是 Xwayland）；只有 `$DISPLAY` ⇒ X11；都没有 / 空串 ⇒ 不支持。
+#[cfg(not(windows))]
 #[test]
 fn the_display_session_is_read_from_the_environment() {
     use crate::platform::hwnd::{session_from, DisplaySession as S};
@@ -1219,4 +1220,147 @@ fn reading_the_await_dir_does_not_wake_its_watcher() {
     let _ = std::fs::remove_dir_all(&dir);
     assert!(settled, "收尾记号那一声没听见");
     assert!(before.is_empty(), "只读了一下就叫醒了：{before:?}");
+}
+
+// ── ↗ 交给界面的那一张：壳只照结局码在本机后端的回包里挑，不写字 ──
+
+/// 本机后端那一份回包（夹具：每个结局码一张，标题就是码名；链空时那一张标题是 `face`）。
+fn window_reply(face: bool) -> cmd_wire::session::SessionWindow {
+    use cmd_wire::cells::{Tone, Words};
+    use cmd_wire::front::{FrontCode, FrontFace, MissedFace};
+    let card = |title: &str| FrontFace {
+        title: Words(title.into()),
+        body: Words(String::new()),
+        hint: None,
+        tone: Tone::Plain,
+        acts: vec![],
+    };
+    cmd_wire::session::SessionWindow {
+        labels: vec![],
+        chain: vec![],
+        face: face.then(|| card("face")),
+        missed: FrontCode::ALL
+            .into_iter()
+            .map(|code| MissedFace {
+                code,
+                face: card(&format!("{code:?}")),
+            })
+            .collect(),
+    }
+}
+
+fn title_of(t: Option<FrontTold>) -> String {
+    match t {
+        Some(FrontTold::Said(f)) => f.title.0,
+        other => panic!("不是那一张：{other:?}"),
+    }
+}
+
+#[test]
+fn a_window_outcome_takes_the_backends_card_for_its_code() {
+    let w = window_reply(true);
+    assert_eq!(
+        told(&w, Some(FrontOutcome::Switched)),
+        Some(FrontTold::Switched)
+    );
+    for (o, title) in [
+        (FrontOutcome::WindowGone, "Gone"),
+        (FrontOutcome::Unclear, "Unclear"),
+        (FrontOutcome::Refused, "Refused"),
+        (FrontOutcome::TimedOut, "TimedOut"),
+        (FrontOutcome::Unsupported, "Unsupported"),
+        (
+            FrontOutcome::NoWindow {
+                program: "ssh".into(),
+            },
+            "NoWindow",
+        ),
+        (
+            FrontOutcome::DesktopWontSwitch {
+                desktop: "GNOME".into(),
+            },
+            "DesktopWontSwitch",
+        ),
+        (
+            FrontOutcome::Several {
+                program: "WindowsTerminal.exe".into(),
+                count: 3,
+                why: SeveralWhy::Elevated,
+            },
+            "SeveralElevated",
+        ),
+        (
+            FrontOutcome::SwitchedWindow {
+                why: TabMiss::TitleIgnored,
+            },
+            "TabTitleIgnored",
+        ),
+    ] {
+        assert_eq!(title_of(told(&w, Some(o.clone()))), title, "{o:?}");
+    }
+}
+
+#[test]
+fn nothing_to_look_for_shows_the_backends_reason_and_a_missing_card_is_unreadable() {
+    assert_eq!(title_of(told(&window_reply(true), None)), "face");
+    assert_eq!(
+        told(&window_reply(false), None),
+        None,
+        "链空又没带那一张 ⇒ 回包认不出"
+    );
+    let mut w = window_reply(false);
+    w.missed.clear();
+    assert_eq!(
+        told(&w, Some(FrontOutcome::Refused)),
+        None,
+        "缺那个码的那一张 ⇒ 回包认不出"
+    );
+}
+
+#[test]
+fn every_outcome_but_switched_has_a_distinct_code() {
+    use std::collections::BTreeSet;
+    let all = [
+        FrontOutcome::WindowGone,
+        FrontOutcome::Unclear,
+        FrontOutcome::Refused,
+        FrontOutcome::TimedOut,
+        FrontOutcome::Unsupported,
+        FrontOutcome::NoWindow {
+            program: String::new(),
+        },
+        FrontOutcome::DesktopWontSwitch {
+            desktop: String::new(),
+        },
+    ]
+    .into_iter()
+    .chain(
+        [
+            SeveralWhy::Unregistered,
+            SeveralWhy::ConsoleUnreachable,
+            SeveralWhy::Elevated,
+            SeveralWhy::Foreign,
+        ]
+        .map(|why| FrontOutcome::Several {
+            program: String::new(),
+            count: 2,
+            why,
+        }),
+    )
+    .chain(
+        [
+            TabMiss::TitleIgnored,
+            TabMiss::NoUia,
+            TabMiss::Elevated,
+            TabMiss::NoConsole,
+        ]
+        .map(|why| FrontOutcome::SwitchedWindow { why }),
+    );
+    let codes: BTreeSet<_> = all.map(|o| o.code().expect("没切过去的都有码")).collect();
+    assert_eq!(
+        codes.len(),
+        cmd_wire::front::FrontCode::ALL.len(),
+        "每个码恰好一个结局折到它"
+    );
+    assert_eq!(FrontOutcome::Switched.code(), None);
 }

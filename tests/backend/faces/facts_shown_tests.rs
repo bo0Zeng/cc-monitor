@@ -78,3 +78,55 @@ fn without_a_directory_there_is_no_shown_form() {
     assert!(cwd.is_null(), "项目目录还没读到 ⇒ 不出现：{cwd}");
     let _ = std::fs::remove_dir_all(&home);
 }
+
+/// 项目名（`projectName`）：项目目录的最后一段，与历史清单 · 搜索行同一个函数（`plain_path_core::last_segment`）；
+/// Windows 目录在 Linux 上的后端也切得开；项目目录还没读到 ⇒ 不出现。
+#[test]
+fn the_project_name_is_the_last_segment_of_the_project_dir() {
+    let name = |home: &Path, path: &Path| {
+        let reply = facts_in(
+            home,
+            Some(Path::new("/u/me")),
+            HistoryFactsReq::Path(FactsByPath {
+                path: path.to_string_lossy().into_owned(),
+            }),
+            &crate::observe::recognize::facts::ContextLimits::default(),
+            &crate::common::time::Tz::default(),
+            None,
+        )
+        .expect("事实该答得出");
+        serde_json::to_value(reply).unwrap()["projectName"].clone()
+    };
+    let (home, p) = record("name-win", Some(r"C:\\w\\proj"));
+    assert_eq!(name(&home, &p), serde_json::json!("proj"));
+    let _ = std::fs::remove_dir_all(&home);
+    let (home, p) = record("name-posix", Some("/u/me/proj/"));
+    assert_eq!(name(&home, &p), serde_json::json!("proj"));
+    let _ = std::fs::remove_dir_all(&home);
+    let (home, p) = record("name-none", None);
+    assert!(name(&home, &p).is_null(), "项目目录还没读到 ⇒ 不出现");
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 搜索行的项目名也是那一种切法（清单行那一半在 `history/search_rules_tests.rs`）：Windows 目录在 Linux 上的后端也切得开，
+/// 与会话事实的 `projectName` 同一个值。
+#[test]
+fn a_windows_project_dir_names_the_same_project_in_search_rows() {
+    let (home, p) = record("name-search", Some(r"C:\\w\\proj"));
+    let opts = crate::observe::search_query::SearchOpts {
+        include_tools: false,
+        scope: None,
+        after_ms: 0,
+        limit: 10,
+        titles: false,
+    };
+    let mut searched = Vec::new();
+    crate::observe::search_query::search_into(&home, "q", &opts, &mut |h| {
+        searched.push(serde_json::to_value(h).unwrap()["projectName"].clone());
+        Ok(())
+    })
+    .expect("搜得动");
+    let _ = std::fs::remove_dir_all(&home);
+    let _ = p;
+    assert_eq!(searched, [serde_json::json!("proj")]);
+}

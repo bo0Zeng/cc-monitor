@@ -51,107 +51,31 @@ const _: () = assert!(
     "Target 轴给 Windows 的档与这份 Windows 二进制编进去的对不上"
 );
 
-/// 等 Windows 后台机制（未定）的那一形：命令声明了 `no_tmux`，Windows 上没有 tmux。
-const NO_TMUX_YET: &str =
-    "这一版宿主只有 tmux（命令声明了 `no_tmux`）；Windows 后台机制选定后换实现、不换形状";
+/// tmux 是必需品的那一形：命令声明了 `no_tmux`、又没有托管那一臂（`inbound::HOSTED_ARM`），Windows 上没有 tmux。
+const NEEDS_TMUX: &str =
+    "只在 tmux 里做（命令声明了 `no_tmux`、没有托管那一臂）；Windows 上没有 tmux";
 /// unix 权限位：Windows 上没有这套位（那边是 ACL ＋ 只读属性），这一条本身不跨过去。
 const NO_MODE_BITS: &str =
     "改的是 unix 权限位（命令声明了 `no_unix_mode`）；Windows 上没有这套位，不跨过去";
 
 /// 四个 target 之间的差异：`(面, 名, 哪个 target 上没有, 理由)`。
 const TARGET_GAPS: &[(&str, &str, Target, &str)] = &[
-    (
-        "wire-commands",
-        "terminal-preview",
-        Target::Windows,
-        NO_TMUX_YET,
-    ),
-    (
-        "wire-commands",
-        "terminal-follow",
-        Target::Windows,
-        NO_TMUX_YET,
-    ),
-    (
-        "wire-commands",
-        "terminal-input",
-        Target::Windows,
-        NO_TMUX_YET,
-    ),
-    (
-        "wire-commands",
-        "session-interrupt",
-        Target::Windows,
-        NO_TMUX_YET,
-    ),
-    (
-        "cli-subcommands",
-        "--session-interrupt",
-        Target::Windows,
-        NO_TMUX_YET,
-    ),
-    ("wire-commands", "set-plan", Target::Windows, NO_TMUX_YET),
-    ("wire-commands", "set-launch", Target::Windows, NO_TMUX_YET),
-    ("wire-commands", "plan-ask", Target::Windows, NO_TMUX_YET),
-    (
-        "cli-subcommands",
-        "--plan-ask",
-        Target::Windows,
-        NO_TMUX_YET,
-    ),
-    (
-        "cli-subcommands",
-        "--set-plan",
-        Target::Windows,
-        NO_TMUX_YET,
-    ),
+    ("wire-commands", "set-plan", Target::Windows, NEEDS_TMUX),
+    ("wire-commands", "set-launch", Target::Windows, NEEDS_TMUX),
+    ("wire-commands", "plan-ask", Target::Windows, NEEDS_TMUX),
+    ("cli-subcommands", "--plan-ask", Target::Windows, NEEDS_TMUX),
+    ("cli-subcommands", "--set-plan", Target::Windows, NEEDS_TMUX),
     (
         "cli-subcommands",
         "--set-launch",
         Target::Windows,
-        NO_TMUX_YET,
-    ),
-    (
-        "wire-commands",
-        "session-permission",
-        Target::Windows,
-        NO_TMUX_YET,
-    ),
-    (
-        "wire-commands",
-        "session-model",
-        Target::Windows,
-        NO_TMUX_YET,
+        NEEDS_TMUX,
     ),
     (
         "wire-commands",
         "files-chmod",
         Target::Windows,
         NO_MODE_BITS,
-    ),
-    (
-        "cli-subcommands",
-        "--terminal-preview",
-        Target::Windows,
-        NO_TMUX_YET,
-    ),
-    (
-        "cli-subcommands",
-        "--terminal-input",
-        Target::Windows,
-        NO_TMUX_YET,
-    ),
-    (
-        "cli-subcommands",
-        "--session-permission",
-        Target::Windows,
-        NO_TMUX_YET,
-    ),
-    (
-        "cli-subcommands",
-        "--session-model",
-        Target::Windows,
-        NO_TMUX_YET,
     ),
     (
         "cli-subcommands",
@@ -1372,6 +1296,58 @@ fn every_frame_command_that_can_reach_tmux_declares_no_tmux() {
          ② 声明了 / 登记了、却根本够不着：{ghosts:?}\n\
             ⇒ 声明是鬼影（它会把一条在 Windows 上做得到的命令报成做不到），或者引用图取法坏了。\n\
          真起 tmux 的文件：{spawners:?}"
+    );
+}
+
+/// 够得着托管口、却整条要 tmux 的命令（不算托管那一臂）：`(命令, 为什么)`。
+const REACHES_HOSTED_BUT_NEEDS_TMUX: &[(&str, &str)] = &[(
+    "set-launch",
+    "开头先问 tmux（`faces/session_set_face.rs::no_tmux`），确证没有就整条不做（一组只起在 tmux 里）；\
+     够得着托管口是起会话 · 读活会话那一段顺带的",
+)];
+
+/// 🔴 帧面：声明了 `no_tmux`、处理器又够得着托管口（`host/managed/client.rs` 里的函数）的命令，除去 [`REACHES_HOSTED_BUT_NEEDS_TMUX`]，== `inbound::HOSTED_ARM`。
+/// 少一条 ⇒ 托管终端做得到的那条在没 tmux 的机器上被整机拒（Windows 本机「终端」面板报做不到）；多一条 ⇒ 只在 tmux 里做的被说成做得到。
+#[test]
+fn the_hosted_arm_list_is_the_no_tmux_commands_that_reach_the_hosted_port() {
+    let tree = backend_tree();
+    let graph = fn_graph(&tree);
+    let port: BTreeSet<FnAt> = graph
+        .bodies
+        .keys()
+        .filter(|(rel, _)| rel == "host/managed/client.rs")
+        .cloned()
+        .collect();
+    assert!(
+        port.iter().any(|(_, f)| f == "capture"),
+        "托管口里没抽到 `capture` —— 取法坏了，下面两向相等恒假绿：{port:?}"
+    );
+    let handlers = handler_fns(&tree, &graph);
+    let declared: BTreeSet<&str> = crate::stream::inbound::REGISTRY
+        .iter()
+        .filter(|s| s.codes.contains(&crate::wire::NO_TMUX))
+        .map(|s| s.name)
+        .collect();
+    let derived: BTreeSet<&str> = handlers
+        .iter()
+        .filter(|(n, _)| declared.contains(n.as_str()))
+        .filter(|(_, from)| !reachable_fns(&graph, from).is_disjoint(&port))
+        .map(|(n, _)| n.as_str())
+        .collect();
+    for (n, _) in REACHES_HOSTED_BUT_NEEDS_TMUX {
+        assert!(
+            derived.contains(n),
+            "`{n}` 登记成「够得着托管口却整条要 tmux」，可它根本够不着 / 没声明 `no_tmux` —— 删那一行"
+        );
+    }
+    let derived: BTreeSet<&str> = derived
+        .into_iter()
+        .filter(|n| !REACHES_HOSTED_BUT_NEEDS_TMUX.iter().any(|(e, _)| e == n))
+        .collect();
+    let listed: BTreeSet<&str> = crate::stream::inbound::HOSTED_ARM.iter().copied().collect();
+    assert_eq!(
+        listed, derived,
+        "`HOSTED_ARM` 与「声明了 `no_tmux`、又够得着托管口」的命令不相等（左：登记；右：现推）"
     );
 }
 

@@ -86,6 +86,7 @@ pub mod session_queue_deliver; // 会话输入队的投递：主人这台一条�
 pub mod session_queue_face; // 会话输入队那三条（typed）：session-queue-put（往会话说一句的唯一入口）· -cancel · -read，本体在 history/session_queue.rs
 pub(crate) mod session_queue_hop; // 会话输入队那三条的跨台那一跳：会话不在这台 ⇒ 交给那台的常驻，够不到 ⇒ offline
 pub mod session_rewind_face; // 编辑已发的一句、发送那一下的选项（session-rewind-options）：照那一家申报的交出，会话不在这台 ⇒ 交给那台
+pub mod session_self_face; // 帧面 `session-self`（typed）：agent 自问我是哪条会话 · 在哪几组，本体在 history/session_self.rs
 pub(crate) mod session_send; // 往一条会话送进一句的本体（在等人不送 · 只剩 shell 不送 · 终端没了恢复再交 · 附件照那一家拼）；只由投递调
 pub mod session_set_face; // 帧面 `set-plan` · `set-launch`：补足一组会话要的这台事实与手（配置文件 · 活会话表 · 启动台账的别名 · 起会话 · 组注解）；判定住 control/session_set.rs
 pub mod session_window_face; // 帧面 `session-window`（typed）：↗ 那一问，会话在这台电脑上的哪儿（本机 · 远端同一个形）

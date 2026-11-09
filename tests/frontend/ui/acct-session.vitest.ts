@@ -57,13 +57,12 @@ describe("换号条", () => {
 });
 
 describe("停发提示", () => {
-  const hold = read({ hints: [{ hint: { k: "hold", until: NOW + 3600, account: "lab" }, tone: "warn", text: "停发 · 15:30 lab · {dur}" }] });
+  const hold = read({ hints: [{ hint: { k: "hold", account: "lab" }, tone: "warn", text: "停发 · 15:30 lab · 还有 1 小时" }] });
 
-  it("★ 停发 ⇒ 流最前一条（字照后端那一句，{dur} 填上）；不停了 ⇒ 摘掉", () => {
+  it("★ 停发 ⇒ 流最前一条（字照后端写好的那一整句）；不停了 ⇒ 摘掉", () => {
     onSessionEntry("s1", entry(hold), host);
     const notice = content.querySelector<HTMLElement>("[data-acct-notice]");
-    expect(notice?.textContent).toContain("15:30 lab");
-    expect(notice?.textContent).not.toContain("{dur}");
+    expect(notice?.textContent).toContain("停发 · 15:30 lab · 还有 1 小时");
     onSessionEntry("s1", entry(read()), host);
     expect(content.querySelector("[data-acct-notice]")).toBeNull();
   });

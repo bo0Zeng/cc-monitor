@@ -27,8 +27,8 @@ backend-platform = { path = "../platform" }
 # 帧的线上形（客户端按同一份解）。
 cmd-wire = { path = "../../common/cmd-wire" }
 copy-core = { path = "../../common/copy-core" }
-# 注解那份文件住哪（数据目录与文件名）。
-creds-core = { path = "../../common/creds-core", features = ["harden"] }
+# 路径最后一段（项目名）只这一种切法：`plain_path_core::last_segment`。
+plain-path-core = { path = "../../common/plain-path-core" }
 # 会话簿那几张（几台并一列 · 叫会话什么）：桌面与手机核心同一份。
 face-core = { path = "../../common/face-core" }
 relay-route-core = { path = "../../common/relay-route-core" }

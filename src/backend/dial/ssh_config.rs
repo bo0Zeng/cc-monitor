@@ -1,7 +1,7 @@
 //! **`~/.ssh/config` 的解读住这里** —— 与拨号同一个家（本目录）。
 //!
-//! 一条帧命令 `ssh-config-import {known}`（界面经 `chan.call(<local>, …)` 问本机常驻后端）：`Host` 行里非通配的别名逐个经系统 `ssh -G`
-//! 解析（Include / Match / 通配都由它处理），按「同一台机器的多个地址」聚合成预览组，标出已在机器列表里的那几组。
+//! 一条帧命令 `ssh-config-import`（界面经 `chan.call(<local>, …)` 问本机常驻后端）：`Host` 行里非通配的别名逐个经系统 `ssh -G`
+//! 解析（Include / Match / 通配都由它处理），按「同一台机器的多个地址」聚合成预览组，照本机后端自己那张机器表标出已在里面的那几组。
 //!
 //! monitor 一处 `.ssh` 都不读、不起 `ssh`。
 //! 只读 `~/.ssh/config`，**不碰任何密钥文件**（`identityfile` 只问「在不在」，不读内容）。
@@ -70,34 +70,20 @@ pub(crate) struct ImportGroup {
     /// 组内首个非空 proxyjump（别名）。
     pub(crate) jump: Option<String>,
     pub(crate) members: Vec<ImportMember>,
-    /// 这一组已在机器列表里（组里任一地址 ＋ 用户 ＋ 端口与列表里某台相同；列表由界面交来）。
+    /// 这一组已在机器表里（组里任一地址 ＋ 用户 ＋ 端口与表里某台的拨号地址相同；表是本机后端自己那一张）。
     pub(crate) in_list: bool,
 }
 
-/// 机器列表里已有的一台（只认地址 ＋ 用户 ＋ 端口）。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(
-    any(test, feature = "ts"),
-    ts(
-        export,
-        rename = "KnownHost",
-        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
-    )
-)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct Known {
-    pub(crate) host: String,
-    pub(crate) user: String,
-    pub(crate) port: u16,
-}
-
-/// 标出已在列表里的那几组（判定只在这里：地址与用户去首尾空白比、端口照数比）。
-pub(crate) fn mark_in_list(groups: &mut [ImportGroup], known: &[Known]) {
+/// 标出已在机器表里的那几组（判定只在这里：表里某台的任一拨号地址（[`ssh_dial::machine::Host::endpoints`]，端口缺省照拨号核心）
+/// 与用户都对得上；地址与用户去首尾空白比、端口照数比）。
+pub(crate) fn mark_in_list(groups: &mut [ImportGroup], table: &[ssh_dial::machine::Host]) {
     let same = |host: &str, port: u16, user: &str| {
-        known
-            .iter()
-            .any(|k| k.host.trim() == host.trim() && k.user.trim() == user.trim() && k.port == port)
+        table.iter().any(|m| {
+            m.user.trim() == user.trim()
+                && m.endpoints()
+                    .iter()
+                    .any(|ep| ep.host == host.trim() && ep.port == port)
+        })
     };
     for g in groups.iter_mut() {
         g.in_list = same(&g.host, g.port, &g.user)
@@ -338,15 +324,6 @@ pub(crate) fn import_from(
 /// `ssh-config-import` 整条命令总期限的上限（每个别名一发 `ssh -G`，整批共用；用完了剩下的别名各自超时、照「解析失败」跳过）。
 pub const SSH_IMPORT_CAP: Deadline = Deadline::secs(28);
 
-/// `ssh-config-import` 的入参：机器列表里已有的那几台。
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-#[serde(deny_unknown_fields)]
-pub struct SshImportReq {
-    pub(crate) known: Vec<Known>,
-}
-
 /// `ssh-config-import` 的应答：聚合成的预览组（每组带上「已在列表里」）。
 #[derive(Debug, Serialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -367,7 +344,7 @@ pub struct SshConfigImport;
 
 impl crate::wire::typed::Command for SshConfigImport {
     const NAME: &'static str = "ssh-config-import";
-    type Req = SshImportReq;
+    type Req = crate::wire::typed::NoArgs;
     type Reply = SshImported;
     type Err = ImportErr;
 }
@@ -375,11 +352,11 @@ impl crate::wire::typed::Command for SshConfigImport {
 impl crate::wire::typed::Handle for SshConfigImport {
     type Needs = crate::wire::typed::needs::Nothing;
     async fn run(
-        req: SshImportReq,
+        _req: crate::wire::typed::NoArgs,
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> Result<SshImported, ImportErr> {
         let (mut groups, partial) = import();
-        mark_in_list(&mut groups, &req.known);
+        mark_in_list(&mut groups, &super::machines::machines_now());
         Ok(SshImported { groups, partial })
     }
 }

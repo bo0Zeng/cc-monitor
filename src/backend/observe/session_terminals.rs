@@ -16,8 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::platform::proc::{proc_env_var, EnvRead};
 
-const TMUX_ENV: &str = "TMUX";
-const TMUX_PANE_ENV: &str = "TMUX_PANE";
+use crate::common::tmux_utf8::{TMUX_ENV, TMUX_PANE_ENV};
 const SSH_CONNECTION_ENV: &str = "SSH_CONNECTION";
 const WINDOW_LABEL_ENV: &str = "LC_CCM_WINDOW";
 /// 一次最多报几个连着的终端（同一个会话连十几个客户端已经不正常；超出的按动静排在后面的丢掉）。
@@ -209,6 +208,10 @@ pub enum Here {
 /// `pid`（本机那个 claude 进程）此刻由哪个终端进程显示：在 tmux 里 ⇒ 连着它的 tmux 客户端（一个都没有 ⇒ `Detached`）；
 /// 不在 tmux 里、或读不出 tmux 那几格（Windows 读不到别的进程的环境）⇒ 它自己（它挂在那个终端上）。
 pub fn here_by(pid: u32) -> Result<Here, Said> {
+    // 住在托管终端里：显示它的是附着上来的那几扇（同 [`shown_by`]）；claude 自己挂在托管口的伪终端上，往上没有窗口。
+    if let Some(ends) = crate::host::managed::terminal_ends_of_pid(pid) {
+        return hosted_here(ends, |p, at| terminal_of(p, Some(at)));
+    }
     let in_tmux = env(pid, TMUX_ENV);
     if let Ok(Some(tmux)) = &in_tmux {
         match tmux_clients(pid, tmux)? {
@@ -228,6 +231,36 @@ pub fn here_by(pid: u32) -> Result<Here, Said> {
     })
 }
 
+/// 本机那一问里托管终端的会话由谁显示：附着上来的那几扇（`(进程号, 最近动静秒)`，最近动静在前）连进程号一起交，链从它们起；
+/// 读不出那个终端的环境（Windows）⇒ 照样交进程号、终端那几格空着（壳沿链找窗口）；交不出进程号的不算。一个都没有 ⇒ [`Here::Detached`]；
+/// 问托管口没问成 ⇒ `failed`。**纯函数**（读法是参数）。
+pub(crate) fn hosted_here(
+    ends: std::io::Result<Vec<(Option<u32>, u64)>>,
+    read: impl Fn(u32, u64) -> Option<Terminal>,
+) -> Result<Here, Said> {
+    let ends = ends.map_err(|e| Said::new("failed", format!("managed terminal: {e}")))?;
+    let seen: Vec<(u32, Terminal)> = ends
+        .into_iter()
+        .filter_map(|(pid, at)| {
+            let pid = pid?;
+            Some((
+                pid,
+                read(pid, at).unwrap_or(Terminal {
+                    ssh: None,
+                    activity: Some(at),
+                    window: None,
+                }),
+            ))
+        })
+        .take(MAX_TERMINALS)
+        .collect();
+    Ok(if seen.is_empty() {
+        Here::Detached
+    } else {
+        Here::By { seen, tmux: false }
+    })
+}
+
 /// 问 tmux 谁连着：每个客户端的进程号与终端（最近动静在前）· 没有 · 读不出。
 enum Clients {
     By(Vec<(u32, Terminal)>),
@@ -237,11 +270,11 @@ enum Clients {
 
 /// `pid` 的 `TMUX`（`tmux`）⇒ 那个 socket 上连着它所在会话的客户端。tmux 起不来 / 报错 ⇒ `failed`。
 fn tmux_clients(pid: u32, tmux: &str) -> Result<Clients, Said> {
-    let socket = tmux.split(',').next().unwrap_or_default();
+    let socket = crate::host::tmux::socket_of(tmux).unwrap_or_default();
     let Ok(Some(pane)) = env(pid, TMUX_PANE_ENV) else {
         return Ok(Clients::Unreadable);
     };
-    if !socket_ok(socket) || !pane_ok(pane.trim()) {
+    if !socket_ok(socket) || !crate::host::tmux::pane_id_ok(pane.trim()) {
         return Ok(Clients::Unreadable);
     }
     let clients = list_clients(socket, pane.trim())?;
@@ -296,12 +329,6 @@ pub(crate) fn parse_ssh_connection(raw: &str) -> Option<SshConnection> {
 /// tmux socket 路径：绝对、不含控制字符（argv 直传不过 shell，挡的是读坏了的值）。
 fn socket_ok(s: &str) -> bool {
     s.starts_with('/') && !s.chars().any(char::is_control)
-}
-
-/// pane id：`%` ＋ 十进制数字。
-fn pane_ok(p: &str) -> bool {
-    p.strip_prefix('%')
-        .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
 }
 
 /// 问那个 socket：连着 `pane` 所在会话的客户端（pid, 最近动静）。tmux 起不来 / 报错 ⇒ `failed`。

@@ -13,7 +13,7 @@
  */
 // `LOCAL`：本机那台的线上名，只住 `cmd-wire`（`cmd_wire::LOCAL`），界面经 `ipc/origin` 从生成物拿。
 import { hiddenPushed } from "./session-hidden";
-import { LOCAL, isLocalOrigin, isRemoteOrigin, type Machine } from "./ipc/origin";
+import { LOCAL, isLocalOrigin, type Machine } from "./ipc/origin";
 import { emit } from "@tauri-apps/api/event";
 import { icon } from "./kit/icon";
 import { GLOBAL_DESTS, destLabel, type GlobalDest, type GlobalDestItem } from "./global-dests";
@@ -21,7 +21,7 @@ import { LS_KEYS, safeGet, safeSet } from "./local-storage";
 import { StartupActive } from "./startup-active";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { bindEvents } from "./events";
-import { activityOf, terminalWhy } from "./face-can";
+import { activityOf, attachBlocked, frontBlocked, viewBlocked } from "./face-can";
 import { TabManager } from "./tabs";
 import { livePainter } from "./live-card-view";
 import { mountTabBarResizer } from "./tab-bar-width";
@@ -104,7 +104,7 @@ import { copyText } from "./copy-table";
 import { renameTab } from "./tab-rename";
 import { appStore } from "./app-store";
 import { OverlayRouter } from "./overlay-router";
-import { SessionHead, canTerminal } from "./session-head";
+import { SessionHead } from "./session-head";
 import { NeedsTitle } from "./needs-bar";
 import { AnswerBlock } from "./answer-block";
 import { answerNeeds } from "./answer-reads";
@@ -328,7 +328,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   const sessionHead = new SessionHead({
       active: () => tabs.activeTab(),
       openCwd: (sid) => tabs.openCwdOf(sid),
-      terminal: (sid) => tabs.terminalFor(sid),
+      front: (sid) => tabs.frontGated(sid),
+      view: (sid) => tabs.viewTerminal(sid),
       find: () => tabs.openFind(),
       more: (anchor, sid, extra) => tabs.openMenuFor(anchor, sid, extra),
       menuItem: (sid, id) => tabs.menuItemFor(sid, id),
@@ -491,13 +492,15 @@ window.addEventListener("DOMContentLoaded", async () => {
   function paintTerminalActs(): void {
     const t = tabs.activeTab();
     if (!t) return;
-    t.streamEl.dataset.canTerminal = canTerminal(t) ? "1" : "0";
+    t.streamEl.dataset.canFront = frontBlocked(t.face) === null ? "1" : "0";
+    t.streamEl.dataset.canAttach = attachBlocked(t.face) === null ? "1" : "0";
   }
   streamRoot.addEventListener("click", (e) => {
     const b = (e.target as HTMLElement | null)?.closest?.<HTMLElement>(".api-error-acts [data-act]");
     const sid = tabs.activeSessionId();
     if (!b || sid === null) return;
-    if (b.dataset.act === "terminal") tabs.terminalFor(sid);
+    if (b.dataset.act === "front") tabs.frontGated(sid);
+    else if (b.dataset.act === "attach") void tabs.attachInTerminal(sid);
   });
   tabs.active.subscribe((a) => {
     // 切了 tab ⇒ 会话头 · 「需手动」钉条 · 抽屉的终端页换成这一个。
@@ -683,12 +686,15 @@ window.addEventListener("DOMContentLoaded", async () => {
     return out;
   };
 
-  // 命令面板里「终端」那一项：照当前标签页脸上那一格灰不灰（本机标签页挑 near、远端挑 far），点了与会话头那一颗同一条路。
-  const terminalCommand = (hint: string | undefined): Command => {
+  // 命令面板里拉前 · 看它的终端那两项：照当前标签页脸上那两格灰不灰，点了与会话头那两颗同一条路。
+  const terminalCommands = (hint: (id: "terminal.bring-front" | "panel.toggle-terminal") => string | undefined): Command[] => {
     const t = tabs.activeTab();
-    const why = t ? terminalWhy(t.face, isRemoteOrigin(t.origin)) : "";
-    const item: Command = { id: "terminal", group: "current", icon: "terminal", title: copyText("mobDrawer.item.terminal"), keywords: copyText("main.cmd.terminalKeywords"), hint, run: () => tabs.terminalActive() };
-    return why === null ? item : { ...item, disabled: why };
+    const gate = (item: Command, why: string | null): Command => (why === null ? item : { ...item, disabled: why });
+    const keywords = copyText("main.cmd.terminalKeywords");
+    return [
+      gate({ id: "front", group: "current", icon: "front", title: copyText("terminal.head.front"), keywords, hint: hint("terminal.bring-front"), run: () => tabs.frontActive() }, t ? frontBlocked(t.face) : ""),
+      gate({ id: "terminal", group: "current", icon: "terminal", title: copyText("sessionHead.act.terminal"), keywords, hint: hint("panel.toggle-terminal"), run: () => tabs.viewActive() }, t ? viewBlocked(t.face) : ""),
+    ];
   };
 
   // 命令面板（Ctrl+K）：打开那一刻现拼一份（分组 · 键位 · 可不可用由这里给，面板只排版）。
@@ -701,7 +707,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     const curOrigin = cur === null ? null : tabs.originOf(cur);
     const cmds: Command[] = [];
     // 会话（空输入时只列在等你的那几行，在「需手动」一组）。
-    cmds.push(...sessionCommands(tabs.tabsInOrder(), (sid) => tabs.switchTo(sid), (n) => chordHint(`tab.jump-${n}` as Parameters<typeof chordHint>[0]), (sid) => tabs.terminalFor(sid)));
+    cmds.push(...sessionCommands(tabs.tabsInOrder(), (sid) => tabs.switchTo(sid), (n) => chordHint(`tab.jump-${n}` as Parameters<typeof chordHint>[0]), (sid) => void tabs.attachInTerminal(sid)));
     if (cur !== null && curOrigin !== null) {
       cmds.push(
         { id: "find", group: "current", icon: "search", title: copyText("sessionHead.act.find"), keywords: copyText("main.cmd.findKeywords"), hint: chordHint("session.find"), run: () => tabs.openFind() },
@@ -710,8 +716,8 @@ window.addEventListener("DOMContentLoaded", async () => {
         { id: "toggle-agents", group: "current", icon: "agent", title: copyText("beProfile.slot.agent"), keywords: copyText("main.cmd.agentsKeywords"), hint: chordHint("panel.toggle-agents"), run: () => mainDrawer.toggle("agents") },
         { id: "pop-out", group: "current", icon: "popOut", title: copyText("history.menu.openWindow"), keywords: copyText("main.cmd.popOutKeywords"), hint: chordHint("tab.pop-out"), run: () => tabs.openActiveInNewWindow() },
         { id: "open-cwd", group: "current", icon: "folder", title: copyText("tabBarView.tab.cwdHint"), keywords: copyText("main.cmd.openCwdKeywords"), hint: chordHint("tab.open-cwd"), run: () => tabs.openActiveTabCwd() },
-        // 「终端」：一直列着，做不了灰着写那台写好的那一句（与会话头那一颗是同一道，`face-can.ts::terminalWhy`）。
-        terminalCommand(chordHint("session.terminal")),
+        // 拉前 · 看它的终端：一直列着，做不了灰着写那一句（与会话头那两颗同一道）。
+        ...terminalCommands(chordHint),
         tabs.isPinned(cur)
           ? { id: "unpin", group: "current", icon: "pin", title: copyText("tabMenu.pin.unpin"), keywords: copyText("main.cmd.pinKeywords"), run: () => tabs.togglePin(cur) }
           : { id: "pin", group: "current", icon: "pin", title: copyText("tabMenu.pin.pin"), keywords: copyText("main.cmd.pinKeywords"), run: () => tabs.togglePin(cur) },
@@ -829,7 +835,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   onSession("session.toggle-process", () => tabs.toggleProcessDefault());
   onSession("session.prev-turn", () => tabs.stepTurn(-1));
   onSession("session.next-turn", () => tabs.stepTurn(1));
-  onSession("session.terminal", () => tabs.terminalActive());
+  onSession("terminal.bring-front", () => tabs.frontActive());
+  // Ctrl+` 收放：抽屉此刻正开着终端页 ⇒ 收起；否则开当前标签页的终端页（同会话头「看它的终端」）。
+  onSession("panel.toggle-terminal", () => (mainDrawer.dock.current === "terminal" ? mainDrawer.toggle("terminal") : tabs.viewActive()));
   dispatcher.bind("app.open-settings", () => void openSettingsWindow()); // 开独立设置窗口
   dispatcher.bind("app.toggle-history", () => overlays.toggle("history"));
   dispatcher.bind("app.toggle-plan", () => overlays.toggle("plan"));

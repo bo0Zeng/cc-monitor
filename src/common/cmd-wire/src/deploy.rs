@@ -1,25 +1,9 @@
 //! 装 · 卸远端后端那两条（`deploy-install` · `deploy-uninstall`，本机常驻后端答）的入参与回包。
-//! monitor 只交事实（带着哪几格 · 那台叫什么），那一趟整趟在后端；名字与回包挂在入参上（[`crate::call`] 那张表）。
+//! 入参只有那台叫什么：带着哪几个槽是本机后端自己的事实（落点旁边的槽目录），那一趟整趟在后端；名字与回包挂在入参上（[`crate::call`] 那张表）。
 
 use serde::{Deserialize, Serialize};
 
-/// `slots` 的一行：monitor 带着的那一格（哪种机器 · 字节自报的身份 · 落在本机哪个文件）。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(
-    any(test, feature = "ts"),
-    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
-)]
-#[serde(deny_unknown_fields)]
-pub struct SlotRow {
-    pub os: String,
-    pub arch: String,
-    pub id: String,
-    /// 本机上那一格字节的文件（绝对路径；后端读它，不经帧传字节）。
-    pub path: String,
-}
-
-/// `deploy-install` 的入参：monitor 带着的那几格 · 那台的名字（怎么够到它照本机后端的机器表组）。
+/// `deploy-install` 的入参：那台的名字（怎么够到它照本机后端的机器表组；带着哪几个槽照本机后端的槽目录）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -28,12 +12,11 @@ pub struct SlotRow {
 )]
 #[serde(deny_unknown_fields)]
 pub struct DeployInstallReq {
-    pub slots: Vec<SlotRow>,
     /// 那台的名字（非空；机器表按它查 · 状态成品按它记）。
     pub machine: String,
 }
 
-/// `deploy-uninstall` 的入参：同 [`DeployInstallReq`] 那两格（卸也传一份暂存件上去、由它删落点那一份）。
+/// `deploy-uninstall` 的入参：同 [`DeployInstallReq`]（卸也传一份暂存件上去、由它删落点那一份）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -42,7 +25,6 @@ pub struct DeployInstallReq {
 )]
 #[serde(deny_unknown_fields)]
 pub struct DeployUninstallReq {
-    pub slots: Vec<SlotRow>,
     pub machine: String,
 }
 

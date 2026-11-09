@@ -1029,7 +1029,7 @@ async function configuredCommand(origin: Machine, agent: string): Promise<string
 function landing(origin: Machine): OpenHow {
   return {
     onArrived: (sid: string, o: Opened) => {
-      const name = o.session ?? o.cwd?.split("/").filter(Boolean).pop() ?? o.cwd ?? "";
+      const name = o.session ?? o.cwd ?? "";
       toast(copyText("launch.fromSettings.done", { name, machine: machineName(origin) }), "", {
         level: "info",
         action: {

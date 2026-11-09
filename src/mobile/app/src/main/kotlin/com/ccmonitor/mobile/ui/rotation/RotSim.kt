@@ -166,7 +166,8 @@ private fun UseSeg(
     temp: Boolean,
 ) {
     val acct = LocalAppTokens.current.acct
-    val (bg, ink) = account?.let { acct[(ui.plate(it)?.color ?: 0).mod(acct.size)].let { c -> c.bg to c.ink } } ?: (MaterialTheme.colorScheme.surfaceContainerHighest to MaterialTheme.colorScheme.onSurface)
+    // 没在用的号（停发）· 那台没给号色 ⇒ 中性底（不猜一格像真的色）。
+    val (bg, ink) = account?.let { ui.plate(it)?.color }?.let { acct.getOrNull(it) }?.let { c -> c.bg to c.ink } ?: (MaterialTheme.colorScheme.surfaceContainerHighest to MaterialTheme.colorScheme.onSurface)
     Box(
         at
             .fillMaxHeight()

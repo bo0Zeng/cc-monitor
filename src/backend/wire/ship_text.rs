@@ -99,5 +99,5 @@ pub fn ship_text(reply: &Value) -> String {
 }
 
 #[cfg(test)]
-#[path = "../../../tests/backend/control/ship_text_tests.rs"]
+#[path = "../../../tests/backend/wire/ship_text_tests.rs"]
 mod tests;

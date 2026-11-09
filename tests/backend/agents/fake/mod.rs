@@ -449,7 +449,11 @@ fn local_face(
         },
         pidfile_dir,
         cmdline_may_be_agent,
-        tasks_dir: Some(|h| h.join("todo")),
+        // 假的那一家有任务目录、不认任何任务文件（任务的读法在真那一家的判据里钉）。
+        tasks: Some(crate::agents::TasksFace {
+            dir: |h| h.join("todo"),
+            task: |_| None,
+        }),
         proc_of: |v| crate::agents::ProcFact {
             kind: AGENT_KIND,
             sid: v

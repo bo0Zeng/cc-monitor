@@ -110,7 +110,10 @@ impl Home {
             )),
             Some(self.root.clone()),
             Arc::new(move |_| Some(book.clone())),
-            Arc::new(std::collections::BTreeSet::new),
+            crate::accounts::upstream_select::rotate::HistoryPorts {
+                live: Arc::new(std::collections::BTreeSet::new),
+                ring: Arc::new(|| {}),
+            },
             Some(dead_token_endpoint()),
         )
     }

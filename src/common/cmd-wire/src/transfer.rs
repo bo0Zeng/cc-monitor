@@ -217,7 +217,7 @@ pub struct TransferOpened {
     pub items: Vec<OpenedItem>,
 }
 
-/// `transfer-copy`：一组远端路径从这一台复制到另一台的一个目录（经本机中转：A → 本机暂存 → B 暂存 → B 提交）。
+/// `transfer-copy`：一组路径从这一台搬到另一台的一个目录；两台都可以是本机（上传 · 下载 · 两台之间同这一条，编排都在本机后端）。
 /// 目录整棵：建目录、逐个文件传，逐项结局照实回（目录里的文件键是 `序号/相对段`）。同名照 `on_exists`（目录同名只许跳过或保留两份）。
 /// 带票 ⇒ 进度走 `files_batch` 帧，`files-batch-stop` 撤；断开照常做完，同一张票再问回同一份结局。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -233,8 +233,8 @@ pub struct TransferCopyReq {
     /// 落点那台的名字。
     pub to: crate::Machine,
     pub items: Vec<CopyFrom>,
-    /// 落点那台上的目录（绝对路径）。
-    pub to_dir: String,
+    /// 落点那台上的目录（绝对路径；原始字节）。
+    pub to_dir: WirePath,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub on_exists: Option<crate::batch::OnExists>,
@@ -259,7 +259,7 @@ pub struct TransferCopyAsk {
     /// 落点那台的名字（同窗口寻址用的那个名字）。
     pub to: String,
     pub items: Vec<CopyFrom>,
-    pub to_dir: String,
+    pub to_dir: WirePath,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub on_exists: Option<crate::batch::OnExists>,
@@ -286,7 +286,7 @@ impl TransferCopyAsk {
     }
 }
 
-/// 跨机复制的一项：源那台上的路径。
+/// 跨机复制的一项：源那台上的路径（原始字节）＋ 落到那边叫什么（另存为；缺 ⇒ 源的末段名）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -295,7 +295,10 @@ impl TransferCopyAsk {
 )]
 #[serde(deny_unknown_fields)]
 pub struct CopyFrom {
-    pub remote_path: String,
+    pub path: WirePath,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub name: Option<WirePath>,
 }
 
 /// 手机内嵌核心分块上传那一半送完的那一份（`reply` 那一件成了的 `data`）：提交时照交（`chunks` · `bytes` · `expect.sha256`）。

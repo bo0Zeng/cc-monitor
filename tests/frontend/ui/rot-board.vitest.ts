@@ -45,7 +45,7 @@ function view(over: Partial<RotationViewReply> = {}): RotationViewReply {
   return {
     now: NOW,
     nowText: "14:30", title: null,
-    strategy: { id: "按权重轮换", description: "第一句说明\n第二句说明\n\n第二段", summary: "第一句说明", rev: "h:1", inUse: [], forNew: true, tzUnknown: false, hand: false },
+    strategy: { id: "按权重轮换", description: "第一句说明\n第二句说明\n\n第二段", summary: "第一句说明", rev: "h:1", remove: { enabled: false, why: "夹具·新会话在用这份" }, forNew: true, tzUnknown: false, hand: false },
     board: BOARD,
     start: "",
     current: "",
@@ -77,8 +77,8 @@ function view(over: Partial<RotationViewReply> = {}): RotationViewReply {
 
 const LIST: RotationStrategiesReply = {
   strategies: [
-    { id: "按权重轮换", description: "第一句说明\n第二句说明", summary: "第一句说明", rev: "h:1", inUse: ["s1", "s2"], forNew: true, tzUnknown: false, hand: false },
-    { id: "夜里省着用", description: "夜里那一句", summary: "夜里那一句", rev: "h:2", inUse: [], forNew: false, tzUnknown: false, hand: true },
+    { id: "按权重轮换", description: "第一句说明\n第二句说明", summary: "第一句说明", rev: "h:1", remove: { enabled: false, why: "夹具·2 个会话在用", who: "夹具·会话一 · 夹具·会话二" }, forNew: true, tzUnknown: false, hand: false },
+    { id: "夜里省着用", description: "夜里那一句", summary: "夜里那一句", rev: "h:2", remove: { enabled: true }, forNew: false, tzUnknown: false, hand: true },
   ],
   forNew: "按权重轮换",
   oldScripts: 0,
@@ -137,15 +137,14 @@ describe("第一行与说明", () => {
     expect(a.create).toHaveBeenCalledOnce();
   });
 
-  it("★ 提示照后端写好的那一句；停发那一句里的「还有多久」在画的那一刻照 now · until 填", () => {
+  it("★ 提示照后端写好的那一整句摆（停发那一句连「还有多久」也是后端写好的）", () => {
     const root = draw(
-      view({ hints: [{ hint: { k: "hold", until: NOW + 4 * 3600, account: "team" }, tone: "warn", text: "停发了 · 18:30 team · 还剩 {dur}" }, { hint: { k: "wordsBad" }, tone: "plain", text: "说明写法不合规那一句" }] }),
+      view({ hints: [{ hint: { k: "hold", account: "team" }, tone: "warn", text: "停发了 · 18:30 team · 还剩 4 小时" }, { hint: { k: "wordsBad" }, tone: "plain", text: "说明写法不合规那一句" }] }),
       state(),
       acts(),
     );
     const said = texts(root, "[data-rot-hint]");
-    expect(said[0]).toContain("18:30 team");
-    expect(said[0]).not.toContain("{dur}");
+    expect(said[0]).toBe("停发了 · 18:30 team · 还剩 4 小时");
     expect(said[1]).toContain("说明写法不合规那一句");
   });
 });
@@ -193,7 +192,7 @@ describe("号色 · 号名照视图里那一格", () => {
     const root = draw(v, state(), acts());
     const card = [...root.querySelectorAll<HTMLElement>(".acct-avatar")].find((e) => e.parentElement?.textContent?.includes("夹具·号名"));
     expect(card, "画了视图里的号名").toBeDefined();
-    expect(card!.classList.contains("acct-c6")).toBe(true);
+    expect(card!.style.getPropertyValue("--acct")).toBe("var(--acct-c6)");
     expect(card!.textContent).toBe("夹");
   });
 });
@@ -251,14 +250,13 @@ describe("提示里的按钮", () => {
     expect(a.showFile).toHaveBeenCalledWith("/夹具/v3/旧的两份.rhai");
   });
 
-  it("★ 「N 个会话还在用旧版」不在顶上出条，写在编辑小窗的底行［都载入新版］⇒ loadNew", () => {
+  it("★ 「N 个会话还在用旧版」不在顶上出条；编辑小窗底行照那台写好的整句摆，带［都载入新版］⇒ loadNew", () => {
     const a = acts();
-    const older = view({ hints: [{ hint: { k: "older", n: 2 }, tone: "plain", text: "夹具·2 个会话那一句" }] });
+    const older = view({ hints: [{ hint: { k: "older", n: 2 }, tone: "plain", text: "夹具·2 个会话那一句" }], foot: "夹具·底行那一整句" });
     const set = draw(older, state(), a);
     expect(set.querySelector("[data-rot-hint]"), "不在顶上出条").toBeNull();
     const pane = draw(older, state({ open: "lab" }), a).querySelector<HTMLElement>("[data-rot-editor]")!;
-    expect(pane.textContent).toContain(copyText("rot.pane.foot", { name: "按权重轮换" }));
-    expect(pane.textContent).toContain("夹具·2 个会话那一句");
+    expect(pane.textContent, "底行照那台写好的整句摆").toContain("夹具·底行那一整句");
     button(pane, copyText("rot.hint.loadAll"))!.click();
     expect(a.loadNew).toHaveBeenCalledOnce();
   });

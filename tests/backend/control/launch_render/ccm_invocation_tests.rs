@@ -294,6 +294,15 @@ fn every_value_is_judged_before_it_becomes_a_ccm_argument() {
             },
             "FreeTextRefused { slot: AttachTarget",
         ),
+        (
+            // `:` 是 tmux 目标语法的分隔符、真会话名里不会有 ⇒ 当场拒，不交给 tmux 再报错。
+            CliSpec {
+                action: Action::Attach { name: "a:b" },
+                container: Container::Tmux { name: "a:b" },
+                ..base_spec()
+            },
+            "FreeTextRefused { slot: AttachTarget",
+        ),
     ];
     for (spec, want) in cases {
         let got = format!("{:?}", render(&spec));

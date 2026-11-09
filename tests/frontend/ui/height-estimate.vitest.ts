@@ -171,3 +171,32 @@ describe("量高逐条与冻下的那一份一致：同一份语料 × 确定的
     }
   });
 });
+
+/**
+ * 估高的字号 · 行高 · 回退列宽不另抄令牌的数：模块求值时读一次 `:root` 的计算样式。
+ * jsdom 不挂样式表 ⇒ 不注入时读到的是 tokens.css 那一份；在 `:root` 上注入另一份正文行高，重新求值模块，同一条料的粗估随之变。
+ */
+describe("估高跟着 :root 的计算样式走", () => {
+  const facts = { o: 0, n: 1, t: "reply", dr: "card", ch: 460, cj: 60, pl: 3 } as const;
+  async function estimateWith(lineHeightProse: string | null): Promise<number> {
+    const root = document.documentElement;
+    if (lineHeightProse === null) root.style.removeProperty("--line-height-prose");
+    else root.style.setProperty("--line-height-prose", lineHeightProse);
+    vi.resetModules();
+    try {
+      const m = await import("../../../src/frontend/ui/height-estimate");
+      return m.estimateFromFacts(facts, 780);
+    } finally {
+      root.style.removeProperty("--line-height-prose");
+      vi.resetModules();
+    }
+  }
+
+  it("注入另一份 --line-height-prose ⇒ 粗估随之变；撤掉 ⇒ 回到 tokens.css 那一份", async () => {
+    const base = await estimateWith(null);
+    const doubled = await estimateWith("3.3");
+    expect(base, "不注入时估出一个正数").toBeGreaterThan(0);
+    expect(doubled, "正文行高翻倍，正文那一段的高跟着变").toBeGreaterThan(base);
+    expect(await estimateWith(null), "撤掉注入 ⇒ 回到 tokens.css 那一份").toBe(base);
+  });
+});

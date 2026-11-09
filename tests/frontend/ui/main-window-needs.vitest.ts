@@ -30,7 +30,8 @@ import { abbrOf, dotOf, needsOf, nextNeedsStep, peekLine, stateLine, stateWord }
 import { NeedsBook } from "../../../src/frontend/ui/needs-book";
 import { fakeNeedsBook, listOf, sessionItem } from "../../test-support/needs-fake";
 import { NeedsTitle } from "../../../src/frontend/ui/needs-bar";
-import { SessionHead, canTerminal } from "../../../src/frontend/ui/session-head";
+import { SessionHead } from "../../../src/frontend/ui/session-head";
+import { attachBlocked, frontBlocked } from "../../../src/frontend/ui/face-can";
 import { buildApiErrorCard } from "../../../src/frontend/ui/cards/api-error";
 import { TerminalPage, type TerminalReads } from "../../../src/frontend/ui/terminal-page";
 import type { TerminalSend, TerminalSent, TerminalShot } from "../../../src/frontend/ui/terminal-reads";
@@ -146,8 +147,9 @@ describe("一个会话读成什么（session-face）：点 · 状态一句 · �
     vi.useRealTimers();
   });
 
-  it("窄窗两个字母取项目目录名里的字母", () => {
-    expect([abbrOf(tab("x", { projectDir: "/w/orders" })), abbrOf(tab("x", { projectDir: "/w/web-console" })), abbrOf(tab("x", { projectDir: "/w/数据集" }))]).toEqual(["or", "we", "数据"]);
+  it("窄窗两个字母取项目名（会话事实里后端切好的）里的字母；还没有项目名 ⇒ 照名字", () => {
+    expect([abbrOf(tab("x", { projectName: "orders" })), abbrOf(tab("x", { projectName: "web-console" })), abbrOf(tab("x", { projectName: "数据集" }))]).toEqual(["or", "we", "数据"]);
+    expect(abbrOf(tab("x", { projectDir: "/w/orders", projectName: null, label: "Fix bug" }))).toBe("fi");
   });
 
   it("时长一种写法：45s · 6m · 1h50m · 2h · 3d", () => {
@@ -178,6 +180,7 @@ async function bar(tabs: Tab[], ranked?: string[]) {
     openMenu: vi.fn(),
     toggleSelect: vi.fn(),
     openMenuAt: vi.fn(),
+    front: vi.fn(),
     fixMachine: vi.fn(),
   } satisfies TabBarViewHost;
   const el = document.createElement("div");
@@ -312,7 +315,7 @@ describe("「需手动」· 窗口标题（消息流底部那一块见 answer-bl
 
 describe("会话头", () => {
   const head = (t: Tab | null) => {
-    const host = { active: () => t, openCwd: vi.fn(), terminal: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), reconnect: vi.fn(), planMark: () => null, menuItem: () => null, displayItems: () => [], tabOf: () => null, switchTo: vi.fn(), switching: NO_SWITCHING };
+    const host = { active: () => t, openCwd: vi.fn(), front: vi.fn(), view: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), reconnect: vi.fn(), planMark: () => null, menuItem: () => null, displayItems: () => [], tabOf: () => null, switchTo: vi.fn(), switching: NO_SWITCHING };
     const h = new SessionHead(host);
     document.body.appendChild(h.el);
     h.render(NOW);
@@ -321,21 +324,21 @@ describe("会话头", () => {
   // 右边那一排（换模型 · 切权限档那两颗另有判据：`session-switch.vitest.ts`）。
   const labels = (el: HTMLElement): string[] => [...el.querySelectorAll("button:not([data-switch])")].map((b) => b.getAttribute("aria-label") ?? b.textContent ?? "");
 
-  it("★ 标题全名 · 机器（那台成品里的名字）· 目录 · 状态一句；在等你时状态那一句琥珀；右边：终端 · 查找 · 更多", () => {
+  it("★ 标题全名 · 机器（那台成品里的名字）· 目录 · 状态一句；在等你时状态那一句琥珀；右边：拉前 · 看它的终端 · 查找 · 更多", () => {
     const { h, host } = head(tab("a", { label: "加重试", title: "orders 加重试", projectDir: "/w/orders", cwdShown: "~/orders", ...waiting, needs: approve() }));
     expect(h.el.textContent).toContain("orders 加重试");
     expect(h.el.textContent).toContain(LOCAL_NAME);
     expect(h.el.textContent, "目录照那台写好的显示形").toContain("~/orders");
     // 默认那一排（ui3 · `session-head-buttons.vitest.ts`）；这台宿主不给「⋯」里的项 ⇒ 借那份菜单的几颗（在新窗口打开 · 账号）不出。
-    expect(labels(h.el)).toEqual([copyText("mobDrawer.item.terminal"), copyText("sessionHead.act.find"), copyText("history.row.more")]);
+    expect(labels(h.el)).toEqual([copyText("terminal.head.front"), copyText("sessionHead.act.terminal"), copyText("sessionHead.act.find"), copyText("history.row.more")]);
     const btns = h.el.querySelectorAll<HTMLButtonElement>("button:not([data-switch])");
     btns[0].click();
-    expect(host.terminal).toHaveBeenCalledWith("a");
-    btns[1].click();
+    expect(host.front).toHaveBeenCalledWith("a");
+    btns[2].click();
     expect(host.find).toHaveBeenCalled();
   });
 
-  it("★ 按状态多一颗只剩已结束［恢复］：可重连（远端本机都一样）· 状态不明 · 活着都不多；去终端只有「终端」那一颗，一直在", () => {
+  it("★ 按状态多一颗只剩已结束［恢复］：可重连（远端本机都一样）· 状态不明 · 活着都不多；拉前 · 看它的终端各一颗，一直在", () => {
     expect(labels(head(tab("a", { face: goldenFace("ended") })).h.el)).toContain(copyText("history.row.resume"));
     for (const [what, t] of [
       ["远端可重连", tab("b", { origin: "devbox" as never, face: goldenFace("reconnectable") })],
@@ -345,7 +348,7 @@ describe("会话头", () => {
     ] as const) {
       const got = labels(head(t).h.el);
       expect(got, what).not.toContain(copyText("history.row.resume"));
-      expect(got.filter((l) => l === copyText("mobDrawer.item.terminal")), what).toHaveLength(1);
+      for (const k of ["terminal.head.front", "sessionHead.act.terminal"] as const) expect(got.filter((l) => l === copyText(k)), `${what} ${k}`).toHaveLength(1);
     }
   });
 
@@ -430,17 +433,19 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     expect(c.page.el.textContent).toContain(copyText("terminal.empty.ended", { state: copyText("sessionState.ended.name") }));
   });
 
-  it("★ 活着、不在任何终端里 · 在终端里却认不出 ⇒ 同一种空态「非 cc-monitor 起的」（页里不出现 tmux，A3-3-32-8）；页里不另放去终端的按钮", async () => {
-    const d = rig([], { t: tab("d", { face: liveFace("working", false) }) });
+  it("★ 活着、名单里没有：脸上「看它的终端」做不了 ⇒ 照那台写好的那一句；说得了却认不出 ⇒「非 cc-monitor 起的」；页里不另放去终端的按钮", async () => {
+    const plain = liveFace("working", false);
+    const why = plain.can.view.can === "no" ? plain.can.view.why : "";
+    expect(why, "不在宿主里的那张脸：看它的终端做不了、带原因").not.toBe("");
+    const d = rig([], { t: tab("d", { face: plain }) });
     d.page.setVisible(true);
     await flush();
-    expect(d.page.el.textContent).toContain(copyText("terminal.empty.notOurs"));
-    expect(d.page.el.textContent).toContain(copyText("terminal.empty.notOursHint"));
-    expect(d.page.el.textContent).not.toContain("tmux");
+    expect(d.page.el.textContent).toContain(why);
+    expect(d.page.el.textContent).not.toContain(copyText("terminal.empty.notOurs"));
     const f = rig([], { t: tab("f", { face: liveFace("working", true) }) });
     f.page.setVisible(true);
     await flush();
-    expect(f.page.el.textContent, "在终端里、名单却认不出的同一句").toContain(copyText("terminal.empty.notOurs"));
+    expect(f.page.el.textContent, "在终端里、名单却认不出").toContain(copyText("terminal.empty.notOurs"));
   });
 
   it("★ 输入行只敲进终端（说一句在消息流底下）：回车连字带回车送、送到了清框、0.5 · 1.5 · 3 秒各再抓一次；Ctrl+回车只送字、带上看到的那一屏的指纹、送到了写「已送达」；Shift+回车与组字不送", async () => {
@@ -736,18 +741,22 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
   });
 });
 
-describe("报错卡上去它的终端那一颗（与会话头「终端」同一道）", () => {
-  it("★ 点得了照脸上那一格：本机挑 near、远端挑 far；做不了 · 没有脸 ⇒ 不出", () => {
-    expect(canTerminal(tab("a", { face: liveFace("working", true) }))).toBe(true);
-    expect(canTerminal(tab("b", { origin: "devbox" as never, face: liveFace("working", false) })), "远端、不在任何宿主里：别处没有终端可接").toBe(false);
-    expect(canTerminal(tab("c", { origin: "devbox" as never, face: goldenFace("reconnectable") }))).toBe(true);
-    expect(canTerminal(tab("d", { face: goldenFace("gone") }))).toBe(false);
-    expect(canTerminal(tab("e", { face: null }))).toBe(false);
+describe("报错卡上去它的终端那两颗（拉前 · 在终端里打开，照 5.1.1）", () => {
+  it("★ 拉前照 `frontBlocked`、在终端里打开照 `attachBlocked`：远端不在宿主里 ⇒ 只拉得了前；记录已不在 · 没有脸 ⇒ 都不出", () => {
+    const both = (face: Tab["face"]): [boolean, boolean] => [frontBlocked(face) === null, attachBlocked(face) === null];
+    expect(both(liveFace("working", true))).toEqual([true, true]);
+    expect(both(liveFace("working", false)), "远端、不在任何宿主里：没有终端可接").toEqual([true, false]);
+    expect(both(goldenFace("reconnectable"))).toEqual([true, true]);
+    expect(both(goldenFace("gone"))).toEqual([false, false]);
+    expect(both(null)).toEqual([false, false]);
   });
 
-  it("报错卡摆出一颗「终端」（看不看得见由消息流根上的标记管）", () => {
+  it("报错卡摆出拉前 · 在终端里打开两颗（看不看得见由消息流根上的两个标记管）", () => {
     const card = buildApiErrorCard({ timeLabel: "02:10", title: "CARD-HEAD", text: "overloaded" });
-    expect([...card.querySelectorAll<HTMLElement>(".api-error-acts [data-act]")].map((b) => [b.dataset.act, b.textContent])).toEqual([["terminal", copyText("mobDrawer.item.terminal")]]);
+    expect([...card.querySelectorAll<HTMLElement>(".api-error-acts [data-act]")].map((b) => [b.dataset.act, b.textContent])).toEqual([
+      ["front", copyText("terminal.head.front")],
+      ["attach", copyText("sessionHead.act.openTerm")],
+    ]);
   });
 });
 

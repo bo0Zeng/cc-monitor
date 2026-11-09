@@ -398,4 +398,6 @@ pub enum DialPlan {
 pub struct MachineCheck {
     pub fault: Option<crate::machine::MachineFault>,
     pub endpoints: Vec<crate::dial::Endpoint>,
+    /// 每个地址给人看的那一串（与 `endpoints` 一一对应；拨号核心写，v6 带方括号）。
+    pub shown: Vec<String>,
 }

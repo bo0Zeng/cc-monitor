@@ -8,7 +8,7 @@
 //!
 //! # 边界：本模块只判，不取
 //!
-//! 「怎么问那台 `@ccm_sid`」住 `gate.rs::probe`（就在那台机器上 argv 直传跑一次 `tmux display-message`）；
+//! 「怎么问那台 `@ccm_sid`」住 `gate.rs::probe_with`（就在那台机器上 argv 直传跑一次 `tmux display-message`）；
 //! 本模块不起进程、不碰 tmux、不认识 shell。
 //! 请求指了 sid 时，喂进来的是挂着它的那个窗格上的 `@ccm_sid`（一个 tmux 会话里可以有几个 claude 窗格，活动窗格是谁不算数）。
 //!
@@ -157,7 +157,7 @@ pub(crate) enum TmuxNameIssue {
     Empty,
     /// 以 `-` 开头（只对新建判）。
     LeadingDash,
-    /// 含 [`NEW_TMUX_NAME_REFUSED`] 里的一个字符（只对新建判）。
+    /// 含 [`NEW_TMUX_NAME_REFUSED`] 里的一个字符（新建）；已有会话名只这一形里的 `:`。
     TargetSyntax(char),
     /// 含控制字符（`char::is_control`：C0 · DEL · C1）。
     Control(char),
@@ -197,12 +197,13 @@ pub(crate) fn new_tmux_name_issue(n: &str) -> Option<TmuxNameIssue> {
     None
 }
 
-/// **已有会话**的名字（attach · 送进一个已在的会话）过不过：`None` = 过。只拒空、控制符与视觉欺骗字符（②）。
+/// **已有会话**的名字（`ccm --attach` · 送进一个已在的会话那一路）过不过：`None` = 过。只拒空、控制符与视觉欺骗字符（②），
+/// 外加 `:`（tmux 目标语法的分隔符，真会话名里不会有）。`=` 不拒：`=a=b:` 精确命中名叫 `a=b` 的会话。
 pub(crate) fn existing_tmux_name_issue(n: &str) -> Option<TmuxNameIssue> {
     if n.is_empty() {
         return Some(TmuxNameIssue::Empty);
     }
-    refused_char(n)
+    refused_char(n).or_else(|| n.contains(':').then_some(TmuxNameIssue::TargetSyntax(':')))
 }
 
 #[cfg(test)]

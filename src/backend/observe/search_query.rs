@@ -5,14 +5,12 @@
 //! 形状严格一致，可直接反序列化）：
 //! `{agent,sessionId,projectPath,projectName,jsonlPath,title,updatedAt,moreHits,hits:[{uuid,tsMs,kind,before,matched,after}]}`
 //!
-//! 🔴 语义与本地 `../../bridge/src/search.rs` **不是「对齐」，是同一份**：
-//! 抽取 / 匹配 / snippet 的 12 个助手、4 个口径常量、snippet 预算与预算顺序只有一个家 ——通用那一半住
-//! [`super::search_rules`]，Claude 记录文本那一半（正文 / 工具内容怎么抽 · 注入怎么剥）住适配层 `agents/claudecode/text.rs`（经注册表够）。
-//! 本文件不再写一遍那 12 个：两份逐字相同的实现没有判据拦着就会漂开。守它的判据是
+//! 🔴 口径只有一个家：抽取 / 匹配 / snippet 的助手、口径常量、snippet 预算与预算顺序 —— 通用那一半住
+//! `history/search_rules.rs`，记录文本那一半（正文 / 工具内容怎么抽 · 注入怎么剥）住适配层（经注册表 `agents::TextFace` 够）。
+//! 本文件不再写一遍那几个：两份逐字相同的实现没有判据拦着就会漂开。守它的判据是
 //! `tests/backend/history/search_rules_tests.rs::the_search_kou_jing_has_exactly_one_home`。
-//! 后端**有**记录解析（`agents/claudecode/parse.rs::parse_line`，`line` 帧的成品与 `history-read` 的逐行成品都出自它）；
-//! 本模块仍直接在 `serde_json::Value` 上抽取，是因为搜索只要正文 / 工具内容那几段文本，不要整条记录的成品 ——
-//! 那是**取数**的差别，不是**口径**的差别（口径只有上面那一个家）。
+//! 一条记录是谁说的 · 何时 · 消息 id 只照适配层翻好的那一行（`agents::session_line_of`），sid 只照 `agents::sid_of`；
+//! 本模块不读记录的原文格名，只把已解析的那一条交适配层取正文 / 工具内容。
 //!
 //! 安全：路径严格限 `<claude_dir>/projects/`（经 observe 唯一那道围栏 `common/fence.rs::Fence`，不在这里内联第二份）；
 //! 只读铁律（cc-monitor 不写远端）成立——本模块只 read_dir / read。
@@ -327,48 +325,35 @@ impl Facts {
             let Some(v) = crate::agents::Line::of(kind, text, 0).into_value() else {
                 continue;
             };
-            self.session.absorb_value(kind, &v);
-            match v.get("type").and_then(Value::as_str).unwrap_or("") {
-                "user" | "assistant" => {
-                    let opens_turn =
-                        super::recognize::user_inputs::user_input_of(kind, &v).is_some();
-                    let Some(rt) = record_text(kind, &v, tools).or_else(|| {
-                        opens_turn.then(|| RecordText {
-                            is_assistant: false,
-                            report: false,
-                            main: String::new(),
-                            tool: String::new(),
-                            lands_in: None,
-                        })
-                    }) else {
-                        continue;
-                    };
-                    // 〔perfC〕既没有正文也没有工具文本、又不开一轮的（不搜工具时的工具调用 / 工具结果）永远命中不了、
-                    //   也不进轮次 ⇒ 不进常驻索引（搜与会话内查找的答案不变，常驻字节省下来留给更多会话）。
-                    if rt.main.is_empty() && rt.tool.is_empty() && !opens_turn {
-                        continue;
-                    }
-                    let ts_ms = v
-                        .get("timestamp")
-                        .and_then(Value::as_str)
-                        .and_then(crate::common::time::parse_iso8601_ms)
-                        .unwrap_or(0);
-                    let uuid = v
-                        .get("uuid")
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_string();
-                    self.records.push(Rec {
-                        rt,
-                        ts_ms,
-                        uuid,
-                        offset: start,
-                        line,
-                        opens_turn,
-                    });
-                }
-                _ => {}
+            let said = self.session.absorb_value(kind, &v);
+            let Some(role) = said.role else {
+                continue;
+            };
+            let opens_turn = super::recognize::user_inputs::user_input_of(kind, &v).is_some();
+            let Some(rt) = record_text(kind, &v, role, tools).or_else(|| {
+                opens_turn.then(|| RecordText {
+                    is_assistant: false,
+                    report: false,
+                    main: String::new(),
+                    tool: String::new(),
+                    lands_in: None,
+                })
+            }) else {
+                continue;
+            };
+            // 〔perfC〕既没有正文也没有工具文本、又不开一轮的（不搜工具时的工具调用 / 工具结果）永远命中不了、
+            //   也不进轮次 ⇒ 不进常驻索引（搜与会话内查找的答案不变，常驻字节省下来留给更多会话）。
+            if rt.main.is_empty() && rt.tool.is_empty() && !opens_turn {
+                continue;
             }
+            self.records.push(Rec {
+                rt,
+                ts_ms: said.at_ms.unwrap_or(0),
+                uuid: said.id.unwrap_or_default(),
+                offset: start,
+                line,
+                opens_turn,
+            });
         }
     }
 
@@ -785,7 +770,7 @@ fn session_hits_in(
     budget: &mut SnippetBudget,
     updated_at: i64,
 ) -> Option<SessionHits> {
-    let session_id = path.file_stem()?.to_str()?.to_string();
+    let session_id = crate::agents::sid_of(path)?;
 
     let mut hits: Vec<SearchHit> = Vec::new();
     let mut hit_count: u32 = 0;
@@ -848,7 +833,7 @@ fn session_title_row(
     q_lc: &str,
     updated_at: i64,
 ) -> Option<SessionHits> {
-    let session_id = path.file_stem()?.to_str()?.to_string();
+    let session_id = crate::agents::sid_of(path)?;
     let s = entry.session();
     let (title, excerpt) = (s.title(), s.excerpt());
     let found = title.is_some_and(|t| t.to_lowercase().contains(q_lc))
@@ -868,11 +853,10 @@ fn session_row(
 ) -> SessionHits {
     let s = entry.session();
     let project_path = s.cwd().unwrap_or_default().to_string();
-    let project_name = Path::new(&project_path)
-        .file_name()
-        .and_then(|s| s.to_str())
-        .map(str::to_string)
-        .unwrap_or_else(|| project_path.clone());
+    // 项目名只这一种切法（与历史清单 · 会话事实同一个函数）：Windows 目录在 Linux 上的后端也切得开。
+    let project_name = plain_path_core::last_segment(&project_path)
+        .unwrap_or(&project_path)
+        .to_string();
     let title = label_of(entry);
     // 哪一家跟着这份记录走（索引格建起来时照它落在哪棵树下认的）。
     let agent = entry.kind.to_string();
@@ -922,17 +906,17 @@ pub(crate) struct RecordText {
     pub(crate) lands_in: Option<String>,
 }
 
-/// 一条已解析的记录 → 拿去搜的文本；不是 user / assistant ⇒ `None`。
+/// 一条已解析的记录（`role` ＝ 适配层翻好的那一行说它是人那一侧的 / 回话）→ 拿去搜的文本；流里不画它 ⇒ `None`。
 ///
 /// 🔴 **全局搜索（`history-search`）与会话内查找（`history-find`）的口径只有这一个住址**；
 /// 抽取 / 「谁说的」住适配层（经注册表 `agents::main_text` · `tool_text` · `human_speech`），截断住 `history/search_rules.rs`。
-pub(crate) fn record_text(kind: &str, v: &Value, include_tools: bool) -> Option<RecordText> {
-    let is_assistant = match v.get("type").and_then(Value::as_str) {
-        Some("assistant") => true,
-        Some("user") => false,
-        _ => return None,
-    };
-    let content_v = v.get("message").and_then(|m| m.get("content"));
+pub(crate) fn record_text(
+    kind: &str,
+    v: &Value,
+    role: crate::agents::LineRole,
+    include_tools: bool,
+) -> Option<RecordText> {
+    let is_assistant = role == crate::agents::LineRole::Replied;
     // 查找 · 搜索的单位就是流里画的那几张卡：流里不画的不搜，收在某次调用那一块里的记下那次调用。
     let lands_in = match crate::agents::lands_of(kind, v) {
         crate::agents::Lands::Nowhere => return None,
@@ -942,12 +926,7 @@ pub(crate) fn record_text(kind: &str, v: &Value, include_tools: bool) -> Option<
     // user 那侧：人说的话是 user 命中；agent 回报（子 agent 交回 / 发来的话 · 另一个会话发来的话）单列一种（`report`）；
     //   后台通知 · 系统注入都不搜。谁说的由适配层判（`agents::user_text_of` 的 `speaker`）。
     let (raw_main, report) = if is_assistant {
-        (
-            content_v
-                .map(|c| crate::agents::main_text(kind, c))
-                .unwrap_or_default(),
-            false,
-        )
+        (crate::agents::main_text(kind, v), false)
     } else {
         match crate::agents::human_speech(kind, v) {
             Some(said) => (said, false),
@@ -959,14 +938,7 @@ pub(crate) fn record_text(kind: &str, v: &Value, include_tools: bool) -> Option<
     };
     let main = search_rules::truncate_plain(&raw_main, MAIN_CAP);
     let tool = if include_tools {
-        content_v
-            .map(|c| {
-                search_rules::truncate_plain(
-                    &crate::agents::tool_text(kind, c, is_assistant),
-                    TOOL_CAP,
-                )
-            })
-            .unwrap_or_default()
+        search_rules::truncate_plain(&crate::agents::tool_text(kind, v, is_assistant), TOOL_CAP)
     } else {
         String::new()
     };
@@ -1169,21 +1141,18 @@ pub fn scan_session_find<R: std::io::BufRead>(
         let Some(v) = crate::agents::Line::of(kind, &text, 0).into_value() else {
             continue;
         };
-        if matches!(
-            v.get("type").and_then(Value::as_str),
-            Some("user" | "assistant")
-        ) && super::recognize::user_inputs::user_input_of(kind, &v).is_some()
-        {
-            turn += 1;
-        }
-        let Some(uuid) = v
-            .get("uuid")
-            .and_then(Value::as_str)
-            .filter(|u| !u.is_empty())
-        else {
+        // 是谁说的 · 何时 · 消息 id 都照适配层翻好的那一行（不在这里读原文的格）。
+        let said = crate::agents::session_line_of(kind, &v);
+        let Some(role) = said.role else {
             continue;
         };
-        let Some(rt) = record_text(kind, &v, include_tools) else {
+        if super::recognize::user_inputs::user_input_of(kind, &v).is_some() {
+            turn += 1;
+        }
+        let Some(uuid) = said.id.as_deref() else {
+            continue;
+        };
+        let Some(rt) = record_text(kind, &v, role, include_tools) else {
             continue;
         };
         if !scope.is_none_or(|s| in_scope(s, &rt)) {
@@ -1193,11 +1162,7 @@ pub fn scan_session_find<R: std::io::BufRead>(
             continue;
         };
         if pager.take() {
-            let ts_ms = v
-                .get("timestamp")
-                .and_then(Value::as_str)
-                .and_then(crate::common::time::parse_iso8601_ms)
-                .unwrap_or(0);
+            let ts_ms = said.at_ms.unwrap_or(0);
             on_hit(&find_hit(&rt, (uuid, line), kind, hit, &q, turn, ts_ms))?;
         }
     }

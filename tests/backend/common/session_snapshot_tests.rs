@@ -156,26 +156,12 @@ fn the_one_list_sessions_call_asks_for_a_utf8_client_before_the_subcommand() {
     );
 }
 
-/// ★ 段数下溢 ⇒ 整行不当好数据（本处这一侧）。
-///
-/// 要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。
+/// 一个会话里几个窗格各挂一个 sid：哪一个都认得出它在跑（`ccm --resume` 接回它，而不是另起第二份），名字只占一次。
+/// 切行（下溢的行整行丢掉）住探测器那一侧（`host::tmux::session_rows`，判据在 `host/tmux_tests.rs`）。
 #[test]
-fn a_tab_starved_line_is_dropped_instead_of_becoming_a_session() {
-    // 通道被改写：TAB 变 `_` ⇒ 整行只切出 1 段。
-    let dirty = "kr96_cc-deadval1\n";
-    assert!(parse_rows(dirty).is_empty(), "下溢的行被当成了一个会话名");
-    // 好行照常出。
-    assert_eq!(
-        parse_rows("a-cc\tsid-a\tsid-a \nb-cc\t\t \nc-cc\t\tsid-c  sid-d \n\n"),
-        vec![
-            row("a-cc", "sid-a"),
-            row("b-cc", ""),
-            row("c-cc", "sid-c"),
-            row("c-cc", "sid-d")
-        ]
-    );
-    // 一个会话里几个窗格各挂一个 sid：哪一个都认得出它在跑（`ccm --resume` 接回它，而不是另起第二份）。
-    let snap = SessionSnapshot::with_prober(|| Ok(parse_rows("w-cc\tsid-b\tsid-a sid-b \n")));
+fn a_session_carrying_several_sids_is_running_under_each() {
+    let snap =
+        SessionSnapshot::with_prober(|| Ok(rows_of("w-cc", pane_sids("sid-b", "sid-a sid-b "))));
     let taken = snap.taken_names().expect("问得到");
     assert_eq!(taken.as_slice(), ["w-cc".to_string()], "名字只占一次");
     assert_eq!(taken.running("sid-a"), Some("w-cc"));

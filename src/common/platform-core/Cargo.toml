@@ -3,7 +3,7 @@ name = "platform-core"
 version = "0.1.0"
 edition = "2021"
 workspace = "../../frontend/shell"
-description = "后端与壳都要、只该有一份的平台原语：目录的跨进程锁 · 只给本人的目录 · 自家状态文件的原子写 · /proc/<pid>/stat 一行怎么切 · Windows 进程表 · CREATE_NO_WINDOW。只回 io::Error 与结构化结局，那一句由各家照自己的文案取。"
+description = "后端与壳都要、只该有一份的平台原语：目录的跨进程锁 · 只给本人的目录 · 自家状态文件的原子写 · /proc/<pid>/stat 一行怎么切 · Windows 进程表 · CREATE_NO_WINDOW · 本机时区（偏移与 IANA 名）。只回 io::Error 与结构化结局，那一句由各家照自己的文案取。"
 
 [dependencies]
 # 互斥量名里路径的摘要（`fnv1a64`）：全仓那一份。仓内 crate，两份 lock 里本来就有。
@@ -18,6 +18,8 @@ libc = "0.2"
 [target.'cfg(windows)'.dependencies]
 # 交给 `ReplaceFileW` 的路径（长路径前缀）只从它来；仓内 crate、零依赖。
 win-path-core = { path = "../win-path-core" }
+# Windows 系统时区名 → IANA 名（`tz::iana_name` 那一臂）。MIT OR Apache-2.0；两份 lock 里本来就有。
+iana-time-zone = "0.1"
 
 [dev-dependencies]
 # 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。

@@ -32,12 +32,18 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
     ),
     // 期限口的读法（`within_of`）从 `stream/cli.rs` 挪进读入参那一处（`--resident-call` 也读它）：本判据自己算出来的。
     (
-        "control/cli_args.rs",
-        include_str!("../../src/backend/control/cli_args.rs"),
+        "wire/cli_args.rs",
+        include_str!("../../src/backend/wire/cli_args.rs"),
     ),
     (
         "agents/asks.rs",
         include_str!("../../src/backend/agents/asks.rs"),
+    ),
+    // `accounts/manage/model.rs`：起法 `Launch` 的后缀（`--ccm-tmux` · `--hosted` 一类，W55 并掉 `Form` 后挪进这里）是 `"--` 字面量；
+    //   本判据自己算出来的。登记，不改判据。
+    (
+        "accounts/manage/model.rs",
+        include_str!("../../src/backend/accounts/manage/model.rs"),
     ),
     // `control/launch.rs`：终端管理送字那一段里有 `"--"` 字面量（`send-keys -l -- <字>` · `set-buffer -- <字>`：
     // 显式结束旗标，免得以 `--` 开头的字被 tmux 当成选项）。登记，不改判据。

@@ -197,20 +197,39 @@ fn a_test_process_never_sees_the_outer_session() {
 #[test]
 fn a_given_home_keeps_inputs_but_not_paths_outside_it() {
     use std::ffi::OsStr;
-    let real = Path::new("/nowhere/real-home");
-    let given = Path::new("/nowhere/sandbox/home");
+    // 绝对路径照这台平台的写法：Windows 上 `/nowhere/…` 没有盘符不算绝对，前面补一个盘符（`C:/…` 在那里是绝对路径）。
+    let abs = |p: &str| {
+        if cfg!(windows) {
+            format!("C:{p}")
+        } else {
+            p.to_string()
+        }
+    };
+    let real_s = abs("/nowhere/real-home");
+    let given_s = abs("/nowhere/sandbox/home");
+    let (real, given) = (Path::new(&real_s), Path::new(&given_s));
     let strays = |k: &str, v: &str, home: Option<&Path>| {
         test_home::strays(k, OsStr::new(v), home, Some(real))
     };
-    let acct = "/nowhere/real-home/.cc-monitor/accounts/z";
+    let acct_s = abs("/nowhere/real-home/.cc-monitor/accounts/z");
+    let acct = acct_s.as_str();
     for home in [None, Some(real)] {
         assert!(strays("CLAUDE_CONFIG_DIR", acct, home));
         assert!(strays("CCM_HOST", "lne", home));
     }
     assert!(strays("CLAUDE_CONFIG_DIR", acct, Some(given)));
-    assert!(strays("CCM_DATA_DIR", "/nowhere/elsewhere", Some(given)));
-    assert!(strays("TMUX", "/tmp/tmux-1000/default,1,0", Some(given)));
-    let inside = "/nowhere/sandbox/home/data";
+    assert!(strays(
+        "CCM_DATA_DIR",
+        &abs("/nowhere/elsewhere"),
+        Some(given)
+    ));
+    assert!(strays(
+        "TMUX",
+        &abs("/tmp/tmux-1000/default,1,0"),
+        Some(given)
+    ));
+    let inside_s = abs("/nowhere/sandbox/home/data");
+    let inside = inside_s.as_str();
     assert!(!strays("CCM_DATA_DIR", inside, Some(given)));
     assert!(!strays("CCM_HOST", "lne", Some(given)));
     assert!(!strays("CCM_RELAY_PORT", "4242", Some(given)));

@@ -94,7 +94,7 @@ pub fn row_with(name: &str, f: impl FnOnce(&mut ScannedAccount)) -> AccountRow {
         auth_kind: acct_core::AUTH_KIND_SUBSCRIPTION.to_string(),
         auth_ready: true,
         selectable: true,
-        color: 0,
+        color: Some(0),
     };
     f(&mut a);
     a.selectable =

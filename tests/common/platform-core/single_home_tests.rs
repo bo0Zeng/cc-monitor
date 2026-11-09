@@ -3,7 +3,7 @@
 //! 每一格是「一样东西 · 它的指纹（剥过注释与测试段后数的字面子串）· 例外（另一件事、碰巧长得像）」。
 //! 指纹选的是**每一份实现都绕不开的那一笔**：互斥量名的前缀 · `flock` 那一下 ·建目录时置权限位的那个 trait ·
 //! 切 `/proc/<pid>/stat` 时找最后一个右括号 · ToolHelp 快照 · `CREATE_NO_WINDOW` 的位 · `ReplaceFileW` ·
-//! 原子写那一段「旁名 → 换名」的换名。
+//! 原子写那一段「旁名 → 换名」的换名 · 本机时区（`localtime_r` · `SystemTimeToTzSpecificLocalTime` · 系统时区名 · `/etc/localtime` 那条链）。
 //!
 //! 买不到：换个写法重写一遍（不经这些字面）这里看不见；只扫 `src/backend` · `src/frontend/shell/src` · `src/frontend/filewin/src` ·
 //! `src/common/*/src` · `src/comms`。
@@ -20,6 +20,14 @@ const HOMES: &[(&str, &str, &[&str])] = &[
     ("Windows 进程表", "CreateToolhelp32Snapshot", &[]),
     ("CREATE_NO_WINDOW", "0x0800_0000", &[]),
     ("原子写：Windows 保目标 ACL 的换法", "ReplaceFileW", &[]),
+    ("本机时区偏移：POSIX", "localtime_r(", &[]),
+    (
+        "本机时区偏移：Windows",
+        "SystemTimeToTzSpecificLocalTime",
+        &[],
+    ),
+    ("本机时区名：系统答的那一份", "get_timezone()", &[]),
+    ("本机时区名：/etc/localtime 那条链", "\"zoneinfo/\"", &[]),
 ];
 
 /// 自家状态的三个写口：各自只留「起旁名 · 交正文」，「建旁名 → 写满 → 落盘 → 换上去 → 失败删旁名」那一段改调本包。

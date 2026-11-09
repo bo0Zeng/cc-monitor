@@ -84,10 +84,20 @@ pub(crate) struct Turn<'a> {
     pub(crate) now: u64,
 }
 
-/// 读身份的缓存：`.claude.json` 可能很大，按那份文件的戳缓存（文件动了再读）。
-/// 这台此刻活着的会话（sid 集合）。判活只认一处：生产那一份是 [`crate::history::live_table::live_here`]（pidfile 里的会话 id ＋ 进程还是同一个）。
+/// 这台此刻活着的会话（sid 集合）。判活住 history，由宿主递进来（生产那一份见 `faces::rotation_face`）。
 pub(crate) type Live = Arc<dyn Fn() -> std::collections::BTreeSet<String> + Send + Sync>;
 
+/// 需手动的铃：会话外那几项可能变了（续令牌没成 ⇒「需重新登录」可能进了清单）。铃住 history，由宿主递进来。
+pub(crate) type Ring = Arc<dyn Fn() + Send + Sync>;
+
+/// 宿主递进来的 history 那两口（上游选择不认识 history）：这台活着的会话 · 需手动的铃。
+#[derive(Clone)]
+pub struct HistoryPorts {
+    pub live: Live,
+    pub ring: Ring,
+}
+
+/// 读身份的缓存：`.claude.json` 可能很大，按那份文件的戳缓存（文件动了再读）。
 type IdentityCache = Mutex<BTreeMap<PathBuf, (Option<(std::time::SystemTime, u64)>, String)>>;
 
 /// 换号要的几样：轮换的账本 · 新会话载入哪份问谁 · 额度账 · 家目录 · 账号库 · 令牌端点（缺省用那一家登记的）。
@@ -100,6 +110,8 @@ pub struct Hop {
     pub(crate) token: Option<TokenEndpoint>,
     /// 这台此刻活着的会话。
     pub live: Live,
+    /// 需手动的铃。
+    ring: Ring,
     identities: IdentityCache,
     /// 每个会话上一判的结论，缓存到下一个节点（[`super::turn`]）。
     pub(super) cache: Mutex<super::turn::Cache>,
@@ -114,7 +126,7 @@ impl Hop {
         quota: Arc<Ledger>,
         home: Option<PathBuf>,
         book: BookAt,
-        live: Live,
+        history: HistoryPorts,
         token: Option<TokenEndpoint>,
     ) -> Self {
         Self {
@@ -125,19 +137,45 @@ impl Hop {
             book,
             token,
             cache: Mutex::new(super::turn::Cache::new(quota.nodes())),
-            live,
+            live: history.live,
+            ring: history.ring,
             identities: Mutex::new(BTreeMap::new()),
         }
     }
 
+    /// ★ 生产那一份装配（唯一一处：中转那一路 · 帧面那一份都调它）：轮换账本与额度账住数据目录 `data`
+    /// （`rotation::path_under` · `ledger::path_under`；推不出 ⇒ `None`，两份都不落盘）·
+    /// 家目录 · 号表怎么读 · 新会话载入哪份问谁 · history 那两口都由宿主给；令牌端点用那一家登记的。
+    pub fn here(
+        data: Option<&Path>,
+        home: Option<PathBuf>,
+        book: BookAt,
+        adoptions: &AdoptionsAt,
+        history: HistoryPorts,
+    ) -> Self {
+        Self::new(
+            Arc::new(RotationStore::at(
+                data.map(crate::accounts::quota::rotation::path_under),
+            )),
+            adoptions,
+            Arc::new(Ledger::at(
+                data.map(crate::accounts::quota::ledger::path_under),
+            )),
+            home,
+            book,
+            history,
+            None,
+        )
+    }
+
     /// 这台的号表；没建账号库 / 读不懂 / 没有家目录 ⇒ `None`（只能用起会话那个号）。
-    pub(crate) fn library_here(&self) -> Option<AccountBook> {
+    pub(crate) fn book_here(&self) -> Option<AccountBook> {
         self.home.as_deref().and_then(|h| (self.book)(h))
     }
 
-    /// [`Self::library_here`]，没有就是空表（列事实、拼一个号的样子用；判换不换先看 `library_here`）。
+    /// [`Self::book_here`]，没有就是空表（列事实、拼一个号的样子用；判换不换先看 `book_here`）。
     pub fn book(&self) -> AccountBook {
-        self.library_here().unwrap_or_default()
+        self.book_here().unwrap_or_default()
     }
 
     /// 轮换里的号：号表里每个号的路由段，照表里的先后；路由段推不出来的那一行不算。
@@ -241,7 +279,7 @@ impl Hop {
                 self.quota
                     .notify(super::super::quota::nodes::Source::Login, None);
                 // 「需重新登录」那一项可能进了需手动清单。
-                crate::history::needs_changed::ring();
+                (self.ring)();
             }
             Unready::NeedsLogin
         })?;

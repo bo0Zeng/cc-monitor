@@ -29,15 +29,15 @@ fn listing_every_session_is_no_longer_this_modules_job() {
 ///
 /// # 为什么这一条只能是「扫源码」，以及它守不住什么
 ///
-/// 本模块的两处是 **argv 直传**（`Command::new("tmux")`），没有 builder 能把命令行取回来，
+/// 本模块起 tmux 的那一处（`display-message`；列窗格那一发已挪进宿主口）是 **argv 直传**（`Command::new("tmux")`），没有 builder 能把命令行取回来，
 /// 也没有办法在不污染整个测试进程 `PATH` 的前提下把它指向一个假 tmux
 /// （`Command::new` 走进程级 `PATH`，`std::env::set_var` 会波及并行跑的别的测试）。
 /// ⇒ **行为那一半的死值不在 cargo 里**：
-/// 同样这两条 argv 对真 tmux 3.4 私有 socket 打过，改前 `段数=1`、改后 `段数=3`。
+/// 同样的 argv 对真 tmux 3.4 私有 socket 打过，改前 `段数=1`、改后 `段数=3`。
 ///
 /// 🔴 **本条守的是「别漏、别搬错位置」，不是「它真的生效了」**（「盘上有 ≠ 被走到」）。
 /// 位置这一维值得单独钉：`-u` 放到子命令**后面**是 `rc=1 + unknown flag -u`
-/// （实测），而本模块两处都**刻意不看退出码** ⇒ 那个响错在这里会退化成
+/// （实测），而这一处**刻意不看退出码** ⇒ 那个响错在这里会退化成
 /// 「一个会话都没有」/「探不到」，**又变回一次静默失效**。
 ///
 /// # ★★ 09-09：这条判据原先把**排版**也一起断言了进去
@@ -60,7 +60,7 @@ fn listing_every_session_is_no_longer_this_modules_job() {
 ///
 /// 要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。
 #[test]
-fn both_tmux_call_sites_ask_for_a_utf8_client_before_the_subcommand() {
+fn the_gate_tmux_call_asks_for_a_utf8_client_before_the_subcommand() {
     // 本条数的是**源码文本**，所以要的是那个常量的**名字**，不是它的值。
     const FLAG_IDENT: &str = "UTF8_CLIENT_FLAG";
     const ARGS_OPEN: &str = ".args([";
@@ -77,7 +77,8 @@ fn both_tmux_call_sites_ask_for_a_utf8_client_before_the_subcommand() {
     );
     // 反向那一针用的人群：把排版这一维抹掉（`-u` 与子命令同不同行由 rustfmt 说了算）。
     let flat: String = prod.chars().filter(|c| !c.is_whitespace()).collect();
-    for verb in ["display-message", "list-panes"] {
+    // 列窗格那一发住宿主口（`host::tmux::panes_on`），它的 `-u` 由 `host/tmux_tests.rs` 钉。
+    for verb in ["display-message"] {
         let quoted = format!("\"{verb}\"");
         // ── 正向：`-u` 排在子命令**之前** ──────────────────────────────
         let at = guard_core::find_pinned(&prod, &quoted).unwrap_or_else(|e| {
@@ -116,7 +117,7 @@ fn both_tmux_call_sites_ask_for_a_utf8_client_before_the_subcommand() {
 /// `list-sessions` 那三列打出来是 `kr12_$0_cc-deadval1`、
 /// `display-message` 那三列打出来是 `$0_cc-deadval1_1` —— **TAB 全没了，段数 1**。
 ///
-/// ⚠ 过溢那一档**不在这里**：`PROBE_FMT`/`LIST_FMT` 的列里没有路径，
+/// ⚠ 过溢那一档**不在这里**：`PROBE_FMT` 的列里没有路径，
 /// 三列的取值域都排除真 TAB ⇒ 合法内容推不高段数（理由见 `PROBE_FMT_FIELDS` 头注）。
 /// 但判据仍写成「下溢」而不是「不等于」，与另外两处同一口径 —— **口径一致本身是要买的东西**。
 ///
@@ -238,48 +239,6 @@ fn a_probe_line_parses_into_a_handle_and_a_sid() {
         p.session_id.starts_with('$'),
         "tmux 的 session_id 恒是 `$N` —— 不是这个形状就说明格式串被动过了"
     );
-}
-
-/// 按 sid 找窗格：一个会话里几个窗格各挂一个 sid ⇒ 挂着它的那个，不看哪个是当前窗格；
-/// 同一个 sid 挂在几个窗格上（会话那一级的旧标签往下透）⇒ 当前窗格那个，否则第一个；谁都不挂 ⇒ 没有。
-/// 读不懂的行（段数不对 = 打印通道被改写、句柄不是 `%N`）丢掉，不猜。
-#[test]
-fn the_pane_that_carries_a_sid_is_found_whichever_pane_is_active() {
-    let panes = parse_panes(
-        "%1\t101\tsid-a\t00\n\
-         %2\t102\tsid-b\t10\n\
-         %3\t103\t\t11\n\
-         %4\t104\tsid-l\t01\n\
-         %5\t105\tsid-l\t11\n\
-         %6\t106\tsid-l\t00\n\
-         %7_107_sid-x_00\n\
-         $8\t108\tsid-y\t00\n\
-         %9\tpid\tsid-z\t00\n",
-    );
-    assert_eq!(
-        panes.iter().map(|p| p.pane.as_str()).collect::<Vec<_>>(),
-        ["%1", "%2", "%3", "%4", "%5", "%6"]
-    );
-    assert_eq!(panes[0].pid, 101);
-    assert!(panes[4].current && !panes[1].current && !panes[3].current);
-    let at = |sid: &str| carrier(&panes, sid).map(|p| p.pane.as_str());
-    assert_eq!(
-        at("sid-a"),
-        Some("%1"),
-        "活动的是别的窗格也照样找到挂着它的那个"
-    );
-    assert_eq!(at("sid-b"), Some("%2"));
-    assert_eq!(
-        at("sid-l"),
-        Some("%5"),
-        "几个窗格挂着同一个 sid ⇒ 当前窗格那个"
-    );
-    assert_eq!(
-        carrier(&panes[3..4], "sid-l").map(|p| p.pane.as_str()),
-        Some("%4")
-    );
-    assert_eq!(at("sid-x"), None);
-    assert_eq!(at(""), None, "没挂 sid 的窗格不是「挂着空 sid」");
 }
 
 /// ★ **Gate 3 拿不到窗口数时 fail closed**（解析失败 ⇒ 0 ⇒ 拒绝）。

@@ -2,7 +2,6 @@ package com.ccmonitor.mobile.ui.rotation
 
 import com.ccmonitor.mobile.core.claude.link.RotEdit
 import com.ccmonitor.mobile.core.claude.link.RotSegment
-import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.RotAccount
 import com.ccmonitor.mobile.core.wire.gen.RotCell
 import com.ccmonitor.mobile.core.wire.gen.RotFrom
@@ -50,20 +49,8 @@ internal fun paneCells(row: RotRow): List<Pair<RotCell, Boolean>> = row.cells.ma
 /** 分段那一窗画不画段：后面那窗同第一窗 ⇒ 只出［同 · 另设］那一对钮。 */
 internal fun segsShown(cell: RotCell): Boolean = !(cell.same != null && cell.from == RotFrom.SAME)
 
-/**
- * 编辑小窗底行：「改的是策略「X」 · 改一格就存成新版」接那台写的「N 个会话还在用旧版」（有 ⇒ 带［都载入新版］）或「没有会话在用」。
- */
-internal fun paneFoot(view: RotationViewReply): Pair<String, Boolean> {
-    val older = view.hints.firstOrNull { it.hint is RotHint.Older }
-    val tail =
-        when {
-            older != null -> listOf(older.text)
-            view.strategy?.inUse.isNullOrEmpty() -> listOf(copyText("rot.pane.noUse"))
-            else -> emptyList()
-        }
-    val parts = listOf(copyText("rot.pane.foot", "name" to view.strategy?.id.orEmpty())) + tail
-    return parts.joinToString(copyText("kit.text.sep")) to (older != null)
-}
+/** 编辑小窗底行：那台写好的整句 ＋ 有没有会话还在用旧版（有 ⇒ 带［都载入新版］）。 */
+internal fun paneFoot(view: RotationViewReply): Pair<String, Boolean> = view.foot.orEmpty() to view.hints.any { it.hint is RotHint.Older }
 
 /** 一段一行交上来的三格 ⇒ 改分段的意图（[at] ＝ 第几段；新加的那一行 ⇒ `null`）：钟点交原样的字（认不认得是那台的）；有一格空着或上限不是数 ⇒ `null`（不交）。 */
 internal fun segEdit(

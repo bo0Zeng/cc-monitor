@@ -83,7 +83,7 @@ type InlineDone = Arc<Mutex<Option<(u64, Result<String, super::source::Failed>)>
 /// 窗口只有远端一侧，见 `source.rs` 头注「只有远端一侧」那一节）。
 /// ⇒ 它**不是文件管理器的一部分**，是**往外传**那条路上的一格。
 ///
-/// 家目录取法同全仓（`creds_core::store::home_dir`，monitor 与后端同一家）。本包够不着壳的 `data_paths`，
+/// 家目录取法同全仓（`relay_route_core::home_dir`，monitor 与后端同一家）。本包够不着壳的 `data_paths`，
 /// 家目录只在这一处取，本包别处要家目录都经它（`clippy.toml` 取家目录那一组在这里就地放行）。
 ///
 /// ⚠ 它**只把 home 当一条缺省路径**，不去读 home 里的任何东西 —— 零次 `read_dir`。
@@ -95,7 +95,7 @@ type InlineDone = Arc<Mutex<Option<(u64, Result<String, super::source::Failed>)>
     reason = "本包取主目录只在这一处（用不了 `data_paths`），只当存盘框起始的目录"
 )]
 pub fn local_home() -> String {
-    creds_core::store::home_dir()
+    relay_route_core::home_dir()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|| ".".to_string())
 }

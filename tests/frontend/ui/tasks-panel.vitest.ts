@@ -3,15 +3,16 @@
 import { describe, it, expect } from "vitest";
 import { TasksPanel, type TaskEntry } from "../../../src/frontend/ui/tasks-panel";
 import type { TasksList } from "../../../src/frontend/ui/generated/TasksList";
+import type { TaskStatus } from "../../../src/frontend/ui/generated/TaskStatus";
 
-const task = (id: string, status: string, statusText: string): TaskEntry => ({ id, subject: `任务 ${id}`, status, statusText, blocks: [] });
+const task = (id: string, status: TaskStatus, statusText: string, activeForm?: string): TaskEntry => ({ id, subject: `任务 ${id}`, status, statusText, blocks: [], ...(activeForm ? { activeForm } : {}) });
 const list = (tasks: TaskEntry[], chip = "", hint = ""): TasksList => ({ tasks, chip, hint });
 
 describe("任务面板：只摆后端那几句", () => {
   it("★ 行上的读屏字 ＝ statusText", () => {
     const p = new TasksPanel();
     document.body.append(p.pageElement);
-    p.setSession("s", list([task("1", "completed", "甲状态"), task("2", "weird", "乙状态")], "甲枚"));
+    p.setSession("s", list([task("1", "completed", "甲状态"), task("2", "other", "乙状态")], "甲枚"));
     const labels = [...p.pageElement.querySelectorAll("li [role=img]")].map((e) => e.getAttribute("aria-label"));
     expect(labels).toEqual(["甲状态", "乙状态"]);
   });
@@ -22,5 +23,12 @@ describe("任务面板：只摆后端那几句", () => {
     expect([p.summaryElement.textContent, p.label, p.summaryElement.style.display]).toEqual(["甲枚 9/9", "甲枚 9/9", ""]);
     p.setSession("s", list([]));
     expect(p.summaryElement.style.display).toBe("none");
+  });
+
+  it("★ 在做的那一句：后端给了就画、没给就不画（不照状态自己判）", () => {
+    const p = new TasksPanel();
+    p.setSession("s", list([task("1", "completed", "x", "甲在做"), task("2", "pending", "y")], "c"));
+    const now = [...p.pageElement.querySelectorAll("li")].map((li) => li.querySelector(".tasks-now")?.textContent ?? null);
+    expect(now).toEqual(["甲在做", null]);
   });
 });

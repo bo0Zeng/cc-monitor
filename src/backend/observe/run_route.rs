@@ -9,31 +9,30 @@
 //! 4. 没放出去 / 半路收了的段按原因数（[`Lost`]），每种第 1、2、4、8… 次说一行；正常说完不算。
 
 use crate::agents::{StreamEv, StreamFace, StreamFamily};
+use crate::observe::bounded::{Bounded, Tally, DEAD_KEEP};
 use crate::observe::runs::RunBook;
 use crate::relay::{TapBody, TapEvent};
 use crate::wire::TapEnd;
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
 /// 同时在攒的段最多几个（超了挤掉最老的）。
 pub(crate) const ROUTE_RESPS_KEEP: usize = 32;
 /// 一段挂起时最多攒几件（超了这一段作废：它的记录到了自然定稿）。
 pub(crate) const ROUTE_PENDING_KEEP: usize = 512;
-/// 记住几个「不再收」的段（先进先出）。
-const DEAD_KEEP: usize = 256;
 
 type Item = (Option<StreamEv>, Option<TapEnd>);
 
-/// 归好位的一件（交活卡，[`crate::stream::live`]）：哪个会话 · 哪个运行（`None` ＝ 主运行）· 第几段 · 段里第几件（从 0 连续）·
+/// 归好位的一件（交活卡，[`crate::observe::live`]）：哪个会话 · 哪个运行（`None` ＝ 主运行）· 第几段 · 段里第几件（从 0 连续）·
 /// 归一事件与收尾恰有一个。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Routed {
-    pub(crate) sid: String,
-    pub(crate) run: Option<String>,
-    pub(crate) resp: u64,
-    pub(crate) n: u64,
-    pub(crate) ev: Option<StreamEv>,
-    pub(crate) end: Option<TapEnd>,
+pub struct Routed {
+    pub sid: String,
+    pub run: Option<String>,
+    pub resp: u64,
+    pub n: u64,
+    pub ev: Option<StreamEv>,
+    pub end: Option<TapEnd>,
 }
 
 /// 一段流为什么没放出去 / 半路收了（这条连接上数）。
@@ -71,40 +70,35 @@ struct Resp {
 }
 
 /// 整台一份的流归位（`live::Live` 持有）。
-pub(crate) struct RunRouter {
+pub struct RunRouter {
     book: Arc<RunBook>,
     families: Vec<StreamFamily>,
     resps: HashMap<u64, Resp>,
     order: VecDeque<u64>,
-    dead: HashSet<u64>,
-    dead_order: VecDeque<u64>,
+    dead: Bounded<u64>,
     /// 至今每种丢了几段。
-    lost: BTreeMap<Lost, u64>,
+    lost: Tally<Lost>,
     /// 至今几段没带分类头（这一家声明了分类头、这一发却没带）。
-    unclassed: u64,
+    unclassed: Tally<()>,
 }
 
 impl RunRouter {
-    pub(crate) fn new(book: Arc<RunBook>, families: Vec<StreamFamily>) -> Self {
+    pub fn new(book: Arc<RunBook>, families: Vec<StreamFamily>) -> Self {
         Self {
             book,
             families,
             resps: HashMap::new(),
             order: VecDeque::new(),
-            dead: HashSet::new(),
-            dead_order: VecDeque::new(),
-            lost: BTreeMap::new(),
-            unclassed: 0,
+            dead: Bounded::new(DEAD_KEEP),
+            lost: Tally::default(),
+            unclassed: Tally::default(),
         }
     }
 
     /// 这一段不收了，因为 `why`：埋掉、数一次、该说就说。
     fn lose(&mut self, resp: u64, why: Lost) {
         self.bury(resp);
-        let c = self.lost.entry(why).or_default();
-        *c += 1;
-        let n = *c;
-        if n.is_power_of_two() {
+        if let Some(n) = self.lost.bump(why) {
             tracing::warn!(
                 "[tap] 一段流没放出去 / 半路收了：{why:?}（这条连接上这一种第 {n} 次；累计 {:?}）",
                 self.lost
@@ -115,20 +109,13 @@ impl RunRouter {
     fn bury(&mut self, resp: u64) {
         self.resps.remove(&resp);
         self.order.retain(|r| *r != resp);
-        if self.dead.insert(resp) {
-            self.dead_order.push_back(resp);
-            while self.dead_order.len() > DEAD_KEEP {
-                if let Some(old) = self.dead_order.pop_front() {
-                    self.dead.remove(&old);
-                }
-            }
-        }
+        self.dead.add(resp);
     }
 
     /// 一件中转抄出来的事 ⇒ 此刻能放出去的帧（挂起的不出）。
-    pub(crate) fn on_tap(&mut self, ev: TapEvent) -> Vec<Routed> {
+    pub fn on_tap(&mut self, ev: TapEvent) -> Vec<Routed> {
         let resp = ev.resp;
-        if self.dead.contains(&resp) {
+        if self.dead.has(&resp) {
             return Vec::new();
         }
         if !self.resps.contains_key(&resp) {
@@ -170,9 +157,7 @@ impl RunRouter {
                     return Vec::new();
                 }
                 if class.is_empty() {
-                    self.unclassed += 1;
-                    let n = self.unclassed;
-                    if n.is_power_of_two() {
+                    if let Some(n) = self.unclassed.bump(()) {
                         tracing::warn!(
                             "[tap] 一段流没带分类头 `{}`（认不出是不是旁路），照对话放（这条连接上第 {n} 次）",
                             side.header
@@ -272,7 +257,7 @@ impl RunRouter {
     }
 
     /// 运行簿学到了新的对账键归属 ⇒ 挂起的那几段里对得上的放出来。
-    pub(crate) fn on_learned(&mut self) -> Vec<Routed> {
+    pub fn on_learned(&mut self) -> Vec<Routed> {
         let mut out = Vec::new();
         let mut done = Vec::new();
         for resp in self.order.clone() {
@@ -332,5 +317,5 @@ fn emit(r: &mut Resp, resp: u64, items: Vec<Item>) -> Vec<Routed> {
 }
 
 #[cfg(test)]
-#[path = "../../../tests/backend/stream/run_route_tests.rs"]
-pub(crate) mod tests; // `pub(crate)`：听 `tracing` 说了什么的 `tests::heard` 给 hub 的单测共用
+#[path = "../../../tests/backend/observe/run_route_tests.rs"]
+mod tests;

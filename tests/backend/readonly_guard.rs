@@ -830,9 +830,9 @@ mod g6_dependency_signoff {
     const DEV_DEPS: &str = "[dev-dependencies]";
     /// 只在远端 musl 版才链的那一段（今天只有分配器 `mimalloc`，判据 `allocator_guard`）。
     const MUSL_DEPS: &str = "[target.'cfg(target_env = \"musl\")'.dependencies]";
-    /// 只在 Windows 版才链的那一段（今天只有系统时区名 → IANA 名那一样 `iana-time-zone`，`platform/local_tz.rs`）。
-    const WIN_DEPS: &str = "[target.'cfg(windows)'.dependencies]";
-    const DEP_SECTIONS: &[&str] = &[DEPS, DEV_DEPS, MUSL_DEPS, WIN_DEPS];
+    // Windows 版那一段（`[target.'cfg(windows)'.dependencies]`）今天没有：系统时区名 → IANA 名那一样 `iana-time-zone`
+    // 随 `platform_core::tz` 进了仓内 crate（它那一行签字在 `platform-core` 里写）。
+    const DEP_SECTIONS: &[&str] = &[DEPS, DEV_DEPS, MUSL_DEPS];
     /// 「我们写下的依赖」的版本与缺省 feature 住的那一段（根清单）：各成员段里只写 `<名>.workspace = true`。
     const WS_DEPS: &str = "[workspace.dependencies]";
     /// 同一棵 workspace 里不归本判据管的成员（目录, 为什么）：它们的清单手机那一侧也单读，版本照旧自己写、与根清单那一段对齐。
@@ -1071,6 +1071,14 @@ mod g6_dependency_signoff {
              与文件窗口、手机嵌的核心共用同一份；纯计算 ＋ 问法由调用方给，仓内 crate，现打 0 处写面",
         ),
         (
+            "chunk-core",
+            DEPS,
+            UNMEASURED,
+            "分块传的循环（逐块送进那台的暂存区 ＋ 整份摘要 · 逐块读回）：与文件窗口、手机嵌的核心共用同一份；\
+             问那台 · 读本机 · 写本机都由调用方给（`Ask` · `Read` · `Sink`），它自己不碰盘。\
+             只由 `backend-control` 引（根清单里没有它那一行 ⇒ 本判据重扫够不着，先按用法签）",
+        ),
+        (
             "md-core",
             DEPS,
             MEASURED_CLEAN,
@@ -1289,7 +1297,8 @@ mod g6_dependency_signoff {
             "platform-core",
             DEPS,
             MEASURED_WRITES_ON_PURPOSE,
-            "平台原语（monitor 同一份）：目录锁 · 只给本人的目录 · 自家状态的原子写 · /proc stat · 进程表；仓内 crate。\
+            "平台原语（monitor 同一份）：目录锁 · 只给本人的目录 · 自家状态的原子写 · /proc stat · 进程表 · 本机时区；仓内 crate。\
+             本机时区那一样只读（`localtime_r` · 读 `/etc/localtime` 那条链与 `/etc/timezone` · Windows 经系统时间接口与 `iana-time-zone` 问），不写盘。\
              写面就是 `Own` 要的那两样本身（`dir::private_dir*` 建一层只给本人的目录 · `atomic::write_atomic` 旁名 → 落盘 → 换上去），\
              后端只经 `platform/fs/own.rs` 一处叫它们（锁那一样不写）。\
              边界判据：`the_platform_primitive_writes_are_reached_only_from_the_own_state_layer`",
@@ -1378,14 +1387,6 @@ mod g6_dependency_signoff {
             "远端 musl 版的全局分配器（`main.rs` 那一处 `#[global_allocator]`）：它只管进程自己的堆 —— \
              向内核要页、还页（mmap / madvise），不开文件、不起进程；缺省 feature 为空（不开 override / secure）。\
              写不写盘：分配器的接口里没有路径这一样东西（用法签字，没扫它带的 C 源）",
-        ),
-        (
-            "iana-time-zone",
-            WIN_DEPS,
-            UNMEASURED,
-            "Windows 版取这台的时区名（`platform/local_tz.rs::iana_name` 那一臂）：只调 `get_timezone()`，\
-             在 Windows 上问系统接口拿时区名、映射成 IANA 名，名字再过一遍内嵌时区库才用。\
-             写不写盘：那个口只读系统时区设置，不写盘、不起进程（用法签字，没扫它的源码）",
         ),
         (
             "walkdir",

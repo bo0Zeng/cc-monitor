@@ -438,7 +438,6 @@ impl crate::wire::typed::Handle for ForwardStart {
             &LEDGER,
             |req, listener, up_r, mut down_w| async move {
                 let stages = crate::dial::StageSink::new(false);
-                crate::dial::host();
                 ssh_dial::uses::run_forward(&req, listener, &stages, up_r, &mut down_w).await;
             },
         )

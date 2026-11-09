@@ -2,7 +2,8 @@
  * 单个 Tab 的消息流容器。负责按位置插卡 + 自动贴底滚动。
  *
  * 设计：
- *   .stream          — 外层，absolute inset:0，overflow-y:auto（滚动容器）
+ *   .stream          — 外层，absolute，下沿止于输入栏与答题块上沿（`--composer-room` ＋ `--answer-room`），overflow-y:auto（滚动容器）；
+ *                      两格一变盒子跟着变 ⇒ 下面那根「容器」轴响，粘底时照旧贴回底
  *     └ .stream-content — 内层包装，所有卡片挂在这里
  *
  * RecordTimeline 是唯一调用方：`insertNode` 按 seq 把卡插到正确位置。

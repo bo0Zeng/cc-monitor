@@ -5,7 +5,6 @@ declare const classes: {
   readonly composerCol: string;
   readonly composerNote: string;
   readonly composerNoteError: string;
-  readonly composerNoteOk: string;
   readonly composerRow: string;
 };
 export default classes;

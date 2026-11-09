@@ -61,8 +61,9 @@ pub use fs::{DiagLog, Own, OwnLock};
 #[cfg(target_os = "linux")]
 pub mod linux_tables;
 pub mod liveness;
-pub mod local_tz;
 pub mod lock;
+/// 这台的本地时区（那一刻的偏移 · IANA 名）：住 `platform_core::tz`（壳与文件窗口同一份），这一层只交出去。
+pub use platform_core::tz;
 pub mod paths;
 pub mod proc;
 /// 分配器起来那一下的设置（启动入口 `main.rs` 在另一个 crate 里调 ⇒ 从这里交出去）。
@@ -81,8 +82,6 @@ pub mod watch_file;
 pub mod win_proc;
 #[cfg(windows)]
 pub mod win_tables;
-#[cfg(windows)]
-pub mod win_tz;
 pub mod writers;
 
 /// ↗ 那一问的系统事实（已建立的 TCP 连接表 ＋ 进程表，一行 JSON，两个平台同形）。Windows 直调系统接口 · Linux 读 `/proc`；

@@ -94,9 +94,9 @@ beforeEach(() => {
 });
 
 describe("报到之前", () => {
-  it("★ 起好了 ⇒ 栏末一行「正在启动」（机器 ＋ 项目名、转圈），主区换成它那一页；问那台等报到（那一问原样 · 20 s）", () => {
+  it("★ 起好了 ⇒ 栏末一行「正在启动」（机器 ＋ 打的那个目录原样、转圈：后端回话之前界面不切路径），主区换成它那一页；问那台等报到（那一问原样 · 20 s）", () => {
     make().add(SPEC);
-    expect(rows().map((r) => r.textContent)).toEqual([`devboxbilling${copyText("launch.placeholder.title")}`]);
+    expect(rows().map((r) => r.textContent)).toEqual([`devbox/home/u/srv/billing${copyText("launch.placeholder.title")}`]);
     expect(rows()[0].dataset.state).toBe("starting");
     expect(rows()[0].classList.contains("active")).toBe(true);
     expect(panelHidden()).toBe(false);
@@ -151,7 +151,7 @@ describe("没见到", () => {
     make().add(SPEC);
     await missWith(SAID, "%7");
     expect(rows()[0].dataset.state).toBe("missed");
-    expect(rows()[0].textContent).toBe(`devboxbilling${copyText("launch.slot.missedTitle")}`);
+    expect(rows()[0].textContent).toBe(`devbox/home/u/srv/billing${copyText("launch.slot.missedTitle")}`);
     expect(panelText()).toBe(
       `${copyText("launch.slot.missedTitle")}devbox · /home/u/srv/billing` +
         TITLE +
@@ -182,7 +182,7 @@ describe("没见到", () => {
     make().add(SPEC);
     await answer({ kind: "unknown", said: "devbox 无应答", detail: "d" });
     expect(rows()[0].dataset.state).toBe("unknown");
-    expect(rows()[0].textContent).toBe(`devboxbilling${copyText("runs.state.unknown")}`);
+    expect(rows()[0].textContent).toBe(`devbox/home/u/srv/billing${copyText("runs.state.unknown")}`);
     expect(panelText()).toContain("devbox 无应答");
     expect(actsOnCard()).toEqual([`again:${copyText("launch.slot.again")}`, `close:${copyText("launch.slot.close")}`]);
   });
@@ -209,7 +209,7 @@ describe("报错卡上的几颗", () => {
     slots.add(SPEC);
     expect(slots.watched(), "没报到之前不知道那个终端").toBeNull();
     await missWith(SAID, "%7");
-    expect(slots.watched()).toEqual({ origin: "devbox", terminal: "%7", name: "billing-2", title: "billing" });
+    expect(slots.watched()).toEqual({ origin: "devbox", terminal: "%7", name: "billing-2", title: "/home/u/srv/billing" });
     click("screen");
     expect(viewed).toBe(1);
     click("attach");

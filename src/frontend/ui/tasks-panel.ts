@@ -2,7 +2,7 @@
  * Issue #11: Claude Code CLI 的 task 列表展示。
  *
  * 数据源：那台机器的后端 `tasks-list`（本机与远端同一条路，按 `origin` 问）。
- * Tab 创建时**经通道按类型问**（`callTyped(origin, "tasks-list")`），后端出成品 `{tasks}`（字段语义只住后端 `observe/tasks_query.rs::task_entry`）；
+ * Tab 创建时**经通道按类型问**（`callTyped(origin, "tasks-list")`），后端出成品 `{tasks}`（状态是闭集的码、状态字与「在做的那一句」后端写好；那一家的字段怎么读只住它的适配层）；
  * 帧里推来的那一份同 `tasks-list` 的回包，按同一个类型用。
  * **变更推送本机远端同形**：那台后端自己盯任务目录，变了发 `changed {tasks, key: sid}` 帧；
  * monitor 交进通道 `subscribe(origin, "changed/tasks")`（`changed-stream.ts`），界面收到那个 sid 就重问一次
@@ -26,6 +26,7 @@ import { emptyState } from "./kit/empty";
 import { place } from "./kit/morph";
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import type { Task } from "./generated/Task";
+import type { TaskStatus } from "./generated/TaskStatus";
 import type { TasksList } from "./generated/TasksList";
 import { isLocalOrigin, type Machine } from "./ipc/origin";
 import type { Tab } from "./tab-model";
@@ -42,19 +43,14 @@ export type TaskEntry = Task;
 export const NO_TASKS: TasksList = { tasks: [], chip: "", hint: "" };
 
 
-/** 一个任务行前面那颗图标（状态 ⇒ 图标名）。 */
-function statusIconName(status: string): IconName {
-  switch (status) {
-    case "completed":
-      return "check";
-    case "in_progress":
-      return "inProgress";
-    case "deleted":
-      return "failed";
-    default:
-      return "pending";
-  }
-}
+/** 一个任务行前面那颗图标（状态码 ⇒ 图标名；闭集，一码一颗）。 */
+const STATUS_ICON: Record<TaskStatus, IconName> = {
+  completed: "check",
+  in_progress: "inProgress",
+  deleted: "failed",
+  pending: "pending",
+  other: "pending",
+};
 
 /** chip 前面那颗图标。 */
 const CHIP_ICON: IconName = "tasks";
@@ -172,11 +168,11 @@ export class TasksPanel {
       row.dataset.taskId = t.id;
       this.rows.set(t.id, row);
     }
-    row.className = `tasks-item status-${cssStatus(t.status)}`;
+    row.className = `tasks-item status-${t.status}`;
     const sig = JSON.stringify([t.status, t.statusText, t.subject, t.activeForm ?? null, t.description ?? null]);
     if (row.dataset.sig === sig) return row;
     row.dataset.sig = sig;
-    const ic = icon(statusIconName(t.status), "compact");
+    const ic = icon(STATUS_ICON[t.status], "compact");
     ic.setAttribute("aria-hidden", "false");
     ic.setAttribute("role", "img");
     ic.setAttribute("aria-label", t.statusText);
@@ -184,7 +180,7 @@ export class TasksPanel {
     subject.className = "tasks-subject one-line";
     subject.textContent = t.subject;
     row.replaceChildren(ic, subject);
-    if (t.status === "in_progress" && t.activeForm) {
+    if (t.activeForm) {
       const now = document.createElement("span");
       now.className = "tasks-now one-line";
       now.textContent = t.activeForm;
@@ -227,9 +223,4 @@ export async function fetchSessionTasks(
     console.warn(`[tasks-panel] fetch ${sessionId}@${origin} failed:`, e);
     return NO_TASKS;
   }
-}
-
-function cssStatus(status: string): string {
-  if (!/^[a-z_]+$/.test(status)) return "unknown";
-  return status;
 }

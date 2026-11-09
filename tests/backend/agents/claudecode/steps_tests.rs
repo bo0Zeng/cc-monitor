@@ -4,7 +4,6 @@ use super::*;
 use crate::agents::claudecode::parse::parse_line;
 use crate::agents::claudecode::schema::JsonlRecord;
 use crate::agents::{LineDiff, LineDiffKind, LineDiffRow, ResultKind, StepBody};
-use crate::common::cells::Words;
 use serde_json::json;
 use serde_json::Value;
 
@@ -87,24 +86,17 @@ fn a_result_reads_counts_from_the_structured_result() {
         StepResult {
             ok: false,
             exit_code: Some(127),
-            error: Some(Words(copy_core::copy_text(
-                "stream.result.exitCode",
-                &[("n", "127")]
-            ))),
-            text: Words(copy_core::copy_text("runs.state.failed", &[])),
             preview: Some("Exit code 127".into()),
             chars: Some(32),
             ..Default::default()
         }
     );
     let err = json!({"type": "tool_result", "tool_use_id": "t", "content": "File does not exist.", "is_error": true});
+    let r = result_of(&err, None);
     assert_eq!(
-        (
-            result_of(&err, None).exit_code,
-            result_of(&err, None).error.map(|w| w.0)
-        ),
-        (None, Some(copy_core::copy_text("stream.result.error", &[]))),
-        "没写退出码就不编一个，尾巴只说出错"
+        (r.ok, r.exit_code),
+        (false, None),
+        "没写退出码就不编一个（尾巴那一句由核心写「出错」）"
     );
     let rej = json!({"type": "tool_result", "tool_use_id": "t", "is_error": true,
         "content": "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed."});
@@ -234,7 +226,8 @@ fn the_record_product_carries_steps_results_and_reasons() {
     let v = serde_json::to_value(&u).unwrap();
     assert_eq!(
         v["toolResults"]["tu1"],
-        json!({"ok": true, "lines": 7, "preview": "…", "chars": 1, "text": copy_core::copy_text("stream.step.lines", &[("n", "7")])})
+        json!({"ok": true, "lines": 7, "preview": "…", "chars": 1, "text": ""}),
+        "适配层只交数（读文件那一类的码不上线），那一句由核心写"
     );
     assert!(v.get("toolUseResult").is_none(), "原样那一格不上线");
     let e = parse_line(&crate::agents::Line::new(r#"{"type":"assistant","uuid":"u3","timestamp":"t","isApiErrorMessage":true,"apiErrorStatus":529,"error":"server_error","message":{"role":"assistant","content":[{"type":"text","text":"API Error: 529"}]}}"#, 0)).unwrap().unwrap();
@@ -310,82 +303,40 @@ fn an_edit_result_carries_its_hunks_and_file_within_a_bound() {
     assert!(r.patch.is_none());
 }
 
-/// ★★ 过程那一行右侧那一句由核心写（`StepResult::written`）：改动 `+a −r` · 读了几行只给读文件那一类 · 几个文件 ·
-/// 失败 · 未批准；都说不上 ⇒ 空串（配上用时之后由 `timed_by` 写）。
+/// ★★ 适配层只交数与码、不写字（右侧那一句在核心 `step_clock::said` 一处写）：读文件那一类立 `read`（照 `file.numLines`），
+/// 命令输出几行 · 搜索命中几行只记数；改动的行差带「+a −r」（`line_diff::stat`）；未批准 · 失败交码。
 #[test]
-fn the_right_hand_sentence_is_written_by_the_core() {
+fn the_adapter_hands_numbers_and_codes_not_words() {
     let ok = |c: &str| json!({"type": "tool_result", "tool_use_id": "t", "content": c});
-    let t = |r: &StepResult| r.text.0.clone();
-    let lines = |n: &str| copy_core::copy_text("stream.step.lines", &[("n", n)]);
-    // 读文件：读了几行。
     let r = result_of(&ok("…"), Some(&json!({"file": {"numLines": 12}})));
-    assert_eq!(t(&r), lines("12"));
-    // 命令输出几行、搜索命中几行：数照记（`lines`），右侧不说行数。
+    assert_eq!((r.lines, r.read, r.text.0.as_str()), (Some(12), true, ""));
     let r = result_of(&ok("…"), Some(&json!({"stdout": "1\n2", "stderr": ""})));
-    assert_eq!((r.lines, t(&r)), (Some(2), String::new()));
+    assert_eq!(
+        (r.lines, r.read),
+        (Some(2), false),
+        "命令输出几行：不是读文件那一类"
+    );
     let r = result_of(&ok("…"), Some(&json!({"numLines": 5, "mode": "content"})));
-    assert_eq!(t(&r), String::new(), "搜索命中几行不说成读了几行");
-    // 改动：`+a −r`（为零的那一半不写）。
+    assert!(!r.read, "搜索命中几行不算读文件那一类");
     let r = result_of(
         &ok("…"),
         Some(
             &json!({"filePath": "/w/a", "structuredPatch": [{"oldStart": 1, "oldLines": 1, "newStart": 1, "newLines": 2, "lines": ["-a", "+b", "+c"]}]}),
         ),
     );
-    assert_eq!(t(&r), "+2 −1");
     assert_eq!(
-        r.patch.as_ref().map(|d| d.stat.0.as_str()),
-        Some("+2 −1"),
-        "行差那一格与右侧那一句同一处写"
+        (r.added, r.removed, r.text.0.as_str()),
+        (Some(2), Some(1), "")
     );
-    // 几个文件。
+    assert_eq!(r.patch.as_ref().map(|d| d.stat.0.as_str()), Some("+2 −1"));
     let r = result_of(&ok("…"), Some(&json!({"numFiles": 4, "filenames": []})));
-    assert_eq!(
-        t(&r),
-        copy_core::copy_text("stream.step.files", &[("n", "4")])
-    );
-    // 未批准。
-    let rej = json!({"type": "tool_result", "tool_use_id": "t", "is_error": true, "content": "User rejected tool use"});
-    assert_eq!(
-        t(&result_of(&rej, None)),
-        copy_core::copy_text("stream.step.rejected", &[])
-    );
-}
-
-/// ★★ 配上了调用的时刻 ⇒ 失败 · 都说不上的那一步把用时写进 `text`（`timed_by`，唯一一处），再配一次不再改；
-/// 配不上 · 别的那几形（读了几行 · 未批准）⇒ 不动。
-#[test]
-fn a_matched_duration_is_written_into_the_sentence_once() {
-    use crate::agents::StepResultExt;
-    let ok = |c: &str| json!({"type": "tool_result", "tool_use_id": "t", "content": c});
-    let t = |r: &StepResult| r.text.0.clone();
-    let dur = copy_core::short_duration(90_000);
-    // 都说不上的那一步：只剩用时。
-    let r = result_of(&ok("…"), Some(&json!({"stdout": "1\n2", "stderr": ""})));
-    assert_eq!(t(&r.clone().timed_by(Some(90_000))), dur);
-    assert_eq!(
-        t(&r.clone().timed_by(Some(90_000)).timed_by(Some(5_000))),
-        dur,
-        "写过一次就不再改"
-    );
-    // 配不上：照没有用时的那一形，不猜。
-    assert_eq!(t(&r.clone().timed_by(None)), t(&r));
-    // 失败：「失败」那一句带上用时。
-    let err = json!({"type": "tool_result", "tool_use_id": "t", "content": "Exit code 1", "is_error": true});
-    let r = result_of(&err, None);
-    let failed_for = copy_core::copy_text("stream.step.failedFor", &[("dur", &dur)]);
-    assert_eq!(t(&r.clone().timed_by(Some(90_000))), failed_for);
-    assert_eq!(
-        t(&r.timed_by(Some(90_000)).timed_by(Some(5_000))),
-        failed_for,
-        "写过一次就不再改"
-    );
-    // 没有带耗时那一形（读了几行 · 未批准）：配上了也不动。
-    let r = result_of(&ok("…"), Some(&json!({"file": {"numLines": 12}})));
-    assert_eq!(t(&r.clone().timed_by(Some(90_000))), t(&r));
+    assert_eq!(r.files, Some(4));
     let rej = json!({"type": "tool_result", "tool_use_id": "t", "is_error": true, "content": "User rejected tool use"});
     let r = result_of(&rej, None);
-    assert_eq!(t(&r.clone().timed_by(Some(90_000))), t(&r));
+    assert_eq!((r.ok, r.rejected, r.error.is_none()), (false, true, true));
+    let err = json!({"type": "tool_result", "tool_use_id": "t", "content": "Exit code 1", "is_error": true});
+    let r = result_of(&err, None);
+    assert_eq!((r.ok, r.exit_code, r.text.0.as_str()), (false, Some(1), ""));
 }
 
 /// ★ 提问 / 计划那几张卡要画的东西是核心出的一格（`ask`），界面不再从入参里自己解析：
@@ -738,7 +689,11 @@ fn one_edit_has_one_line_diff_written_by_the_core() {
         (r.added.unwrap(), r.removed.unwrap())
     );
     assert_eq!((d.added, d.removed), (3, 2));
-    assert_eq!(d.stat, r.text);
+    assert_eq!(
+        d.stat.0,
+        crate::common::line_diff::stat(3, 2),
+        "「+N −M」与右侧那一句同一处写"
+    );
     let nos: Vec<(LineDiffKind, &str, Option<u32>, Option<u32>)> = d
         .rows
         .iter()

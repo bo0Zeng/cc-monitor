@@ -55,22 +55,21 @@ fn the_uninstall_reply_decodes_the_golden_and_writes_it_back() {
 fn install_and_uninstall_are_two_calls() {
     assert_eq!(DeployInstallReq::NAME, "deploy-install");
     assert_eq!(DeployUninstallReq::NAME, "deploy-uninstall");
-    let row = SlotRow {
-        os: "Linux".into(),
-        arch: "x86_64".into(),
-        id: "p9a-x".into(),
-        path: "/s/linux-x86_64".into(),
-    };
+    // 入参只有那台的名字：带着哪几个槽是本机后端自己的事实，调用方多交一格 ⇒ 解不开。
     let req = DeployInstallReq {
-        slots: vec![row],
         machine: "box".into(),
     };
     assert_eq!(
         serde_json::to_value(&req).unwrap(),
-        serde_json::json!({"slots": [{"os": "Linux", "arch": "x86_64", "id": "p9a-x", "path": "/s/linux-x86_64"}], "machine": "box"})
+        serde_json::json!({"machine": "box"})
     );
-    assert!(serde_json::from_value::<DeployUninstallReq>(
-        serde_json::json!({"slots": [], "machine": "box", "extra": 1})
-    )
-    .is_err());
+    for extra in [
+        serde_json::json!({"slots": [], "machine": "box"}),
+        serde_json::json!({"machine": "box", "extra": 1}),
+    ] {
+        assert!(
+            serde_json::from_value::<DeployUninstallReq>(extra.clone()).is_err(),
+            "{extra}"
+        );
+    }
 }

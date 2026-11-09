@@ -24,9 +24,7 @@ import { el } from "../kit/el";
 import { icon, type IconName } from "../kit/icon";
 import { isLocalOrigin, LOCAL, type Machine } from "../ipc/origin";
 import { syncAssets } from "../assets-sync-reads";
-import { openFileWindow } from "../file-window";
-import { revealInFolder } from "../reveal-in-folder";
-import { resolveRemoteConfigByOrigin } from "../remote-config";
+import { openOnMachine } from "../file-window";
 import { buildPasteBlock } from "../paste-block";
 import { describeState, fetchHooksReport, type HooksReport } from "../cc-bus-hooks-reads";
 import {
@@ -645,22 +643,17 @@ export class ExtSection {
       b.disabled = slot.busy === true || slot.card !== undefined || !m.reachable;
       row.appendChild(b);
     }
-    if (r.kind === "skill" && p.dir !== null && isLocalOrigin(originOf(m))) {
+    if (r.kind === "skill" && p.dir !== null) {
+      // 本机 ⇒ 系统文件管理器里显示它；远端 ⇒ 文件窗口开进那个目录（认不出那台那一句由壳说）。
       const dir = p.dir;
-      const b = button({ label: copyText("data.item.reveal"), onClick: () => void revealInFolder(dir) });
-      b.dataset.reveal = "";
+      const origin = originOf(m);
+      const local = isLocalOrigin(origin);
+      const b = button({
+        label: local ? copyText("data.item.reveal") : copyText("extPage.button.openFiles"),
+        onClick: () => void openOnMachine(origin, { dir }),
+      });
+      if (local) b.dataset.reveal = "";
       row.appendChild(b);
-    } else if (r.kind === "skill" && p.dir !== null && m.key !== null) {
-      const dir = p.dir;
-      const host = m.key;
-      row.appendChild(
-        button({ label: copyText("extPage.button.openFiles"), onClick: () => {
-          void resolveRemoteConfigByOrigin(host).then((cfg) => {
-            if (cfg) void openFileWindow(cfg.name, { dir });
-            else this.setSlot(machineKey(m), { error: { text: copyText("extPage.error.noHostConfig", { machine: machineName(m) }), stale: false } });
-          });
-        } }),
-      );
     }
     if (p.note) row.appendChild(el("span", "settings-hint", p.note));
     return row;

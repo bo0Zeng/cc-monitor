@@ -1,35 +1,38 @@
 /**
- * 「终端」那一颗只读后端脸上的 `can.terminal`（会话头 · 右键 · 命令面板 · 快捷键 · 报错卡同一道，`face-can.ts::terminalWay`）：
- * 那台把两种看法都写好了，界面只挑 —— 本机标签页挑 `near`、远端挑 `far`；还没收到脸 ⇒ 没有（灰着、不说为什么）。
- * 界面不再自己看壳拉不拉得了窗（`terminalFrontAvailable`）、不再按「本机走 ↗、别处接进去」自己拼两条路。
+ * 终端那三样各读脸上各自那一格（`face-can.ts`）：拉前 `can.front` · 在终端里打开 `can.attach` · 看它的终端 `can.view`。
+ * 不再并成一颗「终端」让界面挑；本机会话与远端会话同一道。看的这一端的壳拉不拉得了窗界面不判（点了壳照实回，那一句核心写）。
+ * 还没收到脸 ⇒ 灰着、不说为什么（空串）。
  *
  * 脸取金样（`session-faces.ts`），不手写一份。
  */
 import { describe, expect, it } from "vitest";
 
-import { terminalAlive, terminalWay, terminalWhy } from "../../../src/frontend/ui/face-can";
+import { attachBlocked, frontBlocked, terminalAlive, viewBlocked } from "../../../src/frontend/ui/face-can";
 import { goldenFace } from "../../test-support/session-faces";
 import { productionTsFiles } from "../../test-support/production-sources";
 import { stripComments } from "../../test-support/strip-comments";
 
-describe("「终端」只读脸上的 can.terminal", () => {
-  it("本机标签页挑 near、远端挑 far：照那台写好的那一格原样交出", () => {
-    for (const key of ["live-needs-you-tmux", "reconnectable", "live-working-plain", "ended"] as const) {
-      const f = goldenFace(key);
-      expect(terminalWay(f, false), `${key} 本机`).toEqual(f.can.terminal.near);
-      expect(terminalWay(f, true), `${key} 远端`).toEqual(f.can.terminal.far);
-    }
-    expect(terminalWay(null, false)).toBeNull();
+describe("终端三样各读各的那一格", () => {
+  it("tmux 里一条活会话：拉前 · 在终端里打开 · 看它的终端三样都点得了", () => {
+    const f = goldenFace("live-needs-you-tmux");
+    expect([frontBlocked(f), attachBlocked(f), viewBlocked(f)]).toEqual([null, null, null]);
   });
 
-  it("灰着那一句：做得了 ⇒ null；做不了 ⇒ 那台写好的那一句；还没收到脸 ⇒ 空串", () => {
+  it("不在任何宿主里：只拉得了前；在终端里打开 · 看它的终端灰着、写那台那一句", () => {
     const bare = goldenFace("live-working-plain");
-    expect(bare.can.terminal.far.go, "量具自检：不在宿主里的会话别处没有终端可接").toBe("no");
-    expect(terminalWhy(bare, true)).toBe(bare.can.terminal.far.go === "no" ? bare.can.terminal.far.why : "x");
-    expect(terminalWhy(goldenFace("live-needs-you-tmux"), true)).toBeNull();
+    expect(frontBlocked(bare)).toBeNull();
+    expect(bare.can.attach.can, "量具自检：不在宿主里的会话接不进去").toBe("no");
+    expect(attachBlocked(bare)).toBe(bare.can.attach.can === "no" ? bare.can.attach.why : "x");
+    expect(viewBlocked(bare)).toBe(bare.can.view.can === "no" ? bare.can.view.why : "x");
+  });
+
+  it("已结束 · 看不见：三样各写那一句；还没收到脸 ⇒ 空串", () => {
+    const ended = goldenFace("ended");
+    expect(frontBlocked(ended)).toBe(ended.can.front.can === "no" ? ended.can.front.why : "x");
+    expect(viewBlocked(ended), "已结束：看它的终端先恢复再开").toBeNull();
     const unseen = goldenFace("unseen");
-    expect(terminalWhy(unseen, false)).toBe(unseen.can.terminal.near.go === "no" ? unseen.can.terminal.near.why : "x");
-    expect(terminalWhy(null, false)).toBe("");
+    for (const why of [frontBlocked(unseen), attachBlocked(unseen), viewBlocked(unseen)]) expect(why).toBe(unseen.line);
+    expect([frontBlocked(null), attachBlocked(null), viewBlocked(null)]).toEqual(["", "", ""]);
   });
 
   it("进程或它住的终端还在（自动跟随 · 已隐藏那一行）只看那台写好的一生", () => {
@@ -39,14 +42,14 @@ describe("「终端」只读脸上的 can.terminal", () => {
     expect(terminalAlive(null)).toBe(false);
   });
 
-  it("界面不自判：不问壳拉不拉得了窗，can.terminal 只在 face-can.ts 里读", () => {
+  it("界面不自判：那三格只在 face-can.ts 里读，并成一颗的旧读法不在", () => {
     const hits: string[] = [];
     for (const { file, text } of productionTsFiles("src/frontend/ui")) {
       const code = stripComments(text, "ts");
-      for (const needle of ["terminalFrontAvailable", "can.term.", "can.attach", 'dot === "exited"', "isAttachable"]) {
+      for (const needle of ["terminalWay", "terminalWhy", "can.terminal", "TermWay", 'dot === "exited"']) {
         if (code.includes(needle)) hits.push(`${file}: ${needle}`);
       }
-      if (file !== "src/frontend/ui/face-can.ts" && code.includes("can.terminal")) hits.push(`${file}: can.terminal`);
+      if (file !== "src/frontend/ui/face-can.ts" && /can\.(front|attach|view)\b/.test(code)) hits.push(`${file}: can.front/attach/view`);
     }
     expect(hits).toEqual([]);
   });

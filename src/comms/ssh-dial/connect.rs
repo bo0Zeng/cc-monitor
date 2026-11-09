@@ -405,8 +405,13 @@ pub fn stage_of_russh(e: &russh::Error) -> &'static str {
     }
 }
 
-fn label(ep: &Endpoint) -> String {
-    format!("{}:{}", ep.host, ep.port)
+/// 一个拨号地址给人看的那一串：`host:port`，v6 写成 `[host]:port`（阶段行 · 报错 · 手机编辑页预览同读这一处）。
+pub fn label(ep: &Endpoint) -> String {
+    if ep.host.contains(':') {
+        format!("[{}]:{}", ep.host, ep.port)
+    } else {
+        format!("{}:{}", ep.host, ep.port)
+    }
 }
 
 // ═══ **压缩：开不开，判准只此一处** ═══════════════════════════════════════════
@@ -991,7 +996,10 @@ fn inner(said: String, e: Said) -> Said {
 /// 一台跳板在阶段行与报错里的名字（界面那边的配置标签；没有就 `host:port`）。
 pub(crate) fn hop_name(hop: &JumpHop) -> String {
     if hop.label.is_empty() {
-        format!("{}:{}", hop.host, hop.port)
+        label(&Endpoint {
+            host: hop.host.clone(),
+            port: hop.port,
+        })
     } else {
         hop.label.clone()
     }

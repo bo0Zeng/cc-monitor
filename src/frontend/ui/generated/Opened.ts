@@ -4,6 +4,7 @@ import type { ArriveAsk } from "./ArriveAsk";
 import type { Landed } from "./Landed";
 import type { LaunchedAccount } from "./LaunchedAccount";
 import type { Sent } from "./Sent";
+import type { Words } from "./Words";
 
 /**
  * `session-open` 的成品。
@@ -17,6 +18,10 @@ landed: Landed,
  * 落在哪个终端（tmux 会话名 · 托管终端的句柄；`window` ⇒ `null`）。
  */
 session: string | null, 
+/**
+ * 接上的是哪个终端（那台照宿主写好：「tmux 会话「名」」·「托管终端「名」」）；没落在终端里 ⇒ 缺。出口照摆、不按宿主挑字。
+ */
+at?: Words, 
 /**
  * 要开终端跑的那一行（那台渲好的）：`window` ⇒ 起会话那一行（不跑就没起）或进目录那一行；其余 ⇒ 接进那个 tmux 会话那一行。
  */

@@ -11,8 +11,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-const { opened } = vi.hoisted(() => ({ opened: [] as string[] }));
-vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: (u: string) => void opened.push(u) }));
 const { pushes } = vi.hoisted(() => ({ pushes: [] as { origin: string; onChanged: (o: string, topic: string, c: { cells: { key: string | null; rev: null; body: unknown }[]; all: boolean }) => void }[] }));
 vi.mock("../../../src/frontend/ui/events", () => ({
   subscribeTopics: (origins: string[], topics: string[], on: (o: string, changes: Map<string, unknown>) => void) => {
@@ -43,6 +41,8 @@ let answer: Record<string, (req: unknown) => unknown> = {};
 let clip = "";
 const sent = (): [string, string, unknown][] => invokeMock.mock.calls.filter(([c]) => c === "chan_call").map(([, a]) => [(a as ChanCallArgs).origin, (a as ChanCallArgs).op, chanArgsJson(a as ChanCallArgs)]);
 const ops = () => sent().map(([, op]) => op);
+/** 交给壳命令 `os_open` 打开过的网址（用系统浏览器开登录页那一下）。 */
+const opened = (): string[] => invokeMock.mock.calls.filter(([c]) => c === "os_open").map(([, a]) => (a as { what: { url: string } }).what.url);
 
 /** 开过的抽屉（每条判据之前关掉上一条留下的，不让它的撤单落进这一条）。 */
 const handles: { close(): Promise<boolean> }[] = [];
@@ -50,7 +50,6 @@ const handles: { close(): Promise<boolean> }[] = [];
 beforeEach(async () => {
   for (const h of handles.splice(0)) await h.close();
   document.body.innerHTML = "";
-  opened.length = 0;
   clip = "";
   answer = { "login-start": () => started(), "login-finish": () => ({ target: ACCOUNT }), "login-cancel": () => ({ was: true }) };
   invokeMock.mockReset();
@@ -119,10 +118,10 @@ describe("开抽屉 ＝ 起登录", () => {
     answer["login-start"] = () => started({ opened: true });
     await open();
     expect(act("login-open").textContent).toContain(copyText("login.act.reopen"));
-    expect(opened).toEqual([]);
+    expect(opened()).toEqual([]);
     act("login-open").click();
     await settle();
-    expect(opened).toEqual([started().url]);
+    expect(opened()).toEqual([started().url]);
   });
 
   it("［打开登录页］用系统浏览器开 url（不发命令）·［复制链接］进剪贴板", async () => {
@@ -131,7 +130,7 @@ describe("开抽屉 ＝ 起登录", () => {
     act("login-open").click();
     act("login-copy").click();
     await settle();
-    expect(opened).toEqual([started().url]);
+    expect(opened()).toEqual([started().url]);
     expect(clip).toBe(started().url);
     expect(ops().length, "这两样不发命令").toBe(before);
   });

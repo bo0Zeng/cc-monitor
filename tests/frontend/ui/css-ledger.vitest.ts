@@ -78,6 +78,7 @@ import {
 } from "../../evidence/class-ledger.ts";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { nonEmpty } from "../../test-support/non-empty.ts";
+import { productionCssFiles, productionKtFiles, productionTsFiles } from "../../test-support/production-sources.ts";
 
 /**
  * ★ **准拿来解释类名的模板前缀**（那份白名单的落点）。
@@ -104,6 +105,7 @@ import { nonEmpty } from "../../test-support/non-empty.ts";
  * 〔10 → 7〕`conf-` · `kind-` · `remote-gap-` 三族摘了：它们是**有限枚举状态拼成的类名族**，
  *   按约定改走 `data-conf` / `data-kind`（`css-conventions` ⑧「同一个状态名不许同现于两种载体」逮到的，
  *   `remote-gap-` 那一族同一个值还同时写进了 `data-kind`）⇒ 拼接点与 CSS 类都没了，前缀随之是死条目。
+ * 〔7 → 6〕`acct-c` 摘了：号色那一格改由 TS 设 `--acct`（取 tokens.css 那一格），CSS 只读它（⑦），不再按格号拼类名。
  *
  * ⚠ 本表有两条自检（见「登记表不许有死条目」那一格）：
  * ① 每条前缀今天仍要在代码里派生得出来（候选表里有）；
@@ -111,10 +113,6 @@ import { nonEmpty } from "../../test-support/non-empty.ts";
  *    留着只会在下一次悄悄掩掉一个真死规则。
  */
 const ALLOWED_PREFIXES: readonly { prefix: string; why: string }[] = [
-  {
-    prefix: "acct-c",
-    why: "`src/frontend/ui/account-color.ts` 照那台账号库给的号色那一格挂 8 个配色位之一（`acct-c0`…`acct-c7`）。格号是运行时读的，写不出字面量。",
-  },
   {
     prefix: "agent-",
     why: "`src/frontend/ui/agents-panel.ts::AgentsPanel.row` 把子运行的态直接拼成类名（running/done/failed/stopped/unknown）。态值来自后端的运行表。",
@@ -265,8 +263,7 @@ function ndsKey(file: string, text: string): string {
  * 少了一个 ⇒ 删那一行。
  */
 const PREFIX_MASKED: readonly string[] = [
-  "acct-c0", "acct-c1", "acct-c2", "acct-c3", "acct-c4", "acct-c5",
-  "acct-c6", "acct-c7", "agent-failed", "agent-running", "agent-stopped", "agent-timeline",
+  "agent-failed", "agent-running", "agent-stopped", "agent-timeline",
   "block-diff-add", "block-diff-del", "pf-dot-err", "pf-dot-ok", "status-completed", "status-deleted",
   "status-failed", "status-in_progress", "status-running", "status-stopped",
 ];
@@ -751,13 +748,13 @@ describe("S25 ⑤ 层真包进去（件 2）", () => {
 // 两件事绑在一起（「两件事都要做，不能只做一件」）：
 //   CSS 侧 —— 消息列的宿主 `.stream` 是名为 `stream` 的行内尺寸容器；
 //   JS 侧 —— `src/frontend/ui/height-estimate.ts` 的 `COL_W` 不再写死 780，而是在那个容器里实测。
-// 本格钉三条：
+// 本格钉这几条：
 //   ⑥a `.stream` 的规则里声明了 `container: stream / inline-size`（名字与轴都对）；
 //   ⑥b `COL_W` 真的是量出来的：它的初始化里建了 `.stream > .stream-content`、挂进 `#message-stream`、
 //       读了宽度 —— 且**没有**再出现 `const COL_W = <数字>` 那一形；
-//   ⑥c 量不到时的回退值 == `tokens.css` 的 `--stream-max-width`（原先只有一句注释「若列宽 token 改动需同步这里」）。
+//   量不到时的回退值直接读令牌 `--stream-max-width`（`height-estimate.ts` 的 `token`），不另写数、不用对拍。
 // 买到 / 买不到：
-// - ✅ 两侧的住址与回退值不漂。
+// - ✅ 两侧的住址不漂。
 // - ❌ 真引擎里量出来的数对不对、列被压窄时估高是否更准 —— 要真窗口（本机无图形会话）。
 // - ❌ 拉窗口之后 `COL_W` 不重算（只在模块求值时量一次），理由写在 `height-estimate.ts` 那条注释里。
 
@@ -802,7 +799,7 @@ describe("S25 ⑥ 容器查询取代写死宽度（件 5）", () => {
   });
 
   /**
-   * ⑥d **行为**：上面三条只证明「代码长成了量的样子」，这一条证明「量出来的数真的进了估高」。
+   * ⑥d **行为**：上面两条只证明「代码长成了量的样子」，这一条证明「量出来的数真的进了估高」。
    * jsdom 没有布局 ⇒ 把 `getBoundingClientRect` 换成「`.stream-content` 宽 400」，重新求值模块，
    * 再对一条正文记录做第一级粗估（不给列宽 ⇒ 用起始列宽）：必须按 400 折行，而不是 780。
    * 反空真：同一条料按 400 与按 780 算出来的高度必须不同，否则本条对宽度不敏感、判不出任何东西。
@@ -833,13 +830,44 @@ describe("S25 ⑥ 容器查询取代写死宽度（件 5）", () => {
       vi.resetModules();
     }
   });
+});
 
-  it("⑥c 量不到时的回退值 == tokens.css 的 --stream-max-width", () => {
-    const fb = /\}\)\((\d+)\);\s*$/.exec(colWInit(est))?.[1];
-    const tok = /--stream-max-width:\s*(\d+)px/.exec(readFileSync(resolve(REPO_ROOT, "src/shared/theme/tokens.css"), "utf8"))?.[1];
-    expect(fb, "切不出 COL_W 的回退值").toBeTruthy();
-    expect(tok, "tokens.css 里切不出 --stream-max-width").toBeTruthy();
-    expect(Number(fb), "COL_W 的回退值与 --stream-max-width 漂了").toBe(Number(tok));
-    denom("⑥", Number(fb), "px（COL_W 回退值 == --stream-max-width）");
+// ═══════════════════════════ ⑦ 主题令牌只住 tokens.css ═══════════════════════════
+//
+// 号色那几格（`--acct-c<n>` · `--acct-ink<n>`）只在 `src/shared/theme/tokens.css` 写一次：
+//   CSS 只读 `var(--acct)` / `var(--acct-ink)`（TS 照号色那一格现设），不按格号逐块抄；
+//   TS 只拼 `var(--acct-c${格})`，不写带数字的名字；手机的号色列表由 `genThemeTokens` 照 tokens.css 生成；
+//   后端的号色格数照 tokens.css 现数（`include_str!`），不写字面量；壳新开窗口的底色照 tokens.css 的 `--bg` 解。
+// 买不到：真浏览器里那一格画出来的颜色 —— 对比度另有 `design-tokens.vitest.ts` 现算。
+
+/** 带格号的号色名：CSS / TS 的 `acct-c3` · `acct-ink3`，Kotlin 的 `AcctC3` · `AcctInk3`。 */
+const ACCT_NUMBERED = /acct-(?:c|ink)\d|Acct(?:C|Ink)\d/g;
+
+describe("S25 ⑦ 主题令牌只住 tokens.css", () => {
+  it("⑦a CSS · TS · Kotlin 生产源码里没有带格号的号色名（tokens.css 与生成物除外）", () => {
+    const pop = [...productionCssFiles(), ...productionTsFiles(), ...productionKtFiles()].filter(
+      (f) => !f.file.endsWith("src/shared/theme/tokens.css"),
+    );
+    nonEmpty(pop);
+    const hits = pop.flatMap((f) => [...f.text.matchAll(ACCT_NUMBERED)].map((m) => `${f.file}: ${m[0]}`));
+    expect(hits, "号色那几格只在 tokens.css 写一次；别处读 `var(--acct)` 或照生成物取").toEqual([]);
+    // 正控：tokens.css 自己有那 8 对，量具认得出。
+    const tokens = readFileSync(resolve(REPO_ROOT, "src/shared/theme/tokens.css"), "utf8");
+    expect([...tokens.matchAll(ACCT_NUMBERED)].length, "tokens.css 里认不出号色那几格 —— 量具坏了").toBeGreaterThan(0);
+    denom("⑦", pop.length, "份 CSS · TS · Kotlin 生产源码里没有带格号的号色名");
+  });
+
+  it("⑦b 后端号色格数照 tokens.css 现数，不写字面量", () => {
+    const model = readFileSync(resolve(REPO_ROOT, "src/backend/accounts/manage/model.rs"), "utf8");
+    expect(/COLOR_SLOTS\s*:\s*u8\s*=\s*\d/.test(model), "`COLOR_SLOTS` 又写成了数字字面量").toBe(false);
+    expect(/include_str!\("[./]*shared\/theme\/tokens\.css"\)/.test(model), "`model.rs` 没有 include_str! tokens.css").toBe(true);
+    denom("⑦", 1, "处号色格数照 tokens.css 现数");
+  });
+
+  it("⑦c 壳的窗口底色照 tokens.css 的 --bg 解，不写色值字面量", () => {
+    const lib = readFileSync(resolve(REPO_ROOT, "src/frontend/shell/src/lib.rs"), "utf8");
+    expect([...lib.matchAll(/Color\(0x[^)]*\)/g)].map((m) => m[0]), "壳 lib.rs 写了色值字面量").toEqual([]);
+    expect(/include_str!\("[./]*shared\/theme\/tokens\.css"\)/.test(lib), "壳 lib.rs 没有 include_str! tokens.css").toBe(true);
+    denom("⑦", 1, "处壳窗口底色照 tokens.css 的 --bg 解");
   });
 });

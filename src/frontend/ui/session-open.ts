@@ -155,7 +155,8 @@ export async function landOpened(origin: Machine, req: SessionOpenReq, o: Opened
     const done = how.onArrived;
     awaitArrival(origin, o.arrival, o.cwd, copyText("sessionOpen.arrived.title"), done && ((sid) => done(sid, o)));
   } else if (open && (o.landed === "running" || o.landed === "idle")) {
-    const body = o.session === null ? "" : copyText("sessionOpen.attached.body", { machine: machineName(origin), name: o.session });
+    // 接上的那个终端（tmux 会话 · 托管终端）是那台照宿主写好的那一截，照摆。
+    const body = o.at === undefined ? "" : copyText("sessionOpen.attached.body", { machine: machineName(origin), at: o.at });
     toast(copyText("machineAliases.rc.tagBlock"), body, { level: "info" });
   }
   return true;

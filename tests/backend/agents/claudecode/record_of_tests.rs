@@ -211,8 +211,10 @@ fn every_kind_matches_the_golden_full_and_minimal() {
         .copied()
         .chain([("reply-coarse-diff", coarse.as_str())])
         .map(|(name, raw)| {
-            // 金样是线上那一形：出口那一下按看的那一台的时区写好钟面（这里按 UTC）。
+            // 金样是线上那一形：结果那一句由核心配表一处写（各条单过、配不上 ⇒ 不带用时），
+            // 出口那一下按看的那一台的时区写好钟面（这里按 UTC）。
             let mut r = one(raw).unwrap_or_else(|| panic!("{name} 没出记录"));
+            crate::observe::recognize::step_clock::StepClock::default().time(&mut r);
             r.stamp(&crate::common::time::Tz::default());
             format!(
                 "{}\n",

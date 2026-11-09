@@ -18,9 +18,10 @@
 //! - 不阻塞转发：锁里只做内存里的折与记账，不等 IO；不加定时器。
 
 use crate::agents::{BlockKind, StreamEv};
+use crate::observe::bounded::{Bounded, Tally, DEAD_KEEP};
+use crate::observe::run_route::{Routed, RunRouter};
 use crate::observe::runs::RunBook;
 use crate::relay::TapEvent;
-use crate::stream::run_route::{Routed, RunRouter};
 use crate::wire::{Frame, LiveBlock, LiveCard, LiveOp, LivePhase, LiveWhy, RunState, TapEnd};
 use md_core::Growing;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
@@ -36,40 +37,8 @@ pub(crate) const LIVE_TEXT_KEEP: usize = 32_768;
 pub(crate) const LIVE_TEXT_SLACK: usize = 8_192;
 /// 每个会话记住几个已定稿的对账键（先进先出）。
 pub(crate) const LIVE_TOMB_KEEP: usize = 64;
-/// 记住几个「不再收」的段（先进先出）。
-const DEAD_KEEP: usize = 256;
 /// 每条连接的发件箱能排多少**件**（条数不是体量，所以不是 `Cap`：一件 ≤ 一段上游文字或一张整卡）。
 pub(crate) const LIVE_OUTBOX_CAP: usize = 256;
-
-/// 先进先出、有上界的集合。
-struct Bounded<T: std::hash::Hash + Eq + Clone> {
-    order: VecDeque<T>,
-    set: HashSet<T>,
-    keep: usize,
-}
-
-impl<T: std::hash::Hash + Eq + Clone> Bounded<T> {
-    fn new(keep: usize) -> Self {
-        Self {
-            order: VecDeque::new(),
-            set: HashSet::new(),
-            keep,
-        }
-    }
-    fn has(&self, k: &T) -> bool {
-        self.set.contains(k)
-    }
-    fn add(&mut self, k: T) {
-        if self.set.insert(k.clone()) {
-            self.order.push_back(k);
-            while self.order.len() > self.keep {
-                if let Some(old) = self.order.pop_front() {
-                    self.set.remove(&old);
-                }
-            }
-        }
-    }
-}
 
 /// 卡里的一块：种类 · 工具名 · 文字块的正文（原文连同解析好的顶层块，[`Growing`]：每接一截只重解析最后一个顶层块）。
 struct Slot {
@@ -232,8 +201,8 @@ impl Conn {
     }
 }
 
-/// 活卡的整台状态（[`hub`] 那一份；判据各造各的）。
-pub(crate) struct Live {
+/// 活卡的整台状态（进程里那一份由主 crate 的 `stream::tap::hub` 持有；判据各造各的）。
+pub struct Live {
     router: RunRouter,
     book: Arc<RunBook>,
     cards: HashMap<u64, Card>,
@@ -243,11 +212,11 @@ pub(crate) struct Live {
     conns: Vec<Conn>,
     next_conn: u64,
     /// 每种撤卡至今几次（不算记录到了 · 会话走了 · 出名单这几种正常的）。
-    lost: BTreeMap<LiveWhy, u64>,
+    lost: Tally<LiveWhy>,
 }
 
 impl Live {
-    pub(crate) fn new(book: Arc<RunBook>, families: Vec<crate::agents::StreamFamily>) -> Self {
+    pub fn new(book: Arc<RunBook>, families: Vec<crate::agents::StreamFamily>) -> Self {
         Self {
             router: RunRouter::new(book.clone(), families),
             book,
@@ -257,18 +226,18 @@ impl Live {
             born: 0,
             conns: Vec::new(),
             next_conn: 1,
-            lost: BTreeMap::new(),
+            lost: Tally::default(),
         }
     }
 
     /// 换成这台 watcher 写的那一本运行簿（起 watcher 时一次；之前抄出来的段照旧算数）。
-    pub(crate) fn adopt(&mut self, book: Arc<RunBook>, families: Vec<crate::agents::StreamFamily>) {
+    pub fn adopt(&mut self, book: Arc<RunBook>, families: Vec<crate::agents::StreamFamily>) {
         self.router = RunRouter::new(book.clone(), families);
         self.book = book;
     }
 
     /// 接上一条连接（没报过名单 ＝ 全看）：此刻每张可见的卡先欠它一张整卡。回它的号与叫醒口。
-    pub(crate) fn join(&mut self) -> (u64, Arc<tokio::sync::Notify>) {
+    pub fn join(&mut self) -> (u64, Arc<tokio::sync::Notify>) {
         let id = self.next_conn;
         self.next_conn += 1;
         let wake = Arc::new(tokio::sync::Notify::new());
@@ -287,12 +256,12 @@ impl Live {
         (id, wake)
     }
 
-    pub(crate) fn leave(&mut self, id: u64) {
+    pub fn leave(&mut self, id: u64) {
         self.conns.retain(|c| c.id != id);
     }
 
     /// 这条连接此刻在看哪几个会话（整份换，`stream-watch` 那一份）。刚进的补整卡，出去的撤卡。
-    pub(crate) fn watch(&mut self, id: u64, sids: &[String]) {
+    pub fn watch(&mut self, id: u64, sids: &[String]) {
         let next: HashSet<String> = sids.iter().cloned().collect();
         let vis: Vec<(u64, String)> = self.visible().map(|(k, c)| (k, c.sid.clone())).collect();
         let Some(c) = self.conns.iter_mut().find(|c| c.id == id) else {
@@ -311,7 +280,7 @@ impl Live {
     }
 
     /// 写者取下一帧（没有 ⇒ `None`，等叫醒）。
-    pub(crate) fn pull(&mut self, id: u64) -> Option<Frame> {
+    pub fn pull(&mut self, id: u64) -> Option<Frame> {
         let cards = &self.cards;
         let c = self.conns.iter_mut().find(|c| c.id == id)?;
         while let Some(e) = c.q.pop_front() {
@@ -365,7 +334,7 @@ impl Live {
     }
 
     /// 中转抄出来的一件事：归位、折成卡上的变化、分给各条连接。
-    pub(crate) fn tap(&mut self, ev: TapEvent) {
+    pub fn tap(&mut self, ev: TapEvent) {
         let routed = self.router.on_tap(ev);
         for r in routed {
             self.apply(r);
@@ -373,7 +342,7 @@ impl Live {
     }
 
     /// 一条记录过了运行簿（主或子运行；`owner`：学到的归属，`None` ＝ 不知道）。
-    pub(crate) fn record(&mut self, sid: &str, rid: &str, owner: Option<Option<String>>) {
+    pub fn record(&mut self, sid: &str, rid: &str, owner: Option<Option<String>>) {
         self.tombs
             .entry(sid.to_string())
             .or_insert_with(|| Bounded::new(LIVE_TOMB_KEEP))
@@ -399,7 +368,7 @@ impl Live {
     }
 
     /// 会话走了：它的卡全撤。
-    pub(crate) fn gone(&mut self, sid: &str) {
+    pub fn gone(&mut self, sid: &str) {
         let hit: Vec<u64> = self
             .cards
             .iter()
@@ -610,10 +579,7 @@ impl Live {
     }
 
     fn note(&mut self, why: LiveWhy) {
-        let c = self.lost.entry(why).or_default();
-        *c += 1;
-        let n = *c;
-        if n.is_power_of_two() {
+        if let Some(n) = self.lost.bump(why) {
             tracing::warn!(
                 "[live] 一张活卡没上屏 / 半路撤了：{why:?}（这一种第 {n} 次；累计 {:?}）",
                 self.lost
@@ -655,5 +621,5 @@ impl Live {
 }
 
 #[cfg(test)]
-#[path = "../../../tests/backend/stream/live_tests.rs"]
+#[path = "../../../tests/backend/observe/live_tests.rs"]
 mod tests;

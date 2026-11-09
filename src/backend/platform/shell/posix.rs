@@ -66,17 +66,6 @@ pub fn if_command(name: &str, then: &str, otherwise: &str) -> String {
     )
 }
 
-/// 把**一行**（已成词）并进家目录底下 `dir/file`：目录 `700`、文件 `600`；已有整行相等的一行 ⇒ 打 `already`、不写
-/// （`grep -qxF`）；否则文件非空且末字节不是换行先补一个、再追加 ⇒ 打 `added`（两个记号已成词）。整串是**一次** exec
-/// （手机端契约：`printf '%s\n'` 不用 echo · `--` 纵深防御 · 只收单行由调用方先判）。
-pub fn add_line_once(dir: &str, file: &str, line: &str, added: &str, already: &str) -> String {
-    format!(
-        "k={line}; d=\"$HOME/{dir}\"; f=\"$d/{file}\"; mkdir -p \"$d\" && chmod 700 \"$d\" && touch \"$f\" && chmod 600 \"$f\" && \
-         {{ grep -qxF -- \"$k\" \"$f\" && printf '%s\\n' {already} || \
-         {{ {{ [ -s \"$f\" ] && [ -n \"$(tail -c1 \"$f\")\" ] && printf '\\n' >> \"$f\"; }}; printf '%s\\n' \"$k\" >> \"$f\" && printf '%s\\n' {added}; }}; }}"
-    )
-}
-
 /// 一个词：`<head>` ＋ 家目录底下 `rel` 那份文件的内容（**现读**，钥匙不进 argv）＋ `<tail>`（head / tail 已成词）。
 /// 不带双引号：这一段可能流进 Windows 那条开终端的路（PowerShell 5.1 向原生程序传参会改坏内嵌的 `"`）；`~/` 展开的结果不分词，
 /// 文件内容是十六进制钥匙，不含空白与通配符。

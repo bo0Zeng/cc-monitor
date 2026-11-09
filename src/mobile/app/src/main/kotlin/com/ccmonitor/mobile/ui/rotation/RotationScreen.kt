@@ -71,7 +71,6 @@ fun RotationScreen(
     val board = remember(hostId, sid, focus) { RotationBoard(feed, sid, machine, scope, feed.changed, focus) }
     val ui by board.state.collectAsState()
     val linkState by feed.state.collectAsState()
-    val table by feed.table.collectAsState()
     // 会话那一形顶栏第二行：那台写好的会话名（`rotation-view` 的 `title`）。
     val title = ui.view?.title.orEmpty()
     val snackbar = LocalAppSnackbar.current
@@ -107,7 +106,7 @@ fun RotationScreen(
                             ?.id
                             ?.let { onEditStrategy(it, account) } ?: Unit
                     }
-                    BoardBody(ui, board, sid, table.live.mapValues { it.value.name.orEmpty() }, onOpenFile, edit)
+                    BoardBody(ui, board, sid, onOpenFile, edit)
                 }
             }
         }
@@ -121,11 +120,10 @@ private fun BoardBody(
     ui: RotationUi,
     board: RotationBoard,
     sid: String?,
-    titles: Map<String, String>,
     onOpenFile: (String) -> Unit,
     onEditStrategy: (String?) -> Unit,
 ) {
-    FirstRow(ui, board, sid, titles, onEditStrategy)
+    FirstRow(ui, board, sid, onEditStrategy)
     val view = ui.view ?: return
     Hints(ui, view, board, onOpenFile)
     if (sid != null) {

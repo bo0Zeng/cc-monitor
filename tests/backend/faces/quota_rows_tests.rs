@@ -195,7 +195,7 @@ fn rows_text_and_warm_match_the_golden() {
     let cases = g["cases"].as_array_mut().unwrap();
     assert!(cases.len() >= 10, "金样读空了");
     for c in cases.iter_mut() {
-        let tz = crate::common::time::Tz::of(&c["tz"]);
+        let tz = crate::common::time::Tz::of(c["tz"].as_str());
         let v = through_the_exit(&c["reply"], &tz);
         let blocks: Vec<Value> = ["accounts", "unseen"]
             .iter()
@@ -204,7 +204,7 @@ fn rows_text_and_warm_match_the_golden() {
             .collect();
         let got = (
             Value::Array(blocks),
-            Value::String(crate::control::ship_text::ship_text(&v)),
+            Value::String(crate::wire::ship_text::ship_text(&v)),
         );
         c["blocks"] = got.0;
         c["text"] = got.1;
@@ -352,7 +352,7 @@ fn the_wire_golden_is_what_the_exit_writes() {
     let g: Value = serde_json::from_str(&raw).unwrap();
     let mut cases = Vec::new();
     for c in g["cases"].as_array().unwrap() {
-        let tz = crate::common::time::Tz::of(&c["tz"]);
+        let tz = crate::common::time::Tz::of(c["tz"].as_str());
         let v = through_the_exit(&c["reply"], &tz);
         cases.push(serde_json::json!({"name": c["name"], "tz": c["tz"], "reply": v}));
     }

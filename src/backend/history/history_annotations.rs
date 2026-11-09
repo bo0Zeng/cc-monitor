@@ -3,7 +3,7 @@
 //!
 //! # 文件在哪
 //!
-//! 住这台的家：`<家>/history-metadata.json`（家 = `creds_core::store::monitor_data_dir`，默认 `~/.cc-monitor`，隔离跑时跟 `CCM_DATA_DIR` 走）。
+//! 住这台的家：`<家>/history-metadata.json`（家 = `platform::paths::data_home`，默认 `~/.cc-monitor`，隔离跑时跟 `CCM_DATA_DIR` 走）。
 //! 推不出家 ⇒ 注解不可用：读回「不知道」（三个数不说成 0）、写拒 —— 不猜一个路径去写。
 //!
 //! # 形状
@@ -41,6 +41,8 @@ use serde_json::{json, Map, Value};
 /// 注解文件：状态（读不懂 ⇒ 读回「不知道」、拒写；超了读上限同此）。读成原文 JSON 再严格解，写回原文（认不出的键照留）。
 const FILE: crate::common::own_state::Doc<Value> =
     crate::common::own_state::Doc::of(&relay_route_core::HISTORY_ANNOTATIONS_FILE);
+/// 注解文件在数据目录根上的名字（照声明表那一行取）。
+const FILE_NAME: &str = relay_route_core::file_name_of(relay_route_core::HISTORY_ANNOTATIONS_REL);
 
 /// 单个那一格（[`Entry::hide`]；线上形住 `cmd-wire`，隐藏的判定在控制面也读它）。
 pub use cmd_wire::session::Hide;
@@ -174,9 +176,7 @@ pub fn path() -> Option<PathBuf> {
 
 /// [`path`] 有逻辑的那一半（环境取值器注入，判据不去动进程级环境变量）。
 pub(crate) fn path_from(get: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
-    use creds_core::store::{monitor_data_dir, DATA_DIR_ENV, HISTORY_METADATA_FILE};
-    let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into));
-    monitor_data_dir(get(DATA_DIR_ENV).as_deref(), home).map(|d| d.join(HISTORY_METADATA_FILE))
+    crate::platform::paths::data_home_from(get).map(|d| d.join(FILE_NAME))
 }
 
 /// 读原文 JSON（带上限、照声明核版本）。`Ok(None)` = 文件不在。
@@ -352,13 +352,7 @@ fn write_at(
     held: &OwnLock,
     raw: &Value,
 ) -> Result<(), crate::common::said::Said> {
-    FILE.write_named(
-        own,
-        dir,
-        creds_core::store::HISTORY_METADATA_FILE,
-        held,
-        raw,
-    )
+    FILE.write_named(own, dir, FILE_NAME, held, raw)
 }
 
 /// 那份文件所在的目录（数据目录）与它本身。推不出家 ⇒ `no_annotations`。
@@ -368,12 +362,12 @@ fn need_path(own: &Own) -> Result<(OwnPath, OwnPath), crate::common::said::Said>
             "no_annotations",
             copy_text(
                 "beHistoryAnnotations.needPath.unknown",
-                &[("env", creds_core::store::DATA_DIR_ENV)],
+                &[("env", relay_route_core::DATA_DIR_ENV)],
             ),
         )
     })?;
     let file = dir
-        .join(creds_core::store::HISTORY_METADATA_FILE)
+        .join(FILE_NAME)
         .map_err(|e| crate::wire::spec::fail("io_failed", e))?;
     Ok((dir, file))
 }

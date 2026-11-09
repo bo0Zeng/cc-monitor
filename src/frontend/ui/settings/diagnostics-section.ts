@@ -17,7 +17,6 @@ import { clearRestartNeeded, markRestartNeeded } from "./restart-notice";
 import { restartNowButton } from "./restart-now";
 import { copyText } from "../copy-table";
 import { writeClipboard } from "../clipboard";
-import { openPath } from "@tauri-apps/plugin-opener";
 import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
 import type { DiagnosticsReport } from "../generated/DiagnosticsReport";
 import { copyDetailButton, detailOf, failSaid, sayFailure, sayWithDetail } from "../kit/detail";
@@ -351,7 +350,7 @@ function fileText(label: string, detail: string, path = true): HTMLElement {
 
 async function openFile(path: string): Promise<void> {
   try {
-    await openPath(path);
+    await commands.os_open({ kind: "path", path });
   } catch (e) {
     failToast(copyText("diagnostics.openFile.failed"), e);
   }
@@ -359,7 +358,7 @@ async function openFile(path: string): Promise<void> {
 
 async function openDir(): Promise<void> {
   try {
-    await commands.open_log_dir();
+    await commands.os_open({ kind: "logDir" });
   } catch (e) {
     failToast(copyText("diagnostics.openDir.failed"), e);
   }

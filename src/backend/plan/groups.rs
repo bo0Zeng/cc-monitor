@@ -60,7 +60,7 @@ pub fn here_ties() -> Result<GroupsRead, String> {
     let (table, book) = crate::history::history_annotations::load_all().unwrap_or_else(|| {
         Err(copy_core::copy_text(
             "beHistoryAnnotations.needPath.unknown",
-            &[("env", creds_core::store::DATA_DIR_ENV)],
+            &[("env", relay_route_core::DATA_DIR_ENV)],
         ))
     })?;
     let half = here_of(&table, &book, |_| {

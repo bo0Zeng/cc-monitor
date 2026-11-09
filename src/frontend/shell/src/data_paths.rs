@@ -89,13 +89,13 @@ pub struct DataPathsResponse {
 pub const LOGS_DIR_LABEL: &str = "logs/";
 
 /// 本用户的家目录：壳里只在这里取（`clippy.toml` 取家目录那一组只在这一处放行），别处拿它给的路径。
-/// 取法同全仓（`creds_core::store::home_dir`，monitor 与后端同一家）；问不到 ⇒ `None`，不猜一个出来。
+/// 取法同全仓（`relay_route_core::home_dir`，monitor 与后端同一家）；问不到 ⇒ `None`，不猜一个出来。
 #[expect(
     clippy::disallowed_methods,
     reason = "壳取家目录的唯一住址：别处都调本函数"
 )]
 pub(crate) fn home() -> Option<PathBuf> {
-    creds_core::store::home_dir()
+    relay_route_core::home_dir()
 }
 
 /// 收集所有 monitor 写到磁盘的数据路径。需要 AppHandle 才能拿 LocalAppData 推断 WebView2 路径。
@@ -134,12 +134,6 @@ fn monitor_entries(monitor_data_dir: &Path) -> Vec<DataPathInfo> {
             // 开关是你选的（真相）；exe 路径每次启动自愈重写（派生）⇒ 整份按真相记（见 `DataClass`）。
             DataClass::Truth,
         ),
-        probe_file(
-            monitor_data_dir.join("history-metadata.json"),
-            "history-metadata.json",
-            &copy_text("rsDataPaths.monitor.historyMeta", &[]),
-            DataClass::Truth,
-        ),
         // 文件管理窗口的整窗缩放（你调过的大小 ⇒ 按真相记）。
         probe_file(
             monitor_data_dir.join(FILEWIN_VIEW_FILE),
@@ -167,20 +161,6 @@ fn monitor_entries(monitor_data_dir: &Path) -> Vec<DataPathInfo> {
         ),
         // 宿主交给本机后端的错误输出（`logging::backend_stderr_log_path` 所在的目录）：住数据目录、不在后端的家里 ⇒ 由这里列。
         backend_stderr_dir(monitor_data_dir),
-        // 填入的 API key（`creds_core::store::credentials_path`）：同样住数据目录。
-        {
-            let creds = creds_core::store::credentials_path(monitor_data_dir);
-            let name = creds
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            probe_file(
-                creds,
-                &name,
-                &copy_text("rsDataPaths.monitor.apikey", &[]),
-                DataClass::Truth,
-            )
-        },
     ]
 }
 

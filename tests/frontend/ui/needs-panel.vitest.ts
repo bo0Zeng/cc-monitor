@@ -68,7 +68,7 @@ function rig(tabs: Tab[], answers: Record<string, NeedsRead>, reply?: Parameters
     refreshTabBar: vi.fn(), closeEndedIn: vi.fn(),
     closeTab: vi.fn(), switchTo: vi.fn(), answerAt: vi.fn(), pick: vi.fn(),
     isSelected: vi.fn().mockReturnValue(false), beginDrag: vi.fn(), takeSuppressedClick: vi.fn().mockReturnValue(false), beginGroupDrag: vi.fn(),
-    takeSuppressedHeadClick: vi.fn().mockReturnValue(false), openMenu: vi.fn(), toggleSelect: vi.fn(), openMenuAt: vi.fn(), fixMachine: vi.fn(),
+    takeSuppressedHeadClick: vi.fn().mockReturnValue(false), openMenu: vi.fn(), toggleSelect: vi.fn(), openMenuAt: vi.fn(), front: vi.fn(), fixMachine: vi.fn(),
   } satisfies TabBarViewHost;
   const el = document.createElement("div");
   document.body.appendChild(el);

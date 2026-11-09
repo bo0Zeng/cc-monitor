@@ -27,17 +27,28 @@ fn the_envelope_deadline_is_read_leniently_and_never_rejects_the_request() {
     }
 }
 
-/// 上限表里每一条都是登记了的阻塞档命令（名字写错 ⇒ 那条命令静默地不装总期限）。
+/// 登记行上写了总期限上限（`.capped(..)`）的那几条命令。
+fn capped() -> Vec<&'static str> {
+    REGISTRY
+        .iter()
+        .filter(|s| s.cap.is_some())
+        .map(|s| s.name)
+        .collect()
+}
+
+/// 装了上限的每一条都在阻塞档（异步档那一路不装：分派那一层装不到它的线程上）。
 #[test]
 fn every_capped_command_is_a_registered_blocking_command() {
-    for (name, _) in caps::CAPS {
-        let spec = REGISTRY
-            .iter()
-            .find(|s| s.name == *name)
-            .unwrap_or_else(|| panic!("上限表里的 {name} 不是登记了的命令"));
+    assert!(
+        capped().len() >= 10,
+        "装了上限的只有 {} 条 —— 本条在空转",
+        capped().len()
+    );
+    for spec in REGISTRY.iter().filter(|s| s.cap.is_some()) {
         assert!(
             spec.run.blocking(),
-            "{name} 不在阻塞档：分派那一层装不到它的线程上"
+            "{} 不在阻塞档：分派那一层装不到它的线程上",
+            spec.name
         );
     }
 }
@@ -58,7 +69,7 @@ fn every_capped_command_answers_its_timeout_with_the_one_registered_code() {
         "plan-read",
     ];
     let mut missing = Vec::new();
-    for (name, _) in caps::CAPS {
+    for name in &capped() {
         if IN_PRODUCT.contains(name) {
             continue;
         }
@@ -79,8 +90,8 @@ fn every_capped_command_answers_its_timeout_with_the_one_registered_code() {
     );
     for name in IN_PRODUCT {
         assert!(
-            caps::CAPS.iter().any(|(n, _)| n == name),
-            "例外表里的 {name} 不在上限表里了，删掉这一项"
+            capped().contains(name),
+            "例外表里的 {name} 登记行上没写上限了，删掉这一项"
         );
     }
 }

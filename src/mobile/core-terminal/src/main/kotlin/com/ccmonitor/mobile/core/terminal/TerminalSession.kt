@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
+import org.connectbot.terminal.TerminalDimensions
 import org.connectbot.terminal.TerminalEmulator
 import org.connectbot.terminal.TerminalEmulatorFactory
 import java.io.Closeable
@@ -99,6 +100,7 @@ fun applyKeyModifiers(
  * - reader 线程：阻塞 `input.read` → `emulator.writeInput`。独立线程、不在回调内，可安全入 native。
  * - onKeyboardInput 回调：只把字节投到单线程 `writeExecutor`，绝不在回调内写流或再入 native。
  * - onResize 回调：投到 writeExecutor → `onResizeRemote`（`changeWindowDimensions` 是网络写，可能阻塞）。
+ * - onClipboardCopy 回调：termlib 已投到主线程，原样交 `onClipboardCopy`。
  */
 class TerminalSession(
     private val input: InputStream,
@@ -111,6 +113,8 @@ class TerminalSession(
     // 由这个会话持有，[close] 时后台关闭。只关 input 不够：输入流 close 只是本地 EOF，
     // 不关通道、不通知远端，会留下孤儿远端 shell 与僵尸 tmux attach client。
     private val remoteChannel: Closeable? = null,
+    // 里面程序经 OSC 52 写剪贴板：termlib 解好的文本交这里，由 app 那一侧写进系统剪贴板。
+    private val onClipboardCopy: (String) -> Unit,
 ) : Closeable {
     @Volatile private var closed = false
 
@@ -133,6 +137,14 @@ class TerminalSession(
         runCatching { writeExecutor.execute { runCatching(block) } }
     }
 
+    private val hooks =
+        emulatorHooks(
+            modifiers = modifiers,
+            send = ::send,
+            resizeRemote = { c, r -> submit { onResizeRemote(c, r) } },
+            copyToClipboard = onClipboardCopy,
+        )
+
     val emulator: TerminalEmulator =
         TerminalEmulatorFactory
             .create(
@@ -140,16 +152,9 @@ class TerminalSession(
                 initialCols = cols,
                 defaultForeground = palette.foreground,
                 defaultBackground = palette.background,
-                onKeyboardInput = { raw ->
-                    val bytes = applyKeyModifiers(raw, modifiers.take())
-                    submit {
-                        output.write(bytes)
-                        output.flush()
-                    }
-                },
-                onResize = { dims ->
-                    submit { onResizeRemote(dims.columns, dims.rows) }
-                },
+                onKeyboardInput = hooks.onKeyboardInput,
+                onResize = hooks.onResize,
+                onClipboardCopy = hooks.onClipboardCopy,
             ).apply {
                 applyColorScheme(
                     ansiColors = palette.toAnsiIntArray(),
@@ -200,6 +205,32 @@ class TerminalSession(
         // TerminalEmulator 无公开 close()（native 资源由 termlib impl 管理）；停流/线程即可。
     }
 }
+
+/** 建 emulator 时交给 termlib 的三条回调（见 [emulatorHooks]）。 */
+internal class EmulatorHooks(
+    val onKeyboardInput: (ByteArray) -> Unit,
+    val onResize: (TerminalDimensions) -> Unit,
+    val onClipboardCopy: (String) -> Unit,
+)
+
+/**
+ * 交给 termlib 的回调，抽成顶层函数以便 JVM 直测（[TerminalSession] 本体纯 JVM 不可构造）。
+ * - 键盘：带上这一下的修饰，经 [send] 异步写远端。
+ * - 改尺寸：交 [resizeRemote]（调用方已投到写线程）。
+ * - OSC 52 写剪贴板：termlib 解好的文本原样交 [copyToClipboard]，不往远端回字节。
+ *   读剪贴板的询问（`OSC 52 ; c ; ?`）termlib 的 OscParser 自己丢掉、不交这里，也不回（同桌面：不答）。
+ */
+internal fun emulatorHooks(
+    modifiers: ModifierLatch,
+    send: (ByteArray) -> Unit,
+    resizeRemote: (cols: Int, rows: Int) -> Unit,
+    copyToClipboard: (String) -> Unit,
+): EmulatorHooks =
+    EmulatorHooks(
+        onKeyboardInput = { raw -> send(applyKeyModifiers(raw, modifiers.take())) },
+        onResize = { dims -> resizeRemote(dims.columns, dims.rows) },
+        onClipboardCopy = copyToClipboard,
+    )
 
 /**
  * 在后台守护线程关一个远端通道（fire-and-forget，异常吞掉，close 尽力而为）。

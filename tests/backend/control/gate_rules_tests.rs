@@ -131,6 +131,11 @@ fn an_existing_session_name_is_refused_only_for_what_quote_and_exact_match_canno
         existing_tmux_name_issue("a\u{200b}b"),
         Some(TmuxNameIssue::Deceptive('\u{200b}'))
     );
+    // `:` 是 tmux 目标语法的分隔符，真会话名里不会有（`ccm --attach` · 送键那一路同拒）。
+    assert_eq!(
+        existing_tmux_name_issue("a:b"),
+        Some(TmuxNameIssue::TargetSyntax(':'))
+    );
 }
 
 /// 「哪个前端的会话」那一维：没声明 / 用户终端起的（`ccm`）不拦；声明了的只认同名的请求方。

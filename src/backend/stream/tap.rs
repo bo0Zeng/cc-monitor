@@ -1,4 +1,4 @@
-//! **tee 的消费侧（后端这一半）**：常驻后端进程内那一份中转抄出来的 SSE 事件交给整台一份的活卡（[`super::live`]），
+//! **tee 的消费侧（后端这一半）**：常驻后端进程内那一份中转抄出来的 SSE 事件交给整台一份的活卡（[`crate::observe::live`]），
 //! 活卡按每条流连接的名单把 `live` 帧排进它的发件箱；这条连接的写者最低优先取。
 //!
 //! ```text
@@ -8,10 +8,10 @@
 //! - **一个进程一个 hub**（[`hub`]）。没人连着时照收：卡照样长，后来接上的连接先拿到每张卡的整张。
 //! - **不许阻塞转发**：`offer` 只在锁里做内存里的折与记账，不等 IO、不等任何连接。
 //! - **不许挤掉内容帧**：这一路不进出方向那条大通道；`writer_task` 只在出方向与应答都空时才取它。
-//! - 上界：每条连接的发件箱 ≤ `live::LIVE_OUTBOX_CAP` 件，满了合成整卡（见 `live.rs` 头注）。
+//! - 上界：每条连接的发件箱 ≤ `live::LIVE_OUTBOX_CAP` 件，满了合成整卡（见 `observe/live.rs` 头注）。
 
+use crate::observe::live::Live;
 use crate::relay::{TapEvent, TapPort};
-use crate::stream::live::Live;
 use crate::wire::FrameMake as _;
 use crate::wire::{Changed, Frame, Topic};
 use cmd_wire::frame::PlanNeeds;
@@ -46,21 +46,13 @@ impl TapHub {
 
 impl TapPort for TapHub {
     /// 0 号那一件带来的请求头先记进会话的请求标记（会话事实定上下文上限时读）；
-    /// 每发用量的累计记三样：0 号那一件 ＝ 这一发开了头 · 说出了用量的那几件 · 收尾那一件 ＝ 这一发说完了
-    /// （额度账量「1% ≈ 多少」、判的时候量本会话的用速与在途都读它）；再交给活卡（锁里只做内存里的事）。
+    /// 整件交给每发用量那一本（[`crate::accounts::quota::spend::Spend::tap`]）；再交给活卡（锁里只做内存里的事）。
     /// 恒收：号已由 tee 占掉，卡上的缺口由活卡判。
     fn offer(&self, ev: TapEvent) -> bool {
-        let spend = crate::accounts::quota::spend::book();
-        let now = crate::common::time::now_secs();
         if ev.n == 0 {
             crate::observe::relay_marks::note(&ev.stream, &ev.heads);
-            spend.began(&ev.stream, ev.resp, now);
         }
-        match &ev.body {
-            crate::relay::TapBody::Data(d) => spend.heard(&ev.stream, d, now),
-            crate::relay::TapBody::End { .. } => spend.ended(&ev.stream, ev.resp, now),
-            crate::relay::TapBody::Clipped { .. } => {}
-        }
+        crate::accounts::quota::spend::book().tap(&ev, crate::common::time::now_secs());
         self.live().tap(ev);
         true
     }
@@ -114,10 +106,9 @@ pub struct TapRx {
     plan: Option<tokio::sync::broadcast::Receiver<crate::plan::watch::Change>>,
     /// 这一端的机器表变了的铃（推一帧 `changed {machines}`）；`None` ＝ 不订。
     machines: Option<tokio::sync::broadcast::Receiver<()>>,
-    /// 这一端连的某台远端的状态成品变了的通道（推一帧 `changed {machine, key: 那台, body: 成品}`）；`None` ＝ 不订。
-    machine: Option<tokio::sync::broadcast::Receiver<(String, cmd_wire::machine::MachineState)>>,
-    /// 这条连接上回推过的各台合一次写好的那几句（某台的成品一变就现算一次，与它不同才推 `changed {empty}`）。
-    fleet_was: Option<cmd_wire::machine::FleetLines>,
+    /// 这一端连的某台远端的状态成品变了的通道（推一帧 `changed {machine, key: 那台, body: 成品}`；
+    /// 带着变了的各台那几句 ⇒ 再推一帧 `changed {empty}`）；`None` ＝ 不订。
+    machine: Option<tokio::sync::broadcast::Receiver<crate::control::machine_state::Moved>>,
     /// 正被浏览的某个目录有了动静的通道（推一帧 `changed {files_dir, key: 那个目录}`）；`None` ＝ 不订。
     dirs: Option<tokio::sync::broadcast::Receiver<String>>,
     /// 这台会话清单的节点（[`crate::history::list_node`]，只留最新）：响了推一帧 `changed {history_list}`；`None` ＝ 不订。
@@ -208,20 +199,20 @@ impl TapSource for TapRx {
                     None => self.machines = None,
                 },
                 moved = item_moved(&mut self.machine) => match moved {
-                    Some(Some((name, p))) => {
+                    Some(Some(m)) => {
                         self.out.push_back(Frame::changed(Changed::Machine {
-                            key: name,
-                            body: Some(p),
+                            key: m.machine,
+                            body: Some(m.state),
                         }));
-                        // 哪一台一变那几句就可能变（报完了 · 断了 · 又在连 · 要更新）：现算一次，变了才推。
-                        let now = crate::control::machine_state::fleet();
-                        if self.fleet_was.as_ref() != Some(&now) {
-                            self.fleet_was = Some(now.clone());
-                            self.out.push_back(Frame::changed(Changed::Empty { body: Some(now) }));
+                        // 各台合一次写好的那几句随这一下变了（机器状态那一侧判过一次）⇒ 跟着推。
+                        if let Some(fleet) = m.fleet {
+                            self.out.push_back(Frame::changed(Changed::Empty { body: Some(fleet) }));
                         }
                     }
-                    // 落后丢了几件：可丢的通道，下一次变化或重问就补上。
-                    Some(None) => {}
+                    // 落后丢了几件：那台的成品下一次变化或重问就补上；各台那几句只在变的那一推里带，丢了就等不到下一次 ⇒ 照此刻的补一帧。
+                    Some(None) => self.out.push_back(Frame::changed(Changed::Empty {
+                        body: Some(crate::control::machine_state::fleet()),
+                    })),
                     None => self.machine = None,
                 },
                 moved = item_moved(&mut self.dirs) => match moved {
@@ -294,34 +285,19 @@ async fn bell_moved(r: &mut Option<tokio::sync::broadcast::Receiver<()>>) -> Opt
     }
 }
 
-/// 一件节点 ⇒ 该推的那几帧（不带体的那一臂；现算得出体的由 [`TapRx::changed`] 换上）；落后丢了几件 ⇒ 不知道哪个会话，推不带会话的两帧（客户端整份重问）；
-/// 通道没了 ⇒ `None`（调用方把它摘掉）；没订 ⇒ 永远不醒。
+/// 一件节点 ⇒ 它该推的那几帧（[`crate::accounts::quota::nodes::Node::changed`]；现算得出体的由 [`TapRx::changed`] 换上）；
+/// 落后丢了几件 ⇒ `Node::lagged`；通道没了 ⇒ `None`（调用方把它摘掉）；没订 ⇒ 永远不醒。
 async fn node_moved(
     r: &mut Option<tokio::sync::broadcast::Receiver<crate::accounts::quota::nodes::Node>>,
 ) -> Option<Vec<Changed>> {
-    use crate::accounts::quota::nodes::Source;
+    use crate::accounts::quota::nodes::Node;
     use tokio::sync::broadcast::error::RecvError;
     let Some(r) = r else {
         return std::future::pending().await;
     };
     match r.recv().await {
-        Ok(n) => {
-            let mut out = Vec::new();
-            if n.source.is_fact() {
-                out.push(Changed::Quota { body: None });
-            }
-            if n.source == Source::Strategies {
-                out.push(Changed::RotationStrategies { body: None });
-            }
-            if let Some(sid) = n.sid {
-                out.push(Changed::Rotation { key: sid });
-            }
-            Some(out)
-        }
-        Err(RecvError::Lagged(_)) => Some(vec![
-            Changed::Quota { body: None },
-            Changed::RotationStrategies { body: None },
-        ]),
+        Ok(n) => Some(n.changed()),
+        Err(RecvError::Lagged(_)) => Some(Node::lagged()),
         Err(RecvError::Closed) => None,
     }
 }
@@ -338,7 +314,6 @@ pub(crate) fn attach_rx(hub: Arc<TapHub>) -> TapRx {
         plan: None,
         machines: None,
         machine: None,
-        fleet_was: None,
         dirs: None,
         list: None,
         bodies: no_bodies,

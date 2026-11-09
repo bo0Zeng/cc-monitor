@@ -210,79 +210,41 @@ fn the_import_product_matches_the_cross_language_golden() {
         ("pi".into(), rh("pi.local", None, "pi", None)),
     ]);
     // 列表里已有 devbox 的第二个地址那一台 ⇒ devbox 那一组「已在列表里」；pi 不在。
-    mark_in_list(
-        &mut groups,
-        &[Known {
-            host: "devbox.example.com".into(),
-            user: "user".into(),
-            port: 22,
-        }],
-    );
+    mark_in_list(&mut groups, &[machine("devbox.example.com", "user", None)]);
     let got = serde_json::json!({
         "ssh-config-import": serde_json::to_value(SshImported { groups, partial: false }).unwrap(),
     });
     assert_eq!(got, golden, "成品的线上形状变了 ⇒ 金样同拍改");
 }
 
-/// 「已在列表里」按地址 ＋ 用户 ＋ 端口认（不只按名字）：同地址换了用户 / 端口的不算；去首尾空白比。
+/// 机器表里的一台（端口不给 ⇒ 不带那一键，照拨号核心的缺省）。
+fn machine(host: &str, user: &str, port: Option<u16>) -> ssh_dial::machine::Host {
+    let mut v = serde_json::json!({ "host": host, "user": user });
+    if let Some(p) = port {
+        v["port"] = p.into();
+    }
+    serde_json::from_value(v).unwrap()
+}
+
+/// 「已在列表里」照本机后端那张机器表、按地址 ＋ 用户 ＋ 端口认（不只按名字）：同地址换了用户 / 端口的不算；去首尾空白比；
+/// 表里那台没写端口 ⇒ 照拨号核心的缺省比；备用地址也算。
 #[test]
 fn in_list_is_judged_by_host_user_and_port() {
     let mk = || aggregate_ssh_hosts(vec![("pi".into(), rh("pi.local", None, "pi", None))]);
-    for (known, want) in [
-        (
-            Known {
-                host: "pi.local".into(),
-                user: "pi".into(),
-                port: 22,
-            },
-            true,
-        ),
-        (
-            Known {
-                host: " pi.local ".into(),
-                user: "pi ".into(),
-                port: 22,
-            },
-            true,
-        ),
-        (
-            Known {
-                host: "pi.local".into(),
-                user: "root".into(),
-                port: 22,
-            },
-            false,
-        ),
-        (
-            Known {
-                host: "pi.local".into(),
-                user: "pi".into(),
-                port: 2222,
-            },
-            false,
-        ),
-        (
-            Known {
-                host: "other".into(),
-                user: "pi".into(),
-                port: 22,
-            },
-            false,
-        ),
+    let mut backup = machine("other", "pi", None);
+    backup.addresses = vec!["pi.local".into()];
+    for (row, want) in [
+        (machine("pi.local", "pi", None), true),
+        (machine(" pi.local ", "pi ", Some(22)), true),
+        (machine("pi.local", "root", None), false),
+        (machine("pi.local", "pi", Some(2222)), false),
+        (machine("other", "pi", None), false),
+        (backup, true),
     ] {
         let mut g = mk();
-        mark_in_list(&mut g, std::slice::from_ref(&known));
-        assert_eq!(g[0].in_list, want, "{known:?}");
+        mark_in_list(&mut g, std::slice::from_ref(&row));
+        assert_eq!(g[0].in_list, want, "{row:?}");
     }
-    // 不交列表 ⇒ 拒（界面那一侧恒交，缺了是两侧对不上）。
-    assert_eq!(
-        crate::wire::typed::take::<SshImportReq>(&serde_json::json!({}))
-            .map(|_| ())
-            .unwrap_err()
-            .code
-            .as_deref(),
-        Some("bad_args")
-    );
 }
 
 /// `ssh -G` 没成那两形：句子只带别名与原因词，ssh 自己说的 · 系统报错进复制详情、不上句子。

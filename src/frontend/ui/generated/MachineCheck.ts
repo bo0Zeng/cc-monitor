@@ -6,4 +6,8 @@ import type { MachineFault } from "./MachineFault";
  * `Core.machineCheck` 的回值：手机编辑页上那张表（连正在编的那一台）判得怎样 ＋ 那一台展开的拨号地址（预览）。
  * 毛病的判法 · 说法与桌面 `machines-try` 同一处（`ssh_dial::machine::table_fault`）。
  */
-export type MachineCheck = { fault: MachineFault | null, endpoints: Array<Endpoint>, };
+export type MachineCheck = { fault: MachineFault | null, endpoints: Array<Endpoint>, 
+/**
+ * 每个地址给人看的那一串（与 `endpoints` 一一对应；拨号核心写，v6 带方括号）。
+ */
+shown: Array<string>, };

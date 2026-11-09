@@ -10,7 +10,7 @@
 //! - 会话 = `<codex home>/sessions/**/rollout-<ts>-<uuid>.jsonl`；sid = 文件名末尾那个 UUID（`parse::codex_sid_from_path`，不像就跳过）。
 //! - cwd = 开头那条 `session_meta.cwd`（[`project_dir`]；缺 / 坏 ⇒ 空串，归「(codex)」组）；修改时刻 = 文件 mtime（毫秒）。
 //! - 首条真用户话 = 前 200 行里第一条人说的 `response_item.message`（`role == "user"`，「谁说的」用
-//!   `record::message_said`，与渲染那一侧同一份）；取前 200 个字符。
+//!   `record::message_said`，与渲染那一侧同一份）；交原文，截 · 压空白在核心一处。
 //!
 //! Codex 没有 pidfile ⇒ 判活答不了（「不知道」，不是「没活」）；Codex 的会话目录里也没有项目概念（按 cwd 分组是通用层的事）。
 
@@ -99,7 +99,7 @@ pub(crate) fn sessions_under(codex_home: &Path) -> Vec<crate::agents::SynthSessi
     out
 }
 
-/// 一份 Codex 会话的首条真用户话（列表摘要）。前 200 行里找；找不到 ⇒ 空串。
+/// 一份 Codex 会话的首条真用户话原文（截 · 压空白是核心的事，`history::search_rules::excerpt_of`）。前 200 行里找；找不到 ⇒ 空串。
 pub(crate) fn first_user_excerpt(path: &Path) -> String {
     let Ok(f) = Ro::open(path) else {
         return String::new();
@@ -126,7 +126,7 @@ pub(crate) fn first_user_excerpt(path: &Path) -> String {
             continue;
         }
         if let Some(t) = message_said(payload).and_then(|s| s.speech()) {
-            return t.chars().take(200).collect();
+            return t;
         }
     }
     String::new()

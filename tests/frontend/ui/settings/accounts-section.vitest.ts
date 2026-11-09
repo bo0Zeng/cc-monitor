@@ -143,9 +143,9 @@ beforeEach(() => {
   accountsVerify.mockResolvedValue({ pass: true, fails: 0, checks: [] });
   readProfiles.mockResolvedValue({
     profiles: [
-      { name: "apicc", accountShape: { account: "api", form: "plain" } },
-      { name: "apicct", accountShape: { account: "api", form: "tmux" } },
-      { name: "apicch", accountShape: { account: "api", form: "hosted" } },
+      { name: "apicc", accountShape: { account: "api" } },
+      { name: "apicct", accountShape: { account: "api" } },
+      { name: "apicch", accountShape: { account: "api" } },
       { name: "x", accountShape: null },
     ],
   });

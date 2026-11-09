@@ -38,7 +38,9 @@ fn data_with(tag: &str, sid: &str, other: &str) -> PathBuf {
     let _ = std::fs::remove_dir_all(&data);
     std::fs::create_dir_all(&data).expect("建数据目录");
     std::fs::write(
-        data.join(creds_core::store::HISTORY_METADATA_FILE),
+        data.join(relay_route_core::file_name_of(
+            relay_route_core::HISTORY_ANNOTATIONS_REL,
+        )),
         serde_json::json!({
             "version": 1,
             "entries": {
@@ -53,8 +55,10 @@ fn data_with(tag: &str, sid: &str, other: &str) -> PathBuf {
 }
 
 fn annotations(data: &Path) -> String {
-    std::fs::read_to_string(data.join(creds_core::store::HISTORY_METADATA_FILE))
-        .expect("注解那份文件在")
+    std::fs::read_to_string(data.join(relay_route_core::file_name_of(
+        relay_route_core::HISTORY_ANNOTATIONS_REL,
+    )))
+    .expect("注解那份文件在")
 }
 
 fn entries(data: &Path) -> serde_json::Map<String, serde_json::Value> {

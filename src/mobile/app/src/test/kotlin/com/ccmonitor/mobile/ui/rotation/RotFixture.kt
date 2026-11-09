@@ -14,7 +14,7 @@ internal object RotFixture {
         mapOf(
             "strategies" to
                 listOf(
-                    strategy("spread", inUse = listOf("s1", "s2"), forNew = forNew == "spread"),
+                    strategy("spread", remove = mapOf("enabled" to false, "why" to "夹具·2 个会话在用", "who" to "夹具·会话一 · 夹具·会话二"), forNew = forNew == "spread"),
                     strategy("night", forNew = forNew == "night", hand = true),
                 ) + extra.map { strategy(it) },
             "forNew" to forNew,
@@ -23,7 +23,7 @@ internal object RotFixture {
 
     fun strategy(
         id: String,
-        inUse: List<String> = emptyList(),
+        remove: Map<String, Any?> = mapOf("enabled" to true),
         forNew: Boolean = false,
         rev: String = "h:$id",
         hand: Boolean = false,
@@ -33,7 +33,7 @@ internal object RotFixture {
             "description" to "$id 第一行\n\n第二段",
             "summary" to "$id 第一行",
             "rev" to rev,
-            "inUse" to inUse,
+            "remove" to remove,
             "forNew" to forNew,
             "tzUnknown" to false,
             "hand" to hand,
@@ -182,7 +182,7 @@ internal object RotFixture {
             "hints" to hints,
         )
 
-    fun hold(untilIn: Long) = mapOf("hint" to mapOf("k" to "hold", "until" to (NOW + untilIn).toDouble(), "untilText" to "18:30"), "tone" to "warn", "text" to "已停发 · 18:30 team 恢复（还有 {dur}）")
+    val HOLD = mapOf("hint" to mapOf("k" to "hold", "account" to "team"), "tone" to "warn", "text" to "已停发 · 18:30 team 恢复（还有 4 小时）")
 
     val TZ = mapOf("hint" to mapOf("k" to "tzUnknown", "zone" to "America/Los_Angeles"), "tone" to "need", "text" to "时区不明 · 分时段上限暂按 UTC 算")
 

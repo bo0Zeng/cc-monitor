@@ -92,7 +92,7 @@ pub(crate) struct ElemKey {
     reason = "线上 `op` 的值照这几个名字小写，改名就是改协议"
 )]
 pub(crate) enum MachineEdit {
-    /// 只改认出的那一台的 `field` 那一格。
+    /// 只改认出的那一台的 `field` 那一格；`value` 是 `null` ⇒ 拿掉那一格（回缺省）。
     #[serde(rename = "setin", rename_all = "camelCase")]
     SetIn {
         r#where: Vec<ElemKey>,
@@ -200,7 +200,12 @@ fn apply(rows: &mut Vec<Map<String, Value>>, e: &MachineEdit) -> Applied {
                 return Applied::NotOne;
             };
             let i = *i;
-            rows[i].insert(field.clone(), value.clone());
+            // `null` ⇒ 拿掉那一格，回拨号核心的缺省（界面端口框清空交的就是它）。
+            if value.is_null() {
+                rows[i].remove(field);
+            } else {
+                rows[i].insert(field.clone(), value.clone());
+            }
             Applied::Done
         }
     }

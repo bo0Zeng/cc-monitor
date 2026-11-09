@@ -629,7 +629,7 @@ impl Hop {
         {
             return Go::Start;
         }
-        let Some(lib) = self.library_here() else {
+        let Some(lib) = self.book_here() else {
             return Go::Start;
         };
         let Some(s) = self.entry(own, a) else {
@@ -757,7 +757,7 @@ impl Hop {
         {
             return None;
         }
-        let lib = self.library_here()?;
+        let lib = self.book_here()?;
         let s = self.entry(own, a)?;
         let plan = Adopted::of(s.uses.as_deref());
         if plan.id.is_empty() {

@@ -54,3 +54,16 @@ fn non_utf8_segments_pass_through_byte_for_byte() {
     let got = plain_segments(b"\xff\xfe/x", false, Dots::Reject).unwrap();
     assert_eq!(got, [&b"\xff\xfe"[..], &b"x"[..]]);
 }
+
+#[test]
+fn last_segment_takes_either_separator_and_ignores_trailing_ones() {
+    use super::last_segment;
+    assert_eq!(last_segment("/home/u/proj"), Some("proj"));
+    assert_eq!(last_segment("C:\\w\\proj"), Some("proj"));
+    assert_eq!(last_segment("C:/w\\proj\\"), Some("proj"));
+    assert_eq!(last_segment("/home/u/proj//"), Some("proj"));
+    assert_eq!(last_segment("proj"), Some("proj"));
+    assert_eq!(last_segment("C:\\"), Some("C:"));
+    assert_eq!(last_segment("/"), None);
+    assert_eq!(last_segment(""), None);
+}

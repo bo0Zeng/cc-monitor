@@ -136,7 +136,7 @@ impl Command for LoginStart {
 
 /// 号在这台账号库里的样子（与 `accounts-list` 同一份成品）：配置目录（账号 0 ⇒ `None`）· 是不是 API 号。
 fn account_of(agent: &str, account: &str) -> Option<(Option<String>, bool)> {
-    accounts_product(agent)
+    crate::faces::launch_account_face::list_of(agent)
         .accounts
         .into_iter()
         .find(|a| a.scanned.name == account)
@@ -148,16 +148,24 @@ fn account_of(agent: &str, account: &str) -> Option<(Option<String>, bool)> {
         })
 }
 
-fn accounts_product(agent: &str) -> crate::accounts::manage::library::AccountsList {
-    crate::faces::launch_account_face::list_of(agent)
-}
-
-/// `login-start` 的本体（分派的硬臂调它：`conn` ＝ 本连接的号，`on_end` ＝ 作业自己收了时推给本连接的那一帧）。
+/// `login-start` 的本体（分派的硬臂调它：`conn` ＝ 本连接的号，`replies` ＝ 本连接的应答通道）。
+/// 作业自己收了 ⇒ 推一帧 `changed {login}` 给本连接、敲需手动的铃（作业跟着本连接走，那一帧也只给它）。
 pub fn start(
     args: &LoginStartArgs,
     conn: u64,
-    on_end: sign_in::OnEnd,
+    replies: tokio::sync::mpsc::Sender<crate::wire::Frame>,
 ) -> Result<LoginStarted, LoginStartErr> {
+    let on_end: sign_in::OnEnd = Box::new(move |job, ended| {
+        use crate::wire::FrameMake as _;
+        use copy_core::discard::{Discard as _, Why};
+        replies
+            .blocking_send(crate::wire::Frame::changed(crate::wire::Changed::Login {
+                key: job.to_string(),
+                body: Some(SignInState::of(ended)),
+            }))
+            .discard(Why::PeerGone); // 发起登录的那条连接已断 ⇒ 「登录作业收了」那一帧没人收（作业本来就跟着它收）
+        crate::history::needs_changed::ring();
+    });
     let unsupported = |agent: &str| {
         LoginStartErr::unsupported(copy_text("beLogin.agent.unsupported", &[("agent", agent)]))
     };
@@ -460,10 +468,13 @@ fn logins_here() -> Result<Vec<ManualItem>, String> {
         return Ok(Vec::new());
     };
     let mcp = crate::agents::sole_kind(|a| a.mcp.is_some()).map(|kind| {
-        let look = crate::accounts::manage::mcp_share_exec::mcp_look(kind);
+        // 口径同待办：用户级 ＋ 这台此刻活着的会话所在项目里的（判活住 history，由这里递进去）。
+        let cwds = crate::agents::home_of_kind(kind)
+            .map(|h| crate::history::live_table::now(&h).cwds())
+            .unwrap_or_default();
         (
             kind,
-            crate::agents::mcp_read(kind, None, &look).unwrap_or_default(),
+            crate::accounts::manage::mcp_share_exec::needs_login(kind, &cwds),
         )
     });
     let relogin = crate::faces::rotation_face::Ctx::here().hop.needs_relogin(
@@ -472,15 +483,15 @@ fn logins_here() -> Result<Vec<ManualItem>, String> {
     );
     manual_of(
         agent,
-        &accounts_product(agent),
+        &crate::faces::launch_account_face::list_of(agent),
         crate::accounts::manage::library::library_unreadable_here(),
         &relogin,
-        mcp.as_ref().map(|(k, r)| (*k, r)),
+        mcp.as_ref().map(|(k, n)| (*k, n.as_slice())),
     )
 }
 
 /// 会话外的需手动清单（需登录的号 · 需登录的 MCP，`sessions-needs` 里会外那一截）的纯构造器：账号清单成品（`accounts-list` 那一份）·
-/// 续令牌被拒的号（`relogin`，换号那一侧记的）· MCP 读面（哪一家的 · 用户级那一份）⇒ 清单。判据拿夹具喂它。
+/// 续令牌被拒的号（`relogin`，换号那一侧记的）· 要登录的 MCP（哪一家的 · `mcp_share_exec::needs_login` 判好的那一串，项目级的带着项目）⇒ 清单。判据拿夹具喂它。
 /// `unreadable` ＝ 账号库清单在、却读不懂的那一句（`accounts::manage::library::library_unreadable`）：给了 ⇒ 原样回 `Err`，不列
 /// （说不出哪些号需登录，不回空清单：空清单看起来像「没事」）。
 pub(crate) fn manual_of(
@@ -488,7 +499,7 @@ pub(crate) fn manual_of(
     accounts: &crate::accounts::manage::library::AccountsList,
     unreadable: Option<String>,
     relogin: &[String],
-    mcp: Option<(&str, &crate::agents::McpRead)>,
+    mcp: Option<(&str, &[crate::accounts::manage::mcp_share_exec::McpNeed])>,
 ) -> Result<Vec<ManualItem>, String> {
     if let Some(why) = unreadable {
         return Err(why);
@@ -526,13 +537,10 @@ pub(crate) fn manual_of(
         })
         .collect();
     let (mcp_kind, entries) = match mcp {
-        Some((k, m)) => (k, m.entries.as_slice()),
+        Some((k, m)) => (k, m),
         None => ("", &[][..]),
     };
     for e in entries {
-        if e.status != crate::agents::McpStatus::NeedsLogin {
-            continue;
-        }
         let who: Vec<Option<String>> = if e.login_in.is_empty() {
             vec![None]
         } else {
@@ -552,7 +560,8 @@ pub(crate) fn manual_of(
                 ),
                 None => copy_text("beManual.list.mcpLoginBare", &[("server", &e.name)]),
             };
-            let McpLoginFix { fix, why, .. } = mcp_fix(mcp_kind, account.clone(), &e.name, None);
+            let McpLoginFix { fix, why, .. } =
+                mcp_fix(mcp_kind, account.clone(), &e.name, e.project.as_deref());
             items.push(ManualItem::McpLogin {
                 account,
                 server: e.name.clone(),

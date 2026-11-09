@@ -350,7 +350,10 @@ pub(crate) fn add_with(
     };
     let source = match &req.source {
         Some(s) => s.clone(),
-        None => setup::editor::fresh(&ctx.hop.roster(), crate::platform::local_tz::iana_name()),
+        None => setup::editor::fresh(
+            &ctx.hop.roster(),
+            crate::common::time::Tz::here().viewer_zone(),
+        ),
     };
     script::parse(&source).map_err(bad)?;
     let id = fresh_name(ctx, &req.name).map_err(RotationStrategyAddErr::BadArgs)?;
@@ -594,24 +597,12 @@ pub(crate) fn delete_with(
     let all = shelf::all(ctx.setup.dir().as_deref());
     shelf::find(&all, &req.id)
         .ok_or_else(|| RotationStrategyDeleteErr::NoStrategy(gone(&req.id)))?;
-    let sids: Vec<String> = uses::in_use(&ctx.hop.store.now(), &req.id, None)
-        .into_iter()
-        .filter(|s| live(s))
-        .collect();
-    if !sids.is_empty() {
-        return Err(RotationStrategyDeleteErr::InUse(
-            copy_text(
-                "beRotation.strategy.inUse",
-                &[("n", &sids.len().to_string())],
-            ),
-            RotInUse { sids },
-        ));
-    }
-    if ctx.setup.for_new_id() == req.id {
-        return Err(RotationStrategyDeleteErr::InUse(
-            copy_text("beRotation.edit.forNew", &[]),
-            RotInUse { sids: Vec::new() },
-        ));
+    // 能不能删与列表 · 视图里那一项同一处判（`remove_of`），拒的那一句也是它写的。
+    let sids = crate::faces::rotation_view_face::users(&ctx.hop.store.now(), &req.id, live);
+    let remove =
+        crate::faces::rotation_view_face::remove_of(&sids, ctx.setup.for_new_id() == req.id);
+    if let Some(why) = remove.why {
+        return Err(RotationStrategyDeleteErr::InUse(why, RotInUse { sids }));
     }
     shelf::remove_file(own, &req.id).map_err(|e| RotationStrategyDeleteErr::IoFailed(note(e)))?;
     Ok(RotDone {})

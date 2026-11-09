@@ -1,40 +1,10 @@
-//! **`resync`（手动对齐）的帧面宿主** —— 薄壳，本体在 `observe/watcher.rs::resync`。
+//! **`resync`（手动对齐）的帧面宿主** —— 薄壳，本体在 `observe/watcher.rs::resync`；入参与回包住 `cmd_wire::resync`（壳的 Rust 客户端照它读）。
 //!
 //! 住命令表这一层（`stream/`）：回包里 `unavailable` 那一栏从命令表派生（功能不许引 `stream`）；不住 `stream/inbound/`：那一目录不许出现 `observe::`，控制面那个包也不依赖观测面。
 //! 用户按钮触发、不是节拍：零定时器铁律不变。
 
 use crate::wire::typed::{codes, Command};
-
-/// `resync` 的入参。
-#[derive(Debug, Default, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct ResyncReq {
-    /// 可缺：给了 ⇒ 只对那一个会话（关卡 2「对齐后重试」，不许空串）；不给 / `null` ⇒ 整机。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub(crate) sid: Option<String>,
-}
-
-/// `resync` 的回包：这一趟的差异 ＋ 这台**当下**的能力事实（与 hello 那两格同一个函数、同形）。
-#[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct Resynced {
-    /// 这次补宣告的会话数。
-    pub(crate) added: usize,
-    /// 补移除的会话数（各份 watcher 取最大：看的是同一台机器）。
-    pub(crate) removed: usize,
-    /// 这次真写了几处 `@ccm_sid`（值一样的不写）。
-    pub(crate) retagged: usize,
-    /// 在跟的会话这次从游标补读出几行（带 `sid` 只数那一个；各份 watcher 相加）。
-    pub(crate) caught_up: usize,
-    /// 几份 watcher 做完了对齐（常驻后端每条连接一份 ＋ 空转那一份）。
-    pub(crate) watchers: usize,
-    /// 这台当下接得下但做不到的命令（同 hello 那一格）：握手之后才装上 tmux 的机器，靠「重新对齐」让客户端认出来。
-    pub(crate) unavailable: Vec<crate::wire::Unavailable>,
-}
+use cmd_wire::resync::{ResyncReq, Resynced};
 
 codes! {
     /// `resync` 自己没有别的码。
@@ -45,9 +15,7 @@ codes! {
 pub(crate) struct ResyncCmd;
 
 impl Command for ResyncCmd {
-    const NAME: &'static str = "resync";
-    type Req = ResyncReq;
-    type Reply = Resynced;
+    crate::wire::typed::by_call!(ResyncReq);
     type Err = ResyncErr;
 }
 

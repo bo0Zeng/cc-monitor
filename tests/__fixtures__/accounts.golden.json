@@ -20,7 +20,6 @@
         "label": "zero",
         "name": "zero",
         "selectable": false,
-        "color": 3,
         "plate": "ze",
         "kindLine": "订阅 · 需登录",
         "slots": [],

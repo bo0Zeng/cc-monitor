@@ -153,11 +153,9 @@ fn the_collapse_to_three_states_is_byte_identical_to_the_table_before_layering()
             CallError::Unavailable {
                 cmd: "kill".into(),
                 code: "no_tmux".into(),
+                said: "devbox 无 tmux".into(),
             },
-            Routed::Refused(format!(
-                "no_tmux/{}",
-                copy_text("rsInboundClient.error.unavailable", &[])
-            )),
+            Routed::Refused("no_tmux/devbox 无 tmux".into()),
         ),
     ];
     assert_eq!(table.len(), 7, "收拢表的行数与穷尽见证的变体数对不上");
@@ -242,15 +240,14 @@ fn the_layering_table_is_pinned_cell_by_cell() {
             CallError::Unavailable {
                 cmd: "kill".into(),
                 code: "no_tmux".into(),
+                said: "devbox 无 tmux".into(),
             },
             w::CallError::Peer {
                 why: w::PeerFault::Refused {
                     body: w::Body(
-                        format!(
-                            r#"{{"code":"no_tmux","said":"{}","detail":""}}"#,
-                            copy_core::copy_static!("rsInboundClient.error.unavailable")
-                        )
-                        .into_bytes(),
+                        r#"{"code":"no_tmux","said":"devbox 无 tmux","detail":""}"#
+                            .as_bytes()
+                            .to_vec(),
                     ),
                 },
             },

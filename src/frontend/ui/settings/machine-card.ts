@@ -6,12 +6,11 @@
  * 2. `parts()` —— 交出「连接 / 组件」两块（详情页据此分栏），外加「终端」栏那一块（别名）；
  * 3. `setPageMode()` —— 进入独占一页的形态（去折叠箭头与删除按钮）。
  */
-import { open } from "@tauri-apps/plugin-dialog";
+import { openFileDialog, homeDir, joinLocalPath } from "../ipc/commands";
 import type { Host } from "../generated/Host";
-import { homeDir, join } from "@tauri-apps/api/path";
 import { openFileWindow } from "../file-window";
 import { buildConfigPage } from "./config-page"; // 别名与配置文件：远端卡与本机同一个组件（`origin` = 这台）
-import { forgetHostKeys, parseAddressLines } from "../remote-config";
+import { forgetHostKeys, parseAddressLines, portOf, withPort } from "../remote-config";
 import type { MachineFault } from "../generated/MachineFault";
 import { askInterrupts, interruptRows } from "./interrupts";
 import { uninstallBackend, updateBackend } from "../backend-deploy";
@@ -70,14 +69,6 @@ function connField(
   return input;
 }
 let connFieldSeq = 0;
-
-/** 解析端口字符串：空 ⇒ 22（占位就是它）；不是 1–65535 的整数 ⇒ `null`（不替用户兜底）。 */
-/** 端口框里的字 → 数（空 ⇒ 22；不是数字 ⇒ 0）。在不在 1–65535 只由后端判（机器表试算口）。 */
-function parsePort(raw: string): number {
-  const t = raw.trim();
-  if (t === "") return 22;
-  return /^\d+$/.test(t) ? Number(t) : 0;
-}
 
 /** 一格输入下面那一行：有错 ⇒ 错误句换在说明的位置；没错 ⇒ 还原说明。 */
 function showFieldError(input: HTMLInputElement, text: string | null): void {
@@ -157,7 +148,7 @@ export class MachineCard {
   /** 主机指纹那一行（与钥匙路径一起排成宽的那两格）。 */
   private fpRow!: HTMLElement;
   /** 名字 / 地址 / 端口最后一次被接受的值：输入框里不合法的那一格不存，交出去的是这一份。 */
-  private accepted = { label: "", host: "", port: 22 };
+  private accepted: { label: string; host: string; port?: number } = { label: "", host: "" };
   /** 连接这台（开关那一格的当前值）。 */
   private connect = true;
   private connectSwitch!: { root: HTMLLabelElement; set(on: boolean): void };
@@ -215,16 +206,18 @@ export class MachineCard {
 
   /** 读出本卡片的 Host（trim）。名字 / 地址 / 端口取最后一次被接受的值（不合法的那一格不交）。 */
   collect(): Host {
-    return {
-      label: this.accepted.label,
-      host: this.accepted.host,
-      port: this.accepted.port,
-      user: this.userInput.value.trim(),
-      keyPath: this.keyPathInput.value.trim(),
-      addresses: parseAddressLines(this.addressesInput.value),
-      jump: this.jumpInput.value.trim(),
-      connect: this.connect,
-    };
+    return withPort(
+      {
+        label: this.accepted.label,
+        host: this.accepted.host,
+        user: this.userInput.value.trim(),
+        keyPath: this.keyPathInput.value.trim(),
+        addresses: parseAddressLines(this.addressesInput.value),
+        jump: this.jumpInput.value.trim(),
+        connect: this.connect,
+      },
+      this.accepted.port,
+    );
   }
 
   /** 拨「连接这台」：存盘（宿主随后当场对齐那条流）。 */
@@ -240,7 +233,7 @@ export class MachineCard {
     this.accepted = {
       label: this.labelInput.value.trim(),
       host: this.hostInput.value.trim(),
-      port: parsePort(this.portInput.value),
+      port: portOf(this.portInput.value),
     };
   }
 
@@ -312,19 +305,12 @@ export class MachineCard {
 
     // 认人的那几格（名字 · 地址 · 端口）改了先问后端那一道（与写口同一份规则）：不过 ⇒ 就地说、不存。
     let asking = 0;
-    const tryCells = async (next: Host): Promise<MachineFault | null> => {
-      try {
-        return (await this.hooks.tryCells?.(this, next)) ?? null;
-      } catch {
-        return null; // 问不到 ⇒ 不挡，写口自己会判
-      }
-    };
     // 名字（空着就用地址）是这台的键：与别台撞了 ⇒ 就地说、不存。
     const onNameChange = async (): Promise<void> => {
       const label = this.labelInput.value.trim();
       const host = this.hostInput.value.trim();
       const mine = ++asking;
-      const fault = label || host ? await tryCells({ ...this.collect(), label, host }) : null;
+      const fault = label || host ? await this.tryCells({ ...this.collect(), label, host }) : null;
       if (mine !== asking) return;
       if (fault?.code === "name_taken") {
         showFieldError(this.labelInput, fault.said);
@@ -344,11 +330,11 @@ export class MachineCard {
       hint: copyText("machineCard.field.hostHint"),
       onChange: () => void onNameChange(),
     });
-    // 端口不是 1–65535 ⇒ 就地说、不存（不悄悄存成 22）。
+    // 端口不是 1–65535 ⇒ 就地说、不存；空着 ⇒ 不交那一键（缺省只住拨号核心）。
     const onPortChange = async (): Promise<void> => {
-      const port = parsePort(this.portInput.value);
+      const port = portOf(this.portInput.value);
       const mine = ++asking;
-      const fault = await tryCells({ ...this.collect(), port });
+      const fault = await this.tryCells(withPort(this.collect(), port));
       if (mine !== asking) return;
       if (fault?.code === "port") {
         showFieldError(this.portInput, fault.said);
@@ -362,7 +348,7 @@ export class MachineCard {
       placeholder: copyText("machineCard.field.userHint"),
       onChange,
     });
-    this.portInput = connField(body, copyText("machineForm.field.port"), { type: "number", placeholder: "22", onChange: () => void onPortChange() });
+    this.portInput = connField(body, copyText("machineForm.field.port"), { type: "number", hint: copyText("addMachine.field.portHelp"), onChange: () => void onPortChange() });
     this.portInput.closest(".machine-conn-field")?.classList.add("machine-conn-port");
     this.keyPathInput = connField(body, copyText("mobIdentity.import.pem"), {
       hint: copyText("addMachine.field.keyHelp"),
@@ -534,11 +520,11 @@ export class MachineCard {
   private async onPickKey(): Promise<void> {
     let defaultPath: string | undefined;
     try {
-      defaultPath = await join(await homeDir(), ".ssh");
+      defaultPath = await joinLocalPath(await homeDir(), ".ssh");
     } catch {
       /* 拿不到 home ⇒ 用系统默认起点 */
     }
-    const picked = await open({ title: copyText("machineCard.field.keyPickTitle"), multiple: false, directory: false, defaultPath });
+    const picked = await openFileDialog({ title: copyText("machineCard.field.keyPickTitle"), multiple: false, directory: false, defaultPath });
     if (typeof picked !== "string") return;
     this.keyPathInput.value = picked;
     this.keyPathInput.dispatchEvent(new Event("change"));
@@ -554,7 +540,7 @@ export class MachineCard {
   private syncInputs(cfg: Host): void {
     this.labelInput.value = cfg.label;
     this.hostInput.value = cfg.host;
-    this.portInput.value = cfg.port ? String(cfg.port) : "";
+    this.portInput.value = cfg.port === undefined ? "" : String(cfg.port);
     this.userInput.value = cfg.user;
     this.keyPathInput.value = cfg.keyPath;
     this.addressesInput.value = cfg.addresses.join("\n");
@@ -661,21 +647,31 @@ export class MachineCard {
     void this.onPushPubkey(this.testButton);
   }
 
-  /** ⋯ →「新建会话…」：开起新会话框（机器锁定在这一台；没填地址 / 用户 ⇒ 在连接设置下面说一句）。 */
-  openLauncher(): void {
-    const cfg = this.collect();
-    if (!cfg.host || !cfg.user) {
-      this.showResultText(copyText("machineCard.launch.needHost"));
+  /** 表单此刻这一台若现在落盘，机器表那一道过不过（本机后端 `machines-try`，与写口同一份规则）。过 · 问不到 ⇒ `null`（写口自己会判）。 */
+  private async tryCells(next: Host = this.collect()): Promise<MachineFault | null> {
+    try {
+      return (await this.hooks.tryCells?.(this, next)) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** ⋯ →「新建会话…」：开起新会话框（机器锁定在这一台；机器表那一道没过 ⇒ 在连接设置下面说那一句）。 */
+  async openLauncher(): Promise<void> {
+    const fault = await this.tryCells();
+    if (fault) {
+      this.showResultText(fault.said);
       return;
     }
+    const cfg = this.collect();
     void openNewSession({ origin: cfg.label.trim() || cfg.host, lockMachine: true });
   }
 
-  /** ⋯ →「打开文件」：没填地址 / 用户 ⇒ 在连接设置下面说一句。 */
-  openFiles(): void {
-    const cfg = this.collect();
-    if (!cfg.host || !cfg.user) {
-      this.renderTestResult(null, copyText("machineCard.launch.needHost"));
+  /** ⋯ →「打开文件」：机器表那一道没过 ⇒ 在连接设置下面说那一句。 */
+  async openFiles(): Promise<void> {
+    const fault = await this.tryCells();
+    if (fault) {
+      this.renderTestResult(null, fault.said);
       return;
     }
     void openFileWindow(this.savedName());
@@ -684,8 +680,9 @@ export class MachineCard {
   /** 点「测试连接」：组本卡片 → 本机后端 `remote-probe`→ 渲染结果。 */
   private async onTestConnection(): Promise<void> {
     const cfg = this.collect();
-    if (!cfg.host || !cfg.user) {
-      this.renderTestResult(null, copyText("machineCard.launch.needHost"));
+    const fault = await this.tryCells(cfg);
+    if (fault) {
+      this.renderTestResult(null, fault.said);
       return;
     }
     this.testButton.disabled = true;
@@ -737,8 +734,9 @@ export class MachineCard {
   /** 一键推送本地公钥到远端 authorized_keys。已填私钥 → 取同名 .pub；否则弹框选 .pub。 */
   private async onPushPubkey(btn: HTMLButtonElement): Promise<void> {
     const cfg = this.collect();
-    if (!cfg.host || !cfg.user) {
-      this.showResultText(copyText("machineCard.launch.needHost"));
+    const fault = await this.tryCells(cfg);
+    if (fault) {
+      this.showResultText(fault.said);
       return;
     }
     let pubKeyPath: string | null = null;
@@ -747,11 +745,11 @@ export class MachineCard {
       // （`~` 不会被 dialog 展开,须经 homeDir() 拼绝对路径;拿不到则不设）。
       let defaultPath: string | undefined;
       try {
-        defaultPath = await join(await homeDir(), ".ssh");
+        defaultPath = await joinLocalPath(await homeDir(), ".ssh");
       } catch {
         /* 拿不到 home → 不设 defaultPath,dialog 用系统默认起点 */
       }
-      const picked = await open({
+      const picked = await openFileDialog({
         title: copyText("machineCard.pushKey.dialogTitle"),
         multiple: false,
         directory: false,
@@ -762,7 +760,7 @@ export class MachineCard {
       pubKeyPath = picked;
     }
     await this.runRemoteAction(btn, copyText("machineCard.pushKey.pushing"), async () => {
-      // 表单里这一台 ＋ 已保存的那几台交给本机后端：它读 `.pub`、组请求、经那台后端写或一次 exec。
+      // 交给本机后端：它读 `.pub`、按名字照机器表找那台，一律问那台后端写（不在就没成，先装后端）。
       return (await pushPublicKey(cfg, pubKeyPath)).said;
     });
   }
@@ -804,8 +802,9 @@ export class MachineCard {
   /** 点「卸载后端」—— 删远端后端二进制（二次确认）。 */
   private async onUninstallBackend(): Promise<void> {
     const cfg = this.collect();
-    if (!cfg.host || !cfg.user) {
-      this.showResultText(copyText("machineCard.launch.needHost"), "comp");
+    const fault = await this.tryCells(cfg);
+    if (fault) {
+      this.showResultText(fault.said, "comp");
       return;
     }
     const rows = interruptRows(await askInterrupts(this.savedName()), this.displayName(), "uninstall");

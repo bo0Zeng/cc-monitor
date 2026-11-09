@@ -6,7 +6,6 @@ use crate::assets::aliases;
 use crate::common::door::Door;
 use crate::platform::shell::dialect::Shell;
 use cap_core::{Cap, Over};
-use serde_json::Value;
 use std::path::Path;
 
 /// 读一份用户文件的上限（启动文件 / 设置文件都远小于它）；超了跳过那一份、日志里说是哪一份。
@@ -150,35 +149,24 @@ pub(crate) fn sshd_at(main: &Path) -> Option<super::sshd::ForwardingOff> {
     super::sshd::forwarding_off(main, &read, &list)
 }
 
-/// 用户自己配的、要登录的 MCP：全局那一段 ＋ 这台此刻活着的会话所在项目的那两段（判定在 `mcp-read` 那一份）。同名并成一件、号取并集。
+/// 用户自己配的、要登录的 MCP（判定只在 `accounts::manage::mcp_share_exec::needs_login`，需手动清单同一处）：全局那一段 ＋
+/// 这台此刻活着的会话所在项目的那两段。同名并成一件、号取并集。
 fn mcp_login() -> Vec<super::McpLogin> {
     let Some(kind) = crate::agents::sole_kind(|a| a.mcp.is_some()) else {
         return Vec::new();
     };
-    let look = crate::accounts::manage::mcp_share_exec::mcp_look(kind);
     let cwds = crate::agents::home_of_kind(kind)
         .map(|h| crate::history::live_table::now(&h).cwds())
         .unwrap_or_default();
-    let dirs = std::iter::once(None).chain(cwds.iter().map(|d| Some(Path::new(d.as_str()))));
     let mut out: Vec<super::McpLogin> = Vec::new();
-    for dir in dirs {
-        let Some(read) = crate::agents::mcp_read(kind, dir, &look) else {
-            continue;
-        };
-        for e in read.entries {
-            if e.status != crate::agents::McpStatus::NeedsLogin
-                || (dir.is_some() && e.scope == "user")
-            {
-                continue;
-            }
-            match out.iter_mut().find(|m| m.name == e.name) {
-                Some(m) => m.who.extend(e.login_in),
-                None => out.push(super::McpLogin {
-                    name: e.name,
-                    who: e.login_in,
-                    command: crate::agents::mcp_login_command(kind).unwrap_or(""),
-                }),
-            }
+    for e in crate::accounts::manage::mcp_share_exec::needs_login(kind, &cwds) {
+        match out.iter_mut().find(|m| m.name == e.name) {
+            Some(m) => m.who.extend(e.login_in),
+            None => out.push(super::McpLogin {
+                name: e.name,
+                who: e.login_in,
+                command: crate::agents::mcp_login_command(kind).unwrap_or(""),
+            }),
         }
     }
     for m in &mut out {
@@ -273,21 +261,14 @@ fn hooks() -> Option<Hooks> {
     if !r.supported {
         return None;
     }
-    let snippet: Option<Value> = r
+    // 要加的那几项（键路径 · 那一项）照诊断给的那一份拆（拼法与格名都住那一家，这里不认）。
+    let items = r
         .snippet
         .as_deref()
-        .and_then(|s| serde_json::from_str(s).ok());
-    let items = snippet
-        .as_ref()
-        .and_then(|s| s.get("hooks")?.as_object().cloned())
-        .map(|m| {
-            m.into_iter()
-                .filter_map(|(ev, arr)| Some((ev, arr.as_array()?.first()?.clone())))
-                .collect()
-        })
+        .map(crate::assets::cc_bus_hooks::slots_of)
         .unwrap_or_default();
     Some(Hooks {
-        ccbus: snippet.is_some(),
+        ccbus: r.snippet.is_some(),
         installed: r.diagnosis.stop.is_working(),
         text: read_small(Path::new(&r.source)),
         path: r.source,

@@ -2095,17 +2095,18 @@
       "zh": "该会话不可接回终端",
       "args": []
     },
-    "beTerminal.go.front": {
-      "kind": "body",
-      "role": "悬停",
-      "zh": "切到它的终端窗口",
-      "args": []
-    },
     "beTerminal.go.here": {
       "kind": "body",
       "role": "悬停",
       "zh": "在 cc-monitor 里打开它的终端",
       "args": []
+    },
+    "beTerminal.why.noHost": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "不在 tmux 或托管终端里 · 无终端可接",
+      "args": [],
+      "limited": ["tmux"]
     },
     "beTerminal.go.resume": {
       "kind": "body",
@@ -3924,12 +3925,6 @@
       "zh": "未切换 · 原因不明",
       "args": []
     },
-    "front.title.badShape": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "切换失败 · 内容无法解析",
-      "args": []
-    },
     "front.title.tabMissed": {
       "kind": "title",
       "role": "标题",
@@ -3972,14 +3967,14 @@
     "front.body.severalUnregistered": {
       "kind": "body",
       "role": "说明",
-      "zh": "{program} 窗口 ×{n} · 本会话终端未登记",
-      "args": ["program", "n"]
+      "zh": "终端开着多个窗口 · 本会话终端未登记",
+      "args": []
     },
     "front.body.severalConsole": {
       "kind": "body",
       "role": "说明",
-      "zh": "{program} 窗口 ×{n} · 无法读取本会话的控制台",
-      "args": ["program", "n"]
+      "zh": "终端开着多个窗口 · 无法读取本会话的控制台",
+      "args": []
     },
     "front.hint.severalConsole": {
       "kind": "body",
@@ -3990,8 +3985,8 @@
     "front.body.severalElevated": {
       "kind": "body",
       "role": "说明",
-      "zh": "{program}（管理员）窗口 ×{n} · cc-monitor 无权读取",
-      "args": ["program", "n"]
+      "zh": "终端（管理员）开着多个窗口 · cc-monitor 无权读取",
+      "args": []
     },
     "front.hint.severalElevated": {
       "kind": "body",
@@ -4002,8 +3997,8 @@
     "front.body.severalForeign": {
       "kind": "body",
       "role": "说明",
-      "zh": "{program} 窗口 ×{n} · 此程序不提供控制台",
-      "args": ["program", "n"]
+      "zh": "终端开着多个窗口 · 此程序不提供控制台",
+      "args": []
     },
     "front.hint.unregistered": {
       "kind": "body",
@@ -4071,14 +4066,6 @@
       "role": "说明",
       "zh": "系统未允许切到前台 · 点任务栏闪烁的窗口",
       "args": []
-    },
-    "front.body.desktopWontSwitch": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "cc-monitor 在 {desktop}（Wayland）上无法查看或切换别的程序的窗口",
-      "args": [
-        "desktop"
-      ]
     },
     "front.body.desktopWontSwitchBare": {
       "kind": "body",
@@ -5821,12 +5808,6 @@
       "zh": "从 {host} 卸载 cc-monitor",
       "args": ["host"]
     },
-    "machineCard.launch.needHost": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "先填主机与用户名",
-      "args": []
-    },
     "machineCard.pushKey.already": {
       "kind": "body",
       "role": "说明",
@@ -6811,12 +6792,6 @@
       "zh": "已保存",
       "args": []
     },
-    "remote.save.incomplete": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "已保存 · 缺主机或用户名 {n}",
-      "args": ["n"]
-    },
     "remote.preview.noUser": {
       "kind": "body",
       "role": "片段",
@@ -7315,12 +7290,6 @@
       "zh": "状态",
       "args": []
     },
-    "bePubkey.exec.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "往该机 authorized_keys 追加公钥失败 · 原因不明",
-      "args": []
-    },
     "bePubkey.read.tooBig": {
       "kind": "error",
       "role": "原因格",
@@ -7338,12 +7307,6 @@
       "role": "报错",
       "zh": "无法识别的公钥类型 · {path}",
       "args": ["path"]
-    },
-    "rsPubkey.parsePushOutcome.noMarker": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "推送未返回预期标记 · 或未成功 · 查权限或路径 · 远端输出 {output}",
-      "args": ["output"]
     },
     "rsPubkey.sanitizePublicKey.badBody": {
       "kind": "error",
@@ -7422,12 +7385,6 @@
       "role": "报错",
       "zh": "未收到启动参数 · 此程序由 cc-monitor 打开 · 不直接运行 · {binEnv} 指的就是它",
       "args": ["binEnv"]
-    },
-    "rsSftp.plan.badProduct": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "读取部署计划失败 · 内容无法解析 · 未安装后端",
-      "args": []
     },
     "rsSftp.plan.notThisSlot": {
       "kind": "error",
@@ -8874,12 +8831,6 @@
       "zh": "等待中的命令超出上限 {max}",
       "args": ["max"]
     },
-    "rsInboundClient.error.unavailable": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "该机不支持 · 未发出",
-      "args": []
-    },
     "link.machine.offline": {
       "kind": "error",
       "role": "报错",
@@ -9373,7 +9324,7 @@
       "zh": "各机器 skill 与 MCP 清单 · 删后会重新扫出",
       "args": []
     },
-    "rsDataPaths.monitor.apikey": {
+    "rsDataPaths.backend.apikey": {
       "kind": "body",
       "role": "片段",
       "zh": "填入的 API key",
@@ -9403,7 +9354,7 @@
       "zh": "切到终端用的临时文件 · 用完即删",
       "args": []
     },
-    "rsDataPaths.monitor.historyMeta": {
+    "rsDataPaths.backend.historyMetadata": {
       "kind": "body",
       "role": "说明",
       "zh": "历史 · 收藏 · 改名 · 隐藏",
@@ -11594,7 +11545,7 @@
     "beArgv.hostedEntry.extra": {
       "kind": "error",
       "role": "命令行",
-      "zh": "{word} 后面多出 {extra} · 只认 cch ls · cch attach <名>",
+      "zh": "{word} 后面多出 {extra} · 只认 cch ls · cch attach <名>（a 同 attach）",
       "args": ["word", "extra"]
     },
     "beCcm.preview.noSession": {
@@ -11788,7 +11739,7 @@
     "beCcm.usage.body": {
       "kind": "body",
       "role": "命令行",
-      "zh": "用法：ccm [交给 claude 的参数…] -- [new] [ccm 自己的选项…]\n\nccm 是 claude 的壳。没有 -- 时整行原样交给 claude（--ccm-agent codex 时交给 codex）；没有 -- 又没有终端可交互（被别的程序经管道叫）时不起 claude；\n有 -- 时按最后一个 -- 切开：左边原样交给 claude，右边只放下面这些 ccm 自己的选项，无法识别就报错。\n要给 claude 它自己的 -- 又没有 ccm 选项时，末尾补一个空的 --（如 ccm -p -- -x --）。\n\n配置文件（~/.cc-monitor/profiles.toml，一段 [名字] 是一组 ccm 选项，可写 from = \"另一段\" 基于它）\n  ccm @<名> [交给 claude 的参数…] [-- ccm 选项…]   用那一段：继承链父 → 子合并，-- 右边当场给的最后盖\n  <名> …            ~/.cc-monitor/bin/<名> 是指向 ccm 的链接：被叫成这个名字就等同 ccm @<名> …\n                     （与系统命令同名的，如 cc，是交互终端里的 shell 函数，同样只调 ccm @<名>）\n  写了 hosted = true 的那一段（如 cch）是托管入口，第一个词是它自己的就归它：\n    cch ls           等同 ccm -- --hosts\n    cch attach <名>  等同 ccm -- --attach <名>\n    其余             等同 ccm @cch …\n\n选项\n  new                起新会话（缺省就是它；只许是 -- 右边第一个词。ccm new 没有 -- 时交给 claude）\n  --hosted           在 cc-monitor 托管的终端里跑（Linux · Windows；没说进哪种终端就在当前终端里跑）\n  --ccm-tmux[=<名>]  在一个 tmux 会话里跑；给名就用那个名\n  --tmux-base <基名> 以这个为底取名，撞了就换一个（与 --ccm-tmux=<名> 互斥）\n  --tmux-size <W>xH  新建终端的宽高（要带 --ccm-tmux 或 --hosted）\n  --detach           建完就返回，不接进去（要带 --ccm-tmux 或 --hosted）\n  --account <名>     用这个账号起（与 --base 互斥）\n  --account-dir <目录> 用这个账号配置目录起（不知道账号名时用；与 --account / --base 互斥）\n  --base             不用任何账号，按 agent 自己的默认配置起\n  --no-rotation      这一发不轮换，只用起它的那个号（不管「新会话用」设的哪一份；只管起新会话）\n  --cwd <目录>       工作目录；不给就是当前目录，开头的 ~ 是主目录，相对路径按当前目录补全\n  --cwd-if <在哪> <进哪> 正好在「在哪」这个目录里敲时进「进哪」（可写多次，按顺序第一条匹配的算；\n                     两边都可用 ~，链接解开再比；都不匹配才看 --cwd）\n  --ccm-agent <名>   claude | codex\n  --launcher <命令>  换掉默认的启动命令（可带参数，如 'ccr code'；开头的 ~/ 是主目录）\n  --attach <会话名>  不起 agent，直接接回一个 tmux 会话或托管终端（先在托管终端里认名字或句柄）\n  --hosts            列出这台的托管终端，一行一个：名字 · 目录 · 账号 · 起的时刻 · 有没有人接着\n  --host-run <句柄> [键=值…] -- <命令…>\n                     托管终端的托管进程：持一个伪终端跑那条命令（只许紧跟打头的 --：ccm -- --host-run …；由 cc-monitor 起）\n  --ccm-sid <会话ID> 给会话标上会话ID，cc-monitor 靠它找到终端窗口\n  --tab show|hide    进不进标签页（不给就照这台的偏好：子会话 · 分身会话各一格）\n  --tab-from <别名>  --tab 是哪个别名写的（ccm 往 tmux 里交下去时带）\n  --ccm-alias <别名> 这一发是哪个别名起的（ccm 往 tmux 里交下去时带）\n  --tab-group <名>   起出来的会话进哪个标签页分组（一组会话那一行没写组名时取它）\n  --say <那句>       第一句话：在 tmux 里起新会话时交给 agent（-- 左边自己写了第一句话就用那句）\n  --ccm-print        不跑，印出等价的一行 shell 命令，另起几行注释写每一项来自哪里\n  --ccm-probe        印出这台机器上 ccm 的身份信息（六行）\n  --ccm-version      印版本号\n  --ccm-help         这一段\n\n左边交给 claude 的参数里，ccm 只看一个（照样交给 claude）\n  --resume <会话ID>  这条会话已经在某个 tmux 会话里跑时，接上它、不另起（-r 同）\n\n中转\n  这台机器上 cc-monitor 的中转在听时，ccm 起 agent 前把 ANTHROPIC_BASE_URL 指向它（手动设过的也指过去，中转再转给手动设的那个地址）；\n  环境变量 CCM_RELAY_ALL_SESSIONS=0 时只有要经中转换 key 的账号才指过去\n",
+      "zh": "用法：ccm [交给 claude 的参数…] -- [new] [ccm 自己的选项…]\n\nccm 是 claude 的壳。没有 -- 时整行原样交给 claude（--ccm-agent codex 时交给 codex）；没有 -- 又没有终端可交互（被别的程序经管道叫）时不起 claude；\n有 -- 时按最后一个 -- 切开：左边原样交给 claude，右边只放下面这些 ccm 自己的选项，无法识别就报错。\n要给 claude 它自己的 -- 又没有 ccm 选项时，末尾补一个空的 --（如 ccm -p -- -x --）。\n\n配置文件（~/.cc-monitor/profiles.toml，一段 [名字] 是一组 ccm 选项，可写 from = \"另一段\" 基于它）\n  ccm @<名> [交给 claude 的参数…] [-- ccm 选项…]   用那一段：继承链父 → 子合并，-- 右边当场给的最后盖\n  <名> …            ~/.cc-monitor/bin/<名> 是指向 ccm 的链接：被叫成这个名字就等同 ccm @<名> …\n                     （与系统命令同名的，如 cc，是交互终端里的 shell 函数，同样只调 ccm @<名>）\n  写了 hosted = true 的那一段（如 cch）是托管入口，第一个词是它自己的就归它：\n    cch ls           等同 ccm -- --hosts\n    cch attach|a <名> 等同 ccm -- --attach <名>\n    其余             等同 ccm @cch …\n\n选项\n  new                起新会话（缺省就是它；只许是 -- 右边第一个词。ccm new 没有 -- 时交给 claude）\n  --hosted           在 cc-monitor 托管的终端里跑（Linux · Windows；没说进哪种终端就在当前终端里跑）\n  --ccm-tmux[=<名>]  在一个 tmux 会话里跑；给名就用那个名\n  --tmux-base <基名> 以这个为底取名，撞了就换一个（与 --ccm-tmux=<名> 互斥）\n  --tmux-size <W>xH  新建终端的宽高（要带 --ccm-tmux 或 --hosted）\n  --detach           建完就返回，不接进去（要带 --ccm-tmux 或 --hosted）\n  --account <名>     用这个账号起（与 --base 互斥）\n  --account-dir <目录> 用这个账号配置目录起（不知道账号名时用；与 --account / --base 互斥）\n  --base             不用任何账号，按 agent 自己的默认配置起\n  --no-rotation      这一发不轮换，只用起它的那个号（不管「新会话用」设的哪一份；只管起新会话）\n  --cwd <目录>       工作目录；不给就是当前目录，开头的 ~ 是主目录，相对路径按当前目录补全\n  --cwd-if <在哪> <进哪> 正好在「在哪」这个目录里敲时进「进哪」（可写多次，按顺序第一条匹配的算；\n                     两边都可用 ~，链接解开再比；都不匹配才看 --cwd）\n  --ccm-agent <名>   claude | codex\n  --launcher <命令>  换掉默认的启动命令（可带参数，如 'ccr code'；开头的 ~/ 是主目录）\n  --attach <会话名>  不起 agent，直接接回一个 tmux 会话或托管终端（先在托管终端里认名字或句柄）\n  --hosts            列出这台的托管终端，一行一个：名字 · 目录 · 账号 · 起的时刻 · 有没有人接着\n  --host-run <句柄> [键=值…] -- <命令…>\n                     托管终端的托管进程：持一个伪终端跑那条命令（只许紧跟打头的 --：ccm -- --host-run …；由 cc-monitor 起）\n  --ccm-sid <会话ID> 给会话标上会话ID，cc-monitor 靠它找到终端窗口\n  --tab show|hide    进不进标签页（不给就照这台的偏好：子会话 · 分身会话各一格）\n  --tab-from <别名>  --tab 是哪个别名写的（ccm 往 tmux 里交下去时带）\n  --ccm-alias <别名> 这一发是哪个别名起的（ccm 往 tmux 里交下去时带）\n  --tab-group <名>   起出来的会话进哪个标签页分组（一组会话那一行没写组名时取它）\n  --say <那句>       第一句话：在 tmux 里起新会话时交给 agent（-- 左边自己写了第一句话就用那句）\n  --ccm-print        不跑，印出等价的一行 shell 命令，另起几行注释写每一项来自哪里\n  --ccm-probe        印出这台机器上 ccm 的身份信息（六行）\n  --ccm-version      印版本号\n  --ccm-help         这一段\n\n左边交给 claude 的参数里，ccm 只看一个（照样交给 claude）\n  --resume <会话ID>  这条会话已经在某个 tmux 会话里跑时，接上它、不另起（-r 同）\n\n中转\n  这台机器上 cc-monitor 的中转在听时，ccm 起 agent 前把 ANTHROPIC_BASE_URL 指向它（手动设过的也指过去，中转再转给手动设的那个地址）；\n  环境变量 CCM_RELAY_ALL_SESSIONS=0 时只有要经中转换 key 的账号才指过去\n",
       "args": [],
       "limited": ["tmux", "ccm"],
       "waive": {
@@ -15014,12 +14965,6 @@
       "zh": "删除失败 · ~/{path} · {why}",
       "args": ["path", "why"]
     },
-    "beSftp.list.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "无法列出目录 · {path} · {why}",
-      "args": ["path", "why"]
-    },
     "beSftp.open.isLink": {
       "kind": "error",
       "role": "报错",
@@ -15887,13 +15832,6 @@
       "role": "说明",
       "zh": "该机 {path} 无法覆盖 · {why} · 此 skill 不装",
       "args": ["path", "why"]
-    },
-    "extPage.error.noHostConfig": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未找到 {machine} 的连接设置 · 无法打开文件窗口\n到「机器」里查它是否还在",
-      "args": ["machine"],
-      "limited": ["连接"]
     },
     "beExt.state.project": {
       "kind": "body",
@@ -18934,6 +18872,18 @@
       "zh": "调整会话头按钮…",
       "args": []
     },
+    "sessionHead.act.openTerm": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "在终端里打开",
+      "args": []
+    },
+    "sessionHead.act.terminal": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "看它的终端",
+      "args": []
+    },
     "sessionHead.kin.parent": {
       "kind": "body",
       "role": "片段",
@@ -19473,6 +19423,12 @@
       "kind": "body",
       "role": "说明",
       "zh": "agent 子任务 subagent",
+      "args": []
+    },
+    "terminal.head.front": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "切到终端",
       "args": []
     },
     "terminal.head.snapAt": {
@@ -25949,13 +25905,6 @@
       "zh": "设为新会话用这份",
       "args": []
     },
-    "rot.more.inUse": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{n} 个会话在用",
-      "args": ["n"],
-      "waive": {"C-W11": "用户定的说法（轮换布局里「删除」那一项）"}
-    },
     "rot.more.add": {
       "kind": "action",
       "role": "菜单项",
@@ -26767,9 +26716,21 @@
     "sessionOpen.attached.body": {
       "kind": "body",
       "role": "说明",
-      "zh": "{machine} · tmux 会话「{name}」",
-      "args": ["machine", "name"],
+      "zh": "{machine} · {at}",
+      "args": ["machine", "at"]
+    },
+    "sessionOpen.at.tmux": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "tmux 会话「{name}」",
+      "args": ["name"],
       "limited": ["tmux"]
+    },
+    "sessionOpen.at.managed": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "托管终端「{name}」",
+      "args": ["name"]
     },
     "sessionOpen.arrived.title": {
       "kind": "body",

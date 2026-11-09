@@ -107,17 +107,18 @@ fn no_creation_path_can_mint_a_name_the_main_path_cannot_kill() {
     let root = guard_core::addr::repo_root();
 
     // ── ① 反向锚点：backend 那条形状门还在（它没了本判据就在空转）──────────
-    let kill_prod =
-        guard_core::production_code(include_str!("../../../src/backend/control/kill.rs"));
+    // 名字门的规则只住 `gate_rules::existing_tmux_name_issue` 一处（kill.rs 只按它出声）。
+    let gate_prod =
+        guard_core::production_code(include_str!("../../../src/backend/control/gate_rules.rs"));
     // 〔DUP3 §5 ③〕`=` 不再拒（`=a=b:` 精确命中名叫 `a=b` 的会话）⇒ 字符集只剩 `:`。
     let forbidden: Vec<char> = [':']
         .into_iter()
-        .filter(|c| kill_prod.contains(&format!("name.contains('{c}')")))
+        .filter(|c| gate_prod.contains(&format!("n.contains('{c}')")))
         .collect();
     assert_eq!(
         forbidden,
         vec![':'],
-        "backend 的 `parse_name` 不再拒 `:` 了 —— 本判据的字符集来源变了，回来重裁"
+        "backend 的 `existing_tmux_name_issue` 不再拒 `:` 了 —— 本判据的字符集来源变了，回来重裁"
     );
 
     // ── ② 遍历：谁在生产段真正产 `tmux new-session` ────────────────────────

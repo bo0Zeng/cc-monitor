@@ -37,6 +37,11 @@ pub(crate) fn local_from(facts: Option<relay::HopFacts>) -> Option<Way> {
     })
 }
 
+/// 到 `req` 那一台的这一跳远不远（本进程那个池里那几条连接的读数，判法住拨号核心 `ssh_dial::pool::far_of`）：常驻流照它定 attach 要不要那台压。
+pub fn far(req: &super::DialRequest) -> bool {
+    ssh_dial::pool::far_of(&ssh_dial::pool::ssh().links(), req)
+}
+
 /// 等本进程那个池的「成员动了」（放进一条 · 断了 · 没人用了）。
 pub fn moved() -> tokio::sync::watch::Receiver<u64> {
     ssh_dial::pool::ssh().moved()

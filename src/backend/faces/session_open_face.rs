@@ -6,7 +6,6 @@ use crate::control::session_open::{self as open, Facts, ResumeOf};
 use crate::control::session_open::{ForkWrite, PreRotation};
 use cmd_wire::listing::ResumeWith;
 use cmd_wire::session::{ForkSlot, ForkTerminal};
-use serde_json::Value;
 use std::collections::BTreeMap;
 
 /// `session-open`：起新的 · 恢复某条 · 接回，一个请求。阻塞档；写自家状态（起之前写好打开哪一份轮换配置）⇒ 写句柄由分派那一层递。
@@ -342,20 +341,15 @@ pub(crate) fn recent_dirs(
 
 /// 记录树那一家的项目 ＋ 合成历史那几家的会话 ⇒ `(工作目录, 最近一次)`。
 fn record_dirs(home: &std::path::Path) -> Vec<(String, i64)> {
-    let mut buf: Vec<u8> = Vec::new();
     // 读不出记录树 ⇒ 记一行、少这一家的目录（框里照常起，只是「最近的」少几项）。
-    if let Err(e) = crate::history::listing::list_projects_into(home, &mut buf) {
+    let projects = crate::history::listing::list_projects(home).unwrap_or_else(|e| {
         tracing::warn!("session-open-facts：读不出记录树的项目清单：{e}");
-    }
-    let mut out: Vec<(String, i64)> = String::from_utf8_lossy(&buf)
-        .lines()
-        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
-        .filter_map(|v| {
-            Some((
-                v.get("projectPath")?.as_str()?.to_string(),
-                v.get("lastActivityMs")?.as_i64()?,
-            ))
-        })
+        None
+    });
+    let mut out: Vec<(String, i64)> = projects
+        .unwrap_or_default()
+        .into_iter()
+        .map(|p| (p.project_path, p.last_activity_ms))
         .collect();
     for (_, face) in crate::agents::history_faces() {
         out.extend((face.sessions)().into_iter().map(|s| (s.cwd, s.mtime_ms)));

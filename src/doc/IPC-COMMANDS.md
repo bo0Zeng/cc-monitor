@@ -173,6 +173,7 @@ A new session file appeared。
 | `current` | WirePath? | 手上那一项（根底下的相对段）；做完了缺席 |
 | `bytes_done` | number? | 整组按字节已传几个（只有搬字节的那一种报：两台之间的复制）；不报 ⇒ 缺席 |
 | `bytes_total` | number? | 整组按字节一共几个（同 `bytes_done`，两格同在同缺） |
+| `left_text` | string? | 还要多久的成品字（本机后端照这一组的平均速度写好，`common::batch_book::left_text`）；说不出 ⇒ 缺席 |
 
 ### `probe`
 
@@ -394,7 +395,9 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 |---|---|---|
 | `close` | CanClose | 关掉它的标签页 |
 | `resume` | Allow | 恢复（起一个新进程接着那份记录） |
-| `terminal` | CanTerminal | 「终端」那一颗（拉它的外部窗口 · 在这一端开它的终端 · 做不了，见 `CanTerminal`） |
+| `front` | Allow | 拉前：把它住的那个外部终端窗口拉到前面（tab 行尾 ↗ · 右键 · 会话头 · 快捷键） |
+| `attach` | Allow | 在终端里打开：另开一个终端窗口接进它住的那个终端（tmux 会话 · 托管终端） |
+| `view` | CanView | 看它的终端：在看的这一端开它的终端页（桌面底部抽屉 · 手机终端屏），见 `CanView` |
 | `reattach` | Allow | 程序退了、tmux 会话还在 ⇒ 接回 |
 | `model` | Allow | 换模型（`session-model`） |
 | `permission` | Allow | 切权限档（`session-permission`） |
@@ -424,22 +427,12 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 - `can: "menu"`
 - `can: "no"`，带 `why` Words
 
-#### `CanTerminal`
+#### `CanView`
 
-**「终端」那一颗**（两端只这一颗；会话头 · 右键 · 命令面板 · 快捷键 · 手机顶栏都读它）：会话住的那台把两种看法都写好，两端只按「看的这一端在不在那台上」挑一格 —— 在那台上（桌面看本机会话）挑 `near`，别处（桌面看远端会话 · 手机）挑 `far`。
+看不看得了它的终端：`{can: "yes", said: 悬停那一句, open: 开哪个}` · `{can: "no", why: 写好的那一句}`（灰着、悬停 / 长按出它）。
 
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `near` | TermWay |  |
-| `far` | TermWay |  |
-
-#### `TermWay`
-
-点「终端」做什么：`front` 拉它住的那个外部终端窗口到前面（只在 `near`）· `here` 在看的这一端开它的终端（`open` 开哪个）· `no` 做不了（`why` 是那台写好的那一句：灰着、悬停 / 长按出它）。
-
-- `go: "front"`，带 `said` Words
-- `go: "here"`，带 `said` Words · `open` TermOpen
-- `go: "no"`，带 `why` Words
+- `can: "yes"`，带 `said` Words · `open` TermOpen
+- `can: "no"`，带 `why` Words
 
 #### `TermOpen`
 
@@ -684,6 +677,7 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 | `view` | JSON? | 出口的声明（要哪几格 · 哪几格不要）；缺 ＝ `null` ＝ 全量 |
 | `tz` | Tz? | 看的那一台的时区（IANA 名）：回包里「几点」「今天 / 昨天」按它写 |
 | `called` | string? | 看的那一端怎么称呼本台（连本台的客户端登记的名字：远端是机器表里那台的名字，本机是「本机」那个词）：「<目录> · <机器>」这类句子照它写 |
+| `machine` | string? | 这一问问的是哪台（机器表里那台的名字）：带了 ⇒ 经那台的常驻流转过去，本后端不自己答 |
 
 ## 3. 协议级错误码
 
@@ -1080,7 +1074,7 @@ there_mtime_text?: string,
  */
 answers: Array<Decide>, };
 type Conflicts = { conflicts: Array<Conflict>, };
-type CopyFrom = { remote_path: string, };
+type CopyFrom = { path: WirePath, name?: WirePath, };
 type Decide = "overwrite" | "skip" | "keep_both";
 type FileKind = "dir" | "file" | "symlink" | "other";
 type ItemState = "done" | "skipped" | "exists" | "failed" | "cancelled";
@@ -1096,13 +1090,13 @@ from: Machine,
  */
 to: Machine, items: Array<CopyFrom>, 
 /**
- * 落点那台上的目录（绝对路径）。
+ * 落点那台上的目录（绝对路径；原始字节）。
  */
-to_dir: string, on_exists?: OnExists, decide?: { [key in string]: Decide }, ticket?: string, };
+to_dir: WirePath, on_exists?: OnExists, decide?: { [key in string]: Decide }, ticket?: string, };
 type WirePath = string | { b16: string };
 ```
 
-码：`bad_args` · `exists` · `unreachable` · `sftp_home_mismatch`
+码：`bad_args` · `exists` · `unreachable`
 
 失败带 `data` 的码：`exists` ⇒ `Conflicts`
 
@@ -2654,6 +2648,7 @@ agent?: AgentKind, };
 入参 `RotationStrategiesReq` · 回包 `RotationStrategiesReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type RotRemove = { enabled: boolean, why?: string, who?: string, };
 type RotStrategyError = { line?: number, msg: string, };
 type RotStrategyItem = { id: string, 
 /**
@@ -2665,9 +2660,9 @@ description: string,
  */
 summary: string, rev: string, error?: RotStrategyError, 
 /**
- * 此刻还活着、用着它的会话。
+ * 能不能删（与 `rotation-strategy-delete` 拒的同一处判）。
  */
-inUse: Array<string>, forNew: boolean, 
+remove: RotRemove, forNew: boolean, 
 /**
  * 文件头里没写时区（分时段按 UTC 算）。
  */
@@ -2760,7 +2755,7 @@ type RotDaySeg = { from: number, to: number, fromText: string, toText: string, v
 type RotFormKind = "percent" | "minutes" | "toggle" | "choice" | "daySegments";
 type RotFrom = "own" | "all" | "default" | "same";
 type RotGroup = "use" | "next" | "out" | "off";
-type RotHint = { "k": "hold", until?: number, account?: string, } | { "k": "strategyError", error: RotStrategyError, path?: string, } | { "k": "tzUnknown", zone: string, } | { "k": "oldScripts", n: number, files: Array<RotOldFile>, } | { "k": "newer" } | { "k": "older", n: number, } | { "k": "wordsBad" } | { "k": "bookUnreadable", text: string, };
+type RotHint = { "k": "hold", account?: string, } | { "k": "strategyError", error: RotStrategyError, path?: string, } | { "k": "tzUnknown", zone: string, } | { "k": "oldScripts", n: number, files: Array<RotOldFile>, } | { "k": "newer" } | { "k": "older", n: number, } | { "k": "wordsBad" } | { "k": "bookUnreadable", text: string, };
 type RotLine = { account: string, group: RotGroup, state: string, why?: string, movable: boolean, stay?: string, };
 type RotLogCause = { "k": "order" } | { "k": "unusable" } | { "k": "temp" } | { "k": "useNow" } | { "k": "hold", until?: number, } | { "k": "error" };
 type RotLogRow = { because: string, at: number, from: string, to: string, cause: RotLogCause, why?: string, 
@@ -2775,7 +2770,12 @@ type RotNote = { hint: RotHint, tone: Tone, text: string,
  */
 detail?: string, };
 type RotOldFile = { name: string, path: string, };
-type RotPlate = { color: number, label: Words, text: Words, };
+type RotPlate = { 
+/**
+ * 账号库里没有这个号 ⇒ 缺（三端画中性，不按名字补一个像真的色）。
+ */
+color?: number, label: Words, text: Words, };
+type RotRemove = { enabled: boolean, why?: string, who?: string, };
 type RotRow = { account: string, 
 /**
  * 这一行在 `settings.accounts` 里的下标：改设置 · 移出 · 拖动一律交它（不拿显示的先后当行号）。
@@ -2810,9 +2810,9 @@ description: string,
  */
 summary: string, rev: string, error?: RotStrategyError, 
 /**
- * 此刻还活着、用着它的会话。
+ * 能不能删（与 `rotation-strategy-delete` 拒的同一处判）。
  */
-inUse: Array<string>, forNew: boolean, 
+remove: RotRemove, forNew: boolean, 
 /**
  * 文件头里没写时区（分时段按 UTC 算）。
  */
@@ -2922,7 +2922,11 @@ log: Array<RotLogRow>, hints: Array<RotNote>,
 /**
  * 会话那一形此刻能做的几样（设置页 ⇒ 缺）。
  */
-can?: RotCan, };
+can?: RotCan, 
+/**
+ * 编辑小窗底行那一整句：改的是哪份 ＋（有会话还在用旧版 ⇒ 那一条提示的那一句；没有会话在用 ⇒ 说没有）。不轮换 ⇒ 缺。
+ */
+foot?: string, };
 type RotationViewReq = { target: RotTarget, 
 /**
  * 设置页那一形往后推几小时（1–48，缺 ⇒ 12）；会话那一形不画推演，不看它。
@@ -3023,16 +3027,12 @@ strategy: string | null, };
 入参 `RotationTempReq` · 回包 `RotationTempReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type FactWhy = "refused" | "overage" | "used" | "login" | "key";
 type RotTempOp = { "move": { account: string, to: number, } } | "clear" | { "off": { account: string, off: boolean, } };
-type RotUnusable = { why?: FactWhy, until?: number, };
 type RotationTempReply = { temp: Array<string>, off: Array<string>, };
 type RotationTempReq = { sid: string, op: RotTempOp, };
 ```
 
 码：`bad_args` · `no_session` · `not_listed` · `unusable` · `io_failed`
-
-失败带 `data` 的码：`unusable` ⇒ `RotUnusable`
 
 #### `rotation-use-now`
 
@@ -3043,15 +3043,11 @@ type RotationTempReq = { sid: string, op: RotTempOp, };
 入参 `RotationUseNowReq` · 回包 `RotDone`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type FactWhy = "refused" | "overage" | "used" | "login" | "key";
 type RotDone = Record<symbol, never>;
-type RotUnusable = { why?: FactWhy, until?: number, };
 type RotationUseNowReq = { sid: string, account: string, };
 ```
 
 码：`bad_args` · `no_session` · `not_listed` · `unusable` · `io_failed`
-
-失败带 `data` 的码：`unusable` ⇒ `RotUnusable`
 
 #### `rotation-strategy-add`
 
@@ -3253,9 +3249,9 @@ authKind: string, authReady: boolean,
  */
 selectable: boolean, 
 /**
- * 号色（`--acct-c0..c7` 第几格，账号库里的事实），界面只画它。
+ * 号色（`--acct-c0..c7` 第几格，账号库里的事实），界面只画它；库里没给 ⇒ 缺（画中性）。
  */
-color: number, };
+color?: number, };
 type AccountsList = { meta: ListMeta, 
 /**
  * 每账号一行，清单次序。
@@ -4228,7 +4224,7 @@ type ResumeWith = { model?: string, permissionMode?: string, end: number, };
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
-type CanTerminal = { near: TermWay, far: TermWay, };
+type CanView = { "can": "yes", said: Words, open: TermOpen, } | { "can": "no", why: Words, };
 type FactsClock = { text: Words, from: number, };
 type GroupsHere = { groups: Array<HereGroup>, members: Array<HereMember>, };
 type HereGroup = { id: string, name: string, made: number, named: number, };
@@ -4271,9 +4267,18 @@ close: CanClose,
  */
 resume: Allow, 
 /**
- * 「终端」那一颗（拉它的外部窗口 · 在这一端开它的终端 · 做不了，见 [`CanTerminal`]）。
+ * 拉前：把它住的那个外部终端窗口拉到前面（tab 行尾 ↗ · 右键 · 会话头 · 快捷键）。活着 · 读记录中 · 程序退了 tmux 会话还在 ⇒ 能，
+ * 宿主是哪种都一样（本机会话与远端会话同一条：远端的窗口是看的这台上开着 ssh 的那个终端）；看的这一端的壳拉不拉得了窗由那一端自己判，不写在这里。
  */
-terminal: CanTerminal, 
+front: Allow, 
+/**
+ * 在终端里打开：另开一个终端窗口接进它住的那个终端（tmux 会话 · 托管终端）。不在宿主里 · 已结束 · pidfile 说接不进 ⇒ 不能。
+ */
+attach: Allow, 
+/**
+ * 看它的终端：在看的这一端开它的终端页（桌面底部抽屉 · 手机终端屏），见 [`CanView`]。
+ */
+view: CanView, 
 /**
  * 程序退了、tmux 会话还在 ⇒ 接回。
  */
@@ -4340,7 +4345,6 @@ order: number, can: SessionCan,
  */
 account?: string, };
 type TermOpen = { "kind": "attach", terminal?: string, } | { "kind": "resume" };
-type TermWay = { "go": "front", said: Words, } | { "go": "here", said: Words, open: TermOpen, } | { "go": "no", why: Words, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type Words = string;
 ```
@@ -4359,7 +4363,7 @@ type Words = string;
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
-type CanTerminal = { near: TermWay, far: TermWay, };
+type CanView = { "can": "yes", said: Words, open: TermOpen, } | { "can": "no", why: Words, };
 type FactsClock = { text: Words, from: number, };
 type GroupCount = { dot: SessionDot, n: number, word: string, 
 /**
@@ -4442,9 +4446,18 @@ close: CanClose,
  */
 resume: Allow, 
 /**
- * 「终端」那一颗（拉它的外部窗口 · 在这一端开它的终端 · 做不了，见 [`CanTerminal`]）。
+ * 拉前：把它住的那个外部终端窗口拉到前面（tab 行尾 ↗ · 右键 · 会话头 · 快捷键）。活着 · 读记录中 · 程序退了 tmux 会话还在 ⇒ 能，
+ * 宿主是哪种都一样（本机会话与远端会话同一条：远端的窗口是看的这台上开着 ssh 的那个终端）；看的这一端的壳拉不拉得了窗由那一端自己判，不写在这里。
  */
-terminal: CanTerminal, 
+front: Allow, 
+/**
+ * 在终端里打开：另开一个终端窗口接进它住的那个终端（tmux 会话 · 托管终端）。不在宿主里 · 已结束 · pidfile 说接不进 ⇒ 不能。
+ */
+attach: Allow, 
+/**
+ * 看它的终端：在看的这一端开它的终端页（桌面底部抽屉 · 手机终端屏），见 [`CanView`]。
+ */
+view: CanView, 
 /**
  * 程序退了、tmux 会话还在 ⇒ 接回。
  */
@@ -4511,7 +4524,6 @@ order: number, can: SessionCan,
  */
 account?: string, };
 type TermOpen = { "kind": "attach", terminal?: string, } | { "kind": "resume" };
-type TermWay = { "go": "front", said: Words, } | { "go": "here", said: Words, open: TermOpen, } | { "go": "no", why: Words, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type Words = string;
 ```
@@ -4547,7 +4559,7 @@ type HereGroup = { id: string, name: string, made: number, named: number, };
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
-type CanTerminal = { near: TermWay, far: TermWay, };
+type CanView = { "can": "yes", said: Words, open: TermOpen, } | { "can": "no", why: Words, };
 type FactsClock = { text: Words, from: number, };
 type GroupCount = { dot: SessionDot, n: number, word: string, 
 /**
@@ -4616,9 +4628,18 @@ close: CanClose,
  */
 resume: Allow, 
 /**
- * 「终端」那一颗（拉它的外部窗口 · 在这一端开它的终端 · 做不了，见 [`CanTerminal`]）。
+ * 拉前：把它住的那个外部终端窗口拉到前面（tab 行尾 ↗ · 右键 · 会话头 · 快捷键）。活着 · 读记录中 · 程序退了 tmux 会话还在 ⇒ 能，
+ * 宿主是哪种都一样（本机会话与远端会话同一条：远端的窗口是看的这台上开着 ssh 的那个终端）；看的这一端的壳拉不拉得了窗由那一端自己判，不写在这里。
  */
-terminal: CanTerminal, 
+front: Allow, 
+/**
+ * 在终端里打开：另开一个终端窗口接进它住的那个终端（tmux 会话 · 托管终端）。不在宿主里 · 已结束 · pidfile 说接不进 ⇒ 不能。
+ */
+attach: Allow, 
+/**
+ * 看它的终端：在看的这一端开它的终端页（桌面底部抽屉 · 手机终端屏），见 [`CanView`]。
+ */
+view: CanView, 
 /**
  * 程序退了、tmux 会话还在 ⇒ 接回。
  */
@@ -4694,7 +4715,6 @@ sid: string,
  */
 groups: Array<GroupRead>, looked: Looked, };
 type TermOpen = { "kind": "attach", terminal?: string, } | { "kind": "resume" };
-type TermWay = { "go": "front", said: Words, } | { "go": "here", said: Words, open: TermOpen, } | { "go": "no", why: Words, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type Words = string;
 ```
@@ -4768,7 +4788,7 @@ type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Wor
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
-type CanTerminal = { near: TermWay, far: TermWay, };
+type CanView = { "can": "yes", said: Words, open: TermOpen, } | { "can": "no", why: Words, };
 type FactsClock = { text: Words, from: number, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
@@ -4886,9 +4906,18 @@ close: CanClose,
  */
 resume: Allow, 
 /**
- * 「终端」那一颗（拉它的外部窗口 · 在这一端开它的终端 · 做不了，见 [`CanTerminal`]）。
+ * 拉前：把它住的那个外部终端窗口拉到前面（tab 行尾 ↗ · 右键 · 会话头 · 快捷键）。活着 · 读记录中 · 程序退了 tmux 会话还在 ⇒ 能，
+ * 宿主是哪种都一样（本机会话与远端会话同一条：远端的窗口是看的这台上开着 ssh 的那个终端）；看的这一端的壳拉不拉得了窗由那一端自己判，不写在这里。
  */
-terminal: CanTerminal, 
+front: Allow, 
+/**
+ * 在终端里打开：另开一个终端窗口接进它住的那个终端（tmux 会话 · 托管终端）。不在宿主里 · 已结束 · pidfile 说接不进 ⇒ 不能。
+ */
+attach: Allow, 
+/**
+ * 看它的终端：在看的这一端开它的终端页（桌面底部抽屉 · 手机终端屏），见 [`CanView`]。
+ */
+view: CanView, 
 /**
  * 程序退了、tmux 会话还在 ⇒ 接回。
  */
@@ -4959,7 +4988,6 @@ type SyncHeld = string;
 type SyncPatch<H, T> = { held: SyncHeld, whole: boolean, same: boolean, order: Array<string> | null, up: { [key in string]: T }, head: SyncHead<H> | null, };
 type SyncRange = { from: number, limit: number, };
 type TermOpen = { "kind": "attach", terminal?: string, } | { "kind": "resume" };
-type TermWay = { "go": "front", said: Words, } | { "go": "here", said: Words, open: TermOpen, } | { "go": "no", why: Words, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type Words = string;
 ```
@@ -4998,7 +5026,7 @@ type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Wor
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
-type CanTerminal = { near: TermWay, far: TermWay, };
+type CanView = { "can": "yes", said: Words, open: TermOpen, } | { "can": "no", why: Words, };
 type FactsClock = { text: Words, from: number, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
@@ -5148,9 +5176,18 @@ close: CanClose,
  */
 resume: Allow, 
 /**
- * 「终端」那一颗（拉它的外部窗口 · 在这一端开它的终端 · 做不了，见 [`CanTerminal`]）。
+ * 拉前：把它住的那个外部终端窗口拉到前面（tab 行尾 ↗ · 右键 · 会话头 · 快捷键）。活着 · 读记录中 · 程序退了 tmux 会话还在 ⇒ 能，
+ * 宿主是哪种都一样（本机会话与远端会话同一条：远端的窗口是看的这台上开着 ssh 的那个终端）；看的这一端的壳拉不拉得了窗由那一端自己判，不写在这里。
  */
-terminal: CanTerminal, 
+front: Allow, 
+/**
+ * 在终端里打开：另开一个终端窗口接进它住的那个终端（tmux 会话 · 托管终端）。不在宿主里 · 已结束 · pidfile 说接不进 ⇒ 不能。
+ */
+attach: Allow, 
+/**
+ * 看它的终端：在看的这一端开它的终端页（桌面底部抽屉 · 手机终端屏），见 [`CanView`]。
+ */
+view: CanView, 
 /**
  * 程序退了、tmux 会话还在 ⇒ 接回。
  */
@@ -5221,7 +5258,6 @@ type SyncHeld = string;
 type SyncPatch<H, T> = { held: SyncHeld, whole: boolean, same: boolean, order: Array<string> | null, up: { [key in string]: T }, head: SyncHead<H> | null, };
 type SyncRange = { from: number, limit: number, };
 type TermOpen = { "kind": "attach", terminal?: string, } | { "kind": "resume" };
-type TermWay = { "go": "front", said: Words, } | { "go": "here", said: Words, open: TermOpen, } | { "go": "no", why: Words, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type Words = string;
 ```
@@ -5342,7 +5378,7 @@ type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Wor
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
-type CanTerminal = { near: TermWay, far: TermWay, };
+type CanView = { "can": "yes", said: Words, open: TermOpen, } | { "can": "no", why: Words, };
 type FactsClock = { text: Words, from: number, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
@@ -5471,9 +5507,18 @@ close: CanClose,
  */
 resume: Allow, 
 /**
- * 「终端」那一颗（拉它的外部窗口 · 在这一端开它的终端 · 做不了，见 [`CanTerminal`]）。
+ * 拉前：把它住的那个外部终端窗口拉到前面（tab 行尾 ↗ · 右键 · 会话头 · 快捷键）。活着 · 读记录中 · 程序退了 tmux 会话还在 ⇒ 能，
+ * 宿主是哪种都一样（本机会话与远端会话同一条：远端的窗口是看的这台上开着 ssh 的那个终端）；看的这一端的壳拉不拉得了窗由那一端自己判，不写在这里。
  */
-terminal: CanTerminal, 
+front: Allow, 
+/**
+ * 在终端里打开：另开一个终端窗口接进它住的那个终端（tmux 会话 · 托管终端）。不在宿主里 · 已结束 · pidfile 说接不进 ⇒ 不能。
+ */
+attach: Allow, 
+/**
+ * 看它的终端：在看的这一端开它的终端页（桌面底部抽屉 · 手机终端屏），见 [`CanView`]。
+ */
+view: CanView, 
 /**
  * 程序退了、tmux 会话还在 ⇒ 接回。
  */
@@ -5540,7 +5585,6 @@ order: number, can: SessionCan,
  */
 account?: string, };
 type TermOpen = { "kind": "attach", terminal?: string, } | { "kind": "resume" };
-type TermWay = { "go": "front", said: Words, } | { "go": "here", said: Words, open: TermOpen, } | { "go": "no", why: Words, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type Words = string;
 ```
@@ -5579,7 +5623,7 @@ type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Wor
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
-type CanTerminal = { near: TermWay, far: TermWay, };
+type CanView = { "can": "yes", said: Words, open: TermOpen, } | { "can": "no", why: Words, };
 type FactsClock = { text: Words, from: number, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
@@ -5737,9 +5781,18 @@ close: CanClose,
  */
 resume: Allow, 
 /**
- * 「终端」那一颗（拉它的外部窗口 · 在这一端开它的终端 · 做不了，见 [`CanTerminal`]）。
+ * 拉前：把它住的那个外部终端窗口拉到前面（tab 行尾 ↗ · 右键 · 会话头 · 快捷键）。活着 · 读记录中 · 程序退了 tmux 会话还在 ⇒ 能，
+ * 宿主是哪种都一样（本机会话与远端会话同一条：远端的窗口是看的这台上开着 ssh 的那个终端）；看的这一端的壳拉不拉得了窗由那一端自己判，不写在这里。
  */
-terminal: CanTerminal, 
+front: Allow, 
+/**
+ * 在终端里打开：另开一个终端窗口接进它住的那个终端（tmux 会话 · 托管终端）。不在宿主里 · 已结束 · pidfile 说接不进 ⇒ 不能。
+ */
+attach: Allow, 
+/**
+ * 看它的终端：在看的这一端开它的终端页（桌面底部抽屉 · 手机终端屏），见 [`CanView`]。
+ */
+view: CanView, 
 /**
  * 程序退了、tmux 会话还在 ⇒ 接回。
  */
@@ -5806,7 +5859,6 @@ order: number, can: SessionCan,
  */
 account?: string, };
 type TermOpen = { "kind": "attach", terminal?: string, } | { "kind": "resume" };
-type TermWay = { "go": "front", said: Words, } | { "go": "here", said: Words, open: TermOpen, } | { "go": "no", why: Words, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type Words = string;
 ```
@@ -6203,7 +6255,7 @@ answer?: Answer,
  */
 exitCode?: number, 
 /**
- * 失败那一步的尾巴（「退出码 N」/「出错」，后端 `StepResult::written` 写）：结果块抬头照摆；没失败 ⇒ 缺。
+ * 失败那一步的尾巴（「退出码 N」/「出错」，后端 `step_clock::said` 写）：结果块抬头照摆；没失败 ⇒ 缺。
  */
 error?: string, 
 /**
@@ -6216,9 +6268,9 @@ file?: string,
  */
 patch?: LineDiff, 
 /**
- * 过程那一行右侧那一句（[`StepResult::written`] 写）：改动 `+38 −6` · 读了几行（只读文件那一类）· 几个文件 ·
+ * 过程那一行右侧那一句（后端 `step_clock::said` 一处写；适配层交来时是空的）：改动 `+38 −6` · 读了几行（只读文件那一类）· 几个文件 ·
  * 失败 · 未批准 · 提问 / 计划答了什么（已选「…」· 已批准）；都说不上 ⇒ 空串。配上了调用的时刻 ⇒ 失败 · 都说不上的那一步
- * 带上一步用时（`StepResultExt::timed_by` 写）；配不上 ⇒ 照没有用时的那一形。
+ * 带上一步用时；配不上 ⇒ 照没有用时的那一形。
  */
 text: string, 
 /**
@@ -6713,7 +6765,7 @@ answer?: Answer,
  */
 exitCode?: number, 
 /**
- * 失败那一步的尾巴（「退出码 N」/「出错」，后端 `StepResult::written` 写）：结果块抬头照摆；没失败 ⇒ 缺。
+ * 失败那一步的尾巴（「退出码 N」/「出错」，后端 `step_clock::said` 写）：结果块抬头照摆；没失败 ⇒ 缺。
  */
 error?: string, 
 /**
@@ -6726,9 +6778,9 @@ file?: string,
  */
 patch?: LineDiff, 
 /**
- * 过程那一行右侧那一句（[`StepResult::written`] 写）：改动 `+38 −6` · 读了几行（只读文件那一类）· 几个文件 ·
+ * 过程那一行右侧那一句（后端 `step_clock::said` 一处写；适配层交来时是空的）：改动 `+38 −6` · 读了几行（只读文件那一类）· 几个文件 ·
  * 失败 · 未批准 · 提问 / 计划答了什么（已选「…」· 已批准）；都说不上 ⇒ 空串。配上了调用的时刻 ⇒ 失败 · 都说不上的那一步
- * 带上一步用时（`StepResultExt::timed_by` 写）；配不上 ⇒ 照没有用时的那一形。
+ * 带上一步用时；配不上 ⇒ 照没有用时的那一形。
  */
 text: string, 
 /**
@@ -7231,7 +7283,7 @@ answer?: Answer,
  */
 exitCode?: number, 
 /**
- * 失败那一步的尾巴（「退出码 N」/「出错」，后端 `StepResult::written` 写）：结果块抬头照摆；没失败 ⇒ 缺。
+ * 失败那一步的尾巴（「退出码 N」/「出错」，后端 `step_clock::said` 写）：结果块抬头照摆；没失败 ⇒ 缺。
  */
 error?: string, 
 /**
@@ -7244,9 +7296,9 @@ file?: string,
  */
 patch?: LineDiff, 
 /**
- * 过程那一行右侧那一句（[`StepResult::written`] 写）：改动 `+38 −6` · 读了几行（只读文件那一类）· 几个文件 ·
+ * 过程那一行右侧那一句（后端 `step_clock::said` 一处写；适配层交来时是空的）：改动 `+38 −6` · 读了几行（只读文件那一类）· 几个文件 ·
  * 失败 · 未批准 · 提问 / 计划答了什么（已选「…」· 已批准）；都说不上 ⇒ 空串。配上了调用的时刻 ⇒ 失败 · 都说不上的那一步
- * 带上一步用时（`StepResultExt::timed_by` 写）；配不上 ⇒ 照没有用时的那一形。
+ * 带上一步用时；配不上 ⇒ 照没有用时的那一形。
  */
 text: string, 
 /**
@@ -7710,7 +7762,7 @@ answer?: Answer,
  */
 exitCode?: number, 
 /**
- * 失败那一步的尾巴（「退出码 N」/「出错」，后端 `StepResult::written` 写）：结果块抬头照摆；没失败 ⇒ 缺。
+ * 失败那一步的尾巴（「退出码 N」/「出错」，后端 `step_clock::said` 写）：结果块抬头照摆；没失败 ⇒ 缺。
  */
 error?: string, 
 /**
@@ -7723,9 +7775,9 @@ file?: string,
  */
 patch?: LineDiff, 
 /**
- * 过程那一行右侧那一句（[`StepResult::written`] 写）：改动 `+38 −6` · 读了几行（只读文件那一类）· 几个文件 ·
+ * 过程那一行右侧那一句（后端 `step_clock::said` 一处写；适配层交来时是空的）：改动 `+38 −6` · 读了几行（只读文件那一类）· 几个文件 ·
  * 失败 · 未批准 · 提问 / 计划答了什么（已选「…」· 已批准）；都说不上 ⇒ 空串。配上了调用的时刻 ⇒ 失败 · 都说不上的那一步
- * 带上一步用时（`StepResultExt::timed_by` 写）；配不上 ⇒ 照没有用时的那一形。
+ * 带上一步用时；配不上 ⇒ 照没有用时的那一形。
  */
 text: string, 
 /**
@@ -7955,7 +8007,7 @@ type AskEndRow = { sid: string, end: AskEnd, };
 type AskKind = "approve" | "answer" | "plan";
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
-type CanTerminal = { near: TermWay, far: TermWay, };
+type CanView = { "can": "yes", said: Words, open: TermOpen, } | { "can": "no", why: Words, };
 type FactsClock = { text: Words, from: number, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
@@ -8155,9 +8207,18 @@ close: CanClose,
  */
 resume: Allow, 
 /**
- * 「终端」那一颗（拉它的外部窗口 · 在这一端开它的终端 · 做不了，见 [`CanTerminal`]）。
+ * 拉前：把它住的那个外部终端窗口拉到前面（tab 行尾 ↗ · 右键 · 会话头 · 快捷键）。活着 · 读记录中 · 程序退了 tmux 会话还在 ⇒ 能，
+ * 宿主是哪种都一样（本机会话与远端会话同一条：远端的窗口是看的这台上开着 ssh 的那个终端）；看的这一端的壳拉不拉得了窗由那一端自己判，不写在这里。
  */
-terminal: CanTerminal, 
+front: Allow, 
+/**
+ * 在终端里打开：另开一个终端窗口接进它住的那个终端（tmux 会话 · 托管终端）。不在宿主里 · 已结束 · pidfile 说接不进 ⇒ 不能。
+ */
+attach: Allow, 
+/**
+ * 看它的终端：在看的这一端开它的终端页（桌面底部抽屉 · 手机终端屏），见 [`CanView`]。
+ */
+view: CanView, 
 /**
  * 程序退了、tmux 会话还在 ⇒ 接回。
  */
@@ -8225,7 +8286,6 @@ order: number, can: SessionCan,
 account?: string, };
 type SessionsNeedsReq = Record<symbol, never>;
 type TermOpen = { "kind": "attach", terminal?: string, } | { "kind": "resume" };
-type TermWay = { "go": "front", said: Words, } | { "go": "here", said: Words, open: TermOpen, } | { "go": "no", why: Words, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type Words = string;
 ```
@@ -8246,7 +8306,7 @@ type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type AskKind = "approve" | "answer" | "plan";
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
-type CanTerminal = { near: TermWay, far: TermWay, };
+type CanView = { "can": "yes", said: Words, open: TermOpen, } | { "can": "no", why: Words, };
 type FactsClock = { text: Words, from: number, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
@@ -8447,9 +8507,18 @@ close: CanClose,
  */
 resume: Allow, 
 /**
- * 「终端」那一颗（拉它的外部窗口 · 在这一端开它的终端 · 做不了，见 [`CanTerminal`]）。
+ * 拉前：把它住的那个外部终端窗口拉到前面（tab 行尾 ↗ · 右键 · 会话头 · 快捷键）。活着 · 读记录中 · 程序退了 tmux 会话还在 ⇒ 能，
+ * 宿主是哪种都一样（本机会话与远端会话同一条：远端的窗口是看的这台上开着 ssh 的那个终端）；看的这一端的壳拉不拉得了窗由那一端自己判，不写在这里。
  */
-terminal: CanTerminal, 
+front: Allow, 
+/**
+ * 在终端里打开：另开一个终端窗口接进它住的那个终端（tmux 会话 · 托管终端）。不在宿主里 · 已结束 · pidfile 说接不进 ⇒ 不能。
+ */
+attach: Allow, 
+/**
+ * 看它的终端：在看的这一端开它的终端页（桌面底部抽屉 · 手机终端屏），见 [`CanView`]。
+ */
+view: CanView, 
 /**
  * 程序退了、tmux 会话还在 ⇒ 接回。
  */
@@ -8516,7 +8585,6 @@ order: number, can: SessionCan,
  */
 account?: string, };
 type TermOpen = { "kind": "attach", terminal?: string, } | { "kind": "resume" };
-type TermWay = { "go": "front", said: Words, } | { "go": "here", said: Words, open: TermOpen, } | { "go": "no", why: Words, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type Words = string;
 ```
@@ -8605,7 +8673,7 @@ type AskKind = "approve" | "answer" | "plan";
 type AutoChoice = { min: number, text: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
-type CanTerminal = { near: TermWay, far: TermWay, };
+type CanView = { "can": "yes", said: Words, open: TermOpen, } | { "can": "no", why: Words, };
 type FactsBackground = { 
 /**
  * 「后台任务运行中 · make test-all · 12m」；命令拿不到 ⇒ 「后台任务运行中」。手机与 CLI 照抄、按节拍重问。
@@ -8672,6 +8740,11 @@ projectDir: string | null,
  * 两端显示目录照抄它、不自己缩；项目目录还没读到 ⇒ 不出现。每次现给，不累加。
  */
 cwdShown?: Words, 
+/**
+ * 项目名：`project_dir` 的最后一段（`plain_path_core::last_segment`，与历史清单 · 搜索行同一个函数，`/` 与 `\` 都认），
+ * 与 `cwdShown` 同一处写；两端照摆、不自己切路径。项目目录还没读到 ⇒ 不出现。每次现给，不累加。
+ */
+projectName?: string, 
 /**
  * 这份记录是哪一家的（线上的 kind，适配层按记录认：`agents::record_kind_of`）；认不出 ⇒ `null`（界面要分家的那几项灰着，不落哪一家）。
  */
@@ -9013,9 +9086,18 @@ close: CanClose,
  */
 resume: Allow, 
 /**
- * 「终端」那一颗（拉它的外部窗口 · 在这一端开它的终端 · 做不了，见 [`CanTerminal`]）。
+ * 拉前：把它住的那个外部终端窗口拉到前面（tab 行尾 ↗ · 右键 · 会话头 · 快捷键）。活着 · 读记录中 · 程序退了 tmux 会话还在 ⇒ 能，
+ * 宿主是哪种都一样（本机会话与远端会话同一条：远端的窗口是看的这台上开着 ssh 的那个终端）；看的这一端的壳拉不拉得了窗由那一端自己判，不写在这里。
  */
-terminal: CanTerminal, 
+front: Allow, 
+/**
+ * 在终端里打开：另开一个终端窗口接进它住的那个终端（tmux 会话 · 托管终端）。不在宿主里 · 已结束 · pidfile 说接不进 ⇒ 不能。
+ */
+attach: Allow, 
+/**
+ * 看它的终端：在看的这一端开它的终端页（桌面底部抽屉 · 手机终端屏），见 [`CanView`]。
+ */
+view: CanView, 
 /**
  * 程序退了、tmux 会话还在 ⇒ 接回。
  */
@@ -9083,7 +9165,6 @@ order: number, can: SessionCan,
 account?: string, };
 type StepWait = "running" | "awaiting" | "unclear";
 type TermOpen = { "kind": "attach", terminal?: string, } | { "kind": "resume" };
-type TermWay = { "go": "front", said: Words, } | { "go": "here", said: Words, open: TermOpen, } | { "go": "no", why: Words, };
 type TokenUse = { input: number, output: number, 
 /**
  * 写好的串（输入 · 输出 · 读缓存 · 写缓存）。
@@ -9822,7 +9903,7 @@ answer?: Answer,
  */
 exitCode?: number, 
 /**
- * 失败那一步的尾巴（「退出码 N」/「出错」，后端 `StepResult::written` 写）：结果块抬头照摆；没失败 ⇒ 缺。
+ * 失败那一步的尾巴（「退出码 N」/「出错」，后端 `step_clock::said` 写）：结果块抬头照摆；没失败 ⇒ 缺。
  */
 error?: string, 
 /**
@@ -9835,9 +9916,9 @@ file?: string,
  */
 patch?: LineDiff, 
 /**
- * 过程那一行右侧那一句（[`StepResult::written`] 写）：改动 `+38 −6` · 读了几行（只读文件那一类）· 几个文件 ·
+ * 过程那一行右侧那一句（后端 `step_clock::said` 一处写；适配层交来时是空的）：改动 `+38 −6` · 读了几行（只读文件那一类）· 几个文件 ·
  * 失败 · 未批准 · 提问 / 计划答了什么（已选「…」· 已批准）；都说不上 ⇒ 空串。配上了调用的时刻 ⇒ 失败 · 都说不上的那一步
- * 带上一步用时（`StepResultExt::timed_by` 写）；配不上 ⇒ 照没有用时的那一形。
+ * 带上一步用时；配不上 ⇒ 照没有用时的那一形。
  */
 text: string, 
 /**
@@ -10035,9 +10116,9 @@ id: string,
  */
 subject: string, 
 /**
- * 同上。
+ * 哪一态（原文缺 / 不是串 ⇒ 那个对象不算任务）。
  */
-status: string, 
+status: TaskStatus, 
 /**
  * `status` 写给人看的那一个字（读屏念它；界面照摆，不自己映）。
  */
@@ -10051,9 +10132,10 @@ blocks: Array<string>,
  */
 description?: string, 
 /**
- * 同上。
+ * 正在做的那一句：只在进行中给（别的态原文带着也不出）。
  */
 activeForm?: string, };
+type TaskStatus = "pending" | "in_progress" | "completed" | "deleted" | "other";
 type TasksList = { 
 /**
  * `<tasks>/<sid>/<数字>.json` 里每个任务一格，按那个数字升序。
@@ -10324,9 +10406,9 @@ authKind: string, authReady: boolean,
  */
 selectable: boolean, 
 /**
- * 号色（`--acct-c0..c7` 第几格，账号库里的事实），界面只画它。
+ * 号色（`--acct-c0..c7` 第几格，账号库里的事实），界面只画它；库里没给 ⇒ 缺（画中性）。
  */
-color: number, };
+color?: number, };
 type AccountsList = { meta: ListMeta, 
 /**
  * 每账号一行，清单次序。
@@ -11840,7 +11922,7 @@ type ShellKind = "posix" | "powershell";
 ```ts
 type NoArgs = Record<symbol, never>;
 type ProfileAccountPick = { "kind": "account", name: string, } | { "kind": "base" };
-type ProfileAccountShape = { account: string, form: "plain" | "tmux" | "hosted", };
+type ProfileAccountShape = { account: string, };
 type ProfileCwdCase = { at: string, to: string, };
 type ProfileDrop = { label: string, kids: Array<string>, 
 /**
@@ -11885,7 +11967,7 @@ functionLine: string | null,
  */
 said: string, form: ProfileForm, 
 /**
- * 「账号那一形」（自己只写了号、可再加 tmux 或托管）⇒ 号与那一形按合并下来的算；其余 ⇒ `null`（账号页按它列各号的命令名）。
+ * 「账号那一形」（自己只写了号、可再加 tmux 或托管）⇒ 号按合并下来的算；其余 ⇒ `null`（账号页按它列各号的命令名）。
  */
 accountShape: ProfileAccountShape | null, 
 /**
@@ -12240,6 +12322,10 @@ landed: Landed,
  */
 session: string | null, 
 /**
+ * 接上的是哪个终端（那台照宿主写好：「tmux 会话「名」」·「托管终端「名」」）；没落在终端里 ⇒ 缺。出口照摆、不按宿主挑字。
+ */
+at?: Words, 
+/**
  * 要开终端跑的那一行（那台渲好的）：`window` ⇒ 起会话那一行（不跑就没起）或进目录那一行；其余 ⇒ 接进那个 tmux 会话那一行。
  */
 line: string | null, 
@@ -12316,6 +12402,7 @@ said: string,
 detail: string, };
 type Sid = string;
 type TerminalHost = "tmux" | "managed";
+type Words = string;
 ```
 
 码：`bad_args` · `no_tmux` · `no_such_set` · `refused`
@@ -12647,9 +12734,7 @@ sid?: Sid, };
 入参 `SessionWindowReq` · 回包 `SessionWindow`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type FrontAct = { "kind": "connect" } | { "kind": "open-in-terminal" } | { "kind": "open-here" } | { "kind": "copy", detail: string, } | { "kind": "update" } | { "kind": "retry" } | { "kind": "reconnect" };
-type FrontFace = { title: Words, body: Words, hint?: Words, tone: Tone, acts: Array<FrontAct>, };
-type Link = { 
+type ChainLink = { 
 /**
  * 进程号。
  */
@@ -12662,7 +12747,11 @@ name: string,
  * 启动时刻（系统原值；拿不到 ⇒ 0）。
  */
 start: number, };
+type FrontAct = { "kind": "connect" } | { "kind": "open-in-terminal" } | { "kind": "open-here" } | { "kind": "copy", detail: string, } | { "kind": "update" } | { "kind": "retry" } | { "kind": "reconnect" };
+type FrontCode = "gone" | "unclear" | "refused" | "no-window" | "desktop-wont-switch" | "unsupported" | "several-unregistered" | "several-console" | "several-elevated" | "several-foreign" | "tab-title-ignored" | "tab-no-uia" | "tab-elevated" | "tab-no-console" | "timed-out";
+type FrontFace = { title: Words, body: Words, hint?: Words, tone: Tone, acts: Array<FrontAct>, };
 type Machine = string;
+type MissedFace = { code: FrontCode, face: FrontFace, };
 type SessionWindow = { 
 /**
  * 显示它的终端带的窗口标签（`<shell 进程号>-<起始时刻>`），最近动静在前；没带 ⇒ 空。
@@ -12671,15 +12760,15 @@ labels: Array<string>,
 /**
  * 这台上显示它的那个终端进程往上的进程链（自下而上）；空 ⇔ 有 `face`。
  */
-chain: Array<Link>, 
+chain: Array<ChainLink>, 
 /**
- * 会话在 tmux 里。
+ * 链为什么是空的：写好的那一张（壳按标签也没找到窗口时摆它）。
  */
-tmux: boolean, 
+face?: FrontFace, 
 /**
- * 链为什么是空的：写好的那一张（出口照摆；壳按标签也没找到窗口时摆它）。
+ * 壳窗口那一跳没成的每一种结局码 ⇒ 写好的那一张（每个码恰好一张）。
  */
-face?: FrontFace, };
+missed: Array<MissedFace>, };
 type SessionWindowReq = { 
 /**
  * 会话所在那台（本机 ⇒ `<local>`）。
@@ -14095,6 +14184,10 @@ landed: Landed,
  */
 session: string | null, 
 /**
+ * 接上的是哪个终端（那台照宿主写好：「tmux 会话「名」」·「托管终端「名」」）；没落在终端里 ⇒ 缺。出口照摆、不按宿主挑字。
+ */
+at?: Words, 
+/**
  * 要开终端跑的那一行（那台渲好的）：`window` ⇒ 起会话那一行（不跑就没起）或进目录那一行；其余 ⇒ 接进那个 tmux 会话那一行。
  */
 line: string | null, 
@@ -14187,6 +14280,7 @@ ticket?: string,
 client?: string, };
 type Sid = string;
 type TerminalHost = "tmux" | "managed";
+type Words = string;
 ```
 
 码：`bad_args` · `unknown_agent` · `bad_command` · `no_dir` · `account_unavailable` · `place_unavailable` · `bad_tmux_name` · `tmux_taken` · `record_gone` · `already_live` · `not_hosted` · `wrong_owner` · `unobservable` · `fork_failed` · `refused` · `start_failed` · `child_timed_out` · `launch_pending` · `no_strategy`
@@ -14708,7 +14802,7 @@ type UserPathState = "on" | "off" | "unknown" | "not_windows";
 
 ```ts
 type ActionTag = "skip" | "deploy" | "keep";
-type DeployInstallReq = { slots: Array<SlotRow>, 
+type DeployInstallReq = { 
 /**
  * 那台的名字（非空；机器表按它查 · 状态成品按它记）。
  */
@@ -14726,11 +14820,6 @@ build: string,
  * 那台的 OS（表 A 的词）。
  */
 os: string, };
-type SlotRow = { os: string, arch: string, id: string, 
-/**
- * 本机上那一格字节的文件（绝对路径；后端读它，不经帧传字节）。
- */
-path: string, };
 ```
 
 码：`bad_args` · `io_failed` · `refused` · `unreachable` · `undecidable` · `not_carried` · `fenced` · `place_failed`
@@ -14744,12 +14833,7 @@ path: string, };
 入参 `DeployUninstallReq` · 回包 `Uninstalled`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type DeployUninstallReq = { slots: Array<SlotRow>, machine: string, };
-type SlotRow = { os: string, arch: string, id: string, 
-/**
- * 本机上那一格字节的文件（绝对路径；后端读它，不经帧传字节）。
- */
-path: string, };
+type DeployUninstallReq = { machine: string, };
 type Uninstalled = { 
 /**
  * 删了落点那一份 ⇒ `true`；本来就不在 ⇒ `false`。
@@ -15154,9 +15238,9 @@ label: string,
  */
 host: string, 
 /**
- * 端口（缺 ＝ 22）。
+ * 端口（缺 ＝ 22；缺省只住这里，两端的表单空着就不交这一键）。
  */
-port: number, user: string, 
+port?: number, user: string, 
 /**
  * 钥匙文件路径（这台上的；空 ＝ 照 ssh 的缺省找）。
  */
@@ -15175,7 +15259,7 @@ jump: string,
 connect: boolean, };
 type PubkeyPushReq = { 
 /**
- * 那台的配置（设置页表单里那台，可能还没保存）。
+ * 设置页表单里那台（问的是机器表里同名那一台）。
  */
 machine: Host, 
 /**
@@ -15501,9 +15585,9 @@ label: string,
  */
 host: string, 
 /**
- * 端口（缺 ＝ 22）。
+ * 端口（缺 ＝ 22；缺省只住这里，两端的表单空着就不交这一键）。
  */
-port: number, user: string, 
+port?: number, user: string, 
 /**
  * 钥匙文件路径（这台上的；空 ＝ 照 ssh 的缺省找）。
  */
@@ -15616,9 +15700,9 @@ label: string,
  */
 host: string, 
 /**
- * 端口（缺 ＝ 22）。
+ * 端口（缺 ＝ 22；缺省只住这里，两端的表单空着就不交这一键）。
  */
-port: number, user: string, 
+port?: number, user: string, 
 /**
  * 钥匙文件路径（这台上的；空 ＝ 照 ssh 的缺省找）。
  */
@@ -15713,9 +15797,9 @@ label: string,
  */
 host: string, 
 /**
- * 端口（缺 ＝ 22）。
+ * 端口（缺 ＝ 22；缺省只住这里，两端的表单空着就不交这一键）。
  */
-port: number, user: string, 
+port?: number, user: string, 
 /**
  * 钥匙文件路径（这台上的；空 ＝ 照 ssh 的缺省找）。
  */
@@ -15904,9 +15988,9 @@ label: string,
  */
 host: string, 
 /**
- * 端口（缺 ＝ 22）。
+ * 端口（缺 ＝ 22；缺省只住这里，两端的表单空着就不交这一键）。
  */
-port: number, user: string, 
+port?: number, user: string, 
 /**
  * 钥匙文件路径（这台上的；空 ＝ 照 ssh 的缺省找）。
  */
@@ -16070,10 +16154,10 @@ type PsHost = "powershell" | "pwsh";
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 28 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --ssh-config-import`
 
-入参 `SshImportReq` · 回包 `SshImported`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `NoArgs` · 回包 `SshImported`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type KnownHost = { host: string, user: string, port: number, };
+type NoArgs = Record<symbol, never>;
 type SshImportGroup = { label: string, host: string, port: number, user: string, keyPath: string | null, 
 /**
  * 组内除 `host` 外的其余地址（去重；端口与组首不同则 `host:port`）。单机组为空。
@@ -16084,11 +16168,10 @@ addresses: Array<string>,
  */
 jump: string | null, members: Array<SshImportMember>, 
 /**
- * 这一组已在机器列表里（组里任一地址 ＋ 用户 ＋ 端口与列表里某台相同；列表由界面交来）。
+ * 这一组已在机器表里（组里任一地址 ＋ 用户 ＋ 端口与表里某台的拨号地址相同；表是本机后端自己那一张）。
  */
 inList: boolean, };
 type SshImportMember = { alias: string, host: string, port: number, proxyJump: string | null, };
-type SshImportReq = { known: Array<KnownHost>, };
 type SshImported = { groups: Array<SshImportGroup>, 
 /**
  * 有别名在期限内没读完（整批的期限用完 · 那一发卡住）：`groups` 只是读到的那一部分。
@@ -16183,7 +16266,7 @@ type PlanStale = { said: string | null, raw: string | null, since: number, };
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
-type CanTerminal = { near: TermWay, far: TermWay, };
+type CanView = { "can": "yes", said: Words, open: TermOpen, } | { "can": "no", why: Words, };
 type FactsClock = { text: Words, from: number, };
 type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type PlanArchived = { id: string, title: string | null, kind: string | null, };
@@ -16631,9 +16714,18 @@ close: CanClose,
  */
 resume: Allow, 
 /**
- * 「终端」那一颗（拉它的外部窗口 · 在这一端开它的终端 · 做不了，见 [`CanTerminal`]）。
+ * 拉前：把它住的那个外部终端窗口拉到前面（tab 行尾 ↗ · 右键 · 会话头 · 快捷键）。活着 · 读记录中 · 程序退了 tmux 会话还在 ⇒ 能，
+ * 宿主是哪种都一样（本机会话与远端会话同一条：远端的窗口是看的这台上开着 ssh 的那个终端）；看的这一端的壳拉不拉得了窗由那一端自己判，不写在这里。
  */
-terminal: CanTerminal, 
+front: Allow, 
+/**
+ * 在终端里打开：另开一个终端窗口接进它住的那个终端（tmux 会话 · 托管终端）。不在宿主里 · 已结束 · pidfile 说接不进 ⇒ 不能。
+ */
+attach: Allow, 
+/**
+ * 看它的终端：在看的这一端开它的终端页（桌面底部抽屉 · 手机终端屏），见 [`CanView`]。
+ */
+view: CanView, 
 /**
  * 程序退了、tmux 会话还在 ⇒ 接回。
  */
@@ -16700,7 +16792,6 @@ order: number, can: SessionCan,
  */
 account?: string, };
 type TermOpen = { "kind": "attach", terminal?: string, } | { "kind": "resume" };
-type TermWay = { "go": "front", said: Words, } | { "go": "here", said: Words, open: TermOpen, } | { "go": "no", why: Words, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type Words = string;
 ```
@@ -17052,7 +17143,7 @@ key: string, };
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
-type CanTerminal = { near: TermWay, far: TermWay, };
+type CanView = { "can": "yes", said: Words, open: TermOpen, } | { "can": "no", why: Words, };
 type FactsClock = { text: Words, from: number, };
 type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type PlanReturnReply = { line: string, to: PlanWho | null, 
@@ -17122,9 +17213,18 @@ close: CanClose,
  */
 resume: Allow, 
 /**
- * 「终端」那一颗（拉它的外部窗口 · 在这一端开它的终端 · 做不了，见 [`CanTerminal`]）。
+ * 拉前：把它住的那个外部终端窗口拉到前面（tab 行尾 ↗ · 右键 · 会话头 · 快捷键）。活着 · 读记录中 · 程序退了 tmux 会话还在 ⇒ 能，
+ * 宿主是哪种都一样（本机会话与远端会话同一条：远端的窗口是看的这台上开着 ssh 的那个终端）；看的这一端的壳拉不拉得了窗由那一端自己判，不写在这里。
  */
-terminal: CanTerminal, 
+front: Allow, 
+/**
+ * 在终端里打开：另开一个终端窗口接进它住的那个终端（tmux 会话 · 托管终端）。不在宿主里 · 已结束 · pidfile 说接不进 ⇒ 不能。
+ */
+attach: Allow, 
+/**
+ * 看它的终端：在看的这一端开它的终端页（桌面底部抽屉 · 手机终端屏），见 [`CanView`]。
+ */
+view: CanView, 
 /**
  * 程序退了、tmux 会话还在 ⇒ 接回。
  */
@@ -17191,7 +17291,6 @@ order: number, can: SessionCan,
  */
 account?: string, };
 type TermOpen = { "kind": "attach", terminal?: string, } | { "kind": "resume" };
-type TermWay = { "go": "front", said: Words, } | { "go": "here", said: Words, open: TermOpen, } | { "go": "no", why: Words, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type Words = string;
 ```

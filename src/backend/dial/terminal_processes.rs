@@ -54,19 +54,8 @@ pub struct Tables {
     pub procs: HashMap<u32, Proc>,
 }
 
-/// 进程链的一级（线上形）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct Link {
-    /// 进程号。
-    pub pid: u32,
-    /// 进程名。
-    pub(crate) name: String,
-    /// 启动时刻（系统原值；拿不到 ⇒ 0）。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-    pub(crate) start: u64,
-}
+/// 进程链的一级（线上形住 `cmd_wire::session`：壳照同一个类型解）。
+pub use cmd_wire::session::ChainLink as Link;
 
 /// 查到的事实。
 #[derive(Debug, Clone, PartialEq, Eq)]

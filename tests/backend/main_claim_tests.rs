@@ -19,7 +19,7 @@ async fn a_late_starter_that_cannot_claim_never_touches_the_log_or_the_socket() 
     let home_s = home.to_string_lossy().into_owned();
     let env = |k: &str| match k {
         crate::platform::child_env::RESIDENT => Some("1".to_string()),
-        creds_core::store::DATA_DIR_ENV => Some(data_s.clone()),
+        relay_route_core::DATA_DIR_ENV => Some(data_s.clone()),
         "HOME" => Some(home_s.clone()),
         _ => None,
     };
@@ -74,7 +74,7 @@ async fn a_late_starter_that_cannot_claim_never_touches_the_log_or_the_socket() 
         let fresh_s = fresh.to_string_lossy().into_owned();
         let env2 = |k: &str| match k {
             crate::platform::child_env::RESIDENT => Some("1".to_string()),
-            creds_core::store::DATA_DIR_ENV => Some(fresh_s.clone()),
+            relay_route_core::DATA_DIR_ENV => Some(fresh_s.clone()),
             "HOME" => Some(home_s.clone()),
             _ => None,
         };
@@ -113,7 +113,7 @@ async fn a_sandboxed_start_refuses_the_real_home() {
     let leaked_dir = real.join(".cc-monitor").to_string_lossy().into_owned();
     let leaked = |k: &str| match k {
         crate::platform::child_env::RESIDENT => Some("1".to_string()),
-        creds_core::store::DATA_DIR_ENV => Some(leaked_dir.clone()),
+        relay_route_core::DATA_DIR_ENV => Some(leaked_dir.clone()),
         "HOME" => Some(fake_s.clone()),
         _ => None,
     };

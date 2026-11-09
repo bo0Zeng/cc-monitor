@@ -8,14 +8,13 @@
 //! 安全：按名字给的项目目录不许含路径分隔符；路径一律经 [`crate::common::fence::Fence`] 放行（`canonicalize` 后前缀校验，防 `../` 穿越）。
 //! 读记录只 read_dir / read；写只有清单缓存落盘那一份（经启动时装的 [`Own`]）。
 
-use super::listing_scan::SessionScan;
+use super::listing_scan::{SessionRow, SessionScan};
 use crate::common::append_read::{Blocks, Step, Tailed};
 use crate::common::fence::Fence;
 use crate::platform::fs::{Own, OwnPath, Ro};
 use crate::wire::WireLife;
 pub(crate) use cmd_wire::listing::{Can, CanDelete, CanResume};
 use copy_core::copy_text;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::UNIX_EPOCH;
@@ -46,31 +45,36 @@ pub fn can_of(kind: &str, life: &WireLife, bg: bool) -> Can {
     }
 }
 
-/// 项目清单的本体，出口是参数（资产目录 `asset_catalog` 写内存）。
+/// 项目清单里的一项：一个真实目录（[`group_by_cwd`] 分的那一组）与它最近一次活动。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Project {
+    /// 会话的真实工作目录（读不出 ⇒ 归最近那个读得出的；一个都读不出 ⇒ 空串）。
+    pub project_path: String,
+    /// 这一组里最近改过的那份会话的修改时刻（毫秒）。
+    pub last_activity_ms: i64,
+}
+
+/// 项目清单（资产目录 `asset_catalog` · 起会话框的「最近目录」读它）。
 ///
-/// 回「记录树根在不在」：不在 ⇒ `Ok(false)`、一行不写（这台还没起过会话 —— 判定只在这一处）；
-/// 怎么说由调用方定：资产目录当零个项目。
-pub fn list_projects_into(agent_home: &Path, out: &mut dyn Write) -> Result<bool, String> {
+/// 记录树根不在 ⇒ `Ok(None)`（这台还没起过会话 —— 判定只在这一处）；怎么说由调用方定：资产目录当零个项目。
+pub fn list_projects(agent_home: &Path) -> Result<Option<Vec<Project>>, String> {
     let Some(root) = records_root(agent_home) else {
-        return Ok(false);
+        return Ok(None);
     };
     let entries = match Ro::read_dir(&root) {
         Ok(it) => it,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(unreadable_dir(&root, &e)),
     };
+    let mut out = Vec::new();
     for entry in entries.flatten() {
         let dir = entry.path();
-        if !dir.is_dir() {
-            continue;
-        }
-        let dir_name = entry.file_name().to_string_lossy().into_owned();
-        // 空目录（全删过/只剩本机后端）不展示；一个记录目录里会话的真实目录不止一个 ⇒ 一组一行。
-        for line in project_rows(&dir, &dir_name) {
-            writeln!(out, "{line}").map_err(|e| format!("stdout write failed: {e}"))?;
+        if dir.is_dir() {
+            // 空目录（全删过/只剩本机后端）不展示；一个记录目录里会话的真实目录不止一个 ⇒ 一组一项。
+            out.extend(project_rows(&dir));
         }
     }
-    Ok(true)
+    Ok(Some(out))
 }
 
 /// 一个记录目录里的会话按**真实目录**分组 —— 记录目录名把非 ASCII 字符、`.`、`/` 都折成 `-`，
@@ -108,8 +112,8 @@ pub(crate) fn unreadable_dir(dir: &Path, e: &std::io::Error) -> String {
 ///
 /// 判据要判的是**这一行带了什么**。
 /// 同样的分法在本文件里已有先例：`analyze_session` 也是把「算出那一行」与「把它印出去」分开的。
-fn project_rows(dir: &Path, dir_name: &str) -> Vec<serde_json::Value> {
-    project_rows_hiding(dir, dir_name, &hidden_cwd)
+fn project_rows(dir: &Path) -> Vec<Project> {
+    project_rows_hiding(dir, &hidden_cwd)
 }
 
 /// 这台家里那个不出会话的工作目录（`~/.cc-monitor/autostart/`，名字住 [`crate::common::own_dir::HIDDEN_WORK_DIR`]）：
@@ -130,12 +134,9 @@ pub(crate) fn hidden_cwd_in(data_home: &Path, cwd: &str) -> bool {
 }
 
 /// [`project_rows`] 的本体：`hide(目录)` ⇒ 那一组不出。
-fn project_rows_hiding(
-    dir: &Path,
-    dir_name: &str,
-    hide: &dyn Fn(&str) -> bool,
-) -> Vec<serde_json::Value> {
-    // 目录与修改时刻与会话清单那条同源（`project_dir_of` · `mtime_ms`），两边分出来的组才一样。
+fn project_rows_hiding(dir: &Path, hide: &dyn Fn(&str) -> bool) -> Vec<Project> {
+    // 目录只读开头（`project_dir_of`，不整份扫）：与会话清单整行那一格（扫整份时取到的第一个）只在
+    // 写着目录的那一行落在开头上限之后时不同，那种会话在这里归最近那一组（[`group_by_cwd`]）。
     let mut sessions: Vec<(Option<String>, i64)> = Vec::new();
     if let Ok(files) = Ro::read_dir(dir) {
         for f in files.flatten() {
@@ -145,22 +146,17 @@ fn project_rows_hiding(
             }
         }
     }
-    let mut groups: std::collections::BTreeMap<String, (u32, i64)> = Default::default();
+    let mut groups: std::collections::BTreeMap<String, i64> = Default::default();
     for ((_, mtime), path) in sessions.iter().zip(group_by_cwd(&sessions)) {
-        let g = groups.entry(path).or_default();
-        g.0 += 1;
-        g.1 = g.1.max(*mtime);
+        let last = groups.entry(path).or_default();
+        *last = (*last).max(*mtime);
     }
     groups
         .into_iter()
         .filter(|(project_path, _)| !hide(project_path))
-        .map(|(project_path, (count, last_activity_ms))| {
-            serde_json::json!({
-                "dirName": dir_name,
-                "projectPath": project_path,
-                "sessionCount": count,
-                "lastActivityMs": last_activity_ms,
-            })
+        .map(|(project_path, last_activity_ms)| Project {
+            project_path,
+            last_activity_ms,
         })
         .collect()
 }
@@ -171,7 +167,7 @@ pub(crate) fn list_sessions_for(
     agent_home: &Path,
     project_dir: &str,
     only: Option<&str>,
-) -> Result<Vec<serde_json::Value>, String> {
+) -> Result<Vec<SessionRow>, String> {
     // project_dir 是目录名而非路径：拒绝任何分隔符 / 上跳
     if project_dir.contains('/') || project_dir.contains('\\') || project_dir.contains("..") {
         return Err(format!("invalid project dir name: {project_dir}"));
@@ -189,12 +185,14 @@ pub(crate) fn list_sessions_for(
         if !p.is_file() || !crate::agents::is_tree_session_file(&p) {
             continue;
         }
+        let own = crate::agents::sid_of(&p).unwrap_or_default();
         rows.push(match only {
-            Some(sid) if p.file_stem().is_none_or(|s| s != sid) => serde_json::json!({
-                "sessionId": p.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default(),
-                "cwd": crate::agents::project_dir_of(&p),
-                "updatedAtMs": Ro::mtime_ms(&p),
-            }),
+            Some(sid) if own != sid => SessionRow {
+                session_id: own,
+                cwd: crate::agents::project_dir_of(&p),
+                updated_at_ms: Ro::mtime_ms(&p),
+                ..SessionRow::default()
+            },
             _ => analyze_session_cached(&p),
         });
     }
@@ -202,12 +200,12 @@ pub(crate) fn list_sessions_for(
 }
 
 /// 平铺清单的每个记录目录：`(目录名, 那一目录的会话行 | 读不了的那一句)`。
-pub(crate) type DirSessions = Vec<(String, Result<Vec<serde_json::Value>, String>)>;
+pub(crate) type DirSessions = Vec<(String, Result<Vec<SessionRow>, String>)>;
 
 /// 平铺清单（`history-list`）那一份：这台**每个**记录目录 ⇒ [`DirSessions`]。
 /// 会话行同 [`list_sessions_for`]，`cwd` 换成按 [`group_by_cwd`] 归的那一组 ——
 /// 与项目清单同一个分组（记录目录名会撞，按真实目录分）；归到藏起来的那个目录（[`hidden_cwd`]）的不出。
-/// 记录树根不在 ⇒ `Ok(None)`（这台还没起过会话，同 [`list_projects_into`]）。
+/// 记录树根不在 ⇒ `Ok(None)`（这台还没起过会话，同 [`list_projects`]）。
 pub(crate) fn sessions_by_dir(agent_home: &Path) -> Result<Option<DirSessions>, String> {
     sessions_by_dir_for(agent_home, None)
 }
@@ -249,21 +247,16 @@ fn rows_of_dir(
     agent_home: &Path,
     dir_name: &str,
     only: Option<&str>,
-) -> Option<Result<Vec<serde_json::Value>, String>> {
+) -> Option<Result<Vec<SessionRow>, String>> {
     let rows = list_sessions_for(agent_home, dir_name, only).map(|mut rows| {
         let keys: Vec<(Option<String>, i64)> = rows
             .iter()
-            .map(|v| {
-                (
-                    v["cwd"].as_str().map(str::to_string),
-                    v["updatedAtMs"].as_i64().unwrap_or(0),
-                )
-            })
+            .map(|r| (r.cwd.clone(), r.updated_at_ms))
             .collect();
-        for (v, cwd) in rows.iter_mut().zip(group_by_cwd(&keys)) {
-            v["cwd"] = serde_json::json!(cwd);
+        for (r, cwd) in rows.iter_mut().zip(group_by_cwd(&keys)) {
+            r.cwd = Some(cwd);
         }
-        rows.retain(|v| !hidden_cwd(v["cwd"].as_str().unwrap_or_default()));
+        rows.retain(|r| !hidden_cwd(r.cwd.as_deref().unwrap_or_default()));
         rows
     });
     if matches!(&rows, Ok(r) if r.is_empty()) {
@@ -322,7 +315,7 @@ struct SavedRow {
     read: Tailed,
     done: SessionScan,
     tail: SessionScan,
-    row: serde_json::Value,
+    row: SessionRow,
 }
 
 /// 清单缓存那张表（头一次碰时先把盘上那一份装回）。
@@ -422,7 +415,7 @@ struct ListingEntry {
     read: Tailed,
     done: SessionScan,
     tail: SessionScan,
-    row: serde_json::Value,
+    row: SessionRow,
     /// 上一次带到这一问时真读了多少字节（判据看它：变长只读尾巴）。
     last_bytes: u64,
 }
@@ -435,7 +428,7 @@ impl ListingEntry {
             read: Tailed::default(),
             done: SessionScan::default(),
             tail: SessionScan::default(),
-            row: serde_json::Value::Null,
+            row: SessionRow::default(),
             last_bytes: 0,
         };
         let kind = crate::agents::record_kind_of(p).unwrap_or_default();
@@ -531,15 +524,12 @@ pub(crate) fn label_facts_among(
     // 有合成历史面的那一家（记录格式不是记录树那一家的）：第一句照它自己的读法（与历史清单那一行同一个摘录）；它没有标题记录。
     if let Some(excerpt) = crate::agents::synth_excerpt_among(registry, p) {
         return super::search_rules::LabelFacts {
-            first: excerpt(p),
+            first: super::search_rules::excerpt_of(&excerpt(p)),
             project_dir: crate::agents::project_dir_among(registry, p),
             ..Default::default()
         };
     }
-    let row = <super::listing_scan::SessionRow as serde::Deserialize>::deserialize(
-        &analyze_session_cached(p),
-    )
-    .unwrap_or_default();
+    let row = analyze_session_cached(p);
     super::search_rules::LabelFacts {
         title: row.ai_title,
         first: row.first_user_excerpt,
@@ -588,7 +578,7 @@ impl Drop for Scanning<'_> {
 
 /// [`analyze_session`] 过一层 [`SESSION_META`]：没变 ⇒ 上次那一行；变长且前面没被改写 ⇒ 只扫新增的；其余整份重扫。
 /// 同一份正在扫 ⇒ 等它扫完，照它留下的那一行起步（不并发扫两遍）。
-fn analyze_session_cached(p: &Path) -> serde_json::Value {
+fn analyze_session_cached(p: &Path) -> SessionRow {
     let _scanning = Scanning::begin(p);
     let prev = table().remove(p);
     // 读到过读不动的一行（之后的都不算）⇒ 不追加读：那一行之后的内容要整份重扫才对得上。
@@ -677,12 +667,12 @@ pub(crate) fn created_ms_or_mtime(p: &Path) -> i64 {
 /// - messageCountApprox = 非空行数
 /// - firstUserExcerpt = 首条人说的话（适配层判「谁说的」，经注册表 `agents::human_speech`）的前 120 字符
 ///   （换行折成空格、超了加 `…`）
-/// - aiTitle = 最后一条 agent 起的标题记录（`ai-title` 的 `aiTitle`；人在 Claude 里 `/rename` 写的 `custom-title` 不算）
-/// - cwd = 会话的项目目录（适配层 `RecordFace.project_dir`：只读开头，与活 tab 的标题同一个函数）
+/// - aiTitle = 最后一条算数的标题记录（`search_rules::names_session`：只认 agent 起的，人在 agent 里改的名不算）
+/// - cwd = 第一条写着工作目录的记录说的那个（扫整份时一并取到，适配层翻好的那一行；不另读开头）
 /// - startedAtMs = 首条 user / assistant 记录的 `timestamp`；一条都解析不出 ⇒ 文件建立时刻（拿不到 ⇒ 修改时刻）
 /// - forkedFromSessionId / forkedFromMessageUuid = 首条带 `forkedFrom` 的 user / assistant 记录（`/branch` 分叉来的）
 ///
-pub(crate) fn analyze_session(p: &Path) -> serde_json::Value {
+pub(crate) fn analyze_session(p: &Path) -> SessionRow {
     // 〔audit-0805 F07 / 报告 B-6 第 5 环〕**流式**（[`ListingEntry::scan`] 逐行读）。原来是 `read_to_string(p)` 整读：
     // 会话清单对该项目**每个** jsonl 都调它一次，43 个项目 / 2.4 GB 的机器上
     // 一次列表就是把 2.4 GB 读进内存再逐行解析。扫描是必须的（要数行、要判 bg），**但不必先整份进内存**。

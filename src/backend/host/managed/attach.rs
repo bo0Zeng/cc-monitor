@@ -17,6 +17,8 @@
 //! 出外层备用屏那一下关掉。里面开了鼠标上报 ⇒ 持有者照里面的模式与编码交进去（只看的丢）；没开 ⇒ 滚轮往上进翻看、
 //! 翻看里滚轮上下各 [`WHEEL_LINES`] 行、往下滚到底退回实时，别的鼠标事件丢。外层原生选字按住 Shift（外层终端自己的规矩）。
 //! 外层读不到鼠标事件（老的 Windows 控制台只给鼠标事件记录、不变成序列）⇒ 没有滚轮翻看，`前缀 [` 照旧。
+//! 剪贴板（照 tmux `set-clipboard`）：里面写剪贴板的那一句（OSC 52：程序自己选完字要外层复制）不上屏、重算屏会吞掉 ⇒
+//! parser 接住，算完那一块原样转给外层（持有者与只看的都转，不看盖着哪一层）；读剪贴板的询问不转。
 
 use super::hold;
 use super::keys::{self, Act, Copy, CopyKeys, Keys, Mice, Mouse, Piece, Wheel};
@@ -144,12 +146,14 @@ struct CopyView {
     found: Option<(String, bool)>,
 }
 
-/// parser 碰到的、屏本身不管的：标题 · 铃 · `vt100` 不记的那几样模式（焦点 · 同步输出 · 光标形状）。
+/// parser 碰到的、屏本身不管的：标题 · 铃 · 写剪贴板 · `vt100` 不记的那几样模式（焦点 · 同步输出 · 光标形状）。
 #[derive(Default)]
 struct Hooks {
     title: Option<Vec<u8>>,
     bells: u32,
     extra: Extra,
+    /// 里面写剪贴板的那几句（拼好的 OSC 52），算完这一块转给外层、清空。
+    clip: Vec<u8>,
 }
 
 impl vt100::Callbacks for Hooks {
@@ -158,6 +162,13 @@ impl vt100::Callbacks for Hooks {
     }
     fn set_window_title(&mut self, _: &mut vt100::Screen, t: &[u8]) {
         self.title = Some(t.to_vec());
+    }
+    fn copy_to_clipboard(&mut self, _: &mut vt100::Screen, ty: &[u8], data: &[u8]) {
+        self.clip.extend_from_slice(b"\x1b]52;");
+        self.clip.extend_from_slice(ty);
+        self.clip.push(b';');
+        self.clip.extend_from_slice(data);
+        self.clip.push(0x07);
     }
     fn unhandled_csi(
         &mut self,
@@ -618,6 +629,11 @@ impl Client {
             Frame::Out(b) => {
                 let bells = self.parser.callbacks().bells;
                 self.parser.process(&b);
+                let clip = std::mem::take(&mut self.parser.callbacks_mut().clip);
+                if !clip.is_empty() {
+                    self.write(&clip);
+                    self.flush();
+                }
                 if matches!(self.over, Over::None | Over::Hint) {
                     let painted = self.paint(false);
                     if self.parser.callbacks().bells > bells {

@@ -671,7 +671,7 @@ async function clickHeadFront(): Promise<void> {
 /** 结局那一条底部条（toast：出错 ⇒ alert，别的 ⇒ status）。 */
 const FRONT_TOAST = '[role="region"] [role="alert"], [role="region"] [role="status"]';
 
-/** 壳 · 本机后端交来的 ↗ 那一张（台架替它们写：键与 `face_core::front` 取的同一把）。 */
+/** 壳交来的 ↗ 那一张（本机后端写好的；台架替它写：键与 `face_core::front` 取的同一把）。 */
 function frontFace(title: string, body: string, tone: "plain" | "warn" | "fail", acts: unknown[] = [], hint?: string): Record<string, unknown> {
   return { title, body, tone, acts, ...(hint ? { hint } : {}) };
 }
@@ -681,9 +681,8 @@ const frontSaid = (face: Record<string, unknown>) => ({ kind: "said", ...face })
 
 /** Wayland 桌面（GNOME）上壳切不了：照实说 ＋［在 cc-monitor 里打开］。 */
 function wayland(w: World): void {
-  w.ops["session-window"] = () => ({ labels: [], chain: [{ pid: 4242, name: "bash", start: 1 }], tmux: false });
   w.commands.bring_terminal_to_front = () =>
-    frontSaid(frontFace(copyText("front.title.desktopWontSwitch"), copyText("front.body.desktopWontSwitch", { desktop: "GNOME" }), "plain", [{ kind: "open-here" }]));
+    frontSaid(frontFace(copyText("front.title.desktopWontSwitch"), copyText("front.body.desktopWontSwitchBare"), "plain", [{ kind: "open-here" }]));
 }
 
 /** 高 DPI：1.5x / 2x 下 1px 线、图标、字形照常（同一屏，像素比不同）。 */
@@ -696,18 +695,17 @@ export const DPI_SCENES: Scene[] = [1.5, 2].map((scale) => ({
 }));
 
 export const FRONT_SCENES: Scene[] = [
-  { ...frontScene("panel-front-several", "终端 · 分不清是哪个窗口", "Linux 本机会话：终端程序开着 3 个窗口、这个 shell 开在接上终端之前（没登记）⇒ 不挑一个切、不闪；底部一条照实说拉不了、带候选个数（Windows 上按控制台认窗口，到不了这一形）", async () => {
+  { ...frontScene("panel-front-several", "终端 · 分不清是哪个窗口", "Linux 本机会话：终端程序开着 3 个窗口、这个 shell 开在接上终端之前（没登记）⇒ 不挑一个切、不闪；底部一条照实说拉不了、说为什么（Windows 上按控制台认窗口，到不了这一形）", async () => {
     await mainReady(ALL_TABS);
     await clickHeadFront();
     await waitFor(FRONT_TOAST);
     await sleep(400);
   }, (w) => {
-    w.ops["session-window"] = () => ({ labels: [], chain: [{ pid: 4242, name: "bash", start: 1 }], tmux: false });
     w.commands.bring_terminal_to_front = () =>
       frontSaid(
         frontFace(
           copyText("front.title.unsure"),
-          copyText("front.body.severalUnregistered", { program: "gnome-terminal-server", n: 3 }),
+          copyText("front.body.severalUnregistered"),
           "warn",
           [{ kind: "connect" }],
           copyText("front.hint.unregistered"),
@@ -720,22 +718,21 @@ export const FRONT_SCENES: Scene[] = [
     await waitFor(FRONT_TOAST);
     await sleep(400);
   }, wayland), hostOs: "linux" },
-  frontScene("panel-front-shell-timeout", "终端 · 壳那一跳超时", "本机后端答了窗口在哪，壳那一跳到期限还没回（Win32 调用卡住）⇒ 未切换 · 期限到那一张（红），字由壳照 `face_core::front` 写", async () => {
+  frontScene("panel-front-shell-timeout", "终端 · 壳那一跳超时", "本机后端答了窗口在哪，壳那一跳到期限还没回（Win32 调用卡住）⇒ 未切换 · 期限到那一张（红），字是本机后端随回包写好的、壳照结局码挑", async () => {
     await mainReady(ALL_TABS);
     await clickHeadFront();
     await waitFor(FRONT_TOAST);
     await sleep(400);
   }, (w) => {
-    w.ops["session-window"] = () => ({ labels: [], chain: [{ pid: 4242, name: "pwsh.exe", start: 1 }], tmux: false });
-    w.commands.bring_terminal_to_front = () => new Promise(() => {});
+    w.commands.bring_terminal_to_front = () =>
+      frontSaid(frontFace(copyText("front.title.failed"), copyText("front.body.timeout", { machine: copyText("detail.label.local") }), "fail", [{ kind: "retry" }]));
   }),
-  frontScene("panel-front-shell-broken", "终端 · 壳那一跳坏了", "壳那一跳出错（拉前那一步自己坏了）⇒ 未切换 · 原因不明那一张（红），原话可复制；字由壳照 `face_core::front` 写", async () => {
+  frontScene("panel-front-shell-broken", "终端 · 壳那一跳坏了", "壳那一跳出错（拉前那一步自己坏了）⇒ 壳回失败，底部失败提示照壳交的那一句，原话可复制", async () => {
     await mainReady(ALL_TABS);
     await clickHeadFront();
     await waitFor(FRONT_TOAST);
     await sleep(400);
   }, (w) => {
-    w.ops["session-window"] = () => ({ labels: [], chain: [{ pid: 4242, name: "pwsh.exe", start: 1 }], tmux: false });
     w.commands.bring_terminal_to_front = () =>
       Promise.reject({ code: "crashed", said: copyText("rsShellCmd.self.crashed"), detail: `${copyText("detail.label.command")}：bring_terminal_to_front\n${copyText("detail.label.raw")}：SetForegroundWindow: Access is denied. (os error 5)` });
   }),

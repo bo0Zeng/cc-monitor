@@ -1,6 +1,6 @@
 //! 开终端窗口的平台那一半：壳里平台 cfg 的唯一住址（同 [`super::fs`]）。
 //! POSIX：挑一个终端（设置里指定的 · 系统出口 · 常见终端逐个探）开窗跑 `bash -lic <命令>`；
-//! Windows：`wt.exe` / `powershell.exe` 开窗。「跑什么」的校验与 argv 住 `launch.rs::build_local_posix_argv`；
+//! Windows：`wt.exe` / `powershell.exe` 开窗。POSIX 那一臂「跑什么」的校验与 argv 也住这里（[`build_local_posix_argv`]）；
 //! 开窗那条 Tauri 命令（`open_terminal_window`）留在 `launch.rs`，经本文件的 [`open_local`] 开窗。
 
 use copy_core::said::Said;
@@ -207,6 +207,65 @@ fn program_exists(cmd: &str) -> bool {
 #[cfg(not(windows))]
 pub(crate) const KEEP_OPEN: &str = r#"eval "$1"; exec "${SHELL:-bash}" -l"#;
 
+/// 远端命令长度上限（防 IPC 侧异常输入；正常 resume 命令 <300 字节）。
+#[cfg(not(windows))]
+pub(crate) const MAX_REMOTE_CMD: cap_core::Cap = cap_core::Cap {
+    bytes: 4096,
+    over: cap_core::Over::Reject,
+};
+
+/// L1（local-as-remote）：**与传输无关**的那层命令校验 —— 三条送法一律适用。
+///
+/// 远端那条送法的同一组判据今天住本机后端（`dial/terminal.rs`，帧命令 `terminal-ssh`）；这里只剩 POSIX 本地那条路
+/// （[`build_local_posix_argv`]）用。
+///
+/// **刻意不含「拒绝双引号」那条**：它的理由是 PowerShell 5.1 向 native 程序传参对内嵌 `"`
+/// 有历史畸变（见调用处），是**那条送法的**约束，不是命令本身的性质。
+/// 把它一并搬进来，等于把一个 Windows 怪癖套到 Linux 上 —— 判据要落在性质上。
+#[cfg(not(windows))]
+fn validate_launch_cmd(cmd: &str, what: &str) -> Result<(), Said> {
+    use crate::detail::Shell as _;
+    if cmd.trim().is_empty() {
+        return Err(Said::of(
+            "rsLaunch.refuse.empty",
+            &[("what", &what.to_string())],
+        ));
+    }
+    if cmd.len() > MAX_REMOTE_CMD.as_len() {
+        return Err(Said::of(
+            "rsLaunch.refuse.tooLong",
+            &[
+                ("what", &what.to_string()),
+                ("len", &(cmd.len()).to_string()),
+                ("max", &MAX_REMOTE_CMD.bytes.to_string()),
+            ],
+        ));
+    }
+    if cmd.chars().any(|c| c.is_control()) {
+        return Err(Said::of(
+            "rsLaunch.refuse.control",
+            &[("what", &what.to_string())],
+        ));
+    }
+    Ok(())
+}
+
+/// L1：**POSIX 本地**送法 —— 直接 exec，**不要 ssh 包**。
+///
+/// 返回 argv 而不是命令串：本地没有「要穿过一层 shell」的问题，拼成串再让别人拆是
+/// 白白造一个注入面。`bash -lic` 这层**保留**——它和远端那条路是同一个语义
+///（PATH / 别名 / 函数按「用户粘贴进交互终端」解析），`ccm` 正是靠它才被找到。
+///
+/// ⇒ 与远端那条送法的关系就是 §2「payload 共享、transport 只管送」：
+/// 同一个 `cmd`，本地是 `bash -lic <cmd>`，远端是把这同一串再包进 ssh（那一层今天由本机后端 `terminal-ssh` 渲）。
+/// 两侧各有测试逐字节钉住（本侧 `local_posix_sends_the_payload_itself_without_an_ssh_wrap`，
+/// 远端那侧在 `tests/backend/dial_terminal_tests.rs`）。
+#[cfg(not(windows))]
+pub(crate) fn build_local_posix_argv(cmd: &str) -> Result<Vec<String>, Said> {
+    validate_launch_cmd(cmd, &copy_core::copy_text("rsLaunch.what.localCmd", &[]))?;
+    Ok(vec!["bash".into(), "-lic".into(), cmd.into()])
+}
+
 /// 命令串 → 真正要 spawn 的 `(program, args)`：终端前缀 ＋ `bash -lic <留窗脚本> bash <命令>`。
 /// 整跳是纯函数，判据量它产出的东西（载荷逐字节在最后一格）。
 #[cfg(not(windows))]
@@ -214,7 +273,7 @@ pub(crate) fn local_posix_spawn_plan(
     cmd: &str,
     term: &[String],
 ) -> Result<(String, Vec<String>), Said> {
-    let argv = crate::launch::build_local_posix_argv(cmd)?;
+    let argv = build_local_posix_argv(cmd)?;
     Ok(build_local_posix_spawn(term, &argv))
 }
 
@@ -489,8 +548,16 @@ pub enum TerminalOpen {
     /// 开了一个终端窗口。
     Opened,
     /// 这台找不到能开的终端（POSIX：设置里没指定、自动也没探到）。前端照实说、给设置入口。
+    #[cfg_attr(
+        all(windows, not(test)),
+        expect(dead_code, reason = "只有 POSIX 那一臂造它")
+    )]
     NoWindow,
     /// 设置里指定的那个终端这台上没有（POSIX）。前端照实说、给设置入口。
+    #[cfg_attr(
+        all(windows, not(test)),
+        expect(dead_code, reason = "只有 POSIX 那一臂造它")
+    )]
     SetMissing,
 }
 

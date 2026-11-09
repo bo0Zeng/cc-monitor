@@ -19,7 +19,7 @@ pub struct Account {
     pub is_default: bool,
     /// 盘上 `authKind` 那一格原样（缺席 = 旧清单 = 订阅号）。
     pub auth_kind: Option<String>,
-    /// 号色那一格（`--acct-c0..c7` 的第几格）：加号时分（[`Manifest::with_colors`]），存在盘上 `color`；旧清单没有 ⇒ `None`，常驻那一个补一次。
+    /// 号色那一格（令牌表 `--acct-c<格>` 的第几格）：加号时分（[`Manifest::with_colors`]），存在盘上 `color`；旧清单没有 ⇒ `None`，常驻那一个补一次。
     pub color: Option<u8>,
     /// 这个号上本模块不认得的键（原样写回）。
     pub extra: Map<String, Value>,
@@ -101,16 +101,41 @@ const ACCOUNT_KEYS: &[&str] = &[
     "color",
 ];
 
-/// 号色几格（与界面 `--acct-c0..c7` 一一对应）。
-pub(crate) const COLOR_SLOTS: u8 = 8;
+/// 号色几格：照令牌表现数 `--acct-c<格>:` 那几行（号色只在 `tokens.css` 写一次，界面 · 手机都照它）。
+pub(crate) const COLOR_SLOTS: u8 =
+    acct_slots(include_str!("../../../shared/theme/tokens.css").as_bytes());
 
-/// 8 格都用了时的兜底：名字 ⇒ 一格（FNV-1a 32 位，模 [`COLOR_SLOTS`]）。号色只在这里按名字算，界面只画清单里那一格。
+/// 数 `--acct-c` 紧跟数字的定义有几条（编译期跑）。
+const fn acct_slots(css: &[u8]) -> u8 {
+    const NEEDLE: &[u8] = b"--acct-c";
+    let mut n: u8 = 0;
+    let mut i = 0;
+    while i + NEEDLE.len() < css.len() {
+        let mut j = 0;
+        while j < NEEDLE.len() && css[i + j] == NEEDLE[j] {
+            j += 1;
+        }
+        if j == NEEDLE.len() {
+            let mut k = i + j;
+            while k < css.len() && css[k].is_ascii_digit() {
+                k += 1;
+            }
+            if k > i + j && k < css.len() && css[k] == b':' {
+                n += 1;
+            }
+        }
+        i += 1;
+    }
+    n
+}
+
+/// 号色格都用了时的兜底：名字 ⇒ 一格（FNV-1a 32 位，模 [`COLOR_SLOTS`]）。号色只在这里按名字算，界面只画清单里那一格。
 pub fn color_fallback(name: &str) -> u8 {
     let h = cmd_wire::fnv::fnv1a32(name.as_bytes());
     u8::try_from(h % u32::from(COLOR_SLOTS)).unwrap_or(0)
 }
 
-/// 盘上 `color` 那一格：在 `0..8` 里的整数才认，别的当没有（会被重新分）。
+/// 盘上 `color` 那一格：在 `0..COLOR_SLOTS` 里的整数才认，别的当没有（会被重新分）。
 fn color_of(v: &Value) -> Option<u8> {
     v.get("color")
         .and_then(Value::as_u64)
@@ -280,7 +305,7 @@ impl Manifest {
     }
 
     /// 给没有号色的号分色（唯一一处）：照库序（具名的号在前、账号 0 在末尾），每个分第一个没人占的格；
-    /// 已有的色不动（删号不挪别人的色），原样留着那几条占的格也不给；8 格都占了 ⇒ 按名字哈希兜底（[`color_fallback`]）。
+    /// 已有的色不动（删号不挪别人的色），原样留着那几条占的格也不给；号色格都占了 ⇒ 按名字哈希兜底（[`color_fallback`]）。
     pub fn with_colors(&self) -> Manifest {
         let mut m = self.clone();
         let mut taken: Vec<u8> = m

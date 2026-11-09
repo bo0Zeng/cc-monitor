@@ -164,14 +164,6 @@ pub static CC_MONITOR_BUILD_STAMP: [u8; common::id::BUILD_STAMP_LEN] = common::i
 #[path = "../../tests/backend/target_parity_guard.rs"]
 mod target_parity_guard;
 
-/// 一行线上字里复制详情那一行时刻的空位，按看的那一台的时区填好（流的写者对每一行调它；本体 `common::time::fill_at`）。
-pub(crate) fn stamp_detail_slots<'a>(
-    line: &'a str,
-    tz: &common::time::Tz,
-) -> std::borrow::Cow<'a, str> {
-    common::time::fill_at(line, tz)
-}
-
 #[cfg(test)]
 #[path = "../../tests/backend/main_fourth_face_tests.rs"]
 mod fourth_face_tests;

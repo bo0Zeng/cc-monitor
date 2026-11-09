@@ -105,7 +105,7 @@ describe("消息流底下的输入框", () => {
     expect(box(third.c).value, "回执到了 ⇒ 草稿删").toBe("");
   });
 
-  it("★ 打开一条闲着的会话、不开抽屉 ⇒ 消息流底下有输入框，Enter 发出一问 session-queue-put；回执到了清框、写那台那一句", async () => {
+  it("★ 打开一条闲着的会话、不开抽屉 ⇒ 消息流底下有输入框，Enter 发出一问 session-queue-put；回执到了清框、框下不另写", async () => {
     const { c, put } = rig();
     await flush();
     expect(c.el.hidden).toBe(false);
@@ -116,7 +116,7 @@ describe("消息流底下的输入框", () => {
     expect(put.mock.calls[0]![0]).toBe("devbox");
     expect(put.mock.calls[0]![1]).toMatchObject({ sid: "s-1", text: "hello" });
     expect(box(c).value).toBe("");
-    expect(c.el.textContent).toContain("q-1");
+    expect(c.el.textContent, "回执那一句不写到框下（那一句此刻什么样只在那一排照名单说）").not.toContain("q-1");
   });
 
   it("Shift+Enter 不发（换行）", async () => {
@@ -330,5 +330,60 @@ describe("消息流底下的输入框", () => {
     stopBtn(ok.c)!.click();
     await flush();
     expect(ok.c.el.querySelector('[class*="composerNoteError"]')).toBeNull();
+  });
+
+  /** 一句此刻什么样只在框上那一排说一处：说出「发送中 · 等确认」的地方（那一排之外的也算）。 */
+  const confirming = (c: Composer): number => (c.el.textContent ?? "").split(copyText("beQueue.said.confirming")).length - 1;
+
+  it("★ 送到之后那台推来的名单里已没有那一句 ⇒ 输入框上下都不再说「发送中 · 等确认」（回执那一句不写到框下）", async () => {
+    const said = copyText("beQueue.said.confirming");
+    const queued: QueueItem = { seq: 1, id: "x", end: "monitor", text: "继续.", state: "queued", said };
+    const r = rig({ put: async () => ({ outcome: "queued", seq: 1, said }), first: list() });
+    await flush();
+    // 回执到了之后重问名单那一下，投递还没做完：那台名单里还排着它。
+    (r.reads.read as ReturnType<typeof vi.fn>).mockImplementation(async () => list({ ...queued, id: (r.put.mock.calls[0]![1] as SessionQueuePutReq).id }));
+    enter(r.c, "继续.");
+    await flush();
+    expect(rows(r.c).length, "回执到了、还没送到：那一排一行").toBe(1);
+    // 送到 ⇒ 那台把它摘掉、推来空名单。
+    r.push({ got: new Map([["s-1", list()]]), ask: [], all: false });
+    await flush();
+    expect(rows(r.c), "那一排撤掉").toEqual([]);
+    expect(confirming(r.c), "框下也不再说「发送中 · 等确认」").toBe(0);
+  });
+
+  it("★ 送到之后的空名单先推到、回执后重问的那一份（送到之前读的）后到 ⇒ 不拿旧的盖掉新的", async () => {
+    const said = copyText("beQueue.said.confirming");
+    let answer: ((q: QueueList) => void) | null = null;
+    const r = rig({ put: async () => ({ outcome: "queued", seq: 1, said }), first: list() });
+    await flush();
+    (r.reads.read as ReturnType<typeof vi.fn>).mockImplementation(() => new Promise<QueueList>((ok) => (answer = ok)));
+    enter(r.c, "继续.");
+    await flush();
+    const id = (r.put.mock.calls[0]![1] as SessionQueuePutReq).id;
+    r.push({ got: new Map([["s-1", list()]]), ask: [], all: false });
+    await flush();
+    answer!(list({ seq: 1, id, end: "monitor", text: "继续.", state: "queued", said }));
+    await flush();
+    expect(rows(r.c), "那一排照后推来的名单：没有它").toEqual([]);
+  });
+
+  it("★ 回执后重问一次（送到之前读的）· 送到后推来一格只叫重问 ⇒ 先问的答复后问的之前回来，那一排照后问的那一份", async () => {
+    const said = copyText("beQueue.said.confirming");
+    const answers: ((q: QueueList) => void)[] = [];
+    const r = rig({ put: async () => ({ outcome: "queued", seq: 1, said }), first: list() });
+    await flush();
+    (r.reads.read as ReturnType<typeof vi.fn>).mockImplementation(() => new Promise<QueueList>((ok) => answers.push(ok)));
+    enter(r.c, "继续.");
+    await flush();
+    const id = (r.put.mock.calls[0]![1] as SessionQueuePutReq).id;
+    r.push({ got: new Map(), ask: ["s-1"], all: false });
+    await flush();
+    expect(answers.length, "回执后一问 · 推来叫重问一问").toBe(2);
+    answers[0]!(list({ seq: 1, id, end: "monitor", text: "继续.", state: "queued", said }));
+    await flush();
+    answers[1]!(list());
+    await flush();
+    expect(rows(r.c), "后问的那一份（送到之后读的）算数").toEqual([]);
   });
 });

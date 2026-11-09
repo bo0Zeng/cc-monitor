@@ -192,6 +192,16 @@ async fn a_request_naming_a_machine_is_forwarded_not_answered_here() {
     // 不带 `machine` 的照旧本后端自己答。
     let here = one_line("{\"id\":\"f2\",\"cmd\":\"ping\",\"machine\":null}\n").await;
     assert_eq!(here, vec![r#"{"kind":"reply","id":"f2","ok":true}"#]);
+    // 宽读：不是串 · 空白串都当没带、照本后端答（整条请求不因这一格回 `bad_request`）。
+    for (id, machine) in [("f3", "5"), ("f4", "\"  \""), ("f5", "\"\"")] {
+        let line = format!("{{\"id\":\"{id}\",\"cmd\":\"ping\",\"machine\":{machine}}}\n");
+        let here = one_line(&line).await;
+        assert_eq!(
+            here,
+            vec![format!(r#"{{"kind":"reply","id":"{id}","ok":true}}"#)],
+            "`machine`:{machine} 该照本机答"
+        );
+    }
 }
 
 /// 信封带 `machine` 的 `stream-watch` 不转给那台：交本后端手上那台的名单台（那台此刻没接着也照收，回空的 `from[]`），不是「那一跳断开」。
@@ -1032,7 +1042,7 @@ async fn needs_ask_blocks_until_answered_and_is_withdrawn_when_the_hook_side_lea
     );
 }
 
-/// 两台之间的枢纽问**这台自己**那一跳：`HUB_INNER` 放行的每一条都要真到那条命令（入参不对回它自己的码），
+/// 两台之间的枢纽问**这台自己**那一跳：`assets::hub_inner::NAMES` 放行的每一条都要真到那条命令（入参不对回它自己的码），
 /// 不能因为它住在哪一档（`BlockingData` · `BlockingOwn`）就回 `unknown_command`。
 /// 一条一判：哪条没到，失败里点它的名字。
 #[test]
@@ -1042,7 +1052,7 @@ fn the_hub_local_hop_reaches_every_inner_command() {
         &crate::platform::fs::Own::for_tests(),
     );
     let mut missed = Vec::new();
-    for cmd in super::doors::HUB_INNER {
+    for cmd in crate::assets::hub_inner::NAMES {
         // 空入参：多数条按自己的码拒；`cc-bus-install` 不看入参，会装进测试档的沙箱家（`src/common/test-home`）。只看它到没到。
         if let Err(f) = here.ask(cmd, serde_json::json!({})) {
             if f.code.as_deref() == Some("unknown_command") {

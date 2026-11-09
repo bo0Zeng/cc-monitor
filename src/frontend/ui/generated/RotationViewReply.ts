@@ -64,4 +64,8 @@ log: Array<RotLogRow>, hints: Array<RotNote>,
 /**
  * 会话那一形此刻能做的几样（设置页 ⇒ 缺）。
  */
-can?: RotCan, };
+can?: RotCan, 
+/**
+ * 编辑小窗底行那一整句：改的是哪份 ＋（有会话还在用旧版 ⇒ 那一条提示的那一句；没有会话在用 ⇒ 说没有）。不轮换 ⇒ 缺。
+ */
+foot?: string, };

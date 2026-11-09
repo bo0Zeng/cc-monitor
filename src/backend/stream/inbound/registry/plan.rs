@@ -11,10 +11,13 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // 读面三条都在阻塞档：起一次 pb（研究盘 252 格 1.1 秒），开跑之后打不断 ⇒ `cancel` 命中时回 `not_cancellable`。
     super::typed::blocking::<crate::faces::plan_face::PlanListCmd>(
         "这台的 pb 工作区与片（目录 ＝ 活会话的工作目录 ∪ `dirs`，pb 自己往上找工作区）",
-    ),
+    )
+    // 开计划页那两问：起 pb 的总期限，发起方放手了 pb 跟着收（超时照读不成那一路写进回包 / 那一句）。
+    .capped(crate::faces::plan_face::PLAN_READ_CAP),
     super::typed::blocking::<crate::faces::plan_face::PlanReadCmd>(
         "一个工作区的成品（几个仓库的图 · 状态 · 权力范围 · 校验；负责人与 signer 对到会话；不带 agent_view）",
-    ),
+    )
+    .capped(crate::faces::plan_face::PLAN_READ_CAP),
     super::typed::blocking::<crate::faces::plan_face::PlanCellViewCmd>(
         "一个节点的 agent 视角（agent 站在那个节点时 pb 印给它的那一段，原样；点到才起 `pb dump --node`）",
     ),

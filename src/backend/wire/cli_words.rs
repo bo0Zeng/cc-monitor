@@ -18,7 +18,7 @@ pub const TZ_FLAG: &str = "--tz";
 /// 此前的出路是把载荷拼进命令行 `printf '%s\n' '<json>' | …`，那要求远端登录 shell 认 POSIX 单引号与管道 ——
 /// fish 一类不认（`'…\\…'` 在 fish 的单引号里会被当转义吃掉一个反斜杠，JSON 就坏了），而且一趟受 `sh -c` 那一个参数的上限。
 /// 有了它，命令行里只剩后端路径与两个旗标（不含载荷），载荷经 capture 写进远端进程的 stdin，本入口读到换行就动手。
-/// 上限同默认那一形（`control/cli_args.rs::MAX_CLI_STDIN`，超了拒、不截断）。
+/// 上限同默认那一形（`wire/cli_args.rs::MAX_CLI_STDIN`，超了拒、不截断）。
 ///
 /// 住这里（argv 三分表旁边）而不住 `stream::cli`：它是 [`SUBCOMMAND_OPTIONS`] 的一员；发它的一方（`asset_sync`）
 /// 只该认得这个字面量，不该因此在引用图上连到 CLI 面的分派口（`target_parity_guard` 那条「够不够得着 tmux」按文件级引用图走）。
@@ -33,12 +33,12 @@ pub const RESIDENT_CALL_FLAG: &str = "--resident-call";
 ///
 /// 为什么要它：第二个前端的执行通道**只有 stdout、写不了 stdin**，而 CLI 面上收入参的命令占了绝大多数。base64 而不是裸 JSON：
 /// 一个参数里只剩 `[A-Za-z0-9+/=]`，过哪一家登录 shell 的引号都不变形（fish 吃反斜杠那一类，见 [`STDIN_LINE_FLAG`] 的头注）。
-/// 与 [`STDIN_LINE_FLAG`] 二选一；上限与系统单个参数的上限见 `control/cli_args.rs::MAX_ARGS_B64_LEN`。
+/// 与 [`STDIN_LINE_FLAG`] 二选一；上限与系统单个参数的上限见 `wire/cli_args.rs::MAX_ARGS_B64_LEN`。
 /// 住这里同 [`STDIN_LINE_FLAG`]：它是 [`SUBCOMMAND_OPTIONS`] 的一员。
 pub const ARGS_B64_FLAG: &str = "--args-b64";
 
 /// **「给人看」那一形**：跟在 CLI 控制面那一族（`--<帧命令>`）后面 ⇒ 回包里核心写好的格（顶上 `text` · 每一处 `rows`）拼成字
-/// （`control/ship_text.rs`，所有命令通用、不按业务写）。缺省仍是 JSON 进 JSON 出。住这里同 [`STDIN_LINE_FLAG`]：它是 [`SUBCOMMAND_OPTIONS`] 的一员。
+/// （`wire/ship_text.rs`，所有命令通用、不按业务写）。缺省仍是 JSON 进 JSON 出。住这里同 [`STDIN_LINE_FLAG`]：它是 [`SUBCOMMAND_OPTIONS`] 的一员。
 pub const TEXT_FLAG: &str = "--text";
 
 /// **期限口**：跟在 CLI 控制面那一族（`--<帧命令>`）后面、位置不限（`--terminals-list --within-ms 10000`）⇒ 与帧面请求信封的 `within_ms`

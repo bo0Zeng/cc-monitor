@@ -57,6 +57,34 @@ pub struct Node {
     pub sid: Option<String>,
 }
 
+impl Node {
+    /// 这一件该推的那几帧（不带体的那一臂，现算得出体的由推送那一侧换上）：事实那几种 ⇒ `changed {quota}`；
+    /// 策略那一种 ⇒ `changed {rotation_strategies}`；带会话的 ⇒ 再加 `changed {rotation, key: sid}`。
+    pub fn changed(&self) -> Vec<crate::wire::Changed> {
+        use crate::wire::Changed;
+        let mut out = Vec::new();
+        if self.source.is_fact() {
+            out.push(Changed::Quota { body: None });
+        }
+        if self.source == Source::Strategies {
+            out.push(Changed::RotationStrategies { body: None });
+        }
+        if let Some(sid) = &self.sid {
+            out.push(Changed::Rotation { key: sid.clone() });
+        }
+        out
+    }
+
+    /// 订的一方落后丢了几件：不知道哪个会话 ⇒ 不带会话的那两帧（客户端整份重问）。
+    pub fn lagged() -> Vec<crate::wire::Changed> {
+        use crate::wire::Changed;
+        vec![
+            Changed::Quota { body: None },
+            Changed::RotationStrategies { body: None },
+        ]
+    }
+}
+
 /// 通道的发送端（判据各用自己的一条，生产只有 [`bus`] 那一条）。
 pub type Nodes = tokio::sync::broadcast::Sender<Node>;
 

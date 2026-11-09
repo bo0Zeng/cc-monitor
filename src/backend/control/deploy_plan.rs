@@ -2,15 +2,16 @@
 //!
 //! # 帧命令 `deploy-install`（本机常驻后端答）
 //!
-//! monitor 交三样事实：怎么够到那台（`dial`）· 自己带着哪几格后端字节（`slots`，`[{os, arch, id, path}]`：那一格自报的身份 ·
-//! 落在本机哪个文件，本后端从文件读，不经帧传字节）· 那台叫什么。`deploy::install` 沿池里那条 SSH 走完 ①–④
+//! 入参只有那台叫什么（怎么够到它照本机后端的机器表）。带着哪几格后端字节是这台自己的事实：monitor 起来时落在后端落点旁边的
+//! 槽目录（`deploy_contract::SLOTS_DIR`，文件名 `Key::slot_name`），本后端照目录现读（[`carried_slots_in`]：身份照字节自报，
+//! 不经帧传字节）。`deploy::install` 沿池里那条 SSH 走完 ①–④
 //! （计划 · 取字节 ＋ 自检 · 放进暂存区 ＋ 读回 · 那一份自己换进落点 · 收拾残件），同手机那一趟。
 //! 每走一步、收尾那一下都记进那台的状态成品（`control/machine_state.rs`，推 `changed {machine}`），结局是应答。
 //! ⑤ 换常驻不在这里：monitor 接那台时 `--resident-ensure --replace`，那台自己判换不换。
 //!
 //! # 帧命令 `deploy-uninstall`（同一家）
 //!
-//! 入参同上；SFTP 只写暂存区 ⇒ 传一份暂存件上去、由它删落点那一份（`deploy::uninstall`），回 `{removed, said}`。
+//! 入参同上（带着的那几个槽同样照槽目录）；SFTP 只写暂存区 ⇒ 传一份暂存件上去、由它删落点那一份（`deploy::uninstall`），回 `{removed, said}`。
 //!
 //! # 帧命令 `place-verdict`（同一家：本机那一份放不放）
 //!
@@ -30,9 +31,7 @@ use crate::platform::fs::Ro;
 use cap_core::{Cap, Over};
 
 /// 装 · 卸那两条的入参与回包住 cmd-wire（名字与回包挂在入参上，monitor 照同一份发、照同一份解）。
-pub(crate) use cmd_wire::deploy::{
-    DeployInstallReq, DeployUninstallReq, Installed, SlotRow, Uninstalled,
-};
+pub(crate) use cmd_wire::deploy::{DeployInstallReq, DeployUninstallReq, Installed, Uninstalled};
 use copy_core::copy_text;
 use deploy_contract::{DeployAction, Key, Refusal, RemoteIdentity, Route};
 use serde::{Deserialize, Serialize};
@@ -53,57 +52,36 @@ pub async fn plan(
     deploy::plan(facing, carried, machine, now_secs).await
 }
 
-/// `slots` 那几行 ⇒ `deploy::Slot`。键认不出 / 身份空 / 路径不是绝对 ⇒ `bad_args`（monitor 交的是它自己表里的词，认不出就是两侧漂了）。
-pub(crate) fn slots_of(rows: &[SlotRow]) -> Result<Vec<deploy::Slot>, Said> {
-    let bad = |m: &str| crate::wire::spec::fail("bad_args", crate::common::contract::malformed(m));
-    rows.iter()
-        .map(|r| {
-            let key = deploy_contract::key_of(&r.os, &r.arch)
-                .map_err(|_| bad("`slots` row names a machine outside table A"))?;
-            if r.id.is_empty() {
-                return Err(bad("`slots` row without `id`"));
-            }
-            if !std::path::Path::new(&r.path).is_absolute() {
-                return Err(bad("`slots` row without an absolute `path`"));
-            }
-            Ok(deploy::Slot {
-                key,
-                id: r.id.clone(),
-                path: r.path.clone().into(),
-            })
-        })
-        .collect()
-}
-
-/// monitor 落在盘上的那几格（本机后端落点旁边的 `slots/<os>-<arch>`，monitor 起来时落）⇒ 带着的那几格（各台的常驻流装后端那一步读它）。
-/// 那一格的身份照字节自报的那一个（[`deploy_contract::identity_of_bytes`]，同装那一趟自检的读法）；名字认不出 · 字节里没有恰好一个身份 ⇒ 不算带着。
-/// 家目录问不到 · 目录不在 ⇒ 那一句（不装，照样接已有的后端）。
-pub(crate) fn carried_slots() -> Result<Vec<SlotRow>, String> {
-    let home = crate::platform::paths::home_dir().ok_or("no home directory")?;
-    carried_slots_in(&home)
-}
-
-/// [`carried_slots`] 的本体（家目录由调用方给）。
-pub(crate) fn carried_slots_in(home: &std::path::Path) -> Result<Vec<SlotRow>, String> {
-    let (landing_dir, _) = relay_route_core::BACKEND_LANDING_REL
+/// monitor 落在这台盘上的那几个槽（家目录由调用方给：后端落点旁边的 [`deploy_contract::SLOTS_DIR`]，monitor 起来时落）⇒ 带着的那几格（装 · 卸都读它）。目录读不了 ⇒ 那一句。
+/// 文件名认不出（[`Key::of_slot_name`]）· 读不了 · 字节里没有恰好一个身份 ⇒ 不算带着；
+/// 那一格的身份照字节自报的那一个（[`deploy_contract::identity_of_bytes`]，同装那一趟自检的读法）。
+pub(crate) fn carried_slots_in(home: &std::path::Path) -> Result<Vec<deploy::Slot>, Said> {
+    let landing_dir = relay_route_core::BACKEND_LANDING_REL
         .rsplit_once('/')
-        .ok_or("landing has no directory")?;
+        .map_or("", |(dir, _)| dir);
     let dir = landing_dir
         .split('/')
+        .filter(|seg| !seg.is_empty())
         .fold(home.to_path_buf(), |p, seg| p.join(seg))
-        .join("slots");
-    let entries = Ro::read_dir(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    let mut rows = Vec::new();
+        .join(deploy_contract::SLOTS_DIR);
+    let entries = Ro::read_dir(&dir).map_err(|e| {
+        Said::new(
+            "io_failed",
+            copy_text(
+                "deploy.bytes.unreadable",
+                &[("why", &copy_core::io_reason(e.kind()))],
+            ),
+        )
+        .and_raw(Some(&format!("{}: {e}", dir.display())))
+    })?;
+    let mut slots = Vec::new();
     for entry in entries.flatten() {
         let path = entry.path();
-        let Some((os, arch)) = path
+        let Some(key) = path
             .file_name()
             .and_then(|n| n.to_str())
-            .and_then(|n| n.split_once('-'))
+            .and_then(Key::of_slot_name)
         else {
-            continue;
-        };
-        let Ok(key) = deploy_contract::key_of(os, arch) else {
             continue;
         };
         // 读不了的那一格不列；超上限那一档在读里 `warn!` 是哪一份。
@@ -115,16 +93,11 @@ pub(crate) fn carried_slots_in(home: &std::path::Path) -> Result<Vec<SlotRow>, S
             continue;
         };
         if let RemoteIdentity::Stamp(id) = deploy_contract::identity_of_bytes(&bytes, MARKS) {
-            rows.push(SlotRow {
-                os: key.os.label().to_string(),
-                arch: key.arch.label().to_string(),
-                id,
-                path: path.display().to_string(),
-            });
+            slots.push(deploy::Slot { key, id, path });
         }
     }
-    rows.sort_by(|a, b| (&a.os, &a.arch).cmp(&(&b.os, &b.arch)));
-    Ok(rows)
+    slots.sort_by_key(|s| s.key);
+    Ok(slots)
 }
 
 /// 装完的那份计划 → 应答。
@@ -133,24 +106,42 @@ pub fn installed_of(p: &Plan) -> Installed {
         DeployAction::Keep { theirs, .. } => theirs.clone(),
         DeployAction::Skip | DeployAction::Deploy(_) => p.expected.clone(),
     };
+    // 那台不比这一版旧 ⇒ 那一句接上出路（先卸载再部署 = 明确授权覆盖）：手动点也不降级。
+    let said = match &p.action {
+        DeployAction::Keep { .. } => copy_text("rsSftp.deploy.keptNotOlder", &[("why", &p.said())]),
+        DeployAction::Skip | DeployAction::Deploy(_) => p.said(),
+    };
     Installed {
         action: p.action.tag(),
-        said: p.said(),
+        said,
         build,
         os: p.key.os.label().to_string(),
     }
 }
 
-/// 入参那几行 ⇒ `deploy::Slot`；`machine` 空 ⇒ `bad_args`。
-fn checked(rows: &[SlotRow], machine: &str) -> Result<Vec<deploy::Slot>, Said> {
-    let slots = slots_of(rows)?;
+/// `machine` 空 ⇒ `bad_args`；不空 ⇒ 这台家目录里带着的那几个槽。
+fn checked(home: &std::path::Path, machine: &str) -> Result<Vec<deploy::Slot>, Said> {
     if machine.trim().is_empty() {
         return Err(crate::wire::spec::fail(
             "bad_args",
             crate::common::contract::malformed("missing `machine` (string)"),
         ));
     }
-    Ok(slots)
+    carried_slots_in(home)
+}
+
+/// 这台的家目录（带着的那几个槽住它底下）。问不到 ⇒ 同读不了槽目录那一句。
+fn home() -> Result<std::path::PathBuf, Said> {
+    crate::platform::paths::home_dir().ok_or_else(|| {
+        Said::new(
+            "io_failed",
+            copy_text(
+                "deploy.bytes.unreadable",
+                &[("why", &copy_core::io_reason(std::io::ErrorKind::NotFound))],
+            ),
+        )
+        .and_raw(Some("no home directory"))
+    })
 }
 
 /// 读一格字节（本机文件）。超上限 ⇒ 拒收，那一句就是部署那一格的原因。
@@ -158,13 +149,14 @@ fn load(p: &std::path::Path) -> Result<Vec<u8>, Said> {
     Ro::read_capped(p, BACKEND_BYTES_CAP)
 }
 
-/// `deploy-install` 的本体（对面由调用方给）：每走一步交 `on`，结局是应答。
+/// `deploy-install` 的本体（这台的家目录 · 对面由调用方给）：每走一步交 `on`，结局是应答。
 pub(crate) async fn install(
     req: &DeployInstallReq,
+    home: &std::path::Path,
     host: &dyn deploy::Place,
     on: &(dyn Fn(deploy::Step) + Send + Sync),
 ) -> Result<Installed, Said> {
-    let slots = checked(&req.slots, &req.machine)?;
+    let slots = checked(home, &req.machine)?;
     let now = crate::common::time::now_secs();
     deploy::install(host, &slots, &load, &req.machine, now, on)
         .await
@@ -204,14 +196,13 @@ impl crate::wire::typed::Handle for DeployInstall {
     }
 }
 
-/// 真拨那台的对面（装 · 卸同一个）：拨号核心那一套（钥匙 · known_hosts · 写规矩）先装上；一次性命令走全后端那一处
+/// 真拨那台的对面（装 · 卸同一个）：一次性命令走全后端那一处
 /// （`remote_ask::capture_full`，池里那条连接上多开一个 exec）。机器表里没有那台 · 组不成请求 ⇒ 那一句（`bad_args`）。
 fn facing_of(machine: &str) -> Result<DialFacing, String> {
     let hosts = crate::dial::machines_now();
     let (dial, to) =
         crate::dial::named_both(&hosts, machine.trim(), "capture", serde_json::json!({}))
             .map_err(|f| f.said)?;
-    crate::dial::host();
     let exec: deploy::Exec = Box::new(move |command| {
         let dial = dial.clone();
         Box::pin(async move { crate::dial::remote_ask::capture_full(&dial, command).await })
@@ -223,10 +214,15 @@ fn facing_of(machine: &str) -> Result<DialFacing, String> {
 pub(crate) async fn answer_install(req: DeployInstallReq) -> Result<Installed, DeployInstallErr> {
     let facing = facing_of(&req.machine).map_err(DeployInstallErr::BadArgs)?;
     let machine = req.machine.clone();
-    let got = install(&req, &facing, &move |s| {
-        crate::control::machine_state::note(&machine, deploy::machine::Fact::Step(s));
-    })
-    .await;
+    let got = match home() {
+        Ok(home) => {
+            install(&req, &home, &facing, &move |s| {
+                crate::control::machine_state::note(&machine, deploy::machine::Fact::Step(s));
+            })
+            .await
+        }
+        Err(said) => Err(said),
+    };
     if !req.machine.trim().is_empty() {
         let os = got.as_ref().ok().map(|i| i.os.clone());
         crate::control::machine_state::note(&req.machine, deploy::machine::Fact::Deployed { os });
@@ -250,14 +246,15 @@ pub(crate) async fn answer_install(req: DeployInstallReq) -> Result<Installed, D
 
 // ═══ 卸载（帧命令 `deploy-uninstall`）═══════════════════════════════════════════════════════
 //
-// SFTP 只写暂存区 ⇒ 卸载也传一份暂存件上去，由它删落点那一份（`deploy::uninstall`）。入参那两格同 `deploy-install`。
+// SFTP 只写暂存区 ⇒ 卸载也传一份暂存件上去，由它删落点那一份（`deploy::uninstall`）。入参同 `deploy-install`。
 
-/// `deploy-uninstall` 的本体（对面由调用方给）。
+/// `deploy-uninstall` 的本体（这台的家目录 · 对面由调用方给）。
 pub(crate) async fn uninstall(
     req: &DeployUninstallReq,
+    home: &std::path::Path,
     host: &dyn deploy::Place,
 ) -> Result<Uninstalled, Said> {
-    let slots = checked(&req.slots, &req.machine)?;
+    let slots = checked(home, &req.machine)?;
     deploy::uninstall(host, &slots, &load, &req.machine)
         .await
         .map(|r| Uninstalled {
@@ -293,7 +290,9 @@ impl crate::wire::typed::Handle for DeployUninstall {
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> Result<Uninstalled, DeployUninstallErr> {
         let facing = facing_of(&req.machine).map_err(DeployUninstallErr::BadArgs)?;
-        uninstall(&req, &facing)
+        let home =
+            home().map_err(|f| crate::wire::typed::of_fail(f, DeployUninstallErr::IoFailed))?;
+        uninstall(&req, &home, &facing)
             .await
             .map_err(|f| crate::wire::typed::of_fail(f, DeployUninstallErr::IoFailed))
     }

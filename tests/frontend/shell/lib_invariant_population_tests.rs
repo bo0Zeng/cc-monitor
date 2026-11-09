@@ -196,8 +196,7 @@ const TMUX_PRINT_SITES: &[(&str, &str, Carry, usize, &str)] = &[
     ("src/backend/host/tmux.rs", "ls", Carry::Env, 1, "观测那一跳 `sh -c` 一段脚本（期限归起子进程原语），env 一行盖住（`via_shell`）；`tmux_observe_tests.rs` 钉 env"),
     ("src/backend/host/tmux.rs", "display-message", Carry::Env, 1, "观测那一跳 `sh -c`，同上"),
     // monitor `tmux.rs` 那条跨 SSH `ls`（Flag）删了：`list_remote_tmux` 改问那台后端 `tmux-list`（那一趟 `ls` 住 `watcher.rs`，env 形）。
-    ("src/backend/control/gate.rs", "list-panes", Carry::Flag, 1, "argv；按 sid 找窗格：读这个会话各窗格的句柄 · 根进程 pid · `@ccm_sid`（ASCII，照表仍带旗）"),
-    ("src/backend/host/tmux.rs", "list-panes", Carry::Flag, 1, "argv；终端名单逐窗格读会话名 · 工作目录 · 窗格标题（可以非 ASCII）⇒ 旗"),
+    ("src/backend/host/tmux.rs", "list-panes", Carry::Flag, 2, "argv；终端名单逐窗格读会话名 · 工作目录 · 窗格标题（可以非 ASCII）⇒ 旗；按 sid 找窗格读一个会话各窗格的句柄 · 根进程 pid · `@ccm_sid`（ASCII，照表仍带旗）；`host/tmux_tests.rs` 钉旗在子命令前"),
     ("src/backend/host/tmux.rs", "list-clients", Carry::Flag, 1, "argv；读会话 ID 与两个时刻（ASCII，照表仍带旗）"),
     ("src/backend/control/terminals.rs", "display-message", Carry::Flag, 2, "argv；预览问尺寸与光标 · 实时预览订上之前问 tmux 版本（数字与 ASCII，照表仍带旗）"),
 ];
@@ -368,14 +367,6 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "",
         "",
     ),
-    // 公钥推送进了本机后端：一行公钥拼进那一次 exec 之前先过 `sanitize_public_key`（恰一行 · 无控制字符 · 类型前缀 ＋ base64 主体）。
-    (
-        "src/backend/assets/pubkey.rs",
-        &["authorized_keys_cmd"],
-        &[("src/backend/assets/pubkey.rs", "sanitize_public_key")],
-        "",
-        "",
-    ),
     // 〔§47〕那台后端的路径在可达表唯一的写口 `remote_ask::register` 先过放行判定（后端那一份同族判定），第四列清空。
     // 〔§47〕cwd（绝对 · 无 `..` 段）· 启动器 · 透传参数 · 登记备注 · 继承来的三个变量 → 过 `free_text_gate` /
     //   `inherited_gate`（拒绝集只收 NUL / CR / LF，住 `shell_quote_core::free_text_ok`）。剩下的见第四列。
@@ -506,7 +497,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
     (
         "src/frontend/shell/src/platform/terminal.rs",
         &["build_local_posix_spawn"],
-        &[("src/frontend/shell/src/launch.rs", "validate_launch_cmd")],
+        &[("src/frontend/shell/src/platform/terminal.rs", "validate_launch_cmd")],
         "",
         "留窗脚本（常量）",
     ),

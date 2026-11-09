@@ -43,14 +43,17 @@ const LIVE_KEY: Record<SessionActivity, FaceKey> = {
 };
 
 /**
- * 活着、在干那一态的那一张（`null` ＝ 判不出在干什么）；`tmux` 给了 ⇒ 「终端」那一格照它（同 `SessionFace::of` 那一判）：
- * 在 tmux 里 ⇒ 在这台上拉窗 · 别处接进去，且结束得了；不在任何宿主里 ⇒ 在这台上拉窗 · 别处不能。
+ * 活着、在干那一态的那一张（`null` ＝ 判不出在干什么）；`tmux` 给了 ⇒ 终端那三格照它（同 `SessionFace::of` 那一判）：
+ * 在 tmux 里 ⇒ 拉前 · 在终端里打开 · 看它的终端都能，且结束得了；不在任何宿主里 ⇒ 只拉得了前。
  */
 export function liveFace(activity: SessionActivity | null, tmux?: boolean): SessionFace {
   const f = goldenFace(activity === null ? "live-unclear" : LIVE_KEY[activity]);
-  const tmuxFace = goldenFace("live-needs-you-tmux").can.terminal;
-  const bareFace = goldenFace("live-working-plain").can.terminal;
-  if (tmux !== undefined) f.can.terminal = tmux ? tmuxFace : bareFace;
+  if (tmux !== undefined) {
+    const from = goldenFace(tmux ? "live-needs-you-tmux" : "live-working-plain").can;
+    f.can.front = from.front;
+    f.can.attach = from.attach;
+    f.can.view = from.view;
+  }
   if (tmux === true) f.can.end = { can: "yes" };
   return f;
 }

@@ -9,7 +9,7 @@
 //! - **偏差照实说**：同一个号别的机器、没走中转的会话也在用时，读数涨得比这台数到的多 ⇒ 量出来偏小；这台看不出来。
 //!   换号那一刻正在说的那一发，收尾那一件可能记到新号名下。
 //! - **按会话记**（[`Spend::me`]）：同一份流按会话再记一本 —— 每件用量（记在哪个号名下）· 每发的上下文 · 写缓存那一档 · 每号最后一发 ·
-//!   每发的开头与收尾（[`Spend::began`] · [`Spend::ended`]）；交给判的「本会话的用速（半小时 · 5 分钟）与起伏 · 6 小时分段 · 在途 ·
+//!   每发的开头与收尾（[`Spend::tap`] 收中转抄出来的整件）；交给判的「本会话的用速（半小时 · 5 分钟）与起伏 · 6 小时分段 · 在途 ·
 //!   上下文 · 缓存」都从这一本算，「别的会话压在这个号上的」也从它扣（[`Spend::here`] · [`Spend::others`]）。
 
 use super::rules::decide::{Me, PromptCache};
@@ -258,8 +258,22 @@ impl Spend {
         }
     }
 
+    /// ★ 中转抄出来的一件（tap 口交来的整件）：0 号那一件 ＝ 这一发开了头 · 说出了用量的那几件记用量 · 收尾那一件 ＝ 说完了
+    /// （断了也算）；截断的那一件不记。
+    pub fn tap(&self, ev: &crate::relay::TapEvent, now: u64) {
+        use crate::relay::TapBody;
+        if ev.n == 0 {
+            self.began(&ev.stream, ev.resp, now);
+        }
+        match &ev.body {
+            TapBody::Data(d) => self.heard(&ev.stream, d, now),
+            TapBody::End { .. } => self.ended(&ev.stream, ev.resp, now),
+            TapBody::Clipped { .. } => {}
+        }
+    }
+
     /// 流里的一件事（会话标识 · `data:` 原文 · 此刻）：说出了用量 ⇒ 记在那个会话此刻的号名下，并记进这个会话那一本。
-    pub fn heard(&self, stream: &str, data: &str, now: u64) {
+    pub(crate) fn heard(&self, stream: &str, data: &str, now: u64) {
         if stream.is_empty() {
             return;
         }
@@ -293,7 +307,7 @@ impl Spend {
 
     /// 一个响应开了头（流里 0 号那一件：会话标识 · 响应号）：会话此刻在哪个号上说得出 ⇒ 记进它那一本的在途。
     /// 子 agent · 工作流 · 分叉请求都带本会话的标识 ⇒ 一并记在这个会话名下。
-    pub fn began(&self, stream: &str, resp: u64, now: u64) {
+    pub(crate) fn began(&self, stream: &str, resp: u64, now: u64) {
         let mut g = self.lock();
         let Some(agent) = g.routes.get(stream).map(|(k, _)| k.0.clone()) else {
             return;
@@ -302,7 +316,7 @@ impl Spend {
     }
 
     /// 那个响应说完了（收尾那一件；断了也算说完）。
-    pub fn ended(&self, stream: &str, resp: u64, now: u64) {
+    pub(crate) fn ended(&self, stream: &str, resp: u64, now: u64) {
         if let Some(r) = self.lock().runs.get_mut(stream) {
             r.ended(resp, now);
         }

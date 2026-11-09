@@ -39,7 +39,7 @@ import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { RotationStrategiesReply } from "../../../src/frontend/ui/generated/RotationStrategiesReply";
 import type { RotationViewReply } from "../../../src/frontend/ui/generated/RotationViewReply";
 
-const LIST: RotationStrategiesReply = { strategies: [{ id: "按权重轮换", description: "说明", summary: "说明", rev: "h:1", inUse: [], forNew: true, tzUnknown: false, hand: false }, { id: "夜里", description: "", summary: "", rev: "h:3", inUse: [], forNew: false, tzUnknown: false, hand: true }], forNew: "按权重轮换", oldScripts: 0 };
+const LIST: RotationStrategiesReply = { strategies: [{ id: "按权重轮换", description: "说明", summary: "说明", rev: "h:1", remove: { enabled: false, why: "夹具·新会话在用这份" }, forNew: true, tzUnknown: false, hand: false }, { id: "夜里", description: "", summary: "", rev: "h:3", remove: { enabled: true }, forNew: false, tzUnknown: false, hand: true }], forNew: "按权重轮换", oldScripts: 0 };
 const VIEW: RotationViewReply = {
   now: 1,
   nowText: "00:00", title: null,

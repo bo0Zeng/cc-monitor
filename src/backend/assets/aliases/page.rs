@@ -615,7 +615,7 @@ pub(crate) struct DropOut {
     restores: bool,
 }
 
-/// 「账号那一形」：号与起在哪种终端里（直路 · tmux · 托管）按合并下来的算。
+/// 「账号那一形」：号按合并下来的算（起在哪种终端里那一形只用来认这一段，不上线：两端都没有读者）。
 #[derive(Debug, Serialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -628,11 +628,6 @@ pub(crate) struct DropOut {
 )]
 pub(crate) struct AccountShape {
     account: String,
-    #[cfg_attr(
-        any(test, feature = "ts"),
-        ts(type = "\"plain\" | \"tmux\" | \"hosted\"")
-    )]
-    form: crate::accounts::manage::aliases::Form,
 }
 
 /// 树里的一段：自己写的几项 · 能不能用 · 链接还是终端函数 · 树里那一行 · 表单回填。
@@ -664,7 +659,7 @@ pub(crate) struct ProfileOut {
     /// 树里那一行（按表单同一套词写好）。
     said: String,
     form: ProfileForm,
-    /// 「账号那一形」（自己只写了号、可再加 tmux 或托管）⇒ 号与那一形按合并下来的算；其余 ⇒ `null`（账号页按它列各号的命令名）。
+    /// 「账号那一形」（自己只写了号、可再加 tmux 或托管）⇒ 号按合并下来的算；其余 ⇒ `null`（账号页按它列各号的命令名）。
     account_shape: Option<AccountShape>,
     /// 在这台终端里起它的那一行（[`super::start_line`]）：终端屏照抄、敲进去。
     start: String,
@@ -760,7 +755,7 @@ fn profile_out(
         said: summary_of(p, shell),
         form: form_of(p),
         account_shape: super::accounts::form_of(book, p)
-            .map(|(account, form)| AccountShape { account, form }),
+            .map(|(account, _)| AccountShape { account }),
         start: super::start_line(&p.name, shell, ccm),
     }
 }

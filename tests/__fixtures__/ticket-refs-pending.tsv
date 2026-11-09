@@ -34,7 +34,7 @@ src/comms/outward/server.rs	3
 src/comms/resident-client/backoff.rs	1
 src/comms/resident-client/feed.rs	1
 src/comms/resident-client/lib.rs	1
-src/frontend/shell/src/deploy.rs	5
+src/frontend/shell/src/deploy.rs	4
 src/frontend/shell/src/event_replay.rs	5
 src/frontend/shell/src/filewin/entry.rs	2
 src/frontend/shell/src/launch.rs	1

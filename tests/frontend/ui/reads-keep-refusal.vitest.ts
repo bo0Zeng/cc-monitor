@@ -40,7 +40,7 @@ const readers: [string, () => Promise<unknown>][] = [
   ["readChores", () => readChores()],
   ["readBranch", () => readBranch("devbox", "/p/s.jsonl")],
   ["readRecordDrift", () => readRecordDrift("devbox")],
-  ["importSshHosts", () => importSshHosts([])],
+  ["importSshHosts", () => importSshHosts()],
   ["startForward", () => startForward({} as never)],
   ["stopForward", () => stopForward("f1")],
   ["listForwards", () => listForwards()],

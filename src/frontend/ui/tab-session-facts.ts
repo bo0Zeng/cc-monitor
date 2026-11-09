@@ -17,7 +17,7 @@ export interface FactsChange {
   forkedLine: boolean;
   touchedFiles: boolean;
   usage: boolean;
-  /** 项目目录或它的显示形（`cwdShown`）变了。 */
+  /** 项目目录 · 它的显示形（`cwdShown`）· 项目名（`projectName`）变了。 */
   projectDir: boolean;
   /** 「机器 · 目录」那一句变了。 */
   where: boolean;
@@ -48,7 +48,9 @@ export function applyFacts(tab: Tab, f: SessionFacts): FactsChange {
   if (dirMoved) tab.projectDir = f.projectDir;
   const shownMoved = f.cwdShown !== undefined && f.cwdShown !== tab.cwdShown;
   if (shownMoved) tab.cwdShown = f.cwdShown ?? null;
-  const projectDir = dirMoved || shownMoved;
+  const nameMoved = f.projectName !== undefined && f.projectName !== tab.projectName;
+  if (nameMoved) tab.projectName = f.projectName ?? null;
+  const projectDir = dirMoved || shownMoved || nameMoved;
 
   if (f.agent !== null) tab.agent = f.agent;
 

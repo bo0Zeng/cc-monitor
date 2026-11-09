@@ -570,7 +570,12 @@ pub struct StepResult {
     #[serde(rename = "exitCode", skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub exit_code: Option<i32>,
-    /// 失败那一步的尾巴（「退出码 N」/「出错」，后端 `StepResult::written` 写）：结果块抬头照摆；没失败 ⇒ 缺。
+    /// 读文件那一类的结果（不上线）：右侧那一句只对它把 `lines` 说成「读了几行」（命令输出几行 · 搜索命中几行不说）。
+    /// 适配层照那一家的格式判，后端 `step_clock::said` 写字时读。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
+    pub read: bool,
+    /// 失败那一步的尾巴（「退出码 N」/「出错」，后端 `step_clock::said` 写）：结果块抬头照摆；没失败 ⇒ 缺。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<String>"))]
     pub error: Option<Words>,
@@ -583,9 +588,9 @@ pub struct StepResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub patch: Option<LineDiff>,
-    /// 过程那一行右侧那一句（[`StepResult::written`] 写）：改动 `+38 −6` · 读了几行（只读文件那一类）· 几个文件 ·
+    /// 过程那一行右侧那一句（后端 `step_clock::said` 一处写；适配层交来时是空的）：改动 `+38 −6` · 读了几行（只读文件那一类）· 几个文件 ·
     /// 失败 · 未批准 · 提问 / 计划答了什么（已选「…」· 已批准）；都说不上 ⇒ 空串。配上了调用的时刻 ⇒ 失败 · 都说不上的那一步
-    /// 带上一步用时（`StepResultExt::timed_by` 写）；配不上 ⇒ 照没有用时的那一形。
+    /// 带上一步用时；配不上 ⇒ 照没有用时的那一形。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
     pub text: Words,
     /// 结果的首行预览：第一条非空行、去掉两头空白、至多 60 字（按字符），截了以「…」收尾；界面不再截。结果是空的 ⇒ 缺。

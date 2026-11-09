@@ -3,7 +3,7 @@ import type { Machine } from "./Machine";
 import type { Sid } from "./Sid";
 
 /**
- * `session-window` 的入参。
+ * `session-window` 的入参：这条会话在这台电脑上的哪儿（点 ↗ 时壳问本机后端一次）。
  */
 export type SessionWindowReq = { 
 /**

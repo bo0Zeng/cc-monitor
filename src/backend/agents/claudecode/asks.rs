@@ -7,8 +7,10 @@
 //!
 //! 这一家的字段名只住这里；待答登记表、选项写字、谁先答算谁的住通用层（`control::asks`）。
 
-use crate::agents::{AskFace, AskIn, AskKind, AskQuestion, AskSuggestion, PlanMode, Verdict};
-use copy_core::copy_text;
+use crate::agents::{
+    AskFace, AskIn, AskKind, AskQuestion, AskSuggestion, PlanMode, SuggestRule, SuggestScope,
+    Verdict,
+};
 use serde_json::{json, Map, Value};
 
 /// 注册表 `Adapter.asks` 那一格。
@@ -303,34 +305,32 @@ fn detail_of(tool: &str, input: &Value, questions: &[AskQuestion]) -> String {
     }
 }
 
-/// 一条「以后不再问」建议写成人话；不是放宽的那几种（删规则 · 删目录）⇒ 不给。
+/// 一条「以后不再问」建议认成码 ＋ 原样（写成人话在核心 `AskSuggestion::said`）；不是放宽的那几种（删规则 · 删目录）⇒ 不给。
 fn suggestion_of(s: &Value) -> Option<AskSuggestion> {
     let scope = match s.get("destination").and_then(Value::as_str) {
-        Some("session") => copy_text("beAsk.scope.session", &[]),
-        Some("localSettings") => copy_text("beAsk.scope.local", &[]),
-        Some("projectSettings") => copy_text("beSessionCommands.scope.project", &[]),
-        Some("userSettings") => copy_text("beAsk.scope.user", &[]),
+        Some("session") => SuggestScope::Session,
+        Some("localSettings") => SuggestScope::Local,
+        Some("projectSettings") => SuggestScope::Project,
+        Some("userSettings") => SuggestScope::User,
         _ => return None,
     };
-    let text = match s.get("type").and_then(Value::as_str)? {
+    let rule = match s.get("type").and_then(Value::as_str)? {
         "addDirectories" => {
-            let dirs: Vec<&str> = s
+            let dirs: Vec<String> = s
                 .get("directories")
                 .and_then(Value::as_array)?
                 .iter()
                 .filter_map(Value::as_str)
+                .map(str::to_string)
                 .collect();
             if dirs.is_empty() {
                 return None;
             }
-            copy_text(
-                "beAsk.rule.dirs",
-                &[("dirs", &dirs.join(", ")), ("scope", &scope)],
-            )
+            SuggestRule::Dirs(dirs)
         }
         "setMode" => match s.get("mode").and_then(Value::as_str)? {
-            "acceptEdits" => copy_text("beAsk.rule.acceptEdits", &[("scope", &scope)]),
-            m => copy_text("beAsk.rule.mode", &[("mode", m), ("scope", &scope)]),
+            "acceptEdits" => SuggestRule::AcceptEdits,
+            m => SuggestRule::Mode(m.to_string()),
         },
         "addRules" | "replaceRules"
             if s.get("behavior").and_then(Value::as_str) == Some("allow") =>
@@ -350,15 +350,13 @@ fn suggestion_of(s: &Value) -> Option<AskSuggestion> {
             if rules.is_empty() {
                 return None;
             }
-            copy_text(
-                "beAsk.rule.rules",
-                &[("rules", &rules.join(", ")), ("scope", &scope)],
-            )
+            SuggestRule::Allow(rules)
         }
         _ => return None,
     };
     Some(AskSuggestion {
-        text,
+        scope,
+        rule,
         raw: s.clone(),
     })
 }

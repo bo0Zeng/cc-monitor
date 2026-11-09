@@ -315,13 +315,13 @@ class RotationBoard(
 
     fun open(account: String?) = _state.update { it.copy(open = account, refused = null) }
 
-    /** ［立即用］：那台说用不了（`unusable`）⇒ 按钮下照 `rot.acct.refused` 写那一句（那台事实上的那一句 `blocked.text`，没有就照回的话）。 */
+    /** ［立即用］：那台说用不了（`unusable`）⇒ 按钮下摆那台写好的整句（回包 said）。 */
     fun useNow(account: String) {
         val s = sid ?: return
         switchTo(account, copyText("rot.fail.useNow"), Rotation.USE_NOW, Rotation.useNow(s, account))
     }
 
-    /** 换到 [account]（［立即用］· 顺序里拖到第一格）：那台说它事实上发不出去（`unusable`）⇒ 不换，照 `rot.acct.refused` 写那一句。 */
+    /** 换到 [account]（［立即用］· 顺序里拖到第一格）：那台说它事实上发不出去（`unusable`）⇒ 不换，摆那台写好的整句。 */
     private fun switchTo(
         account: String,
         what: String,
@@ -342,20 +342,13 @@ class RotationBoard(
         r: Reply,
     ): MoveEnd {
         val f = (r as? Reply.Failed)?.failure
-        val blocked =
-            _state.value.view
-                ?.accounts
-                ?.firstOrNull { it.account == account }
-                ?.blocked
-                ?.text
-        val line = account to copyText("rot.acct.refused", "account" to label(account), "why" to (blocked ?: f?.said.orEmpty()))
         return when {
             r is Reply.Ok -> {
                 _state.update { it.copy(refused = null) }
                 MoveEnd.DONE
             }
             f?.code == UNUSABLE -> {
-                _state.update { it.copy(refused = line) }
+                _state.update { it.copy(refused = account to f.said) }
                 MoveEnd.BACK
             }
             f != null -> {

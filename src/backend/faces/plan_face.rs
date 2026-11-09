@@ -40,13 +40,7 @@ fn bad(what: &str) -> Said {
 fn config_roots() -> Vec<PathBuf> {
     let mut roots = vec![crate::history::listing::agent_home()];
     if let Some(home) = crate::platform::paths::home_dir() {
-        roots.extend(
-            crate::accounts::manage::scan::book_at(&home)
-                .unwrap_or_default()
-                .accounts
-                .into_iter()
-                .filter_map(|a| a.config_dir.map(PathBuf::from)),
-        );
+        roots.extend(crate::accounts::manage::scan::config_dirs(&home));
     }
     roots.dedup();
     roots
@@ -444,9 +438,7 @@ fn pb_state(state: &str, said: Option<String>) -> wire::PlanPb {
 
 /// 这台计划里要人看的每一条（工作区 · 片名 · 落在哪一格，照 `plan-list` 的先后；[`crate::plan::needs::need_items`] 摊开）：
 /// 同 `plan-list {}` 那一路取（认过的目录照本子里那一份，不重问 pb）。读不出的工作区不在里头（计划那一截空着，不挡会话那几项）。
-pub(crate) fn need_slices(
-    tz: &crate::common::time::Tz,
-) -> Vec<crate::observe::recognize::facts::NeedAt> {
+pub(crate) fn need_slices(tz: &crate::common::time::Tz) -> Vec<crate::wire::needs::NeedAt> {
     crate::plan::needs::need_items(&reads(&PlanListReq::default(), tz).1)
 }
 
